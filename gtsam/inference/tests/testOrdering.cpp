@@ -51,26 +51,26 @@ TEST(Ordering, constrained_ordering) {
   // constrained version - push one set to the end
   {
     Ordering actual = Ordering::ColamdConstrainedLast(symbolicGraph, { 2, 4 });
-    Ordering expected = Ordering({ 0, 1, 5, 3, 4, 2 });
+    Ordering expected{ 0, 1, 5, 3, 4, 2 };
     EXPECT(assert_equal(expected, actual));
   }
 
   // constrained version - push one set to the start
   {
     Ordering actual = Ordering::ColamdConstrainedFirst(symbolicGraph, { 2, 4 });
-    Ordering expected = Ordering({ 2, 4, 0, 1, 3, 5 });
+    Ordering expected{ 2, 4, 0, 1, 3, 5 };
     EXPECT(assert_equal(expected, actual));
   }
 
   // Make sure giving empty constraints does not break the code
   {
     Ordering actual = Ordering::ColamdConstrainedLast(symbolicGraph, {});
-    Ordering expected = Ordering({ 0, 1, 2, 3, 4, 5 });
+    Ordering expected{ 0, 1, 2, 3, 4, 5 };
     EXPECT(assert_equal(expected, actual));
   }
   {
     Ordering actual = Ordering::ColamdConstrainedFirst(symbolicGraph, {});
-    Ordering expected = Ordering({ 0, 1, 2, 3, 4, 5 });
+    Ordering expected{ 0, 1, 2, 3, 4, 5 };
     EXPECT(assert_equal(expected, actual));
   }
 
@@ -309,7 +309,7 @@ TEST(Ordering, MetisLoop) {
     //  | - P( 4 | 0 3)
     //  | | - P( 5 | 0 4)
     //  | - P( 2 | 1 3)
-    Ordering expected = Ordering({ 5, 4, 2, 1, 0, 3 });
+    Ordering expected{ 5, 4, 2, 1, 0, 3 };
     EXPECT(assert_equal(expected, actual));
   }
 #elif defined(_WIN32)
@@ -319,7 +319,7 @@ TEST(Ordering, MetisLoop) {
     //  | - P( 3 | 5 2)
     //  | | - P( 4 | 5 3)
     //  | - P( 1 | 0 2)
-    Ordering expected = Ordering({ 4, 3, 1, 0, 5, 2 });
+    Ordering expected{ 4, 3, 1, 0, 5, 2 };
     EXPECT(assert_equal(expected, actual));
   }
 #else
@@ -329,7 +329,7 @@ TEST(Ordering, MetisLoop) {
     //  | - P( 2 | 4 1)
     //  | | - P( 3 | 4 2)
     //  | - P( 5 | 0 1)
-    Ordering expected = Ordering({ 3, 2, 5, 0, 4, 1 });
+    Ordering expected{ 3, 2, 5, 0, 4, 1 };
     EXPECT(assert_equal(expected, actual));
   }
 #endif
@@ -351,8 +351,29 @@ TEST(Ordering, MetisSingleNode) {
   symbolicGraph.push_factor(7);
 
   Ordering actual = Ordering::Create(Ordering::METIS, symbolicGraph);
-  Ordering expected = Ordering({ 7 });
+  Ordering expected{ 7 };
   EXPECT(assert_equal(expected, actual));
+}
+/* ************************************************************************* */
+TEST(Ordering, MetisDisconnectedGraph) {
+  SymbolicFactorGraph symbolicGraph;
+
+  symbolicGraph.push_factor(0);
+  symbolicGraph.push_factor(0, 1);
+  symbolicGraph.push_factor(2);
+  symbolicGraph.push_factor(2, 3);
+
+  MetisIndex mi(symbolicGraph);
+
+  const vector<int> xadjExpected{ 0, 1, 2, 3, 4 }, adjExpected{ 1, 0, 3, 2 };
+
+  EXPECT(xadjExpected == mi.xadj());
+  EXPECT(adjExpected.size() == mi.adj().size());
+  EXPECT(adjExpected == mi.adj());
+
+  Ordering metis = Ordering::Metis(symbolicGraph);
+  Ordering expected{ 0,1,2,3 };
+  EXPECT(assert_equal(expected, metis));
 }
 
 /* ************************************************************************* */
@@ -371,7 +392,7 @@ TEST(Ordering, Create) {
     //| | | - P( 1 | 2)
     //| | | | - P( 0 | 1)
     Ordering actual = Ordering::Create(Ordering::COLAMD, symbolicGraph);
-    Ordering expected = Ordering({ 0, 1, 2, 3, 4, 5 });
+    Ordering expected{ 0, 1, 2, 3, 4, 5 };
     EXPECT(assert_equal(expected, actual));
   }
 
@@ -382,7 +403,7 @@ TEST(Ordering, Create) {
     //- P( 1 0 2)
     //| - P( 3 4 | 2)
     //| | - P( 5 | 4)
-    Ordering expected = Ordering({ 5, 3, 4, 1, 0, 2 });
+    Ordering expected{ 5, 3, 4, 1, 0, 2 };
     EXPECT(assert_equal(expected, actual));
   }
 #endif
