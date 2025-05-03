@@ -633,6 +633,49 @@ class Pose3 {
   void serialize() const;
 };
 
+#include <gtsam/geometry/SL4.h>
+class SL4 {
+  // Standard constructors
+  SL4();
+  SL4(const gtsam::Matrix4& T);
+
+  // Testable
+  void print(string s = "") const;
+  bool equals(const gtsam::SL4& other, double tol) const;
+
+  // Group
+  static gtsam::SL4 Identity();
+  gtsam::SL4 inverse(SL4Jacobian H1 = {}) const;
+  gtsam::SL4 compose(const gtsam::SL4& other, 
+                     SL4Jacobian H1 = {}, SL4Jacobian H2 = {}) const;
+  gtsam::SL4 between(const gtsam::SL4& other, 
+                     SL4Jacobian H1 = {}, SL4Jacobian H2 = {}) const;
+
+  // Operator overload
+  gtsam::SL4 operator*(const gtsam::SL4& other) const;
+
+  // Lie group
+  static gtsam::SL4 Expmap(gtsam::Vector v);
+  static gtsam::Vector Logmap(const gtsam::SL4& g);
+  gtsam::SL4 expmap(gtsam::Vector v);
+  gtsam::Vector logmap(const gtsam::SL4& g);
+  static gtsam::Matrix Hat(const gtsam::Vector& xi);
+  static gtsam::Vector Vee(const gtsam::Matrix& X);
+
+  // Manifold
+  gtsam::SL4 retract(gtsam::Vector v,
+                     SL4Jacobian Horigin, SL4Jacobian Hv) const;
+  gtsam::Vector localCoordinates(const gtsam::SL4& g,
+                                 SL4Jacobian Horigin,
+                                 SL4Jacobian Hp2) const;
+
+  // Interface
+  gtsam::Matrix4 matrix() const;
+
+  // Serialization
+  void serialize() const;
+};
+
 // Used in Matlab wrapper
 class Pose3Pairs {
   Pose3Pairs();

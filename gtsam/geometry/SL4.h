@@ -150,7 +150,7 @@ class GTSAM_UNSTABLE_EXPORT SL4 : public LieGroup<SL4, 15> {
   SL4 between(const SL4& p2, SL4Jacobian H1 = {},
                    SL4Jacobian H2 = {}) const;
 
-  static Matrix44 vectorToAlgebra(const Vector& xi) {
+  static Matrix44 Hat(const Vector& xi) {
     assert(xi.size() == 15);
     Matrix44 mat;
     const double d11 =  xi(12);
@@ -166,13 +166,14 @@ class GTSAM_UNSTABLE_EXPORT SL4 : public LieGroup<SL4, 15> {
     return mat;
   } 
 
-  static Vector algebraToVector(const Matrix44& mat) {
+  // NOTE(hlim): Why 'X'? - I just follow the convetion of GTSAM
+  static Vector Vee(const Matrix44& X) {
     Vector vec(15);
-    const double x12 = mat(0, 0);
-    const double x13 = mat(1, 1) + x12;
-    const double x14 = -mat(3, 3);
-    vec << mat(0, 1), mat(0, 2), mat(0, 3), mat(1, 0), mat(1, 2), mat(1, 3),
-           mat(2, 0), mat(2, 1), mat(2, 3), mat(3, 0), mat(3, 1), mat(3, 2),
+    const double x12 = X(0, 0);
+    const double x13 = X(1, 1) + x12;
+    const double x14 = -X(3, 3);
+    vec << X(0, 1), X(0, 2), X(0, 3), X(1, 0), X(1, 2), X(1, 3),
+           X(2, 0), X(2, 1), X(2, 3), X(3, 0), X(3, 1), X(3, 2),
            x12, x13, x14;
     return vec;
   }

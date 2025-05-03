@@ -4,7 +4,7 @@
  * @author: Hyungtae Lim
  */
 
-#include <sl4/SL4.h>
+#include <gtsam/geometry/SL4.h>
 
 
 using namespace std;
@@ -78,7 +78,7 @@ SL4 SL4::retract(const Vector& v, SL4Jacobian Horigin,
                            SL4Jacobian Hv) const {
   assert(v.size() == 15);
 
-  SL4 retracted_pose = SL4(T_ * (I_4x4 + vectorToAlgebra(v)));
+  SL4 retracted_pose = SL4(T_ * (I_4x4 + Hat(v)));
 
   if (Horigin) {
     // TODO(hlim) Should be implemented
@@ -119,7 +119,7 @@ Vector SL4::localCoordinates(const SL4& p2,
 /* ************************************************************************* */
 SL4 SL4::Expmap(const Vector& xi) {
   assert(xi.size() == 15);
-  const auto & mat = vectorToAlgebra(xi);
+  const auto & mat = Hat(xi);
   
   // NOTE(hlim):
   // The cost of the computation is approximately 20n^3 for matrices of size n.
@@ -136,7 +136,7 @@ SL4 SL4::Expmap(const Vector& xi) {
 Vector SL4::Logmap(const Matrix44& T) {
   const Matrix44 &mat = T.log();
   
-  return algebraToVector(mat);
+  return Vee(mat);
 }
 
 Vector SL4::Logmap(const SL4& p) {
