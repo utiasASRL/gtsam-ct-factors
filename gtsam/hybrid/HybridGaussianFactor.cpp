@@ -22,6 +22,7 @@
 #include <gtsam/base/utilities.h>
 #include <gtsam/discrete/DecisionTree-inl.h>
 #include <gtsam/discrete/DecisionTree.h>
+#include <gtsam/discrete/DiscreteValues.h>
 #include <gtsam/hybrid/HybridFactor.h>
 #include <gtsam/hybrid/HybridGaussianFactor.h>
 #include <gtsam/hybrid/HybridGaussianProductFactor.h>
@@ -201,8 +202,36 @@ double HybridGaussianFactor::error(const HybridValues& values) const {
 
 /* ************************************************************************ */
 std::shared_ptr<Factor> HybridGaussianFactor::restrict(
-    const DiscreteValues& assignment) const {
-  throw std::runtime_error("HybridGaussianFactor::restrict not implemented");
+  const DiscreteValues& assignment) const {
+  FactorValuePairs restrictedTree = this->factors_;  // Start with the original tree
+
+  const DiscreteKeys& currentFactorDiscreteKeys = this->discreteKeys();
+  DiscreteKeys newFactorDiscreteKeys;  // For the new, restricted factor
+
+  // Iterate over the discrete keys of the current factor
+  for (const DiscreteKey& factor_dk_pair : currentFactorDiscreteKeys) {
+    const Key& key = factor_dk_pair.first;
+
+    // Check if this key is specified in the assignment
+    auto assignment_it = assignment.find(key);
+
+    if (assignment_it != assignment.end()) {
+      // Key is in assignment: restrict the tree by choosing the branch
+      size_t assigned_value = assignment_it->second;
+      restrictedTree = restrictedTree.choose(key, assigned_value);
+      // This key is now fixed, so it's not a discrete key for the new factor
+    }
+    else {
+      // Key is not in assignment: it remains a discrete key for the new factor
+      newFactorDiscreteKeys.push_back(factor_dk_pair);
+    }
+  }
+
+  // Create and return the new HybridGaussianFactor.
+  // Its constructor will derive continuous keys from the GaussianFactor
+  // shared_ptrs within the restrictedTree.
+  return std::make_shared<HybridGaussianFactor>(newFactorDiscreteKeys,
+    restrictedTree);
 }
 
 /* ************************************************************************ */
