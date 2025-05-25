@@ -224,10 +224,12 @@ class HybridBayesNet {
       const gtsam::DotWriter& writer = gtsam::DotWriter()) const;
 };
 
-#include <gtsam/hybrid/HybridGaussianFactorGraph.h>
-class HybridGaussianFactorGraph {
-  HybridGaussianFactorGraph();
-  HybridGaussianFactorGraph(const gtsam::HybridBayesNet& bayesNet);
+#include <gtsam/hybrid/HybridFactorGraph.h>
+virtual class HybridFactorGraph {
+  HybridFactorGraph();
+  gtsam::KeySet keys() const;
+  gtsam::KeySet discreteKeySet() const;
+  gtsam::KeySet continuousKeySet() const;
 
   // Building the graph
   void push_back(const gtsam::HybridFactor* factor);
@@ -239,7 +241,10 @@ class HybridGaussianFactorGraph {
   void push_back(gtsam::DecisionTreeFactor* factor);
   void push_back(gtsam::TableFactor* factor);
   void push_back(gtsam::JacobianFactor* factor);
-
+  void push_back(gtsam::NonlinearFactor* factor);
+  void push_back(gtsam::DiscreteFactor* factor);
+  void push_back(const gtsam::HybridNonlinearFactorGraph& graph);
+  
   void add(const gtsam::HybridFactor* factor);
   void add(const gtsam::HybridConditional* conditional);
   void add(const gtsam::HybridGaussianFactorGraph& graph);
@@ -249,21 +254,46 @@ class HybridGaussianFactorGraph {
   void add(gtsam::DecisionTreeFactor* factor);
   void add(gtsam::TableFactor* factor);
   void add(gtsam::JacobianFactor* factor);
-
+  void add(gtsam::NonlinearFactor* factor);
+  void add(gtsam::DiscreteFactor* factor);
+  void add(const gtsam::HybridNonlinearFactorGraph& graph);
+  
   bool empty() const;
   void remove(size_t i);
   size_t size() const;
-  gtsam::KeySet keys() const;
+  void resize(size_t size);
   const gtsam::HybridFactor* at(size_t i) const;
-
-  void print(string s = "") const;
-  bool equals(const gtsam::HybridGaussianFactorGraph& fg,
-              double tol = 1e-9) const;
 
   // evaluation
   double error(const gtsam::HybridValues& values) const;
-  double probPrime(const gtsam::HybridValues& values) const;
 
+  void print(string s = "", const gtsam::KeyFormatter& keyFormatter =
+                                gtsam::DefaultKeyFormatter) const;
+  string dot(
+      const gtsam::KeyFormatter& keyFormatter = gtsam::DefaultKeyFormatter,
+      const gtsam::DotWriter& writer = gtsam::DotWriter()) const;
+};
+
+#include <gtsam/hybrid/HybridGaussianFactorGraph.h>
+virtual class HybridGaussianFactorGraph : gtsam::HybridFactorGraph {
+  HybridGaussianFactorGraph();
+  HybridGaussianFactorGraph(const gtsam::HybridBayesNet& bayesNet);
+
+  // print added in base class
+  bool equals(const gtsam::HybridGaussianFactorGraph& fg,
+              double tol = 1e-9) const;
+
+  void printErrors(const gtsam::HybridValues& values,
+                   string s = "HybridGaussianFactorGraph: ",
+                   const gtsam::KeyFormatter& keyFormatter =
+                       gtsam::DefaultKeyFormatter) const;
+
+  gtsam::ErrorTree errorTree(const gtsam::VectorValues& continuousValues) const;
+  double probPrime(const gtsam::HybridValues& values) const;
+  gtsam::ErrorTree discretePosterior(
+      const gtsam::VectorValues& continuousValues) const;
+
+  // Sequential Elimination
   gtsam::HybridBayesNet* eliminateSequential();
   gtsam::HybridBayesNet* eliminateSequential(
       gtsam::Ordering::OrderingType type);
@@ -271,6 +301,7 @@ class HybridGaussianFactorGraph {
   pair<gtsam::HybridBayesNet*, gtsam::HybridGaussianFactorGraph*>
   eliminatePartialSequential(const gtsam::Ordering& ordering);
 
+  // Multifrontal Elimination
   gtsam::HybridBayesTree* eliminateMultifrontal();
   gtsam::HybridBayesTree* eliminateMultifrontal(
       gtsam::Ordering::OrderingType type);
@@ -279,39 +310,33 @@ class HybridGaussianFactorGraph {
   pair<gtsam::HybridBayesTree*, gtsam::HybridGaussianFactorGraph*>
   eliminatePartialMultifrontal(const gtsam::Ordering& ordering);
 
-  string dot(
-      const gtsam::KeyFormatter& keyFormatter = gtsam::DefaultKeyFormatter,
-      const gtsam::DotWriter& writer = gtsam::DotWriter()) const;
+  gtsam::GaussianFactorGraph choose(const gtsam::DiscreteValues& assignment) const;
+  gtsam::GaussianFactorGraph operator()(const gtsam::DiscreteValues& assignment) const;
+
+  gtsam::DiscreteFactorGraph discreteFactors() const;
 };
 const gtsam::Ordering HybridOrdering(const gtsam::HybridGaussianFactorGraph& graph);
 
 #include <gtsam/hybrid/HybridNonlinearFactorGraph.h>
-class HybridNonlinearFactorGraph {
+virtual class HybridNonlinearFactorGraph : gtsam::HybridFactorGraph {
   HybridNonlinearFactorGraph();
   HybridNonlinearFactorGraph(const gtsam::HybridNonlinearFactorGraph& graph);
-  void push_back(gtsam::HybridFactor* factor);
-  void push_back(gtsam::NonlinearFactor* factor);
-  void push_back(gtsam::DiscreteFactor* factor);
-  void push_back(const gtsam::HybridNonlinearFactorGraph& graph);
-  
-  void add(gtsam::HybridFactor* factor);
-  void add(gtsam::NonlinearFactor* factor);
-  void add(gtsam::DiscreteFactor* factor);
-  void add(const gtsam::HybridNonlinearFactorGraph& graph);
+
+  void printErrors(const gtsam::HybridValues& values,
+                   string s = "HybridNonlinearFactorGraph: ",
+                   const gtsam::KeyFormatter& keyFormatter =
+                       gtsam::DefaultKeyFormatter) const;
+
+  gtsam::ErrorTree errorTree(const gtsam::Values& continuousValues) const;
 
   gtsam::HybridGaussianFactorGraph linearize(
       const gtsam::Values& continuousValues) const;
 
-  bool empty() const;
-  void remove(size_t i);
-  size_t size() const;
-  void resize(size_t size);
-  gtsam::KeySet keys() const;
-  const gtsam::HybridFactor* at(size_t i) const;
+  gtsam::ErrorTree discretePosterior(
+      const gtsam::Values& continuousValues) const;
+
   gtsam::HybridNonlinearFactorGraph restrict(
       const gtsam::DiscreteValues& assignment) const;
-
-  double error(const gtsam::HybridValues& values) const;
 
   void print(string s = "HybridNonlinearFactorGraph\n",
              const gtsam::KeyFormatter& keyFormatter =
