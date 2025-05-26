@@ -212,10 +212,14 @@ class HybridBayesNet {
   double logProbability(const gtsam::HybridValues& x) const;
   double evaluate(const gtsam::HybridValues& values) const;
   double error(const gtsam::HybridValues& values) const;
+  gtsam::AlgebraicDecisionTreeKey errorTree(
+      const gtsam::VectorValues& continuousValues) const;
 
   gtsam::HybridGaussianFactorGraph toFactorGraph(
       const gtsam::VectorValues& measurements) const;
 
+  gtsam::AlgebraicDecisionTreeKey discretePosterior(
+      const gtsam::VectorValues &continuousValues) const;
   gtsam::DiscreteBayesNet discreteMarginal() const;
   gtsam::GaussianBayesNet choose(const gtsam::DiscreteValues& assignment) const;
 
@@ -229,6 +233,7 @@ class HybridBayesNet {
   gtsam::HybridValues sample(std::mt19937_64@ rng = nullptr) const;
 
   gtsam::HybridBayesNet prune(size_t maxNrLeaves) const;
+  gtsam::HybridBayesNet prune(size_t maxNrLeaves, double marginalThreshold) const;
   // gtsam::HybridBayesNet prune(size_t maxNrLeaves,
   //   const std::optional<double> &marginalThreshold = std::nullopt,
   //   gtsam::DiscreteValues *fixedValues = nullptr) const;
@@ -311,7 +316,8 @@ virtual class HybridGaussianFactorGraph : gtsam::HybridFactorGraph {
                    const gtsam::KeyFormatter& keyFormatter =
                        gtsam::DefaultKeyFormatter) const;
 
-  gtsam::AlgebraicDecisionTreeKey errorTree(const gtsam::VectorValues& continuousValues) const;
+  gtsam::AlgebraicDecisionTreeKey errorTree(
+      const gtsam::VectorValues& continuousValues) const;
   double probPrime(const gtsam::HybridValues& values) const;
   gtsam::AlgebraicDecisionTreeKey discretePosterior(
       const gtsam::VectorValues& continuousValues) const;
