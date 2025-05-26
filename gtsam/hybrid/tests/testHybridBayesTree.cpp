@@ -21,6 +21,7 @@
 #include <gtsam/hybrid/HybridBayesTree.h>
 #include <gtsam/hybrid/HybridGaussianISAM.h>
 #include <gtsam/inference/DotWriter.h>
+#include <gtsam/base/TestableAssertions.h>
 
 #include <numeric>
 
