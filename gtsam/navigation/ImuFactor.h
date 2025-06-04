@@ -306,11 +306,11 @@ public:
     // static typename This::shared_ptr Merge(const typename This::shared_ptr&, const typename This::shared_ptr&)
 
   // IMU bias keys must be the same.
-  if (f01->key<5>() != f12->key<5>())
+  if (f01->template key<5>() != f12->template key<5>())
     throw std::domain_error("ImuFactor::Merge: IMU bias keys must be the same");
 
   // expect intermediate pose, velocity keys to matchup.
-  if (f01->key<3>() != f12->key<1>() || f01->key<4>() != f12->key<2>())
+  if (f01->template key<3>() != f12->template key<1>() || f01->template key<4>() != f12->template key<2>())
     throw std::domain_error(
         "ImuFactor::Merge: intermediate pose, velocity keys need to match up");
 
@@ -318,11 +318,11 @@ public:
   auto pim02 = This::Merge(f01->preintegratedMeasurements(), f12->preintegratedMeasurements());
 
   return std::make_shared<This>( // `This` is ImuFactorT<MethodPIMArg> (i.e. ImuFactorT<PIMType_>)
-      f01->key<1>(),  // P0
-      f01->key<2>(),  // V0
-      f12->key<3>(),  // P2
-      f12->key<4>(),  // V2
-      f01->key<5>(),  // B
+      f01->template key<1>(),  // P0
+      f01->template key<2>(),  // V0
+      f12->template key<3>(),  // P2
+      f12->template key<4>(),  // V2
+      f01->template key<5>(),  // B
       pim02);
   }
 

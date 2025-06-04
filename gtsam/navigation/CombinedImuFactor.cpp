@@ -210,9 +210,9 @@ template <class PIMType_>
 void CombinedImuFactorT<PIMType_>::print(const string& s,
     const KeyFormatter& keyFormatter) const {
   cout << (s.empty() ? s : s + "\n") << "CombinedImuFactor("
-       << keyFormatter(this->key<1>()) << "," << keyFormatter(this->key<2>()) << ","
-       << keyFormatter(this->key<3>()) << "," << keyFormatter(this->key<4>()) << ","
-       << keyFormatter(this->key<5>()) << "," << keyFormatter(this->key<6>())
+       << keyFormatter(this->template key<1>()) << "," << keyFormatter(this->template key<2>()) << ","
+       << keyFormatter(this->template key<3>()) << "," << keyFormatter(this->template key<4>()) << ","
+       << keyFormatter(this->template key<5>()) << "," << keyFormatter(this->template key<6>())
        << ")\n";
   _PIM_.print("  preintegrated measurements:");
   this->noiseModel_->print("  noise model: ");

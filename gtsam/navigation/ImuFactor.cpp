@@ -119,9 +119,9 @@ std::ostream& operator<<(std::ostream& os, const ImuFactorT<PIMType_>& f) {
 //------------------------------------------------------------------------------
 template <class PIMType_>
 void ImuFactorT<PIMType_>::print(const string& s, const KeyFormatter& keyFormatter) const {
-  cout << (s.empty() ? s : s + "\n") << "ImuFactor(" << keyFormatter(this->key<1>())
-       << "," << keyFormatter(this->key<2>()) << "," << keyFormatter(this->key<3>())
-       << "," << keyFormatter(this->key<4>()) << "," << keyFormatter(this->key<5>())
+  cout << (s.empty() ? s : s + "\n") << "ImuFactor(" << keyFormatter(this->template key<1>())
+       << "," << keyFormatter(this->template key<2>()) << "," << keyFormatter(this->template key<3>())
+       << "," << keyFormatter(this->template key<4>()) << "," << keyFormatter(this->template key<5>())
        << ")\n";
   cout << *this << endl;
 }
@@ -161,7 +161,7 @@ template <class PIMType_>
 void ImuFactor2T<PIMType_>::print(const string& s,
     const KeyFormatter& keyFormatter) const {
   cout << (s.empty() ? s : s + "\n") << "ImuFactor2("
-       << keyFormatter(this->key<1>()) << "," << keyFormatter(this->key<2>()) << ","
+       << keyFormatter(this->template key<1>()) << "," << keyFormatter(this->template key<2>()) << ","
        << keyFormatter(this->key<3>()) << ")\n";
   cout << *this << endl;
 }
