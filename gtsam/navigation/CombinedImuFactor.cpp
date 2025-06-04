@@ -316,16 +316,3 @@ template GTSAM_EXPORT std::ostream& operator<<<PreintegratedCombinedMeasurements
 
 
 }  // namespace gtsam
-
-// Undefine macros to prevent scope leakage
-#undef D_R_R
-#undef D_R_t
-#undef D_R_v
-#undef D_t_R
-#undef D_t_t
-#undef D_t_v
-#undef D_v_R
-#undef D_v_t
-#undef D_v_v
-#undef D_a_a
-#undef D_g_g
