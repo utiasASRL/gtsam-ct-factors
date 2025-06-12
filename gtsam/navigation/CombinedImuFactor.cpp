@@ -62,34 +62,34 @@ bool PreintegrationCombinedParams::equals(const PreintegratedRotationParams& oth
 //------------------------------------------------------------------------------
 // Inner class PreintegratedCombinedMeasurementsT
 //------------------------------------------------------------------------------
-template <class PreintegrationBackend>
-void PreintegratedCombinedMeasurementsT<PreintegrationBackend>::print(const string& s) const {
-  PreintegrationBackend::print(s);
+template <class PreintegrationType>
+void PreintegratedCombinedMeasurementsT<PreintegrationType>::print(const string& s) const {
+  PreintegrationType::print(s);
   cout << "  preintMeasCov [ " << preintMeasCov_ << " ]" << endl;
 }
 
 //------------------------------------------------------------------------------
-template <class PreintegrationBackend>
-bool PreintegratedCombinedMeasurementsT<PreintegrationBackend>::equals(
-    const PreintegratedCombinedMeasurementsT<PreintegrationBackend>& other, double tol) const {
-  return PreintegrationBackend::equals(other, tol)
+template <class PreintegrationType>
+bool PreintegratedCombinedMeasurementsT<PreintegrationType>::equals(
+    const PreintegratedCombinedMeasurementsT<PreintegrationType>& other, double tol) const {
+  return PreintegrationType::equals(other, tol)
       && equal_with_abs_tol(preintMeasCov_, other.preintMeasCov_, tol);
 }
 
 //------------------------------------------------------------------------------
-template <class PreintegrationBackend>
-void PreintegratedCombinedMeasurementsT<PreintegrationBackend>::resetIntegration() {
+template <class PreintegrationType>
+void PreintegratedCombinedMeasurementsT<PreintegrationType>::resetIntegration() {
   // Base class method to reset the preintegrated measurements
-  PreintegrationBackend::resetIntegration();
+  PreintegrationType::resetIntegration();
   preintMeasCov_.setZero();
 }
 
 //------------------------------------------------------------------------------
-template <class PreintegrationBackend>
-void PreintegratedCombinedMeasurementsT<PreintegrationBackend>::resetIntegration(
+template <class PreintegrationType>
+void PreintegratedCombinedMeasurementsT<PreintegrationType>::resetIntegration(
     const gtsam::Matrix6& Q_init) {
   // Base class method to reset the preintegrated measurements
-  PreintegrationBackend::resetIntegration();
+  PreintegrationType::resetIntegration();
   this->p().biasAccOmegaInt = Q_init;
   preintMeasCov_.setZero();
 }
@@ -109,8 +109,8 @@ void PreintegratedCombinedMeasurementsT<PreintegrationBackend>::resetIntegration
 #define D_g_g(H) (H)->block<3,3>(12,12)
 
 //------------------------------------------------------------------------------
-template <class PreintegrationBackend>
-void PreintegratedCombinedMeasurementsT<PreintegrationBackend>::integrateMeasurement(
+template <class PreintegrationType>
+void PreintegratedCombinedMeasurementsT<PreintegrationType>::integrateMeasurement(
     const Vector3& measuredAcc, const Vector3& measuredOmega, double dt) {
   if (dt <= 0) {
     throw std::runtime_error(
@@ -120,7 +120,7 @@ void PreintegratedCombinedMeasurementsT<PreintegrationBackend>::integrateMeasure
   // Update preintegrated measurements.
   Matrix9 A; // Jacobian wrt preintegrated measurements without bias (df/dx)
   Matrix93 B, C;  // Jacobian of state wrpt accel bias and omega bias respectively.
-  PreintegrationBackend::update(measuredAcc, measuredOmega, dt, &A, &B, &C);
+  PreintegrationType::update(measuredAcc, measuredOmega, dt, &A, &B, &C);
 
   // Update preintegrated measurements covariance: as in [2] we consider a first
   // order propagation that can be seen as a prediction phase in an EKF

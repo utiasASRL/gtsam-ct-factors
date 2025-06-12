@@ -33,9 +33,9 @@ namespace gtsam {
 
 // Determine default preintegration backend
 #ifdef GTSAM_TANGENT_PREINTEGRATION
-typedef TangentPreintegration DefaultPreintegrationBackend;
+typedef TangentPreintegration DefaultPreintegrationType;
 #else
-typedef ManifoldPreintegration DefaultPreintegrationBackend;
+typedef ManifoldPreintegration DefaultPreintegrationType;
 #endif
 
 /*
@@ -68,8 +68,8 @@ typedef ManifoldPreintegration DefaultPreintegrationBackend;
  *
  * @ingroup navigation
  */
-template <class PreintegrationBackend>
-class GTSAM_EXPORT PreintegratedImuMeasurementsT: public PreintegrationBackend {
+template <class PreintegrationType>
+class GTSAM_EXPORT PreintegratedImuMeasurementsT: public PreintegrationType {
  
   template <class PIM> friend class ImuFactorT;
   template <class PIM> friend class ImuFactor2T;
@@ -93,19 +93,19 @@ public:
    */
   PreintegratedImuMeasurementsT(const std::shared_ptr<PreintegrationParams>& p,
       const imuBias::ConstantBias& biasHat = imuBias::ConstantBias()) :
-      PreintegrationBackend(p, biasHat) {
+      PreintegrationType(p, biasHat) {
     this->resetIntegration();
   }
 
 /**
   *  Construct preintegrated directly from members: base class and preintMeasCov
-  *  @param base               PreintegrationBackend instance
+  *  @param base               PreintegrationType instance
   *  @param preintMeasCov      Covariance matrix used in noise model.
   */
-  PreintegratedImuMeasurementsT(const PreintegrationBackend& base, const Matrix9& preintMeasCov)
-     : PreintegrationBackend(base),
+  PreintegratedImuMeasurementsT(const PreintegrationType& base, const Matrix9& preintMeasCov)
+     : PreintegrationType(base),
        preintMeasCov_(preintMeasCov) {
-    this->PreintegrationBackend::resetIntegration();
+    this->PreintegrationType::resetIntegration();
   }
  
   /// Virtual destructor
@@ -116,7 +116,7 @@ public:
   void print(const std::string& s = "Preintegrated Measurements:") const override;
 
   /// equals
-  bool equals(const PreintegratedImuMeasurementsT<PreintegrationBackend>& expected, double tol = 1e-9) const;
+  bool equals(const PreintegratedImuMeasurementsT<PreintegrationType>& expected, double tol = 1e-9) const;
 
   /// Re-initialize PreintegratedImuMeasurements
   void resetIntegration() override;
@@ -143,13 +143,13 @@ public:
 
   /// Merge in a different set of measurements and update bias derivatives accordingly
   /// This method is specific to TangentPreintegration backend.
-  template <typename PB = PreintegrationBackend,
-             // This method is only callable when PreintegrationBackend is TangentPreintegration.
+  template <typename PB = PreintegrationType,
+             // This method is only callable when PreintegrationType is TangentPreintegration.
              typename = typename std::enable_if<std::is_same<PB, TangentPreintegration>::value>::type>
   void mergeWith(const PreintegratedImuMeasurementsT<TangentPreintegration>& pim12, Matrix9* H1, Matrix9* H2) {
-    // The `this->PreintegrationBackend::mergeWith` implies calling TangentPreintegration's mergeWith.
+    // The `this->PreintegrationType::mergeWith` implies calling TangentPreintegration's mergeWith.
     // Since pim12 is PreintegratedImuMeasurementsT<TangentPreintegration>, it is a TangentPreintegration.
-    this->PreintegrationBackend::mergeWith(pim12, H1, H2);
+    this->PreintegrationType::mergeWith(pim12, H1, H2);
     // NOTE(gareth): Temporary P is needed as of Eigen 3.3
     const Matrix9 P = *H1 * preintMeasCov_ * H1->transpose();
     preintMeasCov_ = P + *H2 * pim12.preintMeasCov_ * H2->transpose();
@@ -162,7 +162,7 @@ public:
   template<class ARCHIVE>
   void serialize(ARCHIVE & ar, const unsigned int /*version*/) {
     namespace bs = ::boost::serialization;
-    ar & BOOST_SERIALIZATION_BASE_OBJECT_NVP(PreintegrationBackend);
+    ar & BOOST_SERIALIZATION_BASE_OBJECT_NVP(PreintegrationType);
     ar & BOOST_SERIALIZATION_NVP(preintMeasCov_);
   }
 #endif
@@ -170,7 +170,7 @@ public:
 
 // For backward compatibility (so that the compiler flag GTSAM_TANGENT_PREINTEGRATION still
 // controls which class PreintegratedImuMeasurements uses):
-using PreintegratedImuMeasurements = PreintegratedImuMeasurementsT<DefaultPreintegrationBackend>;
+using PreintegratedImuMeasurements = PreintegratedImuMeasurementsT<DefaultPreintegrationType>;
 
 /**
  * ImuFactor is a 5-ways factor involving previous state (pose and velocity of
@@ -435,8 +435,8 @@ using ImuFactor2 = ImuFactor2T<>;
 template <class PIMType_>
 GTSAM_EXPORT std::ostream& operator<<(std::ostream& os, const ImuFactor2T<PIMType_>& f);
 
-template <class PreintegrationBackend>
-struct traits<PreintegratedImuMeasurementsT<PreintegrationBackend>> : public Testable<PreintegratedImuMeasurementsT<PreintegrationBackend>> {};
+template <class PreintegrationType>
+struct traits<PreintegratedImuMeasurementsT<PreintegrationType>> : public Testable<PreintegratedImuMeasurementsT<PreintegrationType>> {};
 
 template <class PIMType_>
 struct traits<ImuFactorT<PIMType_>> : public Testable<ImuFactorT<PIMType_>> {};

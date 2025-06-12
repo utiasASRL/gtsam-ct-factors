@@ -34,30 +34,30 @@ using namespace std;
 //------------------------------------------------------------------------------
 // Inner class PreintegratedImuMeasurementsT
 //------------------------------------------------------------------------------
-template <class PreintegrationBackend>
-void PreintegratedImuMeasurementsT<PreintegrationBackend>::print(const string& s) const {
-  PreintegrationBackend::print(s);
+template <class PreintegrationType>
+void PreintegratedImuMeasurementsT<PreintegrationType>::print(const string& s) const {
+  PreintegrationType::print(s);
   cout << "    preintMeasCov \n[" << preintMeasCov_ << "]" << endl;
 }
 
 //------------------------------------------------------------------------------
-template <class PreintegrationBackend>
-bool PreintegratedImuMeasurementsT<PreintegrationBackend>::equals(
-    const PreintegratedImuMeasurementsT<PreintegrationBackend>& other, double tol) const {
-  return PreintegrationBackend::equals(other, tol)
+template <class PreintegrationType>
+bool PreintegratedImuMeasurementsT<PreintegrationType>::equals(
+    const PreintegratedImuMeasurementsT<PreintegrationType>& other, double tol) const {
+  return PreintegrationType::equals(other, tol)
       && equal_with_abs_tol(preintMeasCov_, other.preintMeasCov_, tol);
 }
 
 //------------------------------------------------------------------------------
-template <class PreintegrationBackend>
-void PreintegratedImuMeasurementsT<PreintegrationBackend>::resetIntegration() {
-  PreintegrationBackend::resetIntegration();
+template <class PreintegrationType>
+void PreintegratedImuMeasurementsT<PreintegrationType>::resetIntegration() {
+  PreintegrationType::resetIntegration();
   preintMeasCov_.setZero();
 }
 
 //------------------------------------------------------------------------------
-template <class PreintegrationBackend>
-void PreintegratedImuMeasurementsT<PreintegrationBackend>::integrateMeasurement(
+template <class PreintegrationType>
+void PreintegratedImuMeasurementsT<PreintegrationType>::integrateMeasurement(
     const Vector3& measuredAcc, const Vector3& measuredOmega, double dt) {
   if (dt <= 0) {
     throw std::runtime_error(
@@ -67,7 +67,7 @@ void PreintegratedImuMeasurementsT<PreintegrationBackend>::integrateMeasurement(
   // Update preintegrated measurements (also get Jacobian)
   Matrix9 A;  // overall Jacobian wrt preintegrated measurements (df/dx)
   Matrix93 B, C;  // Jacobian of state wrpt accel bias and omega bias respectively.
-  PreintegrationBackend::update(measuredAcc, measuredOmega, dt, &A, &B, &C);
+  PreintegrationType::update(measuredAcc, measuredOmega, dt, &A, &B, &C);
 
   // first order covariance propagation:
   // as in [2] we consider a first order propagation that can be seen as a
@@ -91,8 +91,8 @@ void PreintegratedImuMeasurementsT<PreintegrationBackend>::integrateMeasurement(
 }
 
 //------------------------------------------------------------------------------
-template <class PreintegrationBackend>
-void PreintegratedImuMeasurementsT<PreintegrationBackend>::integrateMeasurements(
+template <class PreintegrationType>
+void PreintegratedImuMeasurementsT<PreintegrationType>::integrateMeasurements(
     const Matrix& measuredAccs, const Matrix& measuredOmegas,
     const Matrix& dts) {
   assert(

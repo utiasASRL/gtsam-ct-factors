@@ -28,9 +28,9 @@
 namespace gtsam {
 
 #ifdef GTSAM_TANGENT_PREINTEGRATION
-typedef TangentPreintegration DefaultPreintegrationBackend;
+typedef TangentPreintegration DefaultPreintegrationType;
 #else
-typedef ManifoldPreintegration DefaultPreintegrationBackend;
+typedef ManifoldPreintegration DefaultPreintegrationType;
 #endif
 
 /*
@@ -63,8 +63,8 @@ typedef ManifoldPreintegration DefaultPreintegrationBackend;
  *
  * @ingroup navigation
  */
-template <class PreintegrationBackend>
-class GTSAM_EXPORT PreintegratedCombinedMeasurementsT : public PreintegrationBackend {
+template <class PreintegrationType>
+class GTSAM_EXPORT PreintegratedCombinedMeasurementsT : public PreintegrationType {
  public:
   typedef PreintegrationCombinedParams Params;
 
@@ -96,21 +96,21 @@ class GTSAM_EXPORT PreintegratedCombinedMeasurementsT : public PreintegrationBac
       const imuBias::ConstantBias& biasHat = imuBias::ConstantBias(),
       const Eigen::Matrix<double, 15, 15>& preintMeasCov =
           Eigen::Matrix<double, 15, 15>::Zero())
-      : PreintegrationBackend(p, biasHat), preintMeasCov_(preintMeasCov) {
+      : PreintegrationType(p, biasHat), preintMeasCov_(preintMeasCov) {
     this->resetIntegration();
   }
 
   /**
    *  Construct preintegrated directly from members: base class and
    * preintMeasCov
-   *  @param base               PreintegrationBackend instance
+   *  @param base               PreintegrationType instance
    *  @param preintMeasCov      Covariance matrix used in noise model.
    */
   PreintegratedCombinedMeasurementsT(
-      const PreintegrationBackend& base,
+      const PreintegrationType& base,
       const Eigen::Matrix<double, 15, 15>& preintMeasCov)
-      : PreintegrationBackend(base), preintMeasCov_(preintMeasCov) {
-    this->PreintegrationBackend::resetIntegration();
+      : PreintegrationType(base), preintMeasCov_(preintMeasCov) {
+    this->PreintegrationType::resetIntegration();
   }
 
   /// Virtual destructor
@@ -148,7 +148,7 @@ class GTSAM_EXPORT PreintegratedCombinedMeasurementsT : public PreintegrationBac
   void print(
       const std::string& s = "Preintegrated Measurements:") const override;
   /// equals
-  bool equals(const PreintegratedCombinedMeasurementsT<PreintegrationBackend>& expected,
+  bool equals(const PreintegratedCombinedMeasurementsT<PreintegrationType>& expected,
               double tol = 1e-9) const;
   /// @}
 
@@ -178,7 +178,7 @@ class GTSAM_EXPORT PreintegratedCombinedMeasurementsT : public PreintegrationBac
   template <class ARCHIVE>
   void serialize(ARCHIVE& ar, const unsigned int /*version*/) {
     namespace bs = ::boost::serialization;
-    ar& BOOST_SERIALIZATION_BASE_OBJECT_NVP(PreintegrationBackend);
+    ar& BOOST_SERIALIZATION_BASE_OBJECT_NVP(PreintegrationType);
     ar& BOOST_SERIALIZATION_NVP(preintMeasCov_);
   }
 #endif
@@ -188,7 +188,7 @@ class GTSAM_EXPORT PreintegratedCombinedMeasurementsT : public PreintegrationBac
 };
 
 // For backward compatibility:
-using PreintegratedCombinedMeasurements = PreintegratedCombinedMeasurementsT<DefaultPreintegrationBackend>;
+using PreintegratedCombinedMeasurements = PreintegratedCombinedMeasurementsT<DefaultPreintegrationType>;
 
 /**
  * CombinedImuFactor is a 6-ways factor involving previous state (pose and
@@ -315,9 +315,9 @@ template <>
 struct traits<PreintegrationCombinedParams>
     : public Testable<PreintegrationCombinedParams> {};
 
-template <class PreintegrationBackend>
-struct traits<PreintegratedCombinedMeasurementsT<PreintegrationBackend>>
-    : public Testable<PreintegratedCombinedMeasurementsT<PreintegrationBackend>> {};
+template <class PreintegrationType>
+struct traits<PreintegratedCombinedMeasurementsT<PreintegrationType>>
+    : public Testable<PreintegratedCombinedMeasurementsT<PreintegrationType>> {};
  
 template <class PIMType_>
 struct traits<CombinedImuFactorT<PIMType_>> : public Testable<CombinedImuFactorT<PIMType_>> {};
