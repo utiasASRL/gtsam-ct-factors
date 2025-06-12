@@ -206,8 +206,8 @@ void PreintegratedCombinedMeasurementsT<PreintegrationType>::integrateMeasuremen
 //------------------------------------------------------------------------------
 // CombinedImuFactorT methods
 //------------------------------------------------------------------------------
-template <class PIMType_>
-void CombinedImuFactorT<PIMType_>::print(const string& s,
+template <class PIM>
+void CombinedImuFactorT<PIM>::print(const string& s,
     const KeyFormatter& keyFormatter) const {
   cout << (s.empty() ? s : s + "\n") << "CombinedImuFactor("
        << keyFormatter(this->template key<1>()) << "," << keyFormatter(this->template key<2>()) << ","
@@ -219,15 +219,15 @@ void CombinedImuFactorT<PIMType_>::print(const string& s,
 }
 
 //------------------------------------------------------------------------------
-template <class PIMType_>
-bool CombinedImuFactorT<PIMType_>::equals(const NonlinearFactor& other, double tol) const {
+template <class PIM>
+bool CombinedImuFactorT<PIM>::equals(const NonlinearFactor& other, double tol) const {
   const This* e = dynamic_cast<const This*>(&other);
   return e != nullptr && Base::equals(*e, tol) && _PIM_.equals(e->_PIM_, tol);
 }
 
 //------------------------------------------------------------------------------
-template <class PIMType_>
-Vector CombinedImuFactorT<PIMType_>::evaluateError(const Pose3& pose_i,
+template <class PIM>
+Vector CombinedImuFactorT<PIM>::evaluateError(const Pose3& pose_i,
     const Vector3& vel_i, const Pose3& pose_j, const Vector3& vel_j,
     const imuBias::ConstantBias& bias_i, const imuBias::ConstantBias& bias_j,
     OptionalMatrixType H1, OptionalMatrixType H2,
@@ -292,8 +292,8 @@ Vector CombinedImuFactorT<PIMType_>::evaluateError(const Pose3& pose_i,
 }
 
 //------------------------------------------------------------------------------
-template <class PIMType_>
-std::ostream& operator<<(std::ostream& os, const CombinedImuFactorT<PIMType_>& f) {
+template <class PIM>
+std::ostream& operator<<(std::ostream& os, const CombinedImuFactorT<PIM>& f) {
   f.preintegratedMeasurements().print("combined preintegrated measurements:\n");
   os << "  noise model sigmas: " << f.noiseModel()->sigmas().transpose();
   return os;

@@ -109,16 +109,16 @@ void PreintegratedImuMeasurementsT<PreintegrationType>::integrateMeasurements(
 //------------------------------------------------------------------------------
 // ImuFactorT methods
 //------------------------------------------------------------------------------
-template <class PIMType_>
-std::ostream& operator<<(std::ostream& os, const ImuFactorT<PIMType_>& f) {
+template <class PIM>
+std::ostream& operator<<(std::ostream& os, const ImuFactorT<PIM>& f) {
   f.preintegratedMeasurements().print("preintegrated measurements:\n");
   os << "  noise model sigmas: " << f.noiseModel()->sigmas().transpose();
   return os;
 }
 
 //------------------------------------------------------------------------------
-template <class PIMType_>
-void ImuFactorT<PIMType_>::print(const string& s, const KeyFormatter& keyFormatter) const {
+template <class PIM>
+void ImuFactorT<PIM>::print(const string& s, const KeyFormatter& keyFormatter) const {
   cout << (s.empty() ? s : s + "\n") << "ImuFactor(" << keyFormatter(this->template key<1>())
        << "," << keyFormatter(this->template key<2>()) << "," << keyFormatter(this->template key<3>())
        << "," << keyFormatter(this->template key<4>()) << "," << keyFormatter(this->template key<5>())
@@ -127,8 +127,8 @@ void ImuFactorT<PIMType_>::print(const string& s, const KeyFormatter& keyFormatt
 }
 
 //------------------------------------------------------------------------------
-template <class PIMType_>
-bool ImuFactorT<PIMType_>::equals(const NonlinearFactor& other, double tol) const {
+template <class PIM>
+bool ImuFactorT<PIM>::equals(const NonlinearFactor& other, double tol) const {
   const This *e = dynamic_cast<const This*>(&other);
   const bool base = Base::equals(*e, tol);
   const bool pim = _PIM_.equals(e->_PIM_, tol);
@@ -136,8 +136,8 @@ bool ImuFactorT<PIMType_>::equals(const NonlinearFactor& other, double tol) cons
 }
 
 //------------------------------------------------------------------------------
-template <class PIMType_>
-Vector ImuFactorT<PIMType_>::evaluateError(const Pose3& pose_i, const Vector3& vel_i,
+template <class PIM>
+Vector ImuFactorT<PIM>::evaluateError(const Pose3& pose_i, const Vector3& vel_i,
     const Pose3& pose_j, const Vector3& vel_j,
     const imuBias::ConstantBias& bias_i, OptionalMatrixType H1,
     OptionalMatrixType H2, OptionalMatrixType H3,
@@ -149,16 +149,16 @@ Vector ImuFactorT<PIMType_>::evaluateError(const Pose3& pose_i, const Vector3& v
 //------------------------------------------------------------------------------
 // ImuFactor2T methods
 //------------------------------------------------------------------------------
-template <class PIMType_>
-std::ostream& operator<<(std::ostream& os, const ImuFactor2T<PIMType_>& f) {
+template <class PIM>
+std::ostream& operator<<(std::ostream& os, const ImuFactor2T<PIM>& f) {
   f.preintegratedMeasurements().print("preintegrated measurements:\n");
   os << "  noise model sigmas: " << f.noiseModel()->sigmas().transpose();
   return os;
 }
 
 //------------------------------------------------------------------------------
-template <class PIMType_>
-void ImuFactor2T<PIMType_>::print(const string& s,
+template <class PIM>
+void ImuFactor2T<PIM>::print(const string& s,
     const KeyFormatter& keyFormatter) const {
   cout << (s.empty() ? s : s + "\n") << "ImuFactor2("
        << keyFormatter(this->template key<1>()) << "," << keyFormatter(this->template key<2>()) << ","
@@ -167,8 +167,8 @@ void ImuFactor2T<PIMType_>::print(const string& s,
 }
 
 //------------------------------------------------------------------------------
-template <class PIMType_>
-bool ImuFactor2T<PIMType_>::equals(const NonlinearFactor& other, double tol) const {
+template <class PIM>
+bool ImuFactor2T<PIM>::equals(const NonlinearFactor& other, double tol) const {
   const This *e = dynamic_cast<const This*>(&other);
   const bool base = Base::equals(*e, tol);
   const bool pim = _PIM_.equals(e->_PIM_, tol);
@@ -176,8 +176,8 @@ bool ImuFactor2T<PIMType_>::equals(const NonlinearFactor& other, double tol) con
 }
 
 //------------------------------------------------------------------------------
-template <class PIMType_>
-Vector ImuFactor2T<PIMType_>::evaluateError(const NavState& state_i,
+template <class PIM>
+Vector ImuFactor2T<PIM>::evaluateError(const NavState& state_i,
     const NavState& state_j,
     const imuBias::ConstantBias& bias_i, //
     OptionalMatrixType H1, OptionalMatrixType H2,

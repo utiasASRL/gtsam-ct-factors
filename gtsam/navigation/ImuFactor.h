@@ -184,16 +184,16 @@ using PreintegratedImuMeasurements = PreintegratedImuMeasurementsT<DefaultPreint
  *
  * @ingroup navigation
  */
-template <class PIMType_ = PreintegratedImuMeasurements>
+template <class PIM = PreintegratedImuMeasurements>
 class GTSAM_EXPORT ImuFactorT: public NoiseModelFactorN<Pose3, Vector3, Pose3, Vector3,
     imuBias::ConstantBias> {
 private:
 
-  typedef ImuFactorT<PIMType_> This;
+  typedef ImuFactorT<PIM> This;
   typedef NoiseModelFactorN<Pose3, Vector3, Pose3, Vector3,
       imuBias::ConstantBias> Base;
 
-  PIMType_ _PIM_;
+  PIM _PIM_;
 
 public:
 
@@ -218,7 +218,7 @@ public:
    * last pose.
    */
   ImuFactorT(Key pose_i, Key vel_i, Key pose_j, Key vel_j, Key bias,
-      const PIMType_& preintegratedMeasurements)
+      const PIM& preintegratedMeasurements)
       : Base(noiseModel::Gaussian::Covariance(preintegratedMeasurements.preintMeasCov()),
              pose_i, vel_i, pose_j, vel_j, bias),
         _PIM_(preintegratedMeasurements) {}
@@ -240,7 +240,7 @@ public:
 
   /** Access the preintegrated measurements. */
 
-  const PIMType_& preintegratedMeasurements() const {
+  const PIM& preintegratedMeasurements() const {
     return _PIM_;
   }
 
@@ -253,8 +253,8 @@ public:
       OptionalMatrixType H3, OptionalMatrixType H4, OptionalMatrixType H5) const override;
 
   /// Merge two pre-integrated measurement classes
-  template <typename MethodPIMArg = PIMType_,
-    // This method is only callable when PIMType_ is PreintegratedImuMeasurementsT<TangentPreintegration>.
+  template <typename MethodPIMArg = PIM,
+    // This method is only callable when PIM is PreintegratedImuMeasurementsT<TangentPreintegration>.
     typename = typename std::enable_if<
         std::is_same<MethodPIMArg, PreintegratedImuMeasurementsT<TangentPreintegration>>::value
     >::type
@@ -264,7 +264,7 @@ public:
     const MethodPIMArg& pim12
   ) {
     // When this template is instantiated:
-    // 1. MethodPIMArg = PIMType_. It's mirrored to avoid error C7637 from strict compilers.
+    // 1. MethodPIMArg = PIM. It's mirrored to avoid error C7637 from strict compilers.
     // 2. The SFINAE condition ensures MethodPIMArg IS PreintegratedImuMeasurementsT<TangentPreintegration>.
     // So, arguments are const PreintegratedImuMeasurementsT<TangentPreintegration>&
     // and return is PreintegratedImuMeasurementsT<TangentPreintegration>.
@@ -288,8 +288,8 @@ public:
 
   /// Merge two factors
   template <
-    typename MethodPIMArg = PIMType_,
-    // This method is only callable when PIMType_ is PreintegratedImuMeasurementsT<TangentPreintegration>.
+    typename MethodPIMArg = PIM,
+    // This method is only callable when PIM is PreintegratedImuMeasurementsT<TangentPreintegration>.
     typename = typename std::enable_if<
         std::is_same<MethodPIMArg, PreintegratedImuMeasurementsT<TangentPreintegration>>::value
     >::type
@@ -299,9 +299,9 @@ public:
     const typename ImuFactorT<MethodPIMArg>::shared_ptr& f12
   ) {
     // When this template is instantiated:
-    // 1. MethodPIMArg = PIMType_. It's mirrored to avoid error C7637 from strict compilers.
+    // 1. MethodPIMArg = PIM. It's mirrored to avoid error C7637 from strict compilers.
     // 2. The SFINAE condition ensures MethodPIMArg IS PreintegratedImuMeasurementsT<TangentPreintegration>.
-    // So, ImuFactorT<MethodPIMArg> is effectively ImuFactorT<PIMType_>, which is `This`.
+    // So, ImuFactorT<MethodPIMArg> is effectively ImuFactorT<PIM>, which is `This`.
     // The signature effectively becomes:
     // static typename This::shared_ptr Merge(const typename This::shared_ptr&, const typename This::shared_ptr&)
 
@@ -317,7 +317,7 @@ public:
   // return new factor
   auto pim02 = This::Merge(f01->preintegratedMeasurements(), f12->preintegratedMeasurements());
 
-  return std::make_shared<This>( // `This` is ImuFactorT<MethodPIMArg> (i.e. ImuFactorT<PIMType_>)
+  return std::make_shared<This>( // `This` is ImuFactorT<MethodPIMArg> (i.e. ImuFactorT<PIM>)
       f01->template key<1>(),  // P0
       f01->template key<2>(),  // V0
       f12->template key<3>(),  // P2
@@ -345,21 +345,21 @@ public:
 using ImuFactor = ImuFactorT<>;
  
 // operator<< for ImuFactorT
-template <class PIMType_>
-GTSAM_EXPORT std::ostream& operator<<(std::ostream& os, const ImuFactorT<PIMType_>& f);
+template <class PIM>
+GTSAM_EXPORT std::ostream& operator<<(std::ostream& os, const ImuFactorT<PIM>& f);
 
 /**
  * ImuFactor2 is a ternary factor that uses NavStates rather than Pose/Velocity.
  * @ingroup navigation
  */
-template <class PIMType_ = PreintegratedImuMeasurements>
+template <class PIM = PreintegratedImuMeasurements>
 class GTSAM_EXPORT ImuFactor2T : public NoiseModelFactorN<NavState, NavState, imuBias::ConstantBias> {
 private:
 
-  typedef ImuFactor2T<PIMType_> This;
+  typedef ImuFactor2T<PIM> This;
   typedef NoiseModelFactorN<NavState, NavState, imuBias::ConstantBias> Base;
 
-  PIMType_ _PIM_;
+  PIM _PIM_;
 
 public:
 
@@ -376,7 +376,7 @@ public:
    * @param bias    Previous bias key
    */
   ImuFactor2T(Key state_i, Key state_j, Key bias,
-             const PIMType_& preintegratedMeasurements)
+             const PIM& preintegratedMeasurements)
       : Base(noiseModel::Gaussian::Covariance(preintegratedMeasurements.preintMeasCov()),
              state_i, state_j, bias),
         _PIM_(preintegratedMeasurements) {}
@@ -400,7 +400,7 @@ public:
 
   /** Access the preintegrated measurements. */
 
-  const PIMType_& preintegratedMeasurements() const {
+  const PIM& preintegratedMeasurements() const {
     return _PIM_;
   }
 
@@ -432,16 +432,16 @@ private:
 using ImuFactor2 = ImuFactor2T<>;
 
 // operator<< for ImuFactor2T
-template <class PIMType_>
-GTSAM_EXPORT std::ostream& operator<<(std::ostream& os, const ImuFactor2T<PIMType_>& f);
+template <class PIM>
+GTSAM_EXPORT std::ostream& operator<<(std::ostream& os, const ImuFactor2T<PIM>& f);
 
 template <class PreintegrationType>
 struct traits<PreintegratedImuMeasurementsT<PreintegrationType>> : public Testable<PreintegratedImuMeasurementsT<PreintegrationType>> {};
 
-template <class PIMType_>
-struct traits<ImuFactorT<PIMType_>> : public Testable<ImuFactorT<PIMType_>> {};
+template <class PIM>
+struct traits<ImuFactorT<PIM>> : public Testable<ImuFactorT<PIM>> {};
 
-template <class PIMType_>
-struct traits<ImuFactor2T<PIMType_>> : public Testable<ImuFactor2T<PIMType_>> {};
+template <class PIM>
+struct traits<ImuFactor2T<PIM>> : public Testable<ImuFactor2T<PIM>> {};
 
 } /// namespace gtsam

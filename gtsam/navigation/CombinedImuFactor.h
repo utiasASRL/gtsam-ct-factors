@@ -208,18 +208,18 @@ using PreintegratedCombinedMeasurements = PreintegratedCombinedMeasurementsT<Def
  *
  * @ingroup navigation
  */
-template <class PIMType_ = PreintegratedCombinedMeasurements>
+template <class PIM = PreintegratedCombinedMeasurements>
 class GTSAM_EXPORT CombinedImuFactorT
     : public NoiseModelFactorN<Pose3, Vector3, Pose3, Vector3,
                                imuBias::ConstantBias, imuBias::ConstantBias> {
  public:
  private:
-  typedef CombinedImuFactorT<PIMType_> This;
+  typedef CombinedImuFactorT<PIM> This;
   typedef NoiseModelFactorN<Pose3, Vector3, Pose3, Vector3,
                             imuBias::ConstantBias, imuBias::ConstantBias>
       Base;
 
-  PIMType_ _PIM_;
+  PIM _PIM_;
 
  public:
   // Provide access to Matrix& version of evaluateError:
@@ -243,7 +243,7 @@ class GTSAM_EXPORT CombinedImuFactorT
    */
   CombinedImuFactorT(
       Key pose_i, Key vel_i, Key pose_j, Key vel_j, Key bias_i, Key bias_j,
-      const PIMType_& preintegratedMeasurements)
+      const PIM& preintegratedMeasurements)
       : Base(noiseModel::Gaussian::Covariance(preintegratedMeasurements.preintMeasCov()),
              pose_i, vel_i, pose_j, vel_j, bias_i, bias_j),
         _PIM_(preintegratedMeasurements) {}
@@ -270,7 +270,7 @@ class GTSAM_EXPORT CombinedImuFactorT
 
   /** Access the preintegrated measurements. */
 
-  const PIMType_& preintegratedMeasurements() const {
+  const PIM& preintegratedMeasurements() const {
     return _PIM_;
   }
 
@@ -308,8 +308,8 @@ class GTSAM_EXPORT CombinedImuFactorT
 using CombinedImuFactor = CombinedImuFactorT<>;
 
 // operator<< for CombinedImuFactorT
-template <class PIMType_>
-GTSAM_EXPORT std::ostream& operator<<(std::ostream& os, const CombinedImuFactorT<PIMType_>& f);
+template <class PIM>
+GTSAM_EXPORT std::ostream& operator<<(std::ostream& os, const CombinedImuFactorT<PIM>& f);
 
 template <>
 struct traits<PreintegrationCombinedParams>
@@ -319,7 +319,7 @@ template <class PreintegrationType>
 struct traits<PreintegratedCombinedMeasurementsT<PreintegrationType>>
     : public Testable<PreintegratedCombinedMeasurementsT<PreintegrationType>> {};
  
-template <class PIMType_>
-struct traits<CombinedImuFactorT<PIMType_>> : public Testable<CombinedImuFactorT<PIMType_>> {};
+template <class PIM>
+struct traits<CombinedImuFactorT<PIM>> : public Testable<CombinedImuFactorT<PIM>> {};
 
 }  // namespace gtsam
