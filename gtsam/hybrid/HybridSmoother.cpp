@@ -183,6 +183,8 @@ void HybridSmoother::update(const HybridNonlinearFactorGraph &newFactors,
     DiscreteValues newlyFixedValues;
     bayesNetFragment = bayesNetFragment.prune(*maxNrLeaves, marginalThreshold_,
                                               &newlyFixedValues);
+    // Insert or assign so it updates existing fixed values
+    // instead of replacing them.
     fixedValues_.insert_or_assign(newlyFixedValues);
 #if GTSAM_HYBRID_TIMING
     gttoc_(HybridSmootherPrune);
