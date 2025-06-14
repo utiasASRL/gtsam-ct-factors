@@ -92,42 +92,42 @@ direction TB
     Cal3_S2 <|-- Cal3_S2Stereo : inherits
 ```
 
-### `Cal3`
-`Cal3` is the common base class for all calibration models. It stores the five standard intrinsic parameters:
+### Cal3
+[Cal3](https://github.com/borglab/gtsam/blob/develop/gtsam/geometry/Cal3.h) is the common base class for all calibration models. It stores the five standard intrinsic parameters:
 - `fx`, `fy`: Focal length in x and y.
 - `s`: Skew factor.
 - `u0`, `v0`: Principal point (image center).
 
 It provides the basic functionality but is not intended to be used directly in optimization, as it does not define a manifold structure itself.
 
-### `Cal3_S2`
-`Cal3_S2` is the most common 5-degree-of-freedom (DOF) calibration model and is designed for use in optimization. It represents the five parameters of Cal3 on a 5-dimensional manifold, allowing it to be used directly in factor graphs.
+### Cal3_S2
+[Cal3_S2](doc/Cal3_S2.ipynb) is the most common 5-degree-of-freedom (DOF) calibration model and is designed for use in optimization. It represents the five parameters of Cal3 on a 5-dimensional manifold, allowing it to be used directly in factor graphs.
 
-### `Cal3_S2Stereo`
+### Cal3_S2Stereo
 
-`Cal3_S2Stereo` extends `Cal3_S2` for use with stereo cameras. It inherits the five standard intrinsic parameters and adds a sixth parameter, `b`, for the stereo baseline. This results in a 6-dimensional manifold for optimization.
+[Cal3_S2Stereo](https://github.com/borglab/gtsam/blob/develop/gtsam/geometry/Cal3_S2Stereo.h) extends `Cal3_S2` for use with stereo cameras. It inherits the five standard intrinsic parameters and adds a sixth parameter, `b`, for the stereo baseline. This results in a 6-dimensional manifold for optimization.
 
-### `Cal3f`
+### Cal3f
 
-`Cal3f` is a special, simplified model that assumes zero skew and a single focal length $f$ (i.e., $f_x = f_y$). The principal point $(u_0, v_0)$ is also considered a fixed constant and is not optimized.
+[Cal3f](https://github.com/borglab/gtsam/blob/develop/gtsam/geometry/Cal3f.h) is a special, simplified model that assumes zero skew and a single focal length $f$ (i.e., $f_x = f_y$). The principal point $(u_0, v_0)$ is also considered a fixed constant and is not optimized.
 
 Because only the focal length $f$ is a variable, `Cal3f` has a manifold dimension of 1. This makes it extremely efficient for scenarios where you only need to calibrate for focal length, as the optimization space is much smaller.
 
-### `Cal3Bundler`
+### Cal3Bundler
 
-`Cal3Bundler` is designed to be compatible with Bundler, a structure-from-motion (SfM) system for unordered image collections written in C and C++. It inherits from `Cal3f` and adds two radial distortion coefficients, `k1` and `k2`. This gives it a total of 3 degrees of freedom for optimization.
+[Cal3Bundler](https://github.com/borglab/gtsam/blob/develop/gtsam/geometry/Cal3Bundler.h) is designed to be compatible with Bundler, a structure-from-motion (SfM) system for unordered image collections written in C and C++. It inherits from `Cal3f` and adds two radial distortion coefficients, `k1` and `k2`. This gives it a total of 3 degrees of freedom for optimization.
 
-### `Cal3Fisheye`
+### Cal3Fisheye
 
-`Cal3Fisheye` is designed for cameras with fisheye lenses and implements the distortion model used by OpenCV. It inherits from the base `Cal3` class and adds four fisheye-specific distortion coefficients: `k1`, `k2`, `k3`, and `k4`. This results in a 9-dimensional manifold for optimization.
+[Cal3Fisheye](https://github.com/borglab/gtsam/blob/develop/gtsam/geometry/Cal3Fisheye.h) is designed for cameras with fisheye lenses and implements the distortion model used by OpenCV. It inherits from the base `Cal3` class and adds four fisheye-specific distortion coefficients: `k1`, `k2`, `k3`, and `k4`. This results in a 9-dimensional manifold for optimization.
 
-### `Cal3DS2_Base`, `Cal3DS2`, and `Cal3Unified`
+### Cal3DS2_Base, Cal3DS2, and Cal3Unified
 
 This group of classes handles standard radial and tangential lens distortion, as specified by OpenCV.
 
-- `Cal3DS2_Base`: This is a base class that adds four distortion parameters (`k1`, `k2` for radial and `p1`, `p2` for tangential) to the five standard parameters from `Cal3`, for a total of 9 parameters.
-- `Cal3DS2`: This class inherits from `Cal3DS2_Base` and implements the necessary manifold structure, making the 9-DOF model usable for optimization.
-- `Cal3Unified`: This model is for omni-directional cameras and extends `Cal3DS2_Base` by adding a mirror parameter `xi`. This brings the total number of parameters to 10, creating a 10-dimensional manifold for optimization.
+- [Cal3DS2_Base](https://github.com/borglab/gtsam/blob/develop/gtsam/geometry/Cal3DS2_Base.h): This is a base class that adds four distortion parameters (`k1`, `k2` for radial and `p1`, `p2` for tangential) to the five standard parameters from `Cal3`, for a total of 9 parameters.
+- [Cal3DS2](https://github.com/borglab/gtsam/blob/develop/gtsam/geometry/Cal3DS2.h): This class inherits from `Cal3DS2_Base` and implements the necessary manifold structure, making the 9-DOF model usable for optimization.
+- [Cal3Unified](https://github.com/borglab/gtsam/blob/develop/gtsam/geometry/Cal3Unified.h): This model is for omni-directional cameras and extends `Cal3DS2_Base` by adding a mirror parameter `xi`. This brings the total number of parameters to 10, creating a 10-dimensional manifold for optimization.
 
 ## Camera Models
 
