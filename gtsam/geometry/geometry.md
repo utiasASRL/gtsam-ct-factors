@@ -119,7 +119,7 @@ Because only the focal length $f$ is a variable, `Cal3f` has a manifold dimensio
 
 ### `Cal3Fisheye`
 
-This model is designed for cameras with fisheye lenses and implements the distortion model used by OpenCV. It inherits from the base `Cal3` class and adds four fisheye-specific distortion coefficients: `k1`, `k2`, `k3`, and `k4`. This results in a 9-dimensional manifold for optimization.
+`Cal3Fisheye` is designed for cameras with fisheye lenses and implements the distortion model used by OpenCV. It inherits from the base `Cal3` class and adds four fisheye-specific distortion coefficients: `k1`, `k2`, `k3`, and `k4`. This results in a 9-dimensional manifold for optimization.
 
 ### `Cal3DS2_Base`, `Cal3DS2`, and `Cal3Unified`
 
