@@ -153,16 +153,19 @@ F_k = Ad_{U_{k}}^{-1}
 ```InvariantEKF``` implements an overloaded ```predict()``` method. One method calls a Lie group increment $U$ directly, whereas the second overload takes in a tangent control vector $u$ and a time interval $dt$ where $U = \exp(u \cdot \Delta t)$.
 
 
+# Examples 
+Below, we have provided three examples of these filters in action. 
+1) **[IEKF_SE2Example](https://github.com/borglab/gtsam/blob/develop/gtsam/examples/IEKF_SE2Example.cpp)**: implements ```InvariantEKF``` on a SE(2) Lie Group with odometry as a Lie group increment and a 2D GPS measurement update.
+2) **[IEKF_NavstateExample](https://github.com/borglab/gtsam/blob/develop/examples/IEKF_NavstateExample.cpp)**: implements ```InvariantEKF``` on a NavState Lie Group with a tangent space increment based on IMU measurements, and a 3D GPS measuremnt update.
+3) **[GEKF_Rot3Example](https://github.com/borglab/gtsam/blob/develop/examples/GEKF_Rot3Example.cpp)**: implements ```LieGroupEKF``` on a Rot3 Lie Group using a state dependent dynamics function and a magnetometer update.
+
 
 ##  InvariantEKF Example on SE(2) using Lie Group increments
-This demonstrates the use of an Invariant EKF with a simple odometry increment. The example is found under `examples` as **[IEKF_SE2Example](https://github.com/borglab/gtsam/blob/develop/gtsam/examples/IEKF_SE2Example.cpp)**
-
-Let the Lie group be $\mathcal{SE}_2$, or Pose2 in GTSAM. We will use a Lie group increment as our odometry vector, and a 2D GPS measurement.
+The  **[IEKF_SE2Example](https://github.com/borglab/gtsam/blob/develop/gtsam/examples/IEKF_SE2Example.cpp)** demonstrates the use of an Invariant EKF with a simple odometry increment and a 2D GPS measurement processor. 
 
 #### Defining a GPS Measurement Function
 The predicted GPS measurement $h_k$ is given by the translation of the predicted state estimate. Then, the GPS measurement function is given by
-
-```
+```cpp
 Vector2 h_gps(const Pose2& X, OptionalJacobian<2, 3> H = {}) {
   return X.translation(H);
 }
@@ -170,29 +173,29 @@ Vector2 h_gps(const Pose2& X, OptionalJacobian<2, 3> H = {}) {
 
 #### Creating and Initializing the EKF
 The initial state and covariance need to be defined to create the filter.
-```
+```cpp
   Pose2 X0(0.0, 0.0, 0.0);
   Matrix3 P0 = Matrix3::Identity() * 0.1;
 ```
 
 The filter can then be created with
-```
+```cpp
   InvariantEKF<Pose2> ekf(X0, P0);
 ```
 
 For this example, we assume constant process and observation covariances. We define them as
-```
+```cpp
   Matrix3 Q = (Vector3(0.05, 0.05, 0.001)).asDiagonal();
   Matrix2 R = I_2x2 * 0.01;
 ```
 
 #### Defining odometry and measurements
 We define two simple odometry steps with a Lie group increment $U$
-```
+```cpp
 Pose2 U1(1.0, 1.0, 0.5), U2(1.0, 1.0, 0.0);
 ```
 and two GPS measurements
-```
+```cpp
   Vector2 z1, z2;
   z1 << 1.0, 0.0;
   z2 << 1.0, 1.0;
@@ -200,22 +203,22 @@ and two GPS measurements
 
 #### Running the EKF
 The EKF is propagated using odometry with
-```
+```cpp
 ekf.predict(U1, Q);
 ```
 
 and updated using measurements via
-```
+```cpp
 ekf.update(h_gps, z1, R);
 ```
 
-## InvariantEKF on NavState using a Dynamics Function
-The **[IEKF_NavstateExample](https://github.com/borglab/gtsam/blob/develop/gtsam/examples/IEKF_NavstateExample.cpp)** operates on the Lie group $\mathcal{SE}_2(3)$. This example propagates the EKF using IMU measurements and a dynamics function that convert the measurements into the tangent space. The measurement is a 3D GPS measurement.
+## InvariantEKF on NavState using a tangent space increment
+The **[IEKF_NavstateExample](https://github.com/borglab/gtsam/blob/develop/gtsam/examples/IEKF_NavstateExample.cpp)** demonstrates the use of an Invariant EKF with a tangent space increment based on IMU measurements transformed into the tangent space and a 3D GPS measurement processor. The Lie Group is NavState, or $\mathcal{SE}_2(3)$.
 
 #### Defining the Dynamics
 An IMU utilizes accelerometers and gyroscopes to estimate the pose of the robot. This is commonly used in inertial navigation aboard aircraft. An accelerometer and gyroscope measures the proper acceleration and the angular velocity experienced by the body. Then, $u = [a_x, a_y, a_z, w_x, w_y, w_z]^T$. In the tangent space of $\mathcal{SE}_2(3)$, we have $\xi = [w_x, w_y, w_z, 0, 0, 0, a_x, a_y, a_z]^T$. The dynamics function, then, is given by
 
-```
+```cpp
 Vector9 dynamics(const Vector6& imu) {
   auto a = imu.head<3>();
   auto w = imu.tail<3>();
@@ -227,7 +230,7 @@ Vector9 dynamics(const Vector6& imu) {
 
 #### 3D GPS Measurement Processor
 The predicted GPS measurement is simply the 3D position estimate of the current state estimate. Then,
-```
+```cpp
 Vector3 h_gps(const NavState& X, OptionalJacobian<3, 9> H = {}) {
   return X.position(H);
 }
@@ -235,31 +238,31 @@ Vector3 h_gps(const NavState& X, OptionalJacobian<3, 9> H = {}) {
 
 #### Creating and Initializing the EKF
 We initialize the state and covariance, then
-```
+```cpp
   NavState X0;  // R=I, v=0, t=0
   Matrix9 P0 = Matrix9::Identity() * 0.1;
 ```
-and the EKF is created using
-```
+and the IEKF is created using
+```cpp
   InvariantEKF<NavState> ekf(X0, P0);
 ```
 
 For this example, we assume constant process and observation covariances. Then,
-```
+```cpp
   Matrix9 Q = Matrix9::Identity() * 0.01;
   Matrix3 R = Matrix3::Identity() * 0.5;
 ```
 
 #### Defining IMU and GPS measurements
 We define two IMU measurements and two GPS measurements. Then, the IMU is given by
-```
+```cpp
   Vector6 imu1;
   imu1 << 0.1, 0, 0, 0, 0.2, 0;
   Vector6 imu2;
   imu2 << 0, 0.3, 0, 0.4, 0, 0;
 ```
 and the GPS measurements are given by
-```
+```cpp
   Vector3 z1;
   z1 << 0.3, 0, 0;
   Vector3 z2;
@@ -268,25 +271,112 @@ and the GPS measurements are given by
 
 Given that we are using control vector inputs $u$, we also need a time interval $dt$. Therefore, we describe
 
-```
+```cpp
   double dt = 1.0;
 ```
 
 #### Running the EKF
 The prediction stage is called using
-```
+```cpp
  ekf.predict(dynamics(imu1), dt, Q);
 ```
 
 and the update stage is called using
 
-```
+```cpp
   ekf.update(h_gps, z1, R);
 ```
 
+## LieGroupEKF on Rot3 using a state dependent dynamics function 
+The **[GEKF_Rot3Example](https://github.com/borglab/gtsam/blob/develop/examples/GEKF_Rot3Example.cpp)** demonstrates the use of a Lie Group EKF with a state dependent dynamics function. This example combines a Lie Group EKF with a proportional attitude controller that drives the pitch and roll of the object to zero. The angular velocity $\xi$ is proportional to the roll and pitch of the body; therefore, our tangent space increment $\xi$ is state dependent. The angular velocity is independent of yaw. A magnetometer is used to update the orientation. 
+
+#### Defining the Dynamics Function
+A proportional controller is used as the dynamics function. The previous state estimate is used to find a new angular velocity which is used in the group EKF to predict the next state. 
+We define our proportional gain; then, 
+```cpp
+static constexpr double k = 0.5;
+```
+
+We create our dynamics function; then, 
+```cpp 
+Vector3 dynamicsSO3(const Rot3& X, OptionalJacobian<3, 3> H = {}) {
+}
+```
+The previous state estimate is found by bringing the state estimate into the vector space by a Logmap. The Jacobian of this operation is given by D_phi and is computed by the Logmap function. Then,  
+```cpp
+  Matrix3 D_phi;
+  Vector3 phi = Rot3::Logmap(X, D_phi);
+  phi[2] = 0.0;
+  D_phi.row(2).setZero();
+```
+where yaw is set to zero as the attitude controller estimates pitch and roll. The Jacobian also sets the row corresponding to yaw to zero, as yaw is not observed. 
+
+Lastly, the dynamics function computes the state transition matrix $H$ (normally denoted by $F$ or $A$) and the tangent space increment $\xi$ by 
+```cpp
+  if (H) *H = -k * D_phi;  // ∂(–kφ)/∂δR
+  return -k * phi;         // xi ∈ 𝔰𝔬(3)
+```
+
+#### Defining a Magnetometer Update
+A magnetometer measures a magnetic field vector and references it to a known magnetic field model.
+Let $m^w$ be the magnetic field vector in the world. The magnetic field vector is rotated into the body frame by
+```math
+h = (R_b^w)^{-1} m^w
+```
+where $R_b^w$ is a rotation matrix from the body frame to the world frame. This rotation matrix is the current state of the system. 
+The state transition matrix $A$ is given by the negative skew symmetric matrix of $h$. 
 
 
-## Class Diagram
+The magnetic field vector is defined as 
+```cpp
+static const Vector3 m_world(0, 0, -1);
+```
+The measurement function is defined as 
+```cpp
+Vector3 h_mag(const Rot3& X, OptionalJacobian<3, 3> H = {}) {
+  Vector3 z = X.inverse().rotate(m_world);
+  if (H) *H = -skewSymmetric(z);
+  return z;
+```
+
+#### Creating and Initializing the EKF
+We initialize the state and covariance, then
+```cpp
+  const Rot3 R0 = Rot3::RzRyRx(0.1, -0.2, 0.3);
+  const Matrix3 P0 = Matrix3::Identity() * 0.1;
+```
+and the LieGroup EKF is created using
+```cpp
+  LieGroupEKF<Rot3> ekf(R0, P0);
+```
+
+For this example, we assume constant process and observation covariances. We also need a time interval $\Delta t$ for the tangent space increment; then
+```cpp
+  double dt = 0.1;
+  Matrix3 Q = Matrix3::Identity() * 0.01;
+  Matrix3 Rm = Matrix3::Identity() * 0.05;
+```
+#### Running the EKF
+The prediction stage is called using
+```cpp
+  ekf.predict(dynamicsSO3, dt, Q);
+```
+The magnetometer measurement $z$ is found by taking a body frame measurement of the world vector; then, 
+```cpp
+Vector3 z = h_mag(R0);
+```
+and the EKF is updated using the magnetometer measurement by
+```cpp
+ekf.update(h_mag, z, Rm);
+```
+
+
+
+
+
+
+
+# Class Diagram
 
 
 ```mermaid
