@@ -1278,6 +1278,12 @@ class Similarity2 {
   // Operator Overloads
   gtsam::Similarity2 operator*(const gtsam::Similarity2& other) const;
 
+  // Manifold
+  gtsam::Similarity2 retract(gtsam::Vector v) const;
+  gtsam::Vector localCoordinates(const gtsam::Similarity2& t2) const;
+  size_t dim() const;
+  static size_t Dim();
+
   // Lie group
   static gtsam::Similarity2 Expmap(gtsam::Vector v);
   static gtsam::Vector Logmap(const gtsam::Similarity2& S);
@@ -1318,6 +1324,12 @@ class Similarity3 {
 
   // Operator Overloads
   gtsam::Similarity3 operator*(const gtsam::Similarity3& other) const;
+
+  // Manifold
+  gtsam::Similarity3 retract(gtsam::Vector v) const;
+  gtsam::Vector localCoordinates(const gtsam::Similarity3& t2) const;
+  size_t dim() const;
+  static size_t Dim();
 
   // Lie group
   static gtsam::Similarity3 Expmap(gtsam::Vector v);
