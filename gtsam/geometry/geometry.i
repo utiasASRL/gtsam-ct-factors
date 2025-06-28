@@ -784,10 +784,6 @@ virtual class Cal3 {
   gtsam::Vector vector() const;
   gtsam::Matrix K() const;
   gtsam::Matrix inverse() const;
-
-  // Manifold
-  static size_t Dim();
-  size_t dim() const;
 };
 
 #include <gtsam/geometry/Cal3_S2.h>
