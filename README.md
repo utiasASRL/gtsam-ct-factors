@@ -2,10 +2,13 @@
 
 ---
 
-**How to install SL4 supported GTSAM for [VGGT-SLAM](https://arxiv.org/abs/2505.12549)**
+## How to install SL4 supported GTSAM for [VGGT-SLAM](https://arxiv.org/abs/2505.12549)
+
+In the repository directory, within your virtual environment, please run:
 
 ```
-cmake .. -DGTSAM_BUILD_PYTHON=1 -DGTSAM_FORCE_STATIC_LIB=ON && make -j 60
+make build && cd build
+cmake .. -DGTSAM_BUILD_PYTHON=1 -DGTSAM_FORCE_STATIC_LIB=ON && make -j$(nproc)
 pip3 install -e python/ --verbose
 ```
 
@@ -18,6 +21,8 @@ python3 python/gtsam/examples/SL4SLAMExample.py
 It should outputs "Successfully optimized!" message with the green color!
 
 ---
+
+The contents of `README.md` below are from the original GTSAM. 
 
 **Important Note**
 
