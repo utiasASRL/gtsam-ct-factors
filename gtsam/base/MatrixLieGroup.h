@@ -1,0 +1,161 @@
+/* ----------------------------------------------------------------------------
+
+ * GTSAM Copyright 2010, Georgia Tech Research Corporation,
+ * Atlanta, Georgia 30332-0415
+ * All Rights Reserved
+ * Authors: Frank Dellaert, et al. (see THANKS for the full author list)
+
+ * See LICENSE for the license information
+
+ * -------------------------------------------------------------------------- */
+
+ /**
+  * @file MatrixLieGroup.h
+  * @brief Base class and basic functions for Matrix Lie groups
+  * @author Frank Dellaert
+  */
+
+
+#pragma once
+
+#include <gtsam/base/Lie.h>
+
+namespace gtsam {
+
+  namespace internal {
+    template<class Class, int D, int M>
+    Eigen::Matrix<double, M* M, D> compute_vectorized_generators() {
+      Eigen::Matrix<double, M* M, D> P_mat;
+      for (int i = 0; i < D; ++i) {
+        typename Class::TangentVector e_i = Class::TangentVector::Unit(i);
+        typename Class::LieAlgebra G_i = Class::Hat(e_i);
+        P_mat.col(i) = Eigen::Map<const Eigen::Matrix<double, M* M, 1>>(G_i.data());
+      }
+      return P_mat;
+    }
+  } // namespace internal
+
+  /// A CRTP helper class that implements matrix Lie group methods.
+  /// To use, derive from MatrixLieGroup<Class,D,M> instead of LieGroup<Class,D>.
+  /// Your class must implement a `matrix()` method and a static `Hat()` method,
+  /// as well as provide a `LieAlgebra` typedef.
+  template<class Class, int D, int M>
+  struct MatrixLieGroup : public LieGroup<Class, D> {
+    using Base = LieGroup<Class, D>;
+    using Base::dimension;
+    using ChartJacobian = typename Base::ChartJacobian;
+    using Jacobian = typename Base::Jacobian;
+    using TangentVector = typename Base::TangentVector;
+
+    /// Return vectorized matrix representation.
+    Eigen::Matrix<double, M* M, 1> vec(OptionalJacobian<M* M, D> H = {}) const {
+      const auto& derived = static_cast<const Class&>(*this);
+      const auto T = derived.matrix();
+      if (H) {
+        const auto& P = vectorized_generators();
+        // The Jacobian is given by the formula H = (I_M ⊗ T) * P
+        // where P is the matrix of vectorized generators.
+        // This can be implemented efficiently with block-wise multiplication.
+        for (int i = 0; i < M; ++i) {
+          H->block(i * M, 0, M, D) = T * P.block(i * M, 0, M, D);
+        }
+      }
+      return Eigen::Map<const Eigen::Matrix<double, M* M, 1>>(T.data());
+    }
+
+  private:
+    /// Pre-compute and store vectorized generators.
+    inline static const Eigen::Matrix<double, M* M, D>& vectorized_generators() {
+      static const Eigen::Matrix<double, M* M, D> P = internal::compute_vectorized_generators<Class, D, M>();
+      return P;
+    }
+  };
+
+  namespace internal {
+
+    /// Adds LieAlgebra, Hat, and Vee to LieGroupTraits
+    template<class Class> struct MatrixLieGroupTraits : LieGroupTraits<Class> {
+      using LieAlgebra = typename Class::LieAlgebra;
+      using TangentVector = typename LieGroupTraits<Class>::TangentVector;
+
+      static LieAlgebra Hat(const TangentVector& v) {
+        return Class::Hat(v);
+      }
+
+      static TangentVector Vee(const LieAlgebra& X) {
+        return Class::Vee(X);
+      }
+    };
+
+    /// Both LieGroupTraits and Testable
+    template<class Class> struct MatrixLieGroup : MatrixLieGroupTraits<Class>, Testable<Class> {};
+
+  } // \ namespace internal
+
+  /**
+   * Matrix Lie Group Concept
+   */
+  template<typename T>
+  class IsMatrixLieGroup : public IsLieGroup<T> {
+  public:
+    typedef typename traits<T>::LieAlgebra LieAlgebra;
+    typedef typename traits<T>::TangentVector TangentVector;
+
+    GTSAM_CONCEPT_USAGE(IsMatrixLieGroup) {
+      // hat and vee
+      X = traits<T>::Hat(xi);
+      xi = traits<T>::Vee(X);
+    }
+  private:
+    LieAlgebra X;
+    TangentVector xi;
+  };
+
+  /**
+   *  Three term approximation of the Baker-Campbell-Hausdorff formula
+   *  In non-commutative Lie groups, when composing exp(Z) = exp(X)exp(Y)
+   *  it is not true that Z = X+Y. Instead, Z can be calculated using the BCH
+   *  formula: Z = X + Y + [X,Y]/2 + [X-Y,[X,Y]]/12 - [Y,[X,[X,Y]]]/24
+   *  http://en.wikipedia.org/wiki/Baker-Campbell-Hausdorff_formula
+   */
+   /// AGC: bracket() only appears in Rot3 tests, should this be used elsewhere?
+  template<class T>
+  T BCH(const T& X, const T& Y) {
+    static const double _2 = 1. / 2., _12 = 1. / 12., _24 = 1. / 24.;
+    T X_Y = bracket(X, Y);
+    return T(X + Y + _2 * X_Y + _12 * bracket(X - Y, X_Y) - _24 * bracket(Y, bracket(X, X_Y)));
+  }
+
+#ifdef GTSAM_ALLOW_DEPRECATED_SINCE_V43
+  /// @deprecated: use T::Hat
+  template <class T>
+  Matrix wedge(const Vector& x) {
+    return T::Hat(x);
+  }
+#endif
+
+  /**
+   * Exponential map given exponential coordinates
+   * class T needs a constructor from Matrix.
+   * @param x exponential coordinates, vector of size n
+   * @ return a T
+   */
+  template <class T>
+  T expm(const Vector& x, int K = 7) {
+    const Matrix xhat = T::Hat(x);
+    return T(expm(xhat, K));
+  }
+
+} // namespace gtsam
+
+
+/**
+ * Macros for using the IsMatrixLieGroup
+ *  - An instantiation for use inside unit tests
+ *  - A typedef for use inside generic algorithms
+ *
+ * NOTE: intentionally not in the gtsam namespace to allow for classes not in
+ * the gtsam namespace to be more easily enforced as testable
+ */
+#define GTSAM_CONCEPT_MATRIX_LIE_GROUP_INST(T) template class gtsam::IsMatrixLieGroup<T>;
+#define GTSAM_CONCEPT_MATRIX_LIE_GROUP_TYPE(T) using _gtsam_IsMatrixLieGroup_##T = gtsam::IsMatrixLieGroup<T>;

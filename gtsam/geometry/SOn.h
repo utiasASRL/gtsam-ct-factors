@@ -18,8 +18,7 @@
 
 #pragma once
 
-#include <gtsam/base/Lie.h>
-#include <gtsam/base/Manifold.h>
+#include <gtsam/base/MatrixLieGroup.h>
 #include <gtsam/base/make_shared.h>
 #include <gtsam/dllexport.h>
 #include <Eigen/Core>
