@@ -24,12 +24,12 @@ namespace gtsam {
 
   namespace internal {
     template<class Class, int D, int M>
-    Eigen::Matrix<double, M* M, D> compute_vectorized_generators() {
-      Eigen::Matrix<double, M* M, D> P_mat;
+    Eigen::Matrix<double, M*M, D> computeVectorizedGenerators() {
+      Eigen::Matrix<double, M*M, D> P_mat;
       for (int i = 0; i < D; ++i) {
         typename Class::TangentVector e_i = Class::TangentVector::Unit(i);
         typename Class::LieAlgebra G_i = Class::Hat(e_i);
-        P_mat.col(i) = Eigen::Map<const Eigen::Matrix<double, M* M, 1>>(G_i.data());
+        P_mat.col(i) = Eigen::Map<const Eigen::Matrix<double, M*M, 1>>(G_i.data());
       }
       return P_mat;
     }
@@ -37,7 +37,7 @@ namespace gtsam {
 
   /// A CRTP helper class that implements matrix Lie group methods.
   /// To use, derive from MatrixLieGroup<Class,D,M> instead of LieGroup<Class,D>.
-  /// Your class must implement a `matrix()` method and a static `Hat()` method,
+  /// Your class must implement a `matrix()` method, static `Hat()/Vee()` methods,
   /// as well as provide a `LieAlgebra` typedef.
   template<class Class, int D, int M>
   struct MatrixLieGroup : public LieGroup<Class, D> {
@@ -48,11 +48,11 @@ namespace gtsam {
     using TangentVector = typename Base::TangentVector;
 
     /// Return vectorized matrix representation.
-    Eigen::Matrix<double, M* M, 1> vec(OptionalJacobian<M* M, D> H = {}) const {
+    Eigen::Matrix<double, M*M, 1> vec(OptionalJacobian<M*M, D> H = {}) const {
       const auto& derived = static_cast<const Class&>(*this);
       const auto T = derived.matrix();
       if (H) {
-        const auto& P = vectorized_generators();
+        const auto& P = VectorizedGenerators();
         // The Jacobian is given by the formula H = (I_M ⊗ T) * P
         // where P is the matrix of vectorized generators.
         // This can be implemented efficiently with block-wise multiplication.
@@ -60,13 +60,13 @@ namespace gtsam {
           H->block(i * M, 0, M, D) = T * P.block(i * M, 0, M, D);
         }
       }
-      return Eigen::Map<const Eigen::Matrix<double, M* M, 1>>(T.data());
+      return Eigen::Map<const Eigen::Matrix<double, M*M, 1>>(T.data());
     }
 
   private:
     /// Pre-compute and store vectorized generators.
-    inline static const Eigen::Matrix<double, M* M, D>& vectorized_generators() {
-      static const Eigen::Matrix<double, M* M, D> P = internal::compute_vectorized_generators<Class, D, M>();
+    inline static const Eigen::Matrix<double, M*M, D>& VectorizedGenerators() {
+      static const Eigen::Matrix<double, M*M, D> P = internal::computeVectorizedGenerators<Class, D, M>();
       return P;
     }
   };
