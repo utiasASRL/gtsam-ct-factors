@@ -17,8 +17,7 @@
 
 #pragma once
 
-#include <gtsam/base/Lie.h>
-#include <gtsam/base/Manifold.h>
+#include <gtsam/base/MatrixLieGroup.h>
 #include <gtsam/dllexport.h>
 #include <gtsam/geometry/Point2.h>
 #include <gtsam/geometry/Pose2.h>
@@ -32,7 +31,7 @@ namespace gtsam {
   /**
    * 2D similarity transform
    */
-  class GTSAM_EXPORT Similarity2 : public LieGroup<Similarity2, 4> {
+  class GTSAM_EXPORT Similarity2 : public MatrixLieGroup<Similarity2, 4, 3> {
     /// @name Pose Concept
     /// @{
     typedef Rot2 Rotation;
@@ -182,11 +181,8 @@ namespace gtsam {
     /// @name Standard interface
     /// @{
 
-    /// Calculate 4*4 matrix group equivalent
+    /// Calculate 3*3 matrix group equivalent
     Matrix3 matrix() const;
-
-    /// Return vectorized Similarity2 matrix in column order
-    Vector9 vec(OptionalJacobian<9, 4> H = {}) const;
 
     /// Return a GTSAM rotation
     Rot2 rotation() const { return R_; }
