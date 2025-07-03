@@ -56,6 +56,8 @@ namespace gtsam {
  * @ingroup geometry
  */
 class GTSAM_EXPORT Rot3 : public LieGroup<Rot3, 3> {
+ public:
+  static constexpr size_t MatrixM = 3;
  private:
 
 #ifdef GTSAM_USE_QUATERNIONS

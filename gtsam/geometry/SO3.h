@@ -39,6 +39,8 @@ template <>
 GTSAM_EXPORT
 SO3 SO3::AxisAngle(const Vector3& axis, double theta);
 
+static constexpr size_t MatrixM = 3;
+
 template <>
 GTSAM_EXPORT
 SO3 SO3::ClosestTo(const Matrix3& M);

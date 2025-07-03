@@ -47,6 +47,9 @@ namespace gtsam {
     using Jacobian = typename Base::Jacobian;
     using TangentVector = typename Base::TangentVector;
 
+    /// The dimension of the matrix representation, e.g., 3 for SO(3).
+    constexpr static int MatrixM = M;
+
     /// Return vectorized matrix representation.
     Eigen::Matrix<double, M*M, 1> vec(OptionalJacobian<M*M, D> H = {}) const {
       const auto& derived = static_cast<const Class&>(*this);
@@ -63,6 +66,27 @@ namespace gtsam {
       return Eigen::Map<const Eigen::Matrix<double, M*M, 1>>(T.data());
     }
 
+    /**
+     * A generic implementation of AdjointMap for matrix Lie groups.
+     * The Adjoint map is the tangent map of the conjugation `C_g(x) = g*x*g.inverse()`
+     * at the identity. For matrix Lie groups, this is `Ad_g(v) = g*v*g.inverse()`
+     * where v is an element of the Lie algebra. The columns of the Adjoint matrix
+     * are `vee(g * hat(e_i) * g.inverse())` for each basis vector `e_i`.
+     * This method can be overridden by derived classes with a more efficient,
+     * closed-form solution.
+     */
+    Jacobian AdjointMap() const {
+      const auto& m = static_cast<const Class&>(*this);
+      Jacobian adj;
+      const auto T_mat = m.matrix();
+      const auto T_inv_mat = m.inverse().matrix();
+      for (int i = 0; i < D; i++) {
+        const auto G_i = Class::Hat(TangentVector::Unit(i));
+        adj.col(i) = Class::Vee(T_mat * G_i * T_inv_mat);
+      }
+      return adj;
+    }
+
   private:
     /// Pre-compute and store vectorized generators.
     inline static const Eigen::Matrix<double, M*M, D>& VectorizedGenerators() {
@@ -73,8 +97,8 @@ namespace gtsam {
 
   namespace internal {
 
-    /// Adds LieAlgebra, Hat, and Vee to LieGroupTraits
-    template<class Class> struct MatrixLieGroupTraits : LieGroupTraits<Class> {
+    /// Adds LieAlgebra, Hat, Vee, and Vec to LieGroupTraits
+    template <class Class> struct MatrixLieGroupTraits : LieGroupTraits<Class> {
       using LieAlgebra = typename Class::LieAlgebra;
       using TangentVector = typename LieGroupTraits<Class>::TangentVector;
 
@@ -84,6 +108,14 @@ namespace gtsam {
 
       static TangentVector Vee(const LieAlgebra& X) {
         return Class::Vee(X);
+      }
+
+      /// Vectorize the matrix representation of a Lie group element.
+      static Eigen::Matrix<double, Class::MatrixM * Class::MatrixM, 1> Vec(
+          const Class& m,
+          OptionalJacobian<Class::MatrixM * Class::MatrixM,
+                           LieGroupTraits<Class>::dimension> H = {}) {
+        return m.vec(H);
       }
     };
 
@@ -105,8 +137,11 @@ namespace gtsam {
       // hat and vee
       X = traits<T>::Hat(xi);
       xi = traits<T>::Vee(X);
+      // vec
+      (void)traits<T>::Vec(g);
     }
   private:
+    T g;
     LieAlgebra X;
     TangentVector xi;
   };
