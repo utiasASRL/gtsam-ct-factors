@@ -138,6 +138,10 @@ struct traits<QUATERNION_TYPE> {
     return omega;
   }
 
+  static Matrix3 AdjointMap(const Q &g) {
+    return g.toRotationMatrix();
+  }
+
   using LieAlgebra = Matrix3;
 
   static Matrix3 Hat(const Vector3& v) {

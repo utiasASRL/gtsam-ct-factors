@@ -1171,7 +1171,7 @@ TEST(Gal3, ExpLog_NearZero) {
 }
 
 //******************************************************************************
-TEST(Gal3, vec) {
+TEST(Gal3, Vec) {
     // Create a non-trivial Gal3 object
     const Rot3 R_test = Rot3::Rodrigues(0.1, 0.2, 0.3);
     const Point3 r_test(1.0, 2.0, 3.0);
