@@ -29,26 +29,23 @@ namespace gtsam {
       return (a == Eigen::Dynamic || b == Eigen::Dynamic) ? Eigen::Dynamic : a * b;
     }
 
+    // Helper to compute the matrix of vectorized generators for fixed-size groups.
     template<class Class, int D, int N>
     auto computeVectorizedGenerators() {
-      // This function is only valid for fixed-size matrices.
       static_assert(D != Eigen::Dynamic && N != Eigen::Dynamic,
-                    "computeVectorizedGenerators is only for fixed-size Lie groups.");
-
-      Eigen::Matrix<double, N * N, D> P_mat;
+        "This helper is only for fixed-size Lie groups.");
+      Eigen::Matrix<double, N* N, D> P;
       for (int i = 0; i < D; ++i) {
-        typename Class::TangentVector e_i = Class::TangentVector::Unit(i);
-        typename Class::LieAlgebra G_i = Class::Hat(e_i);
-        P_mat.col(i) = Eigen::Map<const Eigen::Matrix<double, N * N, 1>>(G_i.data());
+        const auto G_i = Class::Hat(typename Class::TangentVector::Unit(D, i));
+        P.col(i) = Eigen::Map<const Eigen::Matrix<double, N* N, 1>>(G_i.data());
       }
-      return P_mat;
+      return P;
     }
   } // namespace internal
 
   /// A CRTP helper class that implements matrix Lie group methods.
   /// To use, derive from MatrixLieGroup<Class,D,N> instead of LieGroup<Class,D>.
-  /// Your class must implement a `matrix()` method, static `Hat()/Vee()` methods,
-  /// as well as provide a `LieAlgebra` typedef.
+  /// Your class must implement a `matrix()` method and static `Hat()/Vee()` methods.
   template<class Class, int D, int N>
   struct MatrixLieGroup : public LieGroup<Class, D> {
     using Base = LieGroup<Class, D>;
@@ -57,73 +54,74 @@ namespace gtsam {
     using Jacobian = typename Base::Jacobian;
     using TangentVector = typename Base::TangentVector;
 
-    /// Return vectorized matrix representation.
-    Eigen::Matrix<double, internal::product(N,N), 1> vec(OptionalJacobian<internal::product(N,N), D> H = {}) const {
+    /**
+     * Vectorize the matrix representation of a Lie group element.
+     * The derivative `H` is the `(N*N) x D` Jacobian of this vectorization map.
+     * It is given by the formula `H = (I_N ⊗ T) * P`, where `T` is the `N x N`
+     * matrix of this group element, `⊗` is the Kronecker product, and `P` is
+     * the `(N*N) x D` matrix whose columns are the vectorized Lie algebra
+     * generators `vec(Hat(e_j))`. This can be computed efficiently via
+     * block-wise multiplication.
+     */
+    Eigen::Matrix<double, internal::product(N, N), 1> vec(
+      OptionalJacobian<internal::product(N, N), D> H = {}) const {
       const auto& derived = static_cast<const Class&>(*this);
       const auto& T = derived.matrix();
 
-      if constexpr (N != Eigen::Dynamic) {  // Fixed-size case
-        if (H) {
+      if (H) {
+        if constexpr (N != Eigen::Dynamic && D != Eigen::Dynamic) { // Fixed-size case
           const auto& P = VectorizedGenerators();
-          // The Jacobian is given by the formula H = (I_N ⊗ T) * P
-          // where P is the matrix of vectorized generators.
-          // This can be implemented efficiently with block-wise multiplication.
           for (int i = 0; i < N; ++i) {
             H->block(i * N, 0, N, D) = T * P.block(i * N, 0, N, D);
           }
         }
-        return Eigen::Map<const Eigen::Matrix<double, N * N, 1>>(T.data());
-      } else {  // Dynamic-size case
-        const size_t n = T.rows();
-        const size_t n2 = n * n;
-
-        if (H) {
-          size_t d = D;
-          if constexpr (D == Eigen::Dynamic) {
-            d = derived.dim();
-          }
-          H->resize(n2, d);
+        else { // Dynamic-size case
+          const size_t n = T.rows();
+          const size_t d = derived.dim();
+          H->resize(n * n, d);
 
           // Create P, the matrix of vectorized generators, on the fly.
-          // Column j of P is vec(Hat(e_j)).
-          Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> P(n2, d);
+          Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> P(n * n, d);
           for (size_t j = 0; j < d; ++j) {
             const auto G_j = Class::Hat(TangentVector::Unit(d, j));
             P.col(j) = Eigen::Map<const Eigen::Matrix<double, Eigen::Dynamic, 1>>(
-                G_j.data(), n2);
+              G_j.data(), n * n);
           }
 
-          // The Jacobian is given by the formula H = (I_n ⊗ T) * P
-          // This can be implemented efficiently with block-wise multiplication.
+          // Apply the formula H = (I_n ⊗ T) * P.
           for (size_t i = 0; i < n; ++i) {
             H->block(i * n, 0, n, d) = T * P.block(i * n, 0, n, d);
           }
         }
+      }
+
+      if constexpr (N != Eigen::Dynamic) { // Fixed-size case
+        return Eigen::Map<const Eigen::Matrix<double, N* N, 1>>(T.data());
+      }
+      else { // Dynamic-size case
         return Eigen::Map<const Eigen::Matrix<double, Eigen::Dynamic, 1>>(
-            T.data(), n2);
+          T.data(), T.size());
       }
     }
 
     /**
      * A generic implementation of AdjointMap for matrix Lie groups.
-     * The Adjoint map is the tangent map of the conjugation `C_g(x) = g*x*g.inverse()`
-     * at the identity. For matrix Lie groups, this is `Ad_g(v) = g*v*g.inverse()`
-     * where v is an element of the Lie algebra. The columns of the Adjoint matrix
-     * are `vee(g * hat(e_i) * g.inverse())` for each basis vector `e_i`.
+     * The Adjoint map `Ad_g` is the tangent map of the conjugation `C_g(x) = g*x*g.inverse()`
+     * at the identity. For matrix Lie groups, `Ad_g(v) = g*v*g.inverse()` where `v` is an
+     * element of the Lie algebra. The columns of the Adjoint matrix are
+     * `vee(g * Hat(e_i) * g.inverse())` for each basis vector `e_i`.
      * This method can be overridden by derived classes with a more efficient,
      * closed-form solution.
      */
     Jacobian AdjointMap() const {
       const auto& m = static_cast<const Class&>(*this);
       size_t d = D;
-      if constexpr (D == Eigen::Dynamic) {
-        d = m.dim();
-      }
+      if constexpr (D == Eigen::Dynamic) d = m.dim();
       Jacobian adj(d, d);
       const auto T_mat = m.matrix();
       const auto T_inv_mat = m.inverse().matrix();
       for (size_t i = 0; i < d; i++) {
-        // TangentVector::Unit(d, i) works for both fixed and dynamic size vectors
+        // TangentVector::Unit(d, i) works for both fixed and dynamic size vectors.
         const auto G_i = Class::Hat(TangentVector::Unit(d, i));
         adj.col(i) = Class::Vee(T_mat * G_i * T_inv_mat);
       }
@@ -132,12 +130,10 @@ namespace gtsam {
 
   private:
     /// Pre-compute and store vectorized generators for fixed-size groups.
-    inline static const Eigen::Matrix<double, internal::product(N, N), D>& VectorizedGenerators() {
-      static_assert(
-          N != Eigen::Dynamic && D != Eigen::Dynamic,
-          "VectorizedGenerators without arguments is only for fixed-size Lie groups.");
+    inline static const Eigen::Matrix<double, internal::product(N, N), D>&
+      VectorizedGenerators() {
       static const auto P =
-          internal::computeVectorizedGenerators<Class, D, N>();
+        internal::computeVectorizedGenerators<Class, D, N>();
       return P;
     }
   };
@@ -159,9 +155,9 @@ namespace gtsam {
 
       /// Vectorize the matrix representation of a Lie group element.
       static Eigen::Matrix<double, product(N, N), 1> Vec(
-          const Class& m,
-          OptionalJacobian<product(N, N),
-                           LieGroupTraits<Class>::dimension> H = {}) {
+        const Class& m,
+        OptionalJacobian<product(N, N),
+        LieGroupTraits<Class>::dimension> H = {}) {
         return m.vec(H);
       }
     };
