@@ -19,7 +19,7 @@ If you encounter any functions that do not meet this criterion, please submit a 
 
 ## Wrapper Maintenance: How to fix C++ GTSAM functions not showing up in Python
 
-The Python wrapper for a class is defined in the `*.i` interface file present in the same directory as the class. For example, the wrapper for `gtsam/geometry/Pose3.h` is defined in `gtsam/geometry/geometry.i`; for `gtsam/navigation/ImuFactor.h`, it's `gtsam/navigation/navigation.md`, etc. With that knowledge and following these steps, you can manipulate your local clone of GTSAM and rebuild the Python package with your custom extended bindings.
+The Python wrapper for a class is defined in the `*.i` interface file present in the same directory as the class. For example, the wrapper for `gtsam/geometry/Pose3.h` is defined in `gtsam/geometry/geometry.i`; for `gtsam/navigation/ImuFactor.h`, it's `gtsam/navigation/navigation.i`, etc. With that knowledge and following these steps, you can manipulate your local clone of GTSAM and rebuild the Python package with your custom extended bindings.
 
 1. Follow steps to clone, build, and install GTSAM with Python bindings on your OS, to be sure that you can do so before changing the source code. See [INSTALL.md](INSTALL.md) and the [Python README.md](python/README.md).
 2. Identify which folder your problem class is in and the corresponding interface file.
