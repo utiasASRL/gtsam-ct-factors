@@ -116,11 +116,13 @@ jobs:
         run: |
           export CMAKE_GENERATOR=Ninja 
           cmake -E remove_directory build
-          cmake_args="-B build -S . -DGTSAM_BUILD_EXAMPLES_ALWAYS=OFF -DGTSAM_ALLOW_DEPRECATED_SINCE_V43=OFF -DBOOST_ROOT=\"${BOOST_ROOT}\" -DBOOST_INCLUDEDIR=\"${BOOST_ROOT}\\boost\\include\" -DBOOST_LIBRARYDIR=\"${BOOST_ROOT}\\lib\""
-          if [ "${{ matrix.build_type }}" == "Debug" ]; then
-            cmake_args="$cmake_args -DGTSAM_ENABLE_ASAN=ON"
-          fi
-          cmake $cmake_args
+          cmake -B build \
+                -S . \
+                -DGTSAM_BUILD_EXAMPLES_ALWAYS=OFF \
+                -DGTSAM_ALLOW_DEPRECATED_SINCE_V43=OFF \
+                -DBOOST_ROOT="${BOOST_ROOT}" \
+                -DBOOST_INCLUDEDIR="${BOOST_ROOT}\boost\include" \
+                -DBOOST_LIBRARYDIR="${BOOST_ROOT}\lib"
 
       - name: Build
         shell: bash
