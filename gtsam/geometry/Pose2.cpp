@@ -51,7 +51,7 @@ Matrix3 Pose2::matrix() const {
 Vector9 Pose2::vec(OptionalJacobian<9, 3> H) const {
   // Vectorize
   const Matrix3 M = matrix();
-  const Vector v = Eigen::Map<const Vector9>(M.data());
+  const Vector9 v = Eigen::Map<const Vector9>(M.data());
 
   // If requested, calculate H
   if (H) {

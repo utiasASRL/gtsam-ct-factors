@@ -364,7 +364,7 @@ Matrix4 Pose3::matrix() const {
 Pose3::Vector16 Pose3::vec(OptionalJacobian<16, 6> H) const {
   // Vectorize
   const Matrix4 M = matrix();
-  const Vector v = Eigen::Map<const Vector16>(M.data());
+  const Vector16 v = Eigen::Map<const Vector16>(M.data());
 
   // If requested, calculate H
   if (H) {
