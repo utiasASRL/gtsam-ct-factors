@@ -46,22 +46,6 @@ static std::shared_ptr<PreintegrationParams> Params() {
 }
 
 /* ************************************************************************* */
-namespace {
-// Macro to test ImuFactor with both Manifold and Tangent preintegration
-// In the tests below, the selected PreintegratedImuMeasurementsT is available as `PIM`.
-#define TEST_PIM(testGroup, testName)                                           \
-  template <class PIM>                                                          \
-  void testGroup##testName##Helper(TestResult& result_,                         \
-                                   const std::string& name_);                   \
-  TEST(testGroup, testName) {                                                   \
-    testGroup##testName##Helper<PreintegratedImuMeasurementsT<ManifoldPreintegration>>(result_, this->name_);  \
-    testGroup##testName##Helper<PreintegratedImuMeasurementsT<TangentPreintegration>>(result_, this->name_);   \
-  }                                                                             \
-  template <class PIM>                                                          \
-  void testGroup##testName##Helper(TestResult& result_, const std::string& name_)
-}  // namespace
-
-/* ************************************************************************* */
 TEST_PIM(ImuFactor, PreintegratedMeasurementsConstruction) {
   // Actual pre-integrated values
   PIM actual(testing::Params());

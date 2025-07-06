@@ -52,22 +52,6 @@ static std::shared_ptr<PreintegratedCombinedMeasurements::Params> Params(
 }  // namespace testing
 
 /* ************************************************************************* */
-namespace {
-// Macro to test ImuFactor with both Manifold and Tangent preintegration
-// In the tests below, the selected PreintegratedImuMeasurementsT is available as `PIM`.
-#define TEST_PIM(testGroup, testName)                                           \
-  template <class PreintegrationType>                                                          \
-  void testGroup##testName##Helper(TestResult& result_,                         \
-                                   const std::string& name_);                   \
-  TEST(testGroup, testName) {                                                   \
-    testGroup##testName##Helper<ManifoldPreintegration>(result_, this->name_);  \
-    testGroup##testName##Helper<TangentPreintegration>(result_, this->name_);   \
-  }                                                                             \
-  template <class PreintegrationType>                                                          \
-  void testGroup##testName##Helper(TestResult& result_, const std::string& name_)
-}  // namespace
-
-/* ************************************************************************* */
 TEST_PIM(CombinedImuFactor, PreintegratedMeasurements ) {
   // Linearization point
   Bias bias(Vector3(0, 0, 0), Vector3(0, 0, 0)); ///< Current estimate of acceleration and angular rate biases
@@ -81,10 +65,10 @@ TEST_PIM(CombinedImuFactor, PreintegratedMeasurements ) {
   auto p = testing::Params();
 
   // Actual preintegrated values
-  PreintegratedImuMeasurementsT<PreintegrationType> expected1(p, bias);
+  PIM expected1(p, bias);
   expected1.integrateMeasurement(measuredAcc, measuredOmega, deltaT);
 
-  PreintegratedCombinedMeasurementsT<PreintegrationType> actual1(p, bias);
+  CombinedPIM actual1(p, bias);
 
   actual1.integrateMeasurement(measuredAcc, measuredOmega, deltaT);
 
@@ -107,7 +91,6 @@ TEST_PIM(CombinedImuFactor, ErrorWithBiases ) {
 
   auto p = testing::Params();
   p->omegaCoriolis = Vector3(0,0.1,0.1);
-  using PIM = PreintegratedImuMeasurementsT<PreintegrationType>;
   PIM pim(p, Bias(Vector3(0.2, 0.0, 0.0), Vector3(0.0, 0.0, 0.0)));
 
   // Measurements
@@ -120,7 +103,6 @@ TEST_PIM(CombinedImuFactor, ErrorWithBiases ) {
 
   pim.integrateMeasurement(measuredAcc, measuredOmega, deltaT);
 
-  using CombinedPIM = PreintegratedCombinedMeasurementsT<PreintegrationType>;
   CombinedPIM combined_pim(p, Bias(Vector3(0.2, 0.0, 0.0), Vector3(0.0, 0.0, 0.0)));
 
   combined_pim.integrateMeasurement(measuredAcc, measuredOmega, deltaT);
@@ -185,8 +167,7 @@ TEST_PIM(CombinedImuFactor, PredictPositionAndVelocity) {
   const Vector3 measuredAcc(0, 1.1, -kGravity);
   const double deltaT = 0.01;
 
-  using PIM = PreintegratedCombinedMeasurementsT<PreintegrationType>;
-  PIM pim(p, bias);
+  CombinedPIM pim(p, bias);
 
   for (int i = 0; i < 100; ++i)
     pim.integrateMeasurement(measuredAcc, measuredOmega, deltaT);
@@ -194,7 +175,7 @@ TEST_PIM(CombinedImuFactor, PredictPositionAndVelocity) {
   // Create factor
   const noiseModel::Gaussian::shared_ptr combinedmodel =
       noiseModel::Gaussian::Covariance(pim.preintMeasCov());
-  const CombinedImuFactorT<PIM> Combinedfactor(X(1), V(1), X(2), V(2), B(1), B(2), pim);
+  const CombinedImuFactorT<CombinedPIM> Combinedfactor(X(1), V(1), X(2), V(2), B(1), B(2), pim);
 
   // Predict
   const NavState actual = pim.predict(NavState(), bias);
@@ -208,15 +189,14 @@ TEST_PIM(CombinedImuFactor, PredictPositionAndVelocity) {
 TEST_PIM(CombinedImuFactor, PredictRotation) {
   const Bias bias(Vector3(0, 0, 0), Vector3(0, 0, 0)); // Biases (acc, rot)
   auto p = testing::Params();
-  using PIM = PreintegratedCombinedMeasurementsT<PreintegrationType>;
-  PIM pim(p, bias);
+  CombinedPIM pim(p, bias);
   const Vector3 measuredAcc = - kGravityAlongNavZDown;
   const Vector3 measuredOmega(0, 0, M_PI / 10.0);
   const double deltaT = 0.01;
   const double tol = 1e-4;
   for (int i = 0; i < 100; ++i)
     pim.integrateMeasurement(measuredAcc, measuredOmega, deltaT);
-  const CombinedImuFactorT<PIM> Combinedfactor(X(1), V(1), X(2), V(2), B(1), B(2), pim);
+  const CombinedImuFactorT<CombinedPIM> Combinedfactor(X(1), V(1), X(2), V(2), B(1), B(2), pim);
 
   // Predict
   const Pose3 x(Rot3::Ypr(0, 0, 0), Point3(0, 0, 0)), x2;
@@ -238,8 +218,7 @@ TEST_PIM(CombinedImuFactor, CheckCovariance) {
 
   imuBias::ConstantBias currentBias;
 
-  using PIM = PreintegratedCombinedMeasurementsT<PreintegrationType>;
-  PIM actual(params, currentBias);
+  CombinedPIM actual(params, currentBias);
 
   // Measurements
   Vector3 measuredAcc(0.1577, -0.8251, 9.6111);
@@ -289,7 +268,7 @@ TEST_PIM(CombinedImuFactor, SameCovariance) {
   params->setOmegaCoriolis(Vector3::Zero());
 
   // The IMU preintegration object for ImuFactor
-  PreintegratedImuMeasurementsT<PreintegrationType> pim(params, currentBias);
+  PIM pim(params, currentBias);
   pim.integrateMeasurement(accMeas, omegaMeas, deltaT);
 
   // Define params for CombinedImuFactor
@@ -303,7 +282,7 @@ TEST_PIM(CombinedImuFactor, SameCovariance) {
   combined_params->setBiasAccOmegaInit(Z_6x6);
 
   // The IMU preintegration object for CombinedImuFactor
-  PreintegratedCombinedMeasurementsT<PreintegrationType> cpim(combined_params, currentBias);
+  CombinedPIM cpim(combined_params, currentBias);
   cpim.integrateMeasurement(accMeas, omegaMeas, deltaT);
 
   // Assert if the noise covariance
