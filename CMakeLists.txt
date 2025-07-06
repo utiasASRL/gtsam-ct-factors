@@ -51,8 +51,8 @@ if (GTSAM_ENABLE_ASAN)
         # /Zi is for debug information (PDB files)
         # /Od is for disabling optimization (Debug builds)
         # /MD is for linking with the DLL version of the C runtime library
-        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /fsanitize=address /Zi /Od /MD")
-        set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /fsanitize=address /Zi /Od /MD")
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /fsanitize=address /Zi /Od")
+        set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /fsanitize=address /Zi /Od")
 
         # Linker flags for MSVC ASan
         # /fsanitize=address enables ASan linking
