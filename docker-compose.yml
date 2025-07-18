@@ -1,0 +1,38 @@
+version: '3.8'
+
+services:
+  ct-factors-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        USERID: ${MYUSER}
+        GROUPID: ${MYGROUP}
+        USERNAME: ${USERNAME}
+        HOMEDIR: ${HOME}
+    image: ct-factors-dev-${USERNAME}
+    network_mode: host
+    volumes:
+      - ./:${HOME}/gtsam-ct-factors
+      - ./.git:${HOME}/gtsam-ct-factors/.git:ro  # make git read-only to avoid permissions conflicts
+      - /tmp/.X11-unix:/tmp/.X11-unix
+      - ${HOME}/.Xauthority:${HOME}/.Xauthority:rw
+      - ${HOME}/.ssh/:${HOME}/.ssh:r
+    shm_size: 1g
+    environment:
+      - DISPLAY=$DISPLAY
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              capabilities: [gpu]
+    cap_add:
+      - SYS_PTRACE
+    security_opt:
+      - seccomp:unconfined
+    stdin_open: true
+    tty: true
+    
+    # Keep container running indefinitely
+    command: tail -f /dev/null

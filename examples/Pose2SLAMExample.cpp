@@ -20,48 +20,86 @@
  * A simple 2D pose slam example
  *  - The robot moves in a 2 meter square
  *  - The robot moves 2 meters each step, turning 90 degrees after each step
- *  - The robot initially faces along the X axis (horizontal, to the right in 2D)
+ *  - The robot initially faces along the X axis (horizontal, to the right in
+ * 2D)
  *  - We have full odometry between pose
- *  - We have a loop closure constraint when the robot returns to the first position
+ *  - We have a loop closure constraint when the robot returns to the first
+ * position
  */
 
-// In planar SLAM example we use Pose2 variables (x, y, theta) to represent the robot poses
+// In planar SLAM example we use Pose2 variables (x, y, theta) to represent the
+// robot poses
 #include <gtsam/geometry/Pose2.h>
 
 // We will use simple integer Keys to refer to the robot poses.
 #include <gtsam/inference/Key.h>
 
-// In GTSAM, measurement functions are represented as 'factors'. Several common factors
-// have been provided with the library for solving robotics/SLAM/Bundle Adjustment problems.
-// Here we will use Between factors for the relative motion described by odometry measurements.
-// We will also use a Between Factor to encode the loop closure constraint
-// Also, we will initialize the robot at the origin using a Prior factor.
+// In GTSAM, measurement functions are represented as 'factors'. Several common
+// factors have been provided with the library for solving robotics/SLAM/Bundle
+// Adjustment problems. Here we will use Between factors for the relative motion
+// described by odometry measurements. We will also use a Between Factor to
+// encode the loop closure constraint Also, we will initialize the robot at the
+// origin using a Prior factor.
 #include <gtsam/slam/BetweenFactor.h>
 
-// When the factors are created, we will add them to a Factor Graph. As the factors we are using
-// are nonlinear factors, we will need a Nonlinear Factor Graph.
+// When the factors are created, we will add them to a Factor Graph. As the
+// factors we are using are nonlinear factors, we will need a Nonlinear Factor
+// Graph.
 #include <gtsam/nonlinear/NonlinearFactorGraph.h>
 
-// Finally, once all of the factors have been added to our factor graph, we will want to
-// solve/optimize to graph to find the best (Maximum A Posteriori) set of variable values.
-// GTSAM includes several nonlinear optimizers to perform this step. Here we will use the
-// a Gauss-Newton solver
+// Finally, once all of the factors have been added to our factor graph, we will
+// want to solve/optimize to graph to find the best (Maximum A Posteriori) set
+// of variable values. GTSAM includes several nonlinear optimizers to perform
+// this step. Here we will use the a Gauss-Newton solver
 #include <gtsam/nonlinear/GaussNewtonOptimizer.h>
 
-// Once the optimized values have been calculated, we can also calculate the marginal covariance
-// of desired variables
+// Once the optimized values have been calculated, we can also calculate the
+// marginal covariance of desired variables
 #include <gtsam/nonlinear/Marginals.h>
 
-// The nonlinear solvers within GTSAM are iterative solvers, meaning they linearize the
-// nonlinear functions around an initial linearization point, then solve the linear system
-// to update the linearization point. This happens repeatedly until the solver converges
-// to a consistent set of variable values. This requires us to specify an initial guess
-// for each variable, held in a Values container.
+// The nonlinear solvers within GTSAM are iterative solvers, meaning they
+// linearize the nonlinear functions around an initial linearization point, then
+// solve the linear system to update the linearization point. This happens
+// repeatedly until the solver converges to a consistent set of variable values.
+// This requires us to specify an initial guess for each variable, held in a
+// Values container.
 #include <gtsam/nonlinear/Values.h>
+#include <gtsam/slam/dataset.h>
 
+#include <iomanip>
 
 using namespace std;
 using namespace gtsam;
+
+// --- Save Poses to CSV ---
+int saveResultToFile(Values& result, NonlinearFactorGraph& graph,
+                     const string& filename) {
+  // Get marginals
+  Marginals marginals(graph, result);
+
+  // open file, print header
+  ofstream poses_file(filename);
+  if (poses_file.is_open()) {
+    poses_file
+        << "key,x,y,theta,C11,C12,C13,C22,C23,C33\n";  // Header for Pose2
+    // filter results for pose2
+    for (const auto& [key, pose] : result.extract<Pose2>()) {
+      Matrix cov = marginals.marginalCovariance(key);
+      poses_file << key << "," << setprecision(6) << pose.x() << ","
+                 << setprecision(6) << pose.y() << "," << setprecision(6)
+                 << pose.theta() << "," << setprecision(6) << cov(0, 0) << ","
+                 << setprecision(6) << cov(0, 1) << "," << setprecision(6)
+                 << cov(0, 2) << "," << setprecision(6) << cov(1, 1) << ","
+                 << setprecision(6) << cov(1, 2) << "," << setprecision(6)
+                 << cov(2, 2) << "\n";
+    }
+    poses_file.close();
+    return 1;
+  } else {
+    cerr << "Error opening file" << endl;
+    return 0;
+  }
+}
 
 int main(int argc, char** argv) {
   // 1. Create a factor graph container and add factors to it
@@ -72,7 +110,8 @@ int main(int argc, char** argv) {
   auto priorNoise = noiseModel::Diagonal::Sigmas(Vector3(0.3, 0.3, 0.1));
   graph.addPrior(1, Pose2(0, 0, 0), priorNoise);
 
-  // For simplicity, we will use the same noise model for odometry and loop closures
+  // For simplicity, we will use the same noise model for odometry and loop
+  // closures
   auto model = noiseModel::Diagonal::Sigmas(Vector3(0.2, 0.2, 0.1));
 
   // 2b. Add odometry factors
@@ -83,14 +122,16 @@ int main(int argc, char** argv) {
   graph.emplace_shared<BetweenFactor<Pose2> >(4, 5, Pose2(2, 0, M_PI_2), model);
 
   // 2c. Add the loop closure constraint
-  // This factor encodes the fact that we have returned to the same pose. In real systems,
-  // these constraints may be identified in many ways, such as appearance-based techniques
-  // with camera images. We will use another Between Factor to enforce this constraint:
+  // This factor encodes the fact that we have returned to the same pose. In
+  // real systems, these constraints may be identified in many ways, such as
+  // appearance-based techniques with camera images. We will use another Between
+  // Factor to enforce this constraint:
   graph.emplace_shared<BetweenFactor<Pose2> >(5, 2, Pose2(2, 0, M_PI_2), model);
   graph.print("\nFactor Graph:\n");  // print
 
-  // 3. Create the data structure to hold the initialEstimate estimate to the solution
-  // For illustrative purposes, these have been deliberately set to incorrect values
+  // 3. Create the data structure to hold the initialEstimate estimate to the
+  // solution For illustrative purposes, these have been deliberately set to
+  // incorrect values
   Values initialEstimate;
   initialEstimate.insert(1, Pose2(0.5, 0.0, 0.2));
   initialEstimate.insert(2, Pose2(2.3, 0.1, -0.2));
@@ -105,7 +146,8 @@ int main(int argc, char** argv) {
   // system solver to use, and the amount of information displayed during
   // optimization. We will set a few parameters as a demonstration.
   GaussNewtonParams parameters;
-  // Stop iterating once the change in error between steps is less than this value
+  // Stop iterating once the change in error between steps is less than this
+  // value
   parameters.relativeErrorTol = 1e-5;
   // Do not perform more than N iteration steps
   parameters.maxIterations = 100;
@@ -123,6 +165,18 @@ int main(int argc, char** argv) {
   cout << "x3 covariance:\n" << marginals.marginalCovariance(3) << endl;
   cout << "x4 covariance:\n" << marginals.marginalCovariance(4) << endl;
   cout << "x5 covariance:\n" << marginals.marginalCovariance(5) << endl;
+
+  // save to file
+  string outfile = "../results/Pose2SLAMExample.csv";
+  if (argc > 1) {
+    outfile = argv[1];
+  }
+  int success = saveResultToFile(result, graph, outfile);
+  if (!success) {
+    cerr << "Failed to save results to file." << endl;
+    return 1;
+  }
+  cout << "Results saved to " << outfile << endl;
 
   return 0;
 }
