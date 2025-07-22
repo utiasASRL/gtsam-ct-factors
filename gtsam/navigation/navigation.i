@@ -31,6 +31,10 @@ class ConstantBias {
   gtsam::Vector correctAccelerometer(gtsam::Vector measurement) const;
   gtsam::Vector correctGyroscope(gtsam::Vector measurement) const;
 
+  // Manifold
+  gtsam::imuBias::ConstantBias retract(const gtsam::Vector& v) const;
+  gtsam::Vector localCoordinates(const gtsam::imuBias::ConstantBias& b) const;
+
   // enabling serialization functionality
   void serialize() const;
 };
