@@ -222,7 +222,7 @@ public:
    * exponential map parameterization
    * @return a pair of [start, end] indices into the tangent space vector
    */
-  static std::pair<size_t, size_t> translationInterval() {
+  static std::pair<size_t, size_t> TranslationInterval() {
     return {3, 5};
   }
 
