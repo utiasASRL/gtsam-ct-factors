@@ -4,8 +4,8 @@
 #include <gtsam/inference/Symbol.h>
 #include <gtsam/nonlinear/ExpressionFactor.h>
 #include <gtsam/nonlinear/ExpressionFactorGraph.h>
-#include <gtsam/nonlinear/LevenbergMarquardtOptimizer.h>
 #include <gtsam/nonlinear/GaussNewtonOptimizer.h>
+#include <gtsam/nonlinear/LevenbergMarquardtOptimizer.h>
 #include <gtsam/nonlinear/LevenbergMarquardtParams.h>
 #include <gtsam/nonlinear/Marginals.h>
 #include <gtsam/nonlinear/Values.h>
@@ -13,6 +13,7 @@
 #include <gtsam/slam/dataset.h>
 #include <gtsam/slam/expressions.h>
 #include <gtsam/slam/WNOAFactor.h>
+#include <yaml-cpp/yaml.h>
 
 #include <Eigen/Dense>
 #include <fstream>

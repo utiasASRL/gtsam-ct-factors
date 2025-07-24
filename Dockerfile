@@ -43,6 +43,14 @@ RUN apt-get update && apt-get install -y \
 # tmux
 RUN apt-get update && apt-get install -y tmux
 
+# Clone and build yaml-cpp
+RUN git clone https://github.com/jbeder/yaml-cpp.git /opt/yaml-cpp \
+    && cd /opt/yaml-cpp \
+    && mkdir build && cd build \
+    && cmake .. -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DBUILD_SHARED_LIBS=OFF -DYAML_CPP_BUILD_TESTS=OFF \
+    && make -j$(nproc) \
+    && make install
+
 # Entrypoint script
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
