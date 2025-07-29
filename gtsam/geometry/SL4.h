@@ -66,10 +66,13 @@ class GTSAM_EXPORT SL4 : public MatrixLieGroup<SL4, 15, 4> {
   /// Dimensionality of tangent space = 15 DOF
   inline size_t dim() const { return dimension; }
 
-  SL4 retract(const Vector& v, SL4Jacobian H1 = {}, SL4Jacobian H2 = {}) const;
+  // Chart at origin, depends on compile-time flag GTSAM_POSE3_EXPMAP
+  struct GTSAM_EXPORT ChartAtOrigin {
+    static SL4 Retract(const Vector15& xi, ChartJacobian Hxi = {});
+    static Vector15 Local(const SL4& pose, ChartJacobian Hpose = {});
+  };
 
-  Vector localCoordinates(const SL4& sl4, SL4Jacobian H1 = {},
-                          SL4Jacobian H2 = {}) const;
+  // retract and localCoordinates provided by LieGroup
 
   /// @}
   /// @name Group
@@ -87,16 +90,16 @@ class GTSAM_EXPORT SL4 : public MatrixLieGroup<SL4, 15, 4> {
   /// @}
   /// @name Lie Group
   /// @{
+    
+  // compose and between provided by LieGroup
 
   /// Version with derivative version added by LieGroup
   using LieGroup<SL4, 15>::inverse;
 
-  /// Exponential map at identity - create a rotation from canonical coordinates
+  /// Exponential map at identity - create an element from canonical coordinates
   static SL4 Expmap(const Vector& xi);
 
-  /// Log map at identity - return the canonical coordinates of this rotation
-  static Vector Logmap(const Matrix44& T);
-
+  /// Log map at identity - return the canonical coordinates of this element
   static Vector Logmap(const SL4& p);
 
   /// Adjoint representation of the tangent space

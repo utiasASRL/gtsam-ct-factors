@@ -20,17 +20,20 @@ GTSAM_CONCEPT_TESTABLE_INST(SL4)
 GTSAM_CONCEPT_MATRIX_LIE_GROUP_INST(SL4)
 
 // Common static variables for tests
-static const Vector xi0 = (Vector(15) << 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8,
-                           0.9, 1.0, 1.1, 1.2, 1.3, 1.4, 1.5)
-                              .finished();
+static const Vector15 xi0 =
+    (Vector15() << 0.01, 0.02, 0.03, 0.04, 0.05, 0.06, 0.07, 0.08, 0.09, 0.10,
+     0.11, 0.12, 0.13, 0.14, 0.15)
+        .finished();
 
-static const Vector xi1 = (Vector(15) << 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8,
-                           0.9, 1.0, 1.1, 1.2, 1.3, 1.4, 1.5)
-                              .finished();
+static const Vector15 xi1 =
+    (Vector15() << 0.01, 0.02, 0.03, 0.04, 0.05, 0.06, 0.07, 0.08, 0.09, 0.10,
+     0.11, 0.12, 0.13, 0.14, 0.15)
+        .finished();
 
-static const Vector xi2 = (Vector(15) << 0.5, 0.4, 0.9, 0.2, 0.3, 0.8, 0.7, 0.6,
-                           0.1, 1.0, 1.2, 1.1, 1.5, 1.3, 1.4)
-                              .finished();
+static const Vector15 xi2 =
+    (Vector15() << 0.05, 0.04, 0.09, 0.02, 0.03, 0.08, 0.07, 0.06, 0.01, 0.10,
+     0.12, 0.11, 0.15, 0.13, 0.14)
+        .finished();
 
 // Create a SL4
 const Matrix4 T_matrix =
@@ -61,15 +64,21 @@ TEST(SL4, Logmap) {
 
 /* ************************************************************************* */
 TEST(SL4, Retract) {
-  SL4 sl4_retracted = T1.retract(xi0);
-  SL4 expected(T1.matrix() * (I_4x4 + SL4::Hat(xi0)));
-  EXPECT(assert_equal(expected, sl4_retracted, 1e-8));
+  Matrix H;
+  Vector15 xi = xi0 / 100;
+  SL4 actual = SL4::Retract(xi, H);
+  SL4 expected(I_4x4 + SL4::Hat(xi));
+  EXPECT(assert_equal(expected, actual, 1e-8));
+  Matrix numericalH = numericalDerivative11(SL4::Retract, xi);
+  EXPECT(assert_equal(numericalH, H, 5e-3));
 }
 
 /* ************************************************************************* */
 TEST(SL4, LocalCoordinates) {
-  SL4 sl4_retracted = T1.retract(xi0);
-  EXPECT(assert_equal(xi0, T1.localCoordinates(sl4_retracted), 1e-8));
+  Vector15 xi = xi0 / 100;
+  SL4 sl4_retracted = T1.retract(xi);
+  Vector xi_retrieved = T1.localCoordinates(sl4_retracted);
+  EXPECT(assert_equal(sl4_retracted, T1.retract(xi_retrieved), 1e-5));
 }
 
 /* ************************************************************************* */
@@ -89,6 +98,14 @@ TEST(SL4, Between) {
   Matrix numericalH2 =
       numericalDerivative22(testing::between<SL4>, sl4_1, sl4_2);
   EXPECT(assert_equal(numericalH2, H2, 1e-5));
+}
+
+/* ************************************************************************* */
+// Test that Hat and Vee are inverses for random tangent vectors
+TEST(SL4, HatVeeAreInverses) {
+  Matrix4 hat = SL4::Hat(xi0);
+  Vector xi_recovered = SL4::Vee(hat);
+  EXPECT(assert_equal(xi0, xi_recovered, 1e-8));
 }
 
 /* ************************************************************************* */

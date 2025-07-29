@@ -84,28 +84,25 @@ void SL4::print(const std::string& s) const { cout << s << T_ << "\n"; }
 bool SL4::equals(const SL4& sl4, double tol) const {
   return T_.isApprox(sl4.T_, tol);
 }
-
 /* ************************************************************************* */
-SL4 SL4::retract(const Vector& v, SL4Jacobian Horigin, SL4Jacobian Hv) const {
+SL4 SL4::ChartAtOrigin::Retract(const Vector15& v, ChartJacobian H) {
   assert(v.size() == 15);
-  SL4 retracted = SL4(T_ * (I_4x4 + Hat(v)));
-  if (Horigin) *Horigin = I_15x15;  // d Ret/ d(origin)  (locally identity)
-  if (Hv) *Hv = I_15x15;            // d Ret/ d v
+  SL4 retracted(I_4x4 + Hat(v));
+  if (H) *H = I_15x15;
   return retracted;
 }
 
-Vector SL4::localCoordinates(const SL4& sl4, SL4Jacobian Horigin,
-                             SL4Jacobian Hp2) const {
-  Vector xi = SL4::Logmap(T_.inverse() * sl4.T_);
-  if (Horigin) *Horigin = -I_15x15;  // ∂log(g⁻¹h)/∂g
-  if (Hp2) *Hp2 = I_15x15;           // ∂log(g⁻¹h)/∂h
+/* ************************************************************************* */
+Vector15 SL4::ChartAtOrigin::Local(const SL4& sl4, ChartJacobian H) {
+  Vector xi = Vee(sl4.T_ - I_4x4);
+  if (H) *H = I_15x15;
   return xi;
 }
 
 /* ************************************************************************* */
 SL4 SL4::Expmap(const Vector& xi) {
   assert(xi.size() == 15);
-  const auto& mat = Hat(xi);
+  const auto& A = Hat(xi);
 
   // NOTE(hlim):
   // The cost of the computation is approximately 20n^3 for matrices of size n.
@@ -114,19 +111,13 @@ SL4 SL4::Expmap(const Vector& xi) {
   // https://eigen.tuxfamily.org/dox/unsupported/group__MatrixFunctions__Module.html
 
   // TODO(hlim): Approximate exp function? But it introduces non-negligible
-  // numerical error. return SL4(Matrix44::Identity() + mat + 0.5 * mat * mat);
+  // numerical error. return SL4(Matrix44::Identity() + A + 0.5 * A * A);
 
-  return SL4(mat.exp());
+  return SL4(A.exp());
 }
 
 /* ************************************************************************* */
-Vector SL4::Logmap(const Matrix44& T) {
-  const Matrix44& mat = T.log();
-
-  return Vee(mat);
-}
-
-Vector SL4::Logmap(const SL4& p) { return Logmap(p.T_); }
+Vector SL4::Logmap(const SL4& p) { return Vee(p.T_.log()); }
 
 /* ************************************************************************* */
 Matrix15x15 SL4::AdjointMap() const {
@@ -144,16 +135,16 @@ Matrix15x15 SL4::AdjointMap() const {
 /* ************************************************************************* */
 Matrix44 SL4::Hat(const Vector& xi) {
   assert(xi.size() == 15);
-  Matrix44 mat;
+  Matrix44 A;
   const double d11 = xi(12);
   const double d22 = -xi(12) + xi(13);
   const double d33 = -xi(13) + xi(14);
   const double d44 = -xi(14);
 
-  mat << d11, xi(0), xi(1), xi(2), xi(3), d22, xi(4), xi(5), xi(6), xi(7), d33,
+  A << d11, xi(0), xi(1), xi(2), xi(3), d22, xi(4), xi(5), xi(6), xi(7), d33,
       xi(8), xi(9), xi(10), xi(11), d44;
 
-  return mat;
+  return A;
 }
 
 /* ************************************************************************* */
