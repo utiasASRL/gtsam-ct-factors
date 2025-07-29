@@ -1,20 +1,20 @@
 #include "LostInTheWoodsExample.h"
 
 int main(int argc, char* argv[]) {
-  // input processing
-  string output_file = "results/lost.csv";
+  // Get configuration data
   string config_file = "examples/Data/LostInTheWoods.yaml";
   if (argc > 1) {
     config_file = argv[1];
   }
-
   YAML::Node config = YAML::LoadFile(config_file);
 
-  // load dataset
+  // Load Files
   string input_file = config["files"]["input"].as<string>();
+  string output_file = config["files"]["output"].as<string>();
+  string gt_output_file = config["files"]["gt_out"].as<string>();
+  //Load dataset
   DatasetLoader data;
-  string filename = findExampleDataFile(config["files"]["input"].as<string>());
-  data.loadFromFile(filename);
+  data.loadFromFile(input_file);
   data.checkSizes();
 
   // switches for factors/init

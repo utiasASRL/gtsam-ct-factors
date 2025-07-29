@@ -13,7 +13,7 @@ services:
     image: ct-factors-dev-${USERNAME}
     network_mode: host
     volumes:
-      - ./:${HOME}/gtsam-ct-factors
+      - ./:${HOME}/gtsam-ct-factors # GTSAM Repo
       - ./.git:${HOME}/gtsam-ct-factors/.git:ro  # make git read-only to avoid permissions conflicts
       - /tmp/.X11-unix:/tmp/.X11-unix
       - ${HOME}/.Xauthority:${HOME}/.Xauthority:rw
