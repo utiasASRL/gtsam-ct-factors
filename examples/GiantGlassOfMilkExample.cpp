@@ -17,7 +17,7 @@ int main() {
 
   // Defining timing variables
   double dt = 0.1;
-  double dt_meas = 10.0;
+  double dt_meas = 5.0;
 
   //Define noise variables
   double Qc = 0.01;
