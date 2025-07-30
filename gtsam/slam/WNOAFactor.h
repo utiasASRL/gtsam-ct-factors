@@ -1,6 +1,10 @@
 #include <gtsam/base/Lie.h>
+#include <gtsam/base/VectorSpace.h>
 #include <gtsam/base/ProductLieGroup.h>
 #include <gtsam/base/Testable.h>
+#include <gtsam/geometry/Point1.h>
+#include <gtsam/geometry/Point2.h>
+#include <gtsam/geometry/Point3.h>
 #include <gtsam/geometry/Pose2.h>
 #include <gtsam/geometry/Pose3.h>
 #include <gtsam/nonlinear/NonlinearFactor.h>
@@ -16,9 +20,12 @@ class WNOAMotionFactor
                                typename traits<Pose>::TangentVector> {
   // Check that Pose type is a testable Lie group
   GTSAM_CONCEPT_ASSERT(IsTestable<Pose>);
-  GTSAM_CONCEPT_ASSERT(IsLieGroup<Pose>);  // (CH) this could potentially be
-                                           // changed to Manifold check
-
+  // We currently support vector spaces and Lie groups
+  // SL: Can we use GTSAM_CONCEPT_ASSERT here?
+  static_assert(std::is_same_v<typename traits<Pose>::structure_category, lie_group_tag> ||
+                std::is_same_v<typename traits<Pose>::structure_category, vector_space_tag>,
+                "Pose type must be either a Lie group or vector space");
+  
  private:
   // expose tangent vector
   using Velocity = typename gtsam::traits<Pose>::TangentVector;
@@ -42,7 +49,7 @@ class WNOAMotionFactor
   altered noise model based on the provided model.
   */
   WNOAMotionFactor(Key key1, Key key2, Key key3, Key key4, const double delta_t,
-                   const Matrix& Q)
+                   const  Vector& Q)
       : Base(This::buildWNOANoiseModel(delta_t, Q), key1, key2, key3, key4),
         delta_t_(delta_t) {}
 
@@ -74,25 +81,36 @@ class WNOAMotionFactor
     //  compute xi = log(T_k^-1 T_{k+1})^check
     Matrix dxi_dT1(dim, dim);
     Matrix dxi_dT2(dim, dim);
-    Vector xi;
+    Vector xi(dim);
+    Matrix right_jac_inv(dim,dim);
     if (Hp1 || Hp2) {
-      xi = traits<Pose>::Local(p1, p2, &dxi_dT1, &dxi_dT2);
+      Matrix dbetween_p1;
+      Matrix dbetween_p2;
+      xi = traits<Pose>::Logmap(traits<Pose>::Between(p1, p2, &dbetween_p1, &dbetween_p2), &right_jac_inv);
+      dxi_dT1 = right_jac_inv * dbetween_p1;
+      dxi_dT2 = right_jac_inv * dbetween_p2;
     } else {
-      xi = traits<Pose>::Local(p1, p2);
+      xi = traits<Pose>::Logmap(traits<Pose>::Between(p1, p2), &right_jac_inv);
     }
-    // compute inverse right jacobian
-    Matrix right_jac_inv = Pose::ExpmapDerivative(xi).inverse();
     // Compute error
     Vector err(2 * dim);
-    err << xi - delta_t_ * v1, right_jac_inv * v2 - v1;
 
+    err << xi - delta_t_ * v1, right_jac_inv * v2 - v1;
+    
     // Derivative of velocity error wrt xi
     Matrix dvErr_dxi(dim, dim);
     if (Hp1 || Hp2) {
-      dvErr_dxi = -Pose::adjointMap(v2) / 2.0 -
-                  (Pose::adjointMap(Pose::adjointMap(xi) * v2) +
-                   Pose::adjointMap(xi) * Pose::adjointMap(v2)) /
-                      12.0;
+      // Derivative of velocity error wrt xi
+      // Zero for vector spaces, use an approximation for Lie groups
+      if constexpr (std::is_same_v<typename traits<Pose>::structure_category, vector_space_tag>) {
+        dvErr_dxi.setZero();
+      } else {
+        // For Lie groups
+        dvErr_dxi = -Pose::adjointMap(v2) / 2.0 -
+          (Pose::adjointMap(Pose::adjointMap(xi) * v2) +
+           Pose::adjointMap(xi) * Pose::adjointMap(v2)) /
+              12.0;
+      }
     }
     // Compute Final Jacobians
     if (Hp1) {
@@ -121,14 +139,15 @@ class WNOAMotionFactor
 
   // Function to build the specific covariance for the WNOA model.
   static noiseModel::Gaussian::shared_ptr buildWNOANoiseModel(double timestep,
-                                                              const Matrix& Q) {
+                                                              const Vector& Q) {
     // check size of Q matrix
-    assert(Q.rows() == dim && Q.cols() == dim && "WNOA Q-matrix Dimensions");
+    assert(Q.size() == dim && "WNOA Q-matrix Dimensions");
     // construct the covariance matrix for the WNOA factor
     Matrix covariance(2 * dim, 2 * dim);
-    covariance << (1.0 / 3.0 * pow(timestep, 3)) * Q,
-        (1.0 / 2.0 * pow(timestep, 2)) * Q, (1.0 / 2.0 * pow(timestep, 2)) * Q,
-        timestep * Q;
+    Matrix Q_diag = Q.asDiagonal();
+    covariance << (1.0 / 3.0 * pow(timestep, 3)) * Q_diag,
+        (1.0 / 2.0 * pow(timestep, 2)) * Q_diag, (1.0 / 2.0 * pow(timestep, 2)) * Q_diag,
+        timestep * Q_diag;
     // return model
     return noiseModel::Gaussian::Covariance(covariance);
   }
@@ -141,6 +160,9 @@ struct traits<WNOAMotionFactor<Pose>>
     : public Testable<WNOAMotionFactor<Pose>> {};
 
 // Explicit Instantiation.
+template class WNOAMotionFactor<Point1>;
+template class WNOAMotionFactor<Point2>;
+template class WNOAMotionFactor<Point3>;
 template class WNOAMotionFactor<Pose2>;
 template class WNOAMotionFactor<Pose3>;
 

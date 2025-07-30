@@ -12,7 +12,7 @@
 #include <gtsam/slam/BetweenFactor.h>
 #include <gtsam/slam/dataset.h>
 #include <gtsam/slam/expressions.h>
-#include <gtsam/slam/WNOAFactors.h>
+#include <gtsam/slam/WNOAFactor.h>
 
 #include <Eigen/Dense>
 #include <fstream>
