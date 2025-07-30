@@ -7,11 +7,11 @@
 #pragma once
 
 #include <gtsam/base/Matrix.h>
+#include <gtsam/base/MatrixLieGroup.h>
 #include <gtsam/base/OptionalJacobian.h>
 #include <gtsam/base/Vector.h>
-#include <gtsam/geometry/Pose2.h>
-#include <gtsam/geometry/Pose3.h>
-#include <gtsam_unstable/dllexport.h>
+#include <gtsam/base/std_optional_serialization.h>
+#include <gtsam/dllexport.h>
 
 // To use exp(), log()
 #include <string>
@@ -72,7 +72,7 @@ class GTSAM_EXPORT SL4 : public MatrixLieGroup<SL4, 15, 4> {
   /// @}
   /// @name Lie Group
   /// @{
-    
+
   // compose and between provided by LieGroup
 
   /// Adjoint representation of the tangent space
