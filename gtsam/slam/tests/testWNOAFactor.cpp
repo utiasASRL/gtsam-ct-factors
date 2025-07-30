@@ -11,13 +11,13 @@
 #include <gtsam/nonlinear/NonlinearEquality.h>
 #include <gtsam/nonlinear/NonlinearFactorGraph.h>
 #include <gtsam/nonlinear/Values.h>
-#include <gtsam/slam/WNOAFactors.h>
+#include <gtsam/slam/WNOAFactor.h>
 
 using namespace std;
 using namespace gtsam;
 
-static Matrix Q2 = I_3x3;
-static Matrix Q3 = I_6x6;
+static Vector Q2 = Vector3::Ones();
+static Vector Q3 = Vector6::Ones();
 static double timestep = 0.1;
 
 /**** SE(2) Test Variables*****/

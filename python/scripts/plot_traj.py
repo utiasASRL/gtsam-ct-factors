@@ -48,9 +48,9 @@ def plotTrajectory(filename, step=None, plot_cov=False, plot_heading=True):
         )
         covariances.append(cov)
 
-    x = df["x"]
-    y = df["y"]
-    theta = df["theta"]
+    x = df["x"].to_numpy()
+    y = df["y"].to_numpy()
+    theta = df["theta"].to_numpy()
 
     plt.figure(figsize=(8, 6))
     # plot landmarks
@@ -104,5 +104,5 @@ def plotTrajectory(filename, step=None, plot_cov=False, plot_heading=True):
 
 
 if __name__ == "__main__":
-    filename = "/home/cho/gtsam-ct-factors/results/lost.csv"
+    filename = "../../results/lost.csv"
     plotTrajectory(filename=filename, plot_cov=True, step=1, plot_heading=False)

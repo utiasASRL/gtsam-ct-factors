@@ -45,7 +45,7 @@ int main(int argc, char* argv[]) {
   auto measNoise =
       noiseModel::Diagonal::Sigmas(BRSigmas);  // range-bearing noise
   // WNOA Factor
-  Matrix3 Q_wnoa = 0.1 * Vector3(1.0, 1.0, 0.1).asDiagonal();
+  Vector Q_wnoa = 0.1 * Vector3(1.0, 1.0, 0.1);
   // Starting point
   Pose2 startPose(data.x_true[start], data.y_true[start], data.th_true[start]);
 
