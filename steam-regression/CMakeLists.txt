@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(steam-samples)
+project(steam-regression-test)
 
 # Compiler setup (assumed to be GNU)
 set(CMAKE_CXX_STANDARD 17)
@@ -11,8 +11,12 @@ find_package(OpenMP REQUIRED)
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
 
+# get packages
+find_package(Eigen3 3.3 REQUIRED NO_MODULE)
+find_package(yaml-cpp CONFIG REQUIRED)
+
 # Find and link to lgmath and steam
 find_package(steam REQUIRED)
-link_libraries(steam)  # link to all targets below, no need to specify include directories.
+link_libraries(steam yaml-cpp::yaml-cpp Eigen3::Eigen)  # link to all targets below, no need to specify include directories.
 
 add_executable(LostInTheWoods LostInTheWoodsSteam.cpp)

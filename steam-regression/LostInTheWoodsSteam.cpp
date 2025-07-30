@@ -4,6 +4,7 @@
 #include <fstream>
 #include <iostream>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -176,40 +177,46 @@ class DatasetLoader {
   }
 };
 
-// --- Save Poses to CSV ---
-// int saveResultToFile(Values& result, NonlinearFactorGraph& graph,
-//                      const string& filename) {
-//   // Get marginals
-//   Marginals marginals(graph, result);
-
-//   // open file, print header
-//   ofstream poses_file(filename);
-//   if (poses_file.is_open()) {
-//     poses_file
-//         << "key,x,y,theta,C11,C12,C13,C22,C23,C33\n";  // Header for Pose2
-//     // filter results for pose2
-//     for (const auto& [key, pose] : result.extract<Pose2>()) {
-//       Matrix cov = marginals.marginalCovariance(key);
-//       poses_file << key << "," << pose.x() << "," << pose.y() << ","
-//                  << pose.theta() << "," << cov(0, 0) << "," << cov(0, 1) <<
-//                  ","
-//                  << cov(0, 2) << "," << cov(1, 1) << "," << cov(1, 2) << ","
-//                  << cov(2, 2) << "\n";
-//     }
-//     poses_file.close();
-//     return 1;
-//   } else {
-//     cerr << "Error opening file" << endl;
-//     return 0;
-//   }
-// }
-
 /** \brief Structure to store trajectory state variables */
 struct TrajStateVar {
   Time time;
   se3::SE3StateVar::Ptr pose;
   vspace::VSpaceStateVar<6>::Ptr velocity;
 };
+
+/** \brief Function to save data to CSV */
+int saveResultToFile(vector<TrajStateVar>& states, Covariance& cov_post,
+                     const string& filename) {
+  // open file, print header
+  ofstream poses_file(filename);
+  if (poses_file.is_open()) {
+    poses_file << "x,y,theta,C11,C12,C13,C22,C23,C33\n";  // Header for Pose2
+    // loop through states
+    bool first_state = true;
+    for (const auto& state : states) {
+      // extract pose
+      lgmath::se3::Transformation pose = state.pose->value();
+      Eigen::Vector3d trans = pose.r_ab_inb();
+      lgmath::so3::Rotation rot(pose.C_ba());
+      double theta = rot.vec()[2];
+      Eigen::Matrix<double, 6, 6> cov;
+      if (first_state) {
+        cov = Eigen::Matrix<double, 6, 6>::Identity() * 10.0;
+        first_state = false;
+      } else {
+        cov = cov_post.query(state.pose);
+      }
+      poses_file << trans[0] << "," << trans[1] << "," << theta << ","
+                 << cov(0, 0) << "," << cov(0, 1) << "," << cov(0, 5) << ","
+                 << cov(1, 1) << "," << cov(1, 5) << "," << cov(5, 5) << "\n";
+    }
+    poses_file.close();
+    return 1;
+  } else {
+    cerr << "Error opening file" << endl;
+    return 0;
+  }
+}
 
 int main(int argc, char* argv[]) {
   // Get configuration data
@@ -230,33 +237,22 @@ int main(int argc, char* argv[]) {
   // switches for factors/init
   bool include_prior = config["flags"]["prior"].as<bool>();
   bool include_odom = config["flags"]["odom"].as<bool>();
-  bool include_br_meas = config["flags"]["br"].as<bool>();
+  bool include_wnoa = config["flags"]["wnoa"].as<bool>();
+  // bool include_br_meas = config["flags"]["br"].as<bool>();
   bool gt_init = config["flags"]["gt_init"].as<bool>();
   // Get inputs from param file
-  double r_max = config["params"]["r_max"].as<double>();
+  // double r_max = config["params"]["r_max"].as<double>();
   double del_t = config["params"]["del_t"].as<double>();
   int start = config["params"]["start"].as<int>();
   int end = config["params"]["end"].as<int>();
   // Get noise model parameters
-  auto sigma_prior =
-      Eigen::Vector3d(config["noise"]["prior"].as<vector<double>>().data());
   auto sigma_wnoa =
       Eigen::Vector3d(config["noise"]["wnoa"].as<vector<double>>().data());
-  double sigma_y_odom = config["noise"]["odom_y"].as<double>();
-  double mult_bearing = config["noise"]["bearing"].as<double>();
-  double mult_range = config["noise"]["range"].as<double>();
-  auto sigma_odom =
-      Eigen::Vector3d(sqrt(data.v_var), sigma_y_odom, sqrt(data.om_var)) *
-      del_t;
-  auto sigma_br = Eigen::Vector2d(sqrt(mult_bearing * data.b_var),
-                                  sqrt(mult_range * data.r_var));
-
-  // Starting point
-  Eigen::Matrix<double, 6, 1> startPoseVec, startVel;
-  startPoseVec << data.x_true[start], data.y_true[start], 0.0, 0.0, 0.0,
-      data.th_true[start];
-  lgmath::se3::Transformation startPose(startPoseVec);
-  startVel << data.v[start], 0.0, 0.0, 0.0, 0.0, data.om[start];
+  double sigma_small = config["noise"]["odom_y"].as<double>();
+  // double mult_bearing = config["noise"]["bearing"].as<double>();
+  // double mult_range = config["noise"]["range"].as<double>();
+  // auto sigma_br = Eigen::Vector2d(sqrt(mult_bearing * data.b_var),
+  //                                 sqrt(mult_range * data.r_var));
 
   ///
   /// Setup States
@@ -267,9 +263,9 @@ int main(int argc, char* argv[]) {
   // Initialization
   for (int i = start; i <= end; i++) {
     // current velocity for odometry
-    Eigen::Matrix<double, 6, 1> vel(data.v[i], 0.0, 0.0, 0.0, 0.0,
-                                      data.om[i]);
-    if (i == start || gt_init) { // Use gt for initial pose, or if initing from gt
+    Eigen::Matrix<double, 6, 1> vel(data.v[i], 0.0, 0.0, 0.0, 0.0, data.om[i]);
+    if (i == start ||
+        gt_init) {  // Use gt for initial pose, or if initing from gt
       // get pose and vel
       Eigen::Matrix<double, 6, 1> poseVec(data.x_true[i], data.y_true[i], 0.0,
                                           0.0, 0.0, data.th_true[i]);
@@ -282,20 +278,20 @@ int main(int argc, char* argv[]) {
       states.emplace_back(temp);
     } else {  // otherwise roll out odometry
       // Get relative pose
-      TrajStateVar prev = states.back();
-      
-      lgmath::se3::Transformation T_rel(states.back().velocity->value() * del_t);
+      const Eigen::Matrix<double, 6, 1> delta =
+          states.back().velocity->value() * del_t;
+      lgmath::se3::Transformation T_rel(delta);
       // push to vector of states
       TrajStateVar temp;
       temp.time = Time(i * del_t);
-      temp.pose = se3::SE3StateVar::MakeShared(T_rel * states.back().pose->value());
+      temp.pose =
+          se3::SE3StateVar::MakeShared(T_rel * states.back().pose->value());
       temp.velocity = vspace::VSpaceStateVar<6>::MakeShared(vel);
       states.emplace_back(temp);
-    } 
-
+    }
   }
 
-  //define optimization
+  // define optimization
   OptimizationProblem problem;
   // Add state variables
   for (const auto& state : states) {
@@ -304,91 +300,83 @@ int main(int argc, char* argv[]) {
   }
 
   // Setup WNOA Prior
-  Eigen::Matrix<double, 6,1> Qc_diag(sigma_wnoa[0],sigma_wnoa[1],0.0,0.0,0.0, sigma_wnoa[2]);
-  traj::const_vel::Interface traj(Qc_diag);
-  for (const auto& state : states)
-    traj.add(state.time, state.pose, state.velocity);
-  traj.addPriorCostTerms(problem);
-
-  
-
-} 
-
-// Initial Pose Prior
-if (include_prior) {
-  cout << "Adding Prior on start pose: " << sigma_prior << endl;
-  graph.add(PriorFactor<Pose2>(Symbol('x', start), startPose, priorNoise));
   if (include_wnoa) {
-    // Add in velocity prior on first state
-    cout << "Adding Prior on start velocity" << endl;
-    Vector vel_init = Vector3(data.v[start], 0.0, data.om[start]);
-    graph.addPrior<Vector3>(Symbol('v', start), vel_init, odoNoise);
-  }
-}
-// Odometry factors
-if (include_odom) {
-  cout << "Adding odometry prior factors " << endl;
-
-  for (int i = start + 1; i <= end; i++) {
-    // Define Keys
-    Pose2_ curr(Symbol('x', i));
-    Pose2_ prev(Symbol('x', i - 1));
-    // define odometry measurement
-    Pose2 odom(data.v[i - 1] * del_t, 0.0, data.om[i - 1] * del_t);
-    // add factor to graph
-    graph.addExpressionFactor(between(prev, curr), odom, odoNoise);
-  }
-}
-
-// White-Noise-On-Acceleration Prior
-if (include_wnoa) {
-  cout << "Adding WNOA factors" << endl;
-  // Add WNOA Motion Factors between states
-  for (int i = start + 1; i <= end; i++) {
-    graph.add(WNOAMotionFactor<Pose2>(Symbol('x', i - 1), Symbol('v', i - 1),
-                                      Symbol('x', i), Symbol('v', i), del_t,
-                                      Q_wnoa));
-  }
-}
-
-// BearingRange Measurements
-if (include_br_meas) {
-  cout << "Adding bearing range measurement factors" << endl;
-
-  // Define landmarks
-  vector<Point2> landmarks(data.n_landmarks);
-  for (int j = 0; j < data.n_landmarks; j++) {
-    landmarks[j] = data.landmarks.row(j);
+    Eigen::Matrix<double, 6, 1> Qc_diag;
+    Qc_diag << sigma_wnoa[0], sigma_wnoa[1], sigma_small, sigma_small,
+        sigma_small, sigma_wnoa[2];
+    traj::const_vel::Interface traj(Qc_diag);
+    for (const auto& state : states)
+      traj.add(state.time, state.pose, state.velocity);
+    traj.addPriorCostTerms(problem);
   }
 
-  Pose2 T_vs(data.d, 0.0, 0.0);
-  for (int i = start; i <= end; i++) {
-    // Define Key
-    Key xi = Symbol('x', i);
-    for (int j = 0; j < data.n_landmarks; j++) {
-      // Check if we have a valid measurement
-      if ((data.range(i, j) > 0.0) && (abs(data.bearing(i, j)) > 0.0) &&
-          (data.range(i, j) < r_max)) {
-        // Get Bearing Range measurement
-        BearingRange2 measurement(Rot2(data.bearing(i, j)), data.range(i, j));
-        // Compute the bearing and range Prediction
-        auto predict = BearingRangeLandmarkPrediction(xi, landmarks[j], T_vs);
-        // Define Factor
-        graph.addExpressionFactor(predict, measurement, measNoise);
-      }
+  // Add odometry measurements
+  if (include_odom) {
+    // Setup shared noise and loss functions
+    Eigen::Vector<double, 6> cov_diag;
+    cov_diag << sqrt(data.v_var), sigma_small, sigma_small, sigma_small,
+        sigma_small, sqrt(data.om_var);
+    cov_diag *= del_t;
+    const auto noise_model =
+        steam::StaticNoiseModel<6>::MakeShared(cov_diag.asDiagonal());
+    const auto loss_function = steam::L2LossFunc::MakeShared();
+    // Add measurements
+    int ind = 0;
+    for (int i = start + 1; i <= end; i++) {
+      ind++;
+      // Odometry Measurement
+      Eigen::Matrix<double, 6, 1> odom_meas;
+      odom_meas << data.v[i - 1], 0.0, 0.0, 0.0, 0.0, data.om[i - 1];
+      odom_meas *= del_t;
+      const auto pose_meas =
+          se3::SE3StateVar::MakeShared(se3::SE3StateVar::T(odom_meas));
+      pose_meas->locked() = true;  // lock this pose
+      // define relative pose
+      const auto pose_rel =
+          se3::compose(states[ind].pose, se3::inverse(states[ind - 1].pose));
+      // define error
+      const auto error_function = se3::tran2vec(compose(pose_meas, pose_rel));
+      // define cost
+      const auto cost_term = WeightedLeastSqCostTerm<6>::MakeShared(
+          error_function, noise_model, loss_function);
+      // Add cost term
+      problem.addCostTerm(cost_term);
     }
   }
-}
 
-// Run optimizer
-LevenbergMarquardtParams params;
-params.setVerbosityLM("SUMMARY");
-Values result = LevenbergMarquardtOptimizer(graph, initial, params).optimize();
-// Save results
-cout << "Optimizer has finished...saving results..." << endl;
+  // Lock first pose, equivalent to prior on first pose
+  if (include_prior) {
+    states[0].pose->locked() = true;
+    states[0].velocity->locked() = true;
+  }
 
-saveResultToFile(result, graph, output_file);
-saveResultToFile(gt, graph, "results/lost_gt.csv");
+  ///
+  /// Setup Solver and Optimize
+  ///
+  unique_ptr<GaussNewtonSolver> solver;
+  string solver_select = config["params"]["solver"].as<string>();
+  if (solver_select == "GN") {
+    steam::GaussNewtonSolver::Params params;
+    params.verbose = true;
+    solver = make_unique<GaussNewtonSolver>(problem, params);
 
-return 0;
+  } else if (solver_select == "LM") {
+    steam::LevMarqGaussNewtonSolver::Params params;
+    params.verbose = true;
+    solver = make_unique<LevMarqGaussNewtonSolver>(problem, params);
+  } else if (solver_select == "DL") {
+    steam::DoglegGaussNewtonSolver::Params params;
+    params.verbose = true;
+    solver = make_unique<DoglegGaussNewtonSolver>(problem, params);
+  } else {
+    throw runtime_error("Selected solver is not known.");
+  }
+  // Run optimization
+  solver->optimize();
+  // Get covariance
+  Covariance cov_post(*solver);
+  // Store to file
+  saveResultToFile(states, cov_post, output_file);
+
+  return 0;
 }

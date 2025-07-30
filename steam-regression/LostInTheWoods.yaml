@@ -1,18 +1,19 @@
 files:
   input : "examples/Data/LostInTheWoods.txt"
-  output : "results/lost.csv" 
+  output : "results/lost_steam.csv" 
   gt_out : "results/lost_gt.csv"
 params:
   r_max: 1.0
   del_t: 0.1
   start: 1000
-  end: 5000
+  end: 1100
+  solver: "GN"
 flags:
   prior: true
-  odom: false
+  odom: true
   wnoa: true
-  br: true
-  gt_init: false
+  br: false
+  gt_init: true
 noise:
   prior: [1e-2, 1e-2, 1e-3]
   odom_y: 1e-1
