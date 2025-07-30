@@ -39,7 +39,7 @@ int main() {
   initialEstimate.insert(V(0),Vector1(0.0));
 
   // Run through all states and add WNOA prior factors between neighbouring states
-  for(unsigned int i = 0; i < data.rows() - 1; i++)
+  for(unsigned int i = 0; i < times.rows() - 1; i++)
   {
       graph.add(WNOAMotionFactor<Point1>(X(i),V(i),X(i+1),V(i+1),dt,Qc_mat));
 
