@@ -32,7 +32,6 @@
 
 // All implementations are wrapped in this namespace to avoid conflicts
 namespace gtsam {
-namespace abc_eqf_lib {
 
 using namespace std;
 using namespace gtsam;
@@ -40,13 +39,12 @@ using namespace gtsam;
 //========================================================================
 // Equivariant Filter (EqF) Template Function Verification
 //========================================================================
-
-template <typename Geometry, typename M, typename Input>
+template <typename Geometry, typename M>
 class has_lift {
  private:
   template <typename G>
   static auto test(int)
-      -> decltype(G::lift(std::declval<M>(), std::declval<Input>()),
+      -> decltype(G::lift(std::declval<M>(), std::declval<typename G::Input>()),
                   std::true_type{});
 
   template <typename>
@@ -256,8 +254,9 @@ EqF<G, M, Geometry>::EqF(const G& X0, const M& x0, const Matrix& Sigma, int m)
         "Number of direction sensors must be at least 2");
   }
 
-  static_assert(has_lift<Geometry, M, abc_eqf_lib::Input>::value,
+  static_assert(has_lift<Geometry, M>::value,
                 "Geometry must implement static lift(const M&, const Input&)");
+
   static_assert(has_stateTransitionMatrix<Geometry>::value,
                 "Geometry must define static stateTransitionMatrix(Input, "
                 "double, GType)");
@@ -347,7 +346,6 @@ void EqF<G, M, Geometry>::update(const typename Geometry::Measurement& y) {
   X_hat = traits<G>::Compose(traits<G>::Expmap(Delta), X_hat);
   Sigma = (Matrix::Identity(DOF, DOF) - K * Ct) * Sigma;
 }
-}  // namespace abc_eqf_lib
 }  // namespace gtsam
 
 #endif  // EQUIVARIANTFILTER_H
