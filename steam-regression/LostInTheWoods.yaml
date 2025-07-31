@@ -6,7 +6,7 @@ params:
   r_max: 1.0
   del_t: 0.1
   start: 1000
-  end: 1100
+  end: 2000
   solver: "GN"
 flags:
   prior: true

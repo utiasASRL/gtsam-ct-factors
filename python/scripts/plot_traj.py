@@ -28,7 +28,14 @@ def load_csv(filename, step=None):
     return df, covariances
 
 
-def plotTrajectory(filename, filename_gt, step=None, plot_cov=False, plot_heading=True):
+def plotTrajectory(
+    filename,
+    filename_gt="/home/cho/gtsam-ct-factors/results/lost_gt.csv",
+    filename_steam=None,
+    step=None,
+    plot_cov=False,
+    plot_heading=True,
+):
     # GT landmark locations
     landmarks = np.array(
         [
@@ -54,6 +61,8 @@ def plotTrajectory(filename, filename_gt, step=None, plot_cov=False, plot_headin
     # Load solution
     df, covariances = load_csv(filename, step)
     df_gt, _ = load_csv(filename_gt, step)
+    if filename_steam is not None:
+        df_steam, _ = load_csv(filename_steam, step)
 
     x = df["x"].to_numpy()
     y = df["y"].to_numpy()
@@ -63,7 +72,11 @@ def plotTrajectory(filename, filename_gt, step=None, plot_cov=False, plot_headin
     # plot landmarks
     plt.plot(landmarks[:, 0], landmarks[:, 1], "og", label=("Landmarks"))
     # trajectory
-    plt.plot(x, y, "-", label="Position", alpha=0.9, color="r")
+    plt.plot(x, y, "-", label="Traj - GTSAM", alpha=0.9, color="r")
+    if filename_steam is not None:
+        plt.plot(
+            df_steam["x"], df_steam["y"], "-", label="Traj - STEAM", alpha=0.9, color="g"
+        )
     # Starting point
     plt.plot(x[0], y[0], "o", label="Start", color="k")
     # Plot ground truth
@@ -109,9 +122,31 @@ def plotTrajectory(filename, filename_gt, step=None, plot_cov=False, plot_headin
     plt.title("Trajectory")
     plt.axis("equal")
     plt.legend()
-    plt.show()
+    # plt.show()
 
 
 if __name__ == "__main__":
-    filename = "../../results/lost.csv"
-    plotTrajectory(filename=filename, plot_cov=True, step=1, plot_heading=False)
+    filename = "/home/cho/gtsam-ct-factors/results/lost.csv"
+    filename_steam = "/home/cho/gtsam-ct-factors/results/lost_steam.csv"
+    # plotTrajectory(
+    #     filename=filename,
+    #     filename_steam=filename_steam,
+    #     plot_cov=False,
+    #     step=1,
+    #     plot_heading=False,
+    # )
+    plotTrajectory(
+        filename=filename,
+        filename_steam=None,
+        plot_cov=True,
+        step=1,
+        plot_heading=False,
+    )
+    plotTrajectory(
+        filename=filename_steam,
+        filename_steam=None,
+        plot_cov=True,
+        step=1,
+        plot_heading=False,
+    )
+    plt.show()

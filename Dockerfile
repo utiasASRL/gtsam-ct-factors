@@ -61,9 +61,10 @@ RUN mkdir -p /opt/lgmath \
     && cmake --install . 
 
 # Clone and build STEAM
-RUN mkdir -p /opt/steam && cd $_ \
-    && git clone https://github.com/utiasASRL/steam.git . \
-    && mkdir -p build && cd $_ \
+RUN mkdir -p /opt/steam \
+    && git clone https://github.com/utiasASRL/steam.git /opt/steam \
+    && cd /opt/steam \
+    && mkdir -p build && cd build \
     && cmake .. -DUSE_AMENT=off \
     && cmake --build . -j \
     && cmake --install . 

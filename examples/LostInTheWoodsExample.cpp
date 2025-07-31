@@ -12,7 +12,7 @@ int main(int argc, char* argv[]) {
   string input_file = config["files"]["input"].as<string>();
   string output_file = config["files"]["output"].as<string>();
   string gt_output_file = config["files"]["gt_out"].as<string>();
-  //Load dataset
+  // Load dataset
   DatasetLoader data;
   data.loadFromFile(input_file);
   data.checkSizes();
@@ -46,8 +46,6 @@ int main(int argc, char* argv[]) {
   auto odoNoise = noiseModel::Diagonal::Sigmas(sigma_odom);     // odometry
   auto measNoise =
       noiseModel::Diagonal::Sigmas(sigma_br);  // range-bearing noise
-  Matrix3 Q_wnoa = sigma_wnoa.asDiagonal();
-
   // Create a factor graph
   ExpressionFactorGraph graph;
 
@@ -69,13 +67,11 @@ int main(int argc, char* argv[]) {
     cout << "Adding odometry prior factors " << endl;
 
     for (int i = start + 1; i <= end; i++) {
-      // Define Keys
-      Pose2_ curr(Symbol('x', i));
-      Pose2_ prev(Symbol('x', i - 1));
       // define odometry measurement
       Pose2 odom(data.v[i - 1] * del_t, 0.0, data.om[i - 1] * del_t);
       // add factor to graph
-      graph.addExpressionFactor(between(prev, curr), odom, odoNoise);
+      const auto factor = BetweenFactor<Pose2>(Symbol('x', i - 1), Symbol('x', i), odom, odoNoise);
+      graph.add(factor);
     }
   }
 
@@ -86,7 +82,7 @@ int main(int argc, char* argv[]) {
     for (int i = start + 1; i <= end; i++) {
       graph.add(WNOAMotionFactor<Pose2>(Symbol('x', i - 1), Symbol('v', i - 1),
                                         Symbol('x', i), Symbol('v', i), del_t,
-                                        Q_wnoa));
+                                        sigma_wnoa));
     }
   }
 

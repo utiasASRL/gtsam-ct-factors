@@ -11,6 +11,7 @@
 
 #include "lgmath.hpp"
 #include "steam.hpp"
+#include "steam/trajectory/const_vel/helper.hpp"
 
 using namespace std;
 using namespace steam;
@@ -194,14 +195,15 @@ int saveResultToFile(vector<TrajStateVar>& states, Covariance& cov_post,
     // loop through states
     bool first_state = true;
     for (const auto& state : states) {
-      // extract pose
+      // extract pose (NOTE: b : Body, a : Inertial)
       lgmath::se3::Transformation pose = state.pose->value();
-      Eigen::Vector3d trans = pose.r_ab_inb();
-      lgmath::so3::Rotation rot(pose.C_ba());
-      double theta = rot.vec()[2];
+      Eigen::Vector3d trans = pose.r_ba_ina();  //
+      Eigen::Matrix3d C_ab = pose.C_ba().transpose();
+      double theta = lgmath::so3::Rotation(C_ab)
+                         .vec()[2];  // extract z component of vector
       Eigen::Matrix<double, 6, 6> cov;
       if (first_state) {
-        cov = Eigen::Matrix<double, 6, 6>::Identity() * 10.0;
+        cov = Eigen::Matrix<double, 6, 6>::Identity() * 1e-6;
         first_state = false;
       } else {
         cov = cov_post.query(state.pose);
@@ -262,17 +264,18 @@ int main(int argc, char* argv[]) {
   vector<TrajStateVar> states;
   // Initialization
   for (int i = start; i <= end; i++) {
-    // current velocity for odometry
-    Eigen::Matrix<double, 6, 1> vel(data.v[i], 0.0, 0.0, 0.0, 0.0, data.om[i]);
-    if (i == start ||
-        gt_init) {  // Use gt for initial pose, or if initing from gt
+    // current velocity for odometry (NOTE: Negative signs are required)
+    Eigen::Matrix<double, 6, 1> vel(-data.v[i], 0.0, 0.0, 0.0, 0.0, -data.om[i]);
+    // Use gt for initial pose, or if initing from gt
+    if (i == start || gt_init) {
       // get pose and vel
-      Eigen::Matrix<double, 6, 1> poseVec(data.x_true[i], data.y_true[i], 0.0,
-                                          0.0, 0.0, data.th_true[i]);
-      lgmath::se3::Transformation pose(poseVec);
+      Eigen::Vector3d r_bi_i(data.x_true[i], data.y_true[i], 0.0);
+      Eigen::Vector3d aaxis_bi(0.0, 0.0, -data.th_true[i]);
+      const auto C_bi = lgmath::so3::vec2rot(aaxis_bi);
+      lgmath::se3::Transformation pose(C_bi, r_bi_i);
       // push to vector of states
       TrajStateVar temp;
-      temp.time = Time(i * del_t);
+      temp.time = Time(data.t(i));
       temp.pose = se3::SE3StateVar::MakeShared(pose);
       temp.velocity = vspace::VSpaceStateVar<6>::MakeShared(vel);
       states.emplace_back(temp);
@@ -296,7 +299,9 @@ int main(int argc, char* argv[]) {
   // Add state variables
   for (const auto& state : states) {
     problem.addStateVariable(state.pose);
-    problem.addStateVariable(state.velocity);
+    if (include_wnoa){
+      problem.addStateVariable(state.velocity);
+    }
   }
 
   // Setup WNOA Prior
@@ -308,15 +313,17 @@ int main(int argc, char* argv[]) {
     for (const auto& state : states)
       traj.add(state.time, state.pose, state.velocity);
     traj.addPriorCostTerms(problem);
+    
   }
 
   // Add odometry measurements
   if (include_odom) {
     // Setup shared noise and loss functions
     Eigen::Vector<double, 6> cov_diag;
-    cov_diag << sqrt(data.v_var), sigma_small, sigma_small, sigma_small,
-        sigma_small, sqrt(data.om_var);
-    cov_diag *= del_t;
+    double sigma_small_sq = pow(sigma_small,2);
+    cov_diag << data.v_var, sigma_small_sq, sigma_small_sq, sigma_small_sq,
+        sigma_small_sq, data.om_var;
+    cov_diag *= pow(del_t, 2);
     const auto noise_model =
         steam::StaticNoiseModel<6>::MakeShared(cov_diag.asDiagonal());
     const auto loss_function = steam::L2LossFunc::MakeShared();
@@ -327,7 +334,7 @@ int main(int argc, char* argv[]) {
       // Odometry Measurement
       Eigen::Matrix<double, 6, 1> odom_meas;
       odom_meas << data.v[i - 1], 0.0, 0.0, 0.0, 0.0, data.om[i - 1];
-      odom_meas *= del_t;
+      odom_meas *= -del_t; //NOTE velocity needs to be negated here.
       const auto pose_meas =
           se3::SE3StateVar::MakeShared(se3::SE3StateVar::T(odom_meas));
       pose_meas->locked() = true;  // lock this pose
@@ -335,7 +342,7 @@ int main(int argc, char* argv[]) {
       const auto pose_rel =
           se3::compose(states[ind].pose, se3::inverse(states[ind - 1].pose));
       // define error
-      const auto error_function = se3::tran2vec(compose(pose_meas, pose_rel));
+      const auto error_function = se3::tran2vec(se3::compose(se3::inverse(pose_meas), pose_rel));
       // define cost
       const auto cost_term = WeightedLeastSqCostTerm<6>::MakeShared(
           error_function, noise_model, loss_function);
