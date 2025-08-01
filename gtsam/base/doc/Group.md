@@ -1,4 +1,4 @@
-### Guide to Creating a `Group`
+# Guide to Creating a `Group`
 
 This guide explains the minimal requirements for creating a class that satisfies the `Group` concept in GTSAM. The `Group` is a foundational algebraic concept that precedes the geometric `Manifold` concept. It defines types that have a binary operation (composition), an identity element, and an inverse for every element.
 

@@ -1,4 +1,4 @@
-### Guide to Creating a `MatrixLieGroup` Class in GTSAM (`MatrixLieGroup.md`)
+# Creating a `MatrixLieGroup`
 
 This guide explains how to create a `MatrixLieGroup`, a specific type of `LieGroup` that has a matrix representation. **Please read [Manifold.md](Manifold.md) and [LieGroup.md](LieGroup.md) first.** This document focuses only on the additional requirements for a matrix Lie group.
 

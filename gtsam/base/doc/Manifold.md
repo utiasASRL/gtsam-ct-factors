@@ -1,4 +1,4 @@
-### Guide to Creating a `Manifold` Class
+# Creating a `Manifold` Class
 
 This guide explains the minimal requirements for creating a new `Manifold` class in GTSAM. The manifold is the most fundamental concept in GTSAM for representing non-linear spaces. It also serves as the base for more specialized types like `LieGroup`.
 

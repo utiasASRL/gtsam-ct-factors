@@ -1,4 +1,4 @@
-### Guide to Creating a `LieGroup` Class
+# Creating a `LieGroup`
 
 This guide explains how to create a `LieGroup` class, which builds upon the `Manifold` concept. **Please read [Manifold.md](Manifold.md) first**, as it explains the foundational traits-based design and concept checking used in GTSAM.
 

@@ -1,4 +1,4 @@
-### Guide to Creating a `VectorSpace`
+# Creating a `VectorSpace`
 
 This guide explains the requirements for creating a class that satisfies the `VectorSpace` concept. In GTSAM, a `VectorSpace` is a specialized `AdditiveGroup` that adds the notion of scalar multiplication and a vector norm. This is the concept that should be satisfied by types that behave like mathematical vectors.
 
