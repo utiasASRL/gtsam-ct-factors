@@ -8,8 +8,9 @@ Utilities to define group, manifold, and Lie group classes, as well as concept c
 - [Lie.h](Lie.h) - Implements the Lie group concept combining group operations with manifold structure. See [LieGroup](doc/LieGroup.md) docs.
 - [MatrixLieGroup.h](MatrixLieGroup.h) - Base class for matrix Lie groups (SO(n), SE(n), SL(n), etc.) with Hat/Vee operators. See [MatrixLieGroup](doc/MatrixLieGroup.md) docs.
 
-And, less crucial:
+And, less common:
 - [Group.h](Group.h) - Defines the group concept with identity, inverse, and composition operations. See [Group](doc/Group.md) docs.
+- [VectorSpace.h](VectorSpace.h) - Defines the vector space concept. See [VectorSpace](doc/VectorSpace.md) docs.
 - [ProductLieGroup.h](ProductLieGroup.h) - Cartesian products of Lie groups
 - [lieProxies.h](lieProxies.h) - Proxy functions for testing
 
