@@ -10,9 +10,12 @@
 #include <gtsam/base/MatrixLieGroup.h>
 #include <gtsam/base/OptionalJacobian.h>
 #include <gtsam/base/Vector.h>
-#include <gtsam/base/std_optional_serialization.h>
 #include <gtsam/config.h>
 #include <gtsam/dllexport.h>
+
+#ifdef GTSAM_ENABLE_BOOST_SERIALIZATION
+#include <gtsam/base/MatrixSerialization.h>
+#endif
 
 #include <string>
 
@@ -110,12 +113,7 @@ class GTSAM_EXPORT SL4 : public MatrixLieGroup<SL4, 15, 4> {
   friend class boost::serialization::access;
   template <class Archive>
   void serialize(Archive& ar, const unsigned int /*version*/) {
-    for (int i = 0; i < 4; ++i) {
-      for (int j = 0; j < 4; ++j) {
-        std::string name = "T" + std::to_string(i) + std::to_string(j);
-        ar& boost::serialization::make_nvp(name.c_str(), T_(i, j));
-      }
-    }
+    ar& BOOST_SERIALIZATION_NVP(T_);
   }
 #endif
 };  // \class SL4
