@@ -4,13 +4,9 @@ This guide explains how to create a `MatrixLieGroup`, a specific type of `LieGro
 
 A `MatrixLieGroup` has all the properties of a `LieGroup`, but its structure is tied to an underlying `N x N` matrix. This allows for additional operations specific to matrix algebra.
 
----
-
 ### 1. From Lie Group to Matrix Lie Group
 
 To implement a `MatrixLieGroup`, you inherit from `gtsam::MatrixLieGroup<MyGroup, D, N>`, which in turn inherits from `gtsam::LieGroup`. This inheritance provides even more functionality for free.
-
----
 
 ### 2. Minimal Additional Requirements
 
@@ -29,16 +25,12 @@ You must implement everything from the `LieGroup.md` guide, plus the following:
     *   `static gtsam::MatrixN Hat(const gtsam::VectorD& xi);`: Maps a `D`-dimensional tangent vector to its `N x N` matrix representation in the Lie algebra.
     *   `static gtsam::VectorD Vee(const gtsam::MatrixN& X);`: The inverse of `Hat`, mapping an `N x N` Lie algebra matrix back to a `D`-dimensional vector.
 
----
-
 ### 3. What You Get for Free (Additionally)
 
 By inheriting from `gtsam::MatrixLieGroup`, you get:
 
 *   **A default `AdjointMap()` implementation**: This generic version works by repeatedly calling your `Hat` and `Vee` methods. While it is correct, it is often slow. For performance-critical applications, you should still provide a faster, closed-form `AdjointMap()` implementation in your class, which will override the default.
 *   **A `vec()` method**: This vectorizes the `N x N` matrix representation of your group element into an `(N*N) x 1` vector.
-
----
 
 ### 4. Traits and Concept Checking
 

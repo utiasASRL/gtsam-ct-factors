@@ -4,15 +4,11 @@ This guide explains how to create a `LieGroup` class, which builds upon the `Man
 
 A Lie group is a manifold that is also a group, with smooth group operations. In GTSAM, this means it has all the properties of a `Manifold` plus notions of composition, identity, and inversion. GTSAM uses the [Curiously Recurring Template Pattern (CRTP)](https://en.wikipedia.org/wiki/Curiously_recurring_template_pattern) to automatically provide many of the more complex manifold and group methods.
 
----
-
 ### 1. From Manifold to Lie Group
 
-A Lie group has a special point: the **identity element**. This allows us to define global `Expmap` and `Logmap` operations that are centered at this identity. The `retract` and `localCoordinates` methods required by the `Manifold` concept are then implemented in terms of these identity-centered operations.
+A Lie group has a special element: the **identity element**. This allows us to define global `Expmap` and `Logmap` operations that are centered at this identity. The `retract` and `localCoordinates` methods required by the `Manifold` concept are then implemented in terms of these identity-centered operations.
 
 To implement a Lie group, you inherit from `gtsam::LieGroup<MyGroup, D>`.
-
----
 
 ### 2. Minimal Implementation Requirements for `MyGroup`
 
@@ -48,7 +44,16 @@ To implement a Lie group, you inherit from `gtsam::LieGroup<MyGroup, D>`.
     *   `void print(const std::string& s) const;`
     *   `bool equals(const MyGroup& other, double tol) const;`
 
----
+#### Handling Dynamically-Sized Lie Groups
+
+If your Lie group can change size at runtime, you must make two corresponding changes:
+
+1.  Set the static dimension to `Eigen::Dynamic` in the `LieGroup` template parameter:
+    *   `class MyGroup : public gtsam::LieGroup<MyGroup, Eigen::Dynamic> { ... };`
+2.  You **must** also provide an instance method that returns the object's runtime dimension:
+    *   `int dim() const;`
+
+The `LieGroup` framework relies on this method to correctly size Jacobians and other matrices at runtime.
 
 ### 3. What You Get for Free (via CRTP)
 
@@ -60,8 +65,6 @@ By inheriting from `gtsam::LieGroup` and defining the primitives above, your cla
 *   `localCoordinates(const MyGroup& other)`: Implemented as `ChartAtOrigin::Local(between(other))`.
 *   `expmap(const VectorD& v)`: Implemented as `compose(Expmap(v))`.
 *   `logmap(const MyGroup& other)`: Implemented as `Logmap(between(other))`.
-
----
 
 ### 4. Traits and Concept Checking
 

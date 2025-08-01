@@ -341,6 +341,7 @@ class SOn {
   gtsam::SOn retract(gtsam::Vector v) const;
   gtsam::Vector localCoordinates(const gtsam::SOn& Q) const;
   static gtsam::SOn Expmap(gtsam::Vector v);
+  size_t dim() const;
 
   // Other methods
   gtsam::Vector vec() const;

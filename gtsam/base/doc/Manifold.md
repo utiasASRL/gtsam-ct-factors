@@ -9,8 +9,6 @@ GTSAM uses a combination of two design patterns:
 
 More details on these mechanisms can be found in [GTSAM-Concepts](GTSAM-Concepts.md).
 
----
-
 ### 1. The Core Idea: Retraction and Local Coordinates
 
 A manifold is defined by two fundamental operations that must be inverses of each other:
@@ -19,8 +17,6 @@ A manifold is defined by two fundamental operations that must be inverses of eac
 *   **`localCoordinates(const ManifoldType& other) const`**: This operation computes the tangent space vector that connects the current point (`*this`, the origin) to another point `other` on the manifold. It's a generalization of vector subtraction.
 
 These operations must satisfy the invariant that `a.retract(a.localCoordinates(b))` should be approximately equal to `b`.
-
----
 
 ### 2. Minimal Implementation Requirements
 
@@ -57,7 +53,16 @@ To create a new class `MyManifold`, you must provide the following components. N
     }
     ```
 
----
+#### A Note on Dynamically-Sized Manifolds
+
+If your manifold can change size at runtime (for example, a vector of variable length), you must make two corresponding changes to the requirements:
+
+1.  Set the static dimension to `Eigen::Dynamic`:
+    *   `static const int dimension = Eigen::Dynamic;`
+2.  You **must** also provide an instance method that returns the object's runtime dimension:
+    *   `int dim() const;`
+
+This `dim()` method is required so that the framework can query an object for its specific dimension when it is not known at compile time.
 
 ### 3. How the `traits` Specialization Works
 
