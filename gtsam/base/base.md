@@ -4,12 +4,12 @@ The base module provides fundamental data structures, utilities, and mathematica
 
 ## Core Mathematical Concepts
 Utilities to define group, manifold, and Lie group classes, as well as concept checks for them.
-- Group.h - Defines the group concept with identity, inverse, and composition operations
-- Manifold.h - Defines the concept for differentiable manifolds with retract/local operations
-- Lie.h - Implements the Lie group concept combining group operations with manifold structure
-- [MatrixLieGroup.h](MatrixLieGroup.h) - Base class for matrix Lie groups (SO(n), SE(n), SL(n), etc.) with Hat/Vee operators
+- [Manifold.h](Manifold.h) - Defines the concept for differentiable manifolds with retract/local operations. See [Manifold](doc/Manifold.md) docs.
+- [Lie.h](Lie.h) - Implements the Lie group concept combining group operations with manifold structure. See [LieGroup](doc/LieGroup.md) docs.
+- [MatrixLieGroup.h](MatrixLieGroup.h) - Base class for matrix Lie groups (SO(n), SE(n), SL(n), etc.) with Hat/Vee operators. See [MatrixLieGroup](doc/MatrixLieGroup.md) docs.
 
 And, less crucial:
+- [Group.h](Group.h) - Defines the group concept with identity, inverse, and composition operations. See [Group](doc/Group.md) docs.
 - ProductLieGroup.h - Cartesian products of Lie groups
 - lieProxies.h - Proxy functions for testing
 ## Linear Algebra
