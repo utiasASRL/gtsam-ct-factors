@@ -46,6 +46,10 @@ class GTSAM_EXPORT EmptyCal {
   virtual ~EmptyCal() = default;
   using shared_ptr = std::shared_ptr<EmptyCal>;
 
+  /// return DOF, dimensionality of tangent space
+  inline static size_t Dim() { return 0; }
+  size_t dim() const { return 0; }
+
   void print(const std::string& s) const {
     std::cout << "empty calibration: " << s << std::endl;
   }
@@ -212,6 +216,10 @@ class GTSAM_EXPORT SphericalCamera {
   Vector defaultErrorWhenTriangulatingBehindCamera() const {
     return Eigen::Matrix<double, traits<Point2>::dimension, 1>::Constant(0.0);
   }
+
+  size_t dim() const { return 6; }
+
+  static size_t Dim() { return 6; }
 
  private:
 #if GTSAM_ENABLE_BOOST_SERIALIZATION

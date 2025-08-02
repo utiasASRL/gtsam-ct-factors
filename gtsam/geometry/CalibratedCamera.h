@@ -321,6 +321,14 @@ public:
     PinholeBase::print(s);
   }
 
+  inline size_t dim() const {
+    return dimension;
+  }
+
+  inline static size_t Dim() {
+    return dimension;
+  }
+
   /// @}
   /// @name Transformations and measurement functions
   /// @{

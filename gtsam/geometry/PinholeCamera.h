@@ -181,6 +181,14 @@ public:
   /// @name Manifold
   /// @{
 
+  size_t dim() const {
+    return dimension;
+  }
+
+  static size_t Dim() {
+    return dimension;
+  }
+
   typedef Eigen::Matrix<double, dimension, 1> VectorK6;
 
   /// move a cameras according to d

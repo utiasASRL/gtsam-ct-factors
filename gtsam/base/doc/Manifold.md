@@ -33,6 +33,8 @@ To create a new class `MyManifold`, you must provide the following components. N
     *   `using ChartJacobian = gtsam::OptionalJacobian<D, D>;`
 
 3.  **Core Manifold Methods**:
+    *   `Dim()` returns positive integer or Eigen::Dynamic
+    *   `dim()` returns fixed-size or dynamic size, if dimension==Eigen::Dynamic
     *   `MyManifold retract(const TangentVector& v, ChartJacobian H_this = {}, ChartJacobian H_v = {}) const;`
     *   `TangentVector localCoordinates(const MyManifold& other, ChartJacobian H_this = {}, ChartJacobian H_other = {}) const;`
 
@@ -52,17 +54,6 @@ To create a new class `MyManifold`, you must provide the following components. N
     struct traits<const MyManifold> : public internal::Manifold<MyManifold> {};
     }
     ```
-
-#### A Note on Dynamically-Sized Manifolds
-
-If your manifold can change size at runtime (for example, a vector of variable length), you must make two corresponding changes to the requirements:
-
-1.  Set the static dimension to `Eigen::Dynamic`:
-    *   `static const int dimension = Eigen::Dynamic;`
-2.  You **must** also provide an instance method that returns the object's runtime dimension:
-    *   `int dim() const;`
-
-This `dim()` method is required so that the framework can query an object for its specific dimension when it is not known at compile time.
 
 ### 3. How the `traits` Specialization Works
 

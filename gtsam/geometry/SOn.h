@@ -178,6 +178,7 @@ class SO : public MatrixLieGroup<SO<N>, internal::DimensionSO(N), N> {
 
   /// Multiplication
   SO operator*(const SO& other) const {
+    assert(dim() == other.dim());
     return SO(matrix_ * other.matrix_);
   }
 
@@ -187,9 +188,7 @@ class SO : public MatrixLieGroup<SO<N>, internal::DimensionSO(N), N> {
     return SO();
   }
 
-  // Provide dim() if dimension == Eigen::Dynamic
-  // SFINAE constraint: IsDynamic<N_> ensures this method is only available
-  // for dynamically-sized SO(n) groups (i.e., when N == Eigen::Dynamic).
+  /// SO<N> identity for N == Eigen::Dynamic
   template <int N_ = N, typename = IsDynamic<N_>>
   static SO Identity(size_t n = 0) {
     return SO(n);
@@ -206,15 +205,13 @@ class SO : public MatrixLieGroup<SO<N>, internal::DimensionSO(N), N> {
   using ChartJacobian = OptionalJacobian<dimension, dimension>;
 
   // Calculate manifold dimensionality for SO(n).
-  // Available as dimension for fixed N.
+  // Available as dimension or Dim() for fixed N.
   static size_t Dimension(size_t n) { return n * (n - 1) / 2; }
 
   // Calculate ambient dimension n from manifold dimensionality d.
   static size_t AmbientDim(size_t d) { return (1 + std::sqrt(1 + 8 * d)) / 2; }
 
   // Calculate run-time dimensionality of manifold.
-  // Only provide this if dimension == Eigen::Dynamic
-  template <int N_ = N, typename = IsDynamic<N_>>
   size_t dim() const { return Dimension(static_cast<size_t>(matrix_.rows())); }
 
   /**
