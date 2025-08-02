@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.16)
 project(steam-regression-test)
 
+
 # Compiler setup (assumed to be GNU)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -15,8 +16,22 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
 find_package(Eigen3 3.3 REQUIRED NO_MODULE)
 find_package(yaml-cpp CONFIG REQUIRED)
 
+include(FetchContent)
+FetchContent_Declare(
+  googletest
+  URL https://github.com/google/googletest/archive/03597a01ee50ed33e9dfd640b249b4be3799d395.zip
+)
+FetchContent_MakeAvailable(googletest)
+
 # Find and link to lgmath and steam
 find_package(steam REQUIRED)
 link_libraries(steam yaml-cpp::yaml-cpp Eigen3::Eigen)  # link to all targets below, no need to specify include directories.
 
 add_executable(LostInTheWoods LostInTheWoodsSteam.cpp)
+
+enable_testing()
+add_executable(TestBR2DErrorEval test_br2d_error_eval.cpp)
+target_link_libraries(TestBR2DErrorEval GTest::gtest_main)
+include(GoogleTest)
+gtest_discover_tests(TestBR2DErrorEval)
+
