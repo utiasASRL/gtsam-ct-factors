@@ -138,6 +138,7 @@ TEST(Similarity3, Multiplication) {
 
 //******************************************************************************
 TEST(Similarity3, Manifold) {
+  EXPECT_LONGS_EQUAL(7, Similarity3::Dim());
   Vector z = Vector7::Zero();
   Similarity3 sim;
   EXPECT(sim.retract(z) == sim);

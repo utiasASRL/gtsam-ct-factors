@@ -44,6 +44,7 @@ TEST(SOn, SOn0) {
   const auto R = SOn(0);
   EXPECT_LONGS_EQUAL(0, R.rows());
   EXPECT_LONGS_EQUAL(Eigen::Dynamic, SOn::dimension);
+  EXPECT_LONGS_EQUAL(Eigen::Dynamic, SOn::Dim());
   EXPECT_LONGS_EQUAL(0, R.dim());
   EXPECT_LONGS_EQUAL(0, traits<SOn>::GetDimension(R));
 }
@@ -54,6 +55,7 @@ TEST(SOn, SOn5) {
   const auto R = SOn(5);
   EXPECT_LONGS_EQUAL(5, R.rows());
   EXPECT_LONGS_EQUAL(Eigen::Dynamic, SOn::dimension);
+  EXPECT_LONGS_EQUAL(Eigen::Dynamic, SOn::Dim());
   EXPECT_LONGS_EQUAL(10, R.dim());
   EXPECT_LONGS_EQUAL(10, traits<SOn>::GetDimension(R));
 }
@@ -64,6 +66,8 @@ TEST(SOn, SO0) {
   const auto R = SO<2>();
   EXPECT_LONGS_EQUAL(2, R.rows());
   EXPECT_LONGS_EQUAL(1, SO<2>::dimension);
+  EXPECT_LONGS_EQUAL(1, SO<2>::Dim());
+  EXPECT_LONGS_EQUAL(1, R.dim());
   EXPECT_LONGS_EQUAL(1, traits<SO<2>>::GetDimension(R));
 }
 
@@ -73,6 +77,8 @@ TEST(SOn, SO5) {
   const auto R = SO<5>();
   EXPECT_LONGS_EQUAL(5, R.rows());
   EXPECT_LONGS_EQUAL(10, SO<5>::dimension);
+  EXPECT_LONGS_EQUAL(10, SO<5>::Dim());
+  EXPECT_LONGS_EQUAL(10, R.dim());
   EXPECT_LONGS_EQUAL(10, traits<SO<5>>::GetDimension(R));
 }
 
