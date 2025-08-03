@@ -121,8 +121,8 @@ Vector3 PreintegratedAhrsMeasurements::computeError(
 
   // Compute the error vector
   Matrix3 D_error_Rj, D_error_predict;
-  Vector3 error = Rj.localCoordinates(predicted_Rj, H2 ? &D_error_Rj : nullptr,
-                                      H1 || H3 ? &D_error_predict : nullptr);
+  Vector3 error = Rj.logmap(predicted_Rj, H2 ? &D_error_Rj : nullptr,
+                            H1 || H3 ? &D_error_predict : nullptr);
 
   // Jacobians using the chain rule
   if (H1) *H1 = D_error_predict * D_predict_Ri;
