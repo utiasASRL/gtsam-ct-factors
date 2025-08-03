@@ -27,6 +27,7 @@
 #include <gtsam/navigation/AHRSFactor.h>
 #include <gtsam/navigation/ScenarioRunner.h>
 #include <gtsam/nonlinear/LevenbergMarquardtOptimizer.h>
+#include <gtsam/nonlinear/LevenbergMarquardtParams.h>
 #include <gtsam/nonlinear/Marginals.h>
 #include <gtsam/nonlinear/NonlinearFactorGraph.h>
 #include <gtsam/nonlinear/factorTesting.h>
@@ -36,7 +37,7 @@
 #include <list>
 #include <memory>
 
-#include "gtsam/nonlinear/LevenbergMarquardtParams.h"
+#include "imuFactorTesting.h"
 
 using namespace std::placeholders;
 using namespace std;
@@ -45,8 +46,6 @@ using namespace gtsam;
 // Convenience for named keys
 using symbol_shorthand::B;
 using symbol_shorthand::R;
-
-Vector3 kZeroOmegaCoriolis(0, 0, 0);
 
 // Define covariance matrices
 double gyroNoiseVar = 0.01;
@@ -596,10 +595,7 @@ TEST(AHRSFactor, Accelerating) {
                                       Vector3(a, 0, 0));
 
   const double T = 3.0;  // seconds
-  Matrix3 gyroscopeCovariance = I_3x3 * 0.04;
-  auto params =
-      std::make_shared<PreintegratedRotationParams>(gyroscopeCovariance);
-  AhrsScenarioRunner runner(scenario, params, T / 10);
+  AhrsScenarioRunner runner(scenario, testing::Params(), T / 10);
 
   PreintegratedAhrsMeasurements pim = runner.integrate(T);
   EXPECT(assert_equal(scenario.rotation(T), runner.predict(pim), 1e-9));

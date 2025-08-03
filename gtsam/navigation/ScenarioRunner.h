@@ -155,19 +155,12 @@ class GTSAM_EXPORT CombinedScenarioRunner : public ScenarioRunner {
  */
 class GTSAM_EXPORT AhrsScenarioRunner : public ScenarioRunner {
  public:
-  typedef std::shared_ptr<PreintegratedRotationParams> SharedParams;
-
- private:
-  const SharedParams p_;
-
- public:
   AhrsScenarioRunner(const Scenario& scenario, const SharedParams& p,
                      double imuSampleTime = 1.0 / 100.0,
                      const Bias& bias = Bias())
       : ScenarioRunner(scenario,
                        std::static_pointer_cast<PreintegrationParams>(p),
-                       imuSampleTime, bias),
-        p_(p) {}
+                       imuSampleTime, bias) {}
 
   /// Integrate measurements for T seconds into a PreintegratedAhrsMeasurements
   PreintegratedAhrsMeasurements integrate(double T,
