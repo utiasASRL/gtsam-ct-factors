@@ -17,6 +17,7 @@
 
 #pragma once
 #include <gtsam/linear/Sampler.h>
+#include <gtsam/navigation/AHRSFactor.h>
 #include <gtsam/navigation/CombinedImuFactor.h>
 #include <gtsam/navigation/ImuFactor.h>
 #include <gtsam/navigation/Scenario.h>
@@ -145,6 +146,41 @@ class GTSAM_EXPORT CombinedScenarioRunner : public ScenarioRunner {
   /// Compute a Monte Carlo estimate of the predict covariance using N samples
   Eigen::Matrix<double, 15, 15> estimateCovariance(
       double T, size_t N = 1000, const Bias& estimatedBias = Bias()) const;
+};
+
+/*
+ *  Simple class to test navigation scenarios with
+ * PreintegratedAhrsMeasurements. Takes a trajectory scenario as input, and can
+ * generate AHRS measurements.
+ */
+class GTSAM_EXPORT AhrsScenarioRunner : public ScenarioRunner {
+ public:
+  typedef std::shared_ptr<PreintegratedRotationParams> SharedParams;
+
+ private:
+  const SharedParams p_;
+
+ public:
+  AhrsScenarioRunner(const Scenario& scenario, const SharedParams& p,
+                     double imuSampleTime = 1.0 / 100.0,
+                     const Bias& bias = Bias())
+      : ScenarioRunner(scenario,
+                       std::static_pointer_cast<PreintegrationParams>(p),
+                       imuSampleTime, bias),
+        p_(p) {}
+
+  /// Integrate measurements for T seconds into a PreintegratedAhrsMeasurements
+  PreintegratedAhrsMeasurements integrate(double T,
+                                          const Bias& estimatedBias = Bias(),
+                                          bool corrupted = false) const;
+
+  /// Predict the next rotation given a PreintegratedAhrsMeasurements
+  Rot3 predict(const PreintegratedAhrsMeasurements& pim,
+               const Bias& estimatedBias = Bias()) const;
+
+  /// Compute a Monte Carlo estimate of the predict covariance using N samples
+  Matrix3 estimateCovariance(double T, size_t N = 1000,
+                             const Bias& estimatedBias = Bias()) const;
 };
 
 }  // namespace gtsam

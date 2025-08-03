@@ -25,6 +25,7 @@
 #include <gtsam/inference/Symbol.h>
 #include <gtsam/linear/GaussianFactorGraph.h>
 #include <gtsam/navigation/AHRSFactor.h>
+#include <gtsam/navigation/ScenarioRunner.h>
 #include <gtsam/nonlinear/LevenbergMarquardtOptimizer.h>
 #include <gtsam/nonlinear/Marginals.h>
 #include <gtsam/nonlinear/NonlinearFactorGraph.h>
@@ -34,6 +35,7 @@
 #include <cmath>
 #include <list>
 #include <memory>
+
 #include "gtsam/nonlinear/LevenbergMarquardtParams.h"
 
 using namespace std::placeholders;
@@ -476,6 +478,32 @@ TEST(AHRSFactor, bodyPSensorWithBias) {
     Rot3 actualRot = result.at<Rot3>(R(i));
     EXPECT(assert_equal(expectedRot, actualRot, 1e-3));
   }
+}
+
+/* ************************************************************************* */
+TEST(AHRSFactor, Accelerating) {
+  const double a = 0.2, v = 50;
+
+  // Set up body pointing towards y axis, and start at 10,20,0 with velocity
+  // going in X The body itself has Z axis pointing down
+  const Rot3 nRb(Point3(0, 1, 0), Point3(1, 0, 0), Point3(0, 0, -1));
+  const Point3 initial_position(10, 20, 0);
+  const Vector3 initial_velocity(v, 0, 0);
+
+  const AcceleratingScenario scenario(nRb, initial_position, initial_velocity,
+                                      Vector3(a, 0, 0));
+
+  const double T = 3.0;  // seconds
+  Matrix3 gyroscopeCovariance = I_3x3 * 0.04;
+  auto params =
+      std::make_shared<PreintegratedRotationParams>(gyroscopeCovariance);
+  AhrsScenarioRunner runner(scenario, params, T / 10);
+
+  PreintegratedAhrsMeasurements pim = runner.integrate(T);
+  EXPECT(assert_equal(scenario.rotation(T), runner.predict(pim), 1e-9));
+
+  Matrix3 estimatedCov = runner.estimateCovariance(T, 1000);
+  EXPECT(assert_equal(estimatedCov, pim.preintMeasCov(), 0.01));
 }
 
 //******************************************************************************
