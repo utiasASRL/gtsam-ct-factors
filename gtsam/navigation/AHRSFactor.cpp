@@ -197,12 +197,6 @@ Vector AHRSFactor::evaluateError(const Rot3& Ri, const Rot3& Rj,
 }
 
 //------------------------------------------------------------------------------
-Rot3 AHRSFactor::Predict(const Rot3& Ri, const Vector3& bias,
-                         const PreintegratedAhrsMeasurements& pim) {
-  return pim.predict(Ri, bias);
-}
-
-//------------------------------------------------------------------------------
 AHRSFactor::AHRSFactor(Key Ri, Key rot_j, Key bias,
                        const PreintegratedAhrsMeasurements& pim,
                        const Vector3& omegaCoriolis,
@@ -225,7 +219,7 @@ Rot3 AHRSFactor::predict(const Rot3& Ri, const Vector3& bias,
   p->body_P_sensor = body_P_sensor;
   PreintegratedAhrsMeasurements newPim = pim;
   newPim.p_ = p;
-  return Predict(Ri, bias, newPim);
+  return newPim.predict(Ri, bias);
 }
 
 }  // namespace gtsam

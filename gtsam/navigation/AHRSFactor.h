@@ -208,11 +208,6 @@ class GTSAM_EXPORT AHRSFactor : public NoiseModelFactorN<Rot3, Rot3, Vector3> {
                        OptionalMatrixType H1, OptionalMatrixType H2,
                        OptionalMatrixType H3) const override;
 
-  /// predicted states from IMU
-  /// TODO(frank): relationship with PIM predict ??
-  static Rot3 Predict(const Rot3& Ri, const Vector3& bias,
-                      const PreintegratedAhrsMeasurements& pim);
-
   /// @deprecated constructor, but used in tests.
   AHRSFactor(Key Ri, Key Rj, Key bias, const PreintegratedAhrsMeasurements& pim,
              const Vector3& omegaCoriolis,

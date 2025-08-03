@@ -177,7 +177,7 @@ PreintegratedAhrsMeasurements AhrsScenarioRunner::integrate(
 Rot3 AhrsScenarioRunner::predict(const PreintegratedAhrsMeasurements& pim,
                                  const Bias& estimatedBias) const {
   const Rot3 rot_i(scenario_.pose(0).rotation());
-  return AHRSFactor::Predict(rot_i, estimatedBias.gyroscope(), pim);
+  return pim.predict(rot_i, estimatedBias.gyroscope());
 }
 
 Matrix3 AhrsScenarioRunner::estimateCovariance(
