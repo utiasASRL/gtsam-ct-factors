@@ -20,9 +20,9 @@
 #pragma once
 
 /* GTSAM includes */
+#include <gtsam/geometry/Pose3.h>
 #include <gtsam/navigation/PreintegratedRotation.h>
 #include <gtsam/nonlinear/NonlinearFactor.h>
-#include <gtsam/geometry/Pose3.h>
 
 #include <optional>
 
@@ -31,19 +31,20 @@ namespace gtsam {
 /**
  * PreintegratedAHRSMeasurements accumulates (integrates) the gyroscope
  * measurements (rotation rates) and the corresponding covariance matrix.
- * Can be built incrementally so as to avoid costly integration at time of factor construction.
+ * Can be built incrementally so as to avoid costly integration at time of
+ * factor construction.
  */
-class GTSAM_EXPORT PreintegratedAhrsMeasurements : public PreintegratedRotation {
-
+class GTSAM_EXPORT PreintegratedAhrsMeasurements
+    : public PreintegratedRotation {
  protected:
-
-  Vector3 biasHat_; ///< Angular rate bias values used during preintegration.
-  Matrix3 preintMeasCov_; ///< Covariance matrix of the preintegrated measurements (first-order propagation from *measurementCovariance*)
+  Vector3 biasHat_;  ///< Angular rate bias values used during preintegration.
+  Matrix3 preintMeasCov_;  ///< Covariance matrix of the preintegrated
+                           ///< measurements (first-order propagation from
+                           ///< *measurementCovariance*)
 
   friend class AHRSFactor;
 
  public:
-
   /// Default constructor, only for serialization and wrappers
   PreintegratedAhrsMeasurements() {}
 
@@ -52,8 +53,8 @@ class GTSAM_EXPORT PreintegratedAhrsMeasurements : public PreintegratedRotation 
    *  @param bias Current estimate of rotation rate biases
    */
   PreintegratedAhrsMeasurements(const std::shared_ptr<Params>& p,
-      const Vector3& biasHat) :
-      PreintegratedRotation(p), biasHat_(biasHat) {
+                                const Vector3& biasHat)
+      : PreintegratedRotation(p), biasHat_(biasHat) {
     resetIntegration();
   }
 
@@ -66,18 +67,16 @@ class GTSAM_EXPORT PreintegratedAhrsMeasurements : public PreintegratedRotation 
    *  @param delRdelBiasOmega: Jacobian of rotation wrt. to gyro bias
    *  @param preint_meas_cov: Pre-integration covariance
    */
-  PreintegratedAhrsMeasurements(
-      const std::shared_ptr<Params>& p,
-      const Vector3& bias_hat,
-      double deltaTij,
-      const Rot3& deltaRij,
-      const Matrix3& delRdelBiasOmega,
-      const Matrix3& preint_meas_cov) :
-      PreintegratedRotation(p, deltaTij, deltaRij, delRdelBiasOmega),
-      biasHat_(bias_hat),
-      preintMeasCov_(preint_meas_cov) {}
+  PreintegratedAhrsMeasurements(const std::shared_ptr<Params>& p,
+                                const Vector3& bias_hat, double deltaTij,
+                                const Rot3& deltaRij,
+                                const Matrix3& delRdelBiasOmega,
+                                const Matrix3& preint_meas_cov)
+      : PreintegratedRotation(p, deltaTij, deltaRij, delRdelBiasOmega),
+        biasHat_(bias_hat),
+        preintMeasCov_(preint_meas_cov) {}
 
-  Params& p() const { return *std::static_pointer_cast<Params>(p_);}
+  Params& p() const { return *std::static_pointer_cast<Params>(p_); }
   const Vector3& biasHat() const { return biasHat_; }
   const Matrix3& preintMeasCov() const { return preintMeasCov_; }
 
@@ -85,7 +84,8 @@ class GTSAM_EXPORT PreintegratedAhrsMeasurements : public PreintegratedRotation 
   void print(const std::string& s = "Preintegrated Measurements: ") const;
 
   /// equals
-  bool equals(const PreintegratedAhrsMeasurements& expected, double tol = 1e-9) const;
+  bool equals(const PreintegratedAhrsMeasurements& expected,
+              double tol = 1e-9) const;
 
   /// Reset integrated quantities to zero
   void resetIntegration();
@@ -103,12 +103,39 @@ class GTSAM_EXPORT PreintegratedAhrsMeasurements : public PreintegratedRotation 
 
   /// Predict bias-corrected incremental rotation
   /// TODO: The matrix Hbias is the derivative of predict? Unit-test?
-  Vector3 predict(const Vector3& bias, OptionalJacobian<3,3> H = {}) const;
+  Vector3 predict(const Vector3& bias, OptionalJacobian<3, 3> H = {}) const;
+
+  /**
+   * Predicts the orientation at time j given the orientation at time i and
+   * the bias estimate. This is the new recommended predict function.
+   * @param rot_i   Orientation at time i
+   * @param bias    The bias estimate
+   * @return The predicted orientation at time j
+   */
+  Rot3 predict(const Rot3& rot_i, const Vector3& bias) const;
+
+  /**
+   * Calculate the error between the predicted and actual rotation.
+   * This is the modernized method that moves the logic from the factor
+   * into the PIM class.
+   * @param rot_i The orientation at time i
+   * @param rot_j The orientation at time j
+   * @param bias The gyroscope bias
+   * @param H1 Optional Jacobian of the error with respect to rot_i
+   * @param H2 Optional Jacobian of the error with respect to rot_j
+   * @param H3 Optional Jacobian of the error with respect to bias
+   * @return A 3D vector containing the rotation error.
+   */
+  Vector3 computeError(const Rot3& rot_i, const Rot3& rot_j,
+                       const Vector3& bias,
+                       gtsam::OptionalJacobian<3, 3> H1 = {},
+                       gtsam::OptionalJacobian<3, 3> H2 = {},
+                       gtsam::OptionalJacobian<3, 3> H3 = {}) const;
 
   // This function is only used for test purposes
   // (compare numerical derivatives wrt analytic ones)
-  static Vector DeltaAngles(const Vector& msr_gyro_t, const double msr_dt,
-      const Vector3& delta_angles);
+  static Vector3 DeltaAngles(const Vector3& msr_gyro_t, double msr_dt,
+                             const Vector3& delta_angles);
 
   /// @deprecated constructor, but used in tests.
   PreintegratedAhrsMeasurements(const Vector3& biasHat,
@@ -118,29 +145,26 @@ class GTSAM_EXPORT PreintegratedAhrsMeasurements : public PreintegratedRotation 
     resetIntegration();
   }
 
-private:
-
+ private:
 #if GTSAM_ENABLE_BOOST_SERIALIZATION
   /** Serialization function */
   friend class boost::serialization::access;
-  template<class ARCHIVE>
-  void serialize(ARCHIVE & ar, const unsigned int /*version*/) {
-    ar & BOOST_SERIALIZATION_BASE_OBJECT_NVP(PreintegratedRotation);
-    ar & BOOST_SERIALIZATION_NVP(p_);
-    ar & BOOST_SERIALIZATION_NVP(biasHat_);
+  template <class ARCHIVE>
+  void serialize(ARCHIVE& ar, const unsigned int /*version*/) {
+    ar& BOOST_SERIALIZATION_BASE_OBJECT_NVP(PreintegratedRotation);
+    ar& BOOST_SERIALIZATION_NVP(p_);
+    ar& BOOST_SERIALIZATION_NVP(biasHat_);
   }
 #endif
 };
 
-class GTSAM_EXPORT AHRSFactor: public NoiseModelFactorN<Rot3, Rot3, Vector3> {
-
+class GTSAM_EXPORT AHRSFactor : public NoiseModelFactorN<Rot3, Rot3, Vector3> {
   typedef AHRSFactor This;
   typedef NoiseModelFactorN<Rot3, Rot3, Vector3> Base;
 
   PreintegratedAhrsMeasurements _PIM_;
 
-public:
-
+ public:
   // Provide access to the Matrix& version of evaluateError:
   using Base::evaluateError;
 
@@ -162,17 +186,16 @@ public:
    * @param preintegratedMeasurements preintegrated measurements
    */
   AHRSFactor(Key rot_i, Key rot_j, Key bias,
-      const PreintegratedAhrsMeasurements& preintegratedMeasurements);
+             const PreintegratedAhrsMeasurements& preintegratedMeasurements);
 
-  ~AHRSFactor() override {
-  }
+  ~AHRSFactor() override {}
 
   /// @return a deep copy of this factor
   gtsam::NonlinearFactor::shared_ptr clone() const override;
 
   /// print
   void print(const std::string& s, const KeyFormatter& keyFormatter =
-      DefaultKeyFormatter) const override;
+                                       DefaultKeyFormatter) const override;
 
   /// equals
   bool equals(const NonlinearFactor&, double tol = 1e-9) const override;
@@ -186,8 +209,9 @@ public:
 
   /// vector of errors
   Vector evaluateError(const Rot3& rot_i, const Rot3& rot_j,
-      const Vector3& bias, OptionalMatrixType H1,
-      OptionalMatrixType H2, OptionalMatrixType H3) const override;
+                       const Vector3& bias, OptionalMatrixType H1,
+                       OptionalMatrixType H2,
+                       OptionalMatrixType H3) const override;
 
   /// predicted states from IMU
   /// TODO(frank): relationship with PIM predict ??
@@ -201,27 +225,24 @@ public:
              const std::optional<Pose3>& body_P_sensor = {});
 
   /// @deprecated static function, but used in tests.
-  static Rot3 predict(
-      const Rot3& rot_i, const Vector3& bias,
-      const PreintegratedAhrsMeasurements& pim, const Vector3& omegaCoriolis,
-      const std::optional<Pose3>& body_P_sensor = {});
+  static Rot3 predict(const Rot3& rot_i, const Vector3& bias,
+                      const PreintegratedAhrsMeasurements& pim,
+                      const Vector3& omegaCoriolis,
+                      const std::optional<Pose3>& body_P_sensor = {});
 
-private:
-
+ private:
 #if GTSAM_ENABLE_BOOST_SERIALIZATION
   /** Serialization function */
   friend class boost::serialization::access;
-  template<class ARCHIVE>
-  void serialize(ARCHIVE & ar, const unsigned int /*version*/) {
+  template <class ARCHIVE>
+  void serialize(ARCHIVE& ar, const unsigned int /*version*/) {
     // NoiseModelFactor3 instead of NoiseModelFactorN for backward compatibility
-    ar
-        & boost::serialization::make_nvp("NoiseModelFactor3",
-            boost::serialization::base_object<Base>(*this));
-    ar & BOOST_SERIALIZATION_NVP(_PIM_);
+    ar& boost::serialization::make_nvp(
+        "NoiseModelFactor3", boost::serialization::base_object<Base>(*this));
+    ar& BOOST_SERIALIZATION_NVP(_PIM_);
   }
 #endif
-
 };
 // AHRSFactor
 
-} //namespace gtsam
+}  // namespace gtsam

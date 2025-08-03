@@ -18,6 +18,7 @@
  **/
 
 #include <gtsam/navigation/AHRSFactor.h>
+
 #include <iostream>
 
 using namespace std;
@@ -57,28 +58,89 @@ void PreintegratedAhrsMeasurements::integrateMeasurement(
   // The deltaT allows to pass from continuous time noise to discrete time
   // noise. Comparing with the IMUFactor.cpp implementation, the latter is an
   // approximation for C * (wCov / dt) * C.transpose(), with C \approx I * dt.
-  preintMeasCov_ = Fr * preintMeasCov_ * Fr.transpose() + p().gyroscopeCovariance * deltaT;
+  preintMeasCov_ =
+      Fr * preintMeasCov_ * Fr.transpose() + p().gyroscopeCovariance * deltaT;
 }
 
 //------------------------------------------------------------------------------
 Vector3 PreintegratedAhrsMeasurements::predict(const Vector3& bias,
-    OptionalJacobian<3,3> H) const {
+                                               OptionalJacobian<3, 3> H) const {
   const Vector3 biasOmegaIncr = bias - biasHat_;
   const Rot3 biascorrected = biascorrectedDeltaRij(biasOmegaIncr, H);
   Matrix3 D_omega_biascorrected;
-  const Vector3 omega = Rot3::Logmap(biascorrected, H ? &D_omega_biascorrected : 0);
+  const Vector3 omega =
+      Rot3::Logmap(biascorrected, H ? &D_omega_biascorrected : 0);
   if (H) (*H) = D_omega_biascorrected * (*H);
   return omega;
 }
-//------------------------------------------------------------------------------
-Vector PreintegratedAhrsMeasurements::DeltaAngles(
-    const Vector& msr_gyro_t, const double msr_dt,
-    const Vector3& delta_angles) {
 
+//------------------------------------------------------------------------------
+Rot3 PreintegratedAhrsMeasurements::predict(const Rot3& rot_i,
+                                            const Vector3& bias) const {
+  // Correct for bias
+  const Vector3 biascorrectedOmega = this->predict(bias);
+
+  // Coriolis term
+  const Vector3 coriolis = this->integrateCoriolis(rot_i);
+
+  const Vector3 correctedOmega = biascorrectedOmega - coriolis;
+  const Rot3 correctedDeltaRij = Rot3::Expmap(correctedOmega);
+
+  return rot_i.compose(correctedDeltaRij);
+}
+
+//------------------------------------------------------------------------------
+Vector3 PreintegratedAhrsMeasurements::computeError(
+    const Rot3& Ri, const Rot3& Rj, const Vector3& bias,
+    gtsam::OptionalJacobian<3, 3> H1, gtsam::OptionalJacobian<3, 3> H2,
+    gtsam::OptionalJacobian<3, 3> H3) const {
+  // Do bias correction, if (H3) will contain 3*3 derivative used below
+  const Vector3 biascorrectedOmega = predict(bias, H3);
+
+  // Coriolis term
+  const Vector3 coriolis = integrateCoriolis(Ri);
+  const Vector3 correctedOmega = biascorrectedOmega - coriolis;
+
+  // Prediction
+  const Rot3 correctedDeltaRij = Rot3::Expmap(correctedOmega);
+
+  // Get error between actual and prediction
+  const Rot3 actualRij = Ri.between(Rj);
+  const Rot3 fRrot = correctedDeltaRij.between(actualRij);
+  Vector3 fR = Rot3::Logmap(fRrot);
+
+  // Terms common to derivatives
+  const Matrix3 D_cDeltaRij_cOmega = Rot3::ExpmapDerivative(correctedOmega);
+  const Matrix3 D_fR_fRrot = Rot3::LogmapDerivative(fR);
+
+  if (H1) {
+    // dfR/dRi
+    Matrix3 D_coriolis = -D_cDeltaRij_cOmega * skewSymmetric(coriolis);
+    (*H1) =
+        D_fR_fRrot * (-actualRij.transpose() - fRrot.transpose() * D_coriolis);
+  }
+
+  if (H2) {
+    // dfR/dPosej
+    (*H2) = D_fR_fRrot;
+  }
+
+  if (H3) {
+    // dfR/dBias, note H3 contains derivative of predict
+    const Matrix3 JbiasOmega = D_cDeltaRij_cOmega * (*H3);
+    (*H3) = D_fR_fRrot * (-fRrot.transpose() * JbiasOmega);
+  }
+
+  return fR;
+}
+
+//------------------------------------------------------------------------------
+Vector3 PreintegratedAhrsMeasurements::DeltaAngles(
+    const Vector3& msr_gyro_t, double msr_dt, const Vector3& delta_angles) {
   // Note: all delta terms refer to an IMU\sensor system at t0
 
   // Calculate the corrected measurements using the Bias object
-  Vector body_t_omega_body = msr_gyro_t;
+  Vector3 body_t_omega_body = msr_gyro_t;
 
   Rot3 R_t_to_t0 = Rot3::Expmap(delta_angles);
 
@@ -98,74 +160,33 @@ AHRSFactor::AHRSFactor(
       _PIM_(preintegratedMeasurements) {}
 
 gtsam::NonlinearFactor::shared_ptr AHRSFactor::clone() const {
-//------------------------------------------------------------------------------
+  //------------------------------------------------------------------------------
   return std::static_pointer_cast<gtsam::NonlinearFactor>(
       gtsam::NonlinearFactor::shared_ptr(new This(*this)));
 }
 
 //------------------------------------------------------------------------------
 void AHRSFactor::print(const string& s,
-    const KeyFormatter& keyFormatter) const {
+                       const KeyFormatter& keyFormatter) const {
   cout << s << "AHRSFactor(" << keyFormatter(this->key<1>()) << ","
-      << keyFormatter(this->key<2>()) << "," << keyFormatter(this->key<3>()) << ",";
+       << keyFormatter(this->key<2>()) << "," << keyFormatter(this->key<3>())
+       << ",";
   _PIM_.print("  preintegrated measurements:");
   noiseModel_->print("  noise model: ");
 }
 
 //------------------------------------------------------------------------------
 bool AHRSFactor::equals(const NonlinearFactor& other, double tol) const {
-  const This *e = dynamic_cast<const This*>(&other);
+  const This* e = dynamic_cast<const This*>(&other);
   return e != nullptr && Base::equals(*e, tol) && _PIM_.equals(e->_PIM_, tol);
 }
 
 //------------------------------------------------------------------------------
 Vector AHRSFactor::evaluateError(const Rot3& Ri, const Rot3& Rj,
-    const Vector3& bias, OptionalMatrixType H1,
-    OptionalMatrixType H2, OptionalMatrixType H3) const {
-
-  // Do bias correction, if (H3) will contain 3*3 derivative used below
-  const Vector3 biascorrectedOmega = _PIM_.predict(bias, H3);
-
-  // Coriolis term
-  const Vector3 coriolis = _PIM_.integrateCoriolis(Ri);
-  const Vector3 correctedOmega = biascorrectedOmega - coriolis;
-
-  // Prediction
-  const Rot3 correctedDeltaRij = Rot3::Expmap(correctedOmega);
-
-  // Get error between actual and prediction
-  const Rot3 actualRij = Ri.between(Rj);
-  const Rot3 fRrot = correctedDeltaRij.between(actualRij);
-  Vector3 fR = Rot3::Logmap(fRrot);
-
-  // Terms common to derivatives
-  const Matrix3 D_cDeltaRij_cOmega = Rot3::ExpmapDerivative(correctedOmega);
-  const Matrix3 D_fR_fRrot = Rot3::LogmapDerivative(fR);
-
-  if (H1) {
-    // dfR/dRi
-    H1->resize(3, 3);
-    Matrix3 D_coriolis = -D_cDeltaRij_cOmega * skewSymmetric(coriolis);
-    (*H1)
-        << D_fR_fRrot * (-actualRij.transpose() - fRrot.transpose() * D_coriolis);
-  }
-
-  if (H2) {
-    // dfR/dPosej
-    H2->resize(3, 3);
-    (*H2) << D_fR_fRrot;
-  }
-
-  if (H3) {
-    // dfR/dBias, note H3 contains derivative of predict
-    const Matrix3 JbiasOmega = D_cDeltaRij_cOmega * (*H3);
-    H3->resize(3, 3);
-    (*H3) << D_fR_fRrot * (-fRrot.transpose() * JbiasOmega);
-  }
-
-  Vector error(3);
-  error << fR;
-  return error;
+                                 const Vector3& bias, OptionalMatrixType H1,
+                                 OptionalMatrixType H2,
+                                 OptionalMatrixType H3) const {
+  return _PIM_.computeError(Ri, Rj, bias, H1, H2, H3);
 }
 
 //------------------------------------------------------------------------------

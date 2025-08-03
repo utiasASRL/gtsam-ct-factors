@@ -128,6 +128,61 @@ TEST(AHRSFactor, PreintegratedAhrsMeasurementsConstructor) {
 }
 
 /* ************************************************************************* */
+TEST(AHRSFactor, PIMPredict) {
+  // Modernized version of predictTest, calling predict on the PIM directly.
+  Vector3 bias(0, 0, 0);
+
+  // Measurements
+  Vector3 measuredOmega(0, 0, M_PI / 10.0);
+  double deltaT = 0.2;
+  PreintegratedAhrsMeasurements pim(bias, kMeasuredOmegaCovariance);
+  for (int i = 0; i < 1000; ++i) {
+    pim.integrateMeasurement(measuredOmega, deltaT);
+  }
+
+  // Predict
+  Rot3 rot_i;
+  Rot3 expectedRot = Rot3::Ypr(20 * M_PI, 0, 0);
+  // The new predict method lives on the PIM object
+  Rot3 actualRot = pim.predict(rot_i, bias);
+  EXPECT(assert_equal(expectedRot, actualRot, 1e-6));
+}
+
+/* ************************************************************************* */
+TEST(AHRSFactor, PIMComputeError) {
+  // Tests the modernized computeError and its Jacobians, now on the PIM.
+  Vector3 bias(0.1, 0, 0);
+  Rot3 Ri(Rot3::RzRyRx(M_PI / 12.0, M_PI / 6.0, M_PI / 4.0));
+  Rot3 Rj(Rot3::RzRyRx(M_PI / 12.0 + M_PI / 100.0, M_PI / 6.0, M_PI / 4.0));
+
+  // Measurements
+  Vector3 measuredOmega(M_PI / 100 + 0.1, 0, 0);
+  double deltaT = 1.0;
+  PreintegratedAhrsMeasurements pim(Vector3(0, 0, 0), kMeasuredOmegaCovariance);
+  pim.integrateMeasurement(measuredOmega, deltaT);
+
+  // Use a wrapper to call the new PIM::computeError for numerical derivatives
+  std::function<Vector3(const Rot3&, const Rot3&, const Vector3&)> f =
+      [&pim](const Rot3& r1, const Rot3& r2, const Vector3& b) -> Vector3 {
+    return pim.computeError(r1, r2, b, {}, {}, {});
+  };
+
+  // Calculate analytical Jacobians
+  Matrix3 H1, H2, H3;
+  (void)pim.computeError(Ri, Rj, bias, H1, H2, H3);
+
+  // Calculate numerical Jacobians
+  Matrix3 H1_numerical = numericalDerivative31(f, Ri, Rj, bias);
+  Matrix3 H2_numerical = numericalDerivative32(f, Ri, Rj, bias);
+  Matrix3 H3_numerical = numericalDerivative33(f, Ri, Rj, bias);
+
+  // Compare
+  EXPECT(assert_equal(H1_numerical, H1, 1e-6));
+  EXPECT(assert_equal(H2_numerical, H2, 1e-6));
+  EXPECT(assert_equal(H3_numerical, H3, 1e-6));
+}
+
+/* ************************************************************************* */
 TEST(AHRSFactor, Error) {
   // Linearization point
   Vector3 bias(0., 0., 0.);  // Bias
