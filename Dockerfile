@@ -62,7 +62,7 @@ RUN mkdir -p /opt/lgmath \
 
 # Clone and build STEAM
 RUN mkdir -p /opt/steam \
-    && git clone https://github.com/utiasASRL/steam.git /opt/steam \
+    && git clone --branch lostinthewoods-ex https://github.com/utiasASRL/steam.git /opt/steam \
     && cd /opt/steam \
     && mkdir -p build && cd build \
     && cmake .. -DUSE_AMENT=off \
