@@ -42,7 +42,7 @@ class GTSAM_EXPORT ScenarioRunner {
   typedef imuBias::ConstantBias Bias;
   typedef std::shared_ptr<PreintegrationParams> SharedParams;
 
- private:
+ protected:
   const Scenario& scenario_;
   const SharedParams p_;
   const double imuSampleTime_, sqrt_dt_;
@@ -78,17 +78,20 @@ class GTSAM_EXPORT ScenarioRunner {
     return scenario_.acceleration_b(t) - bRn * gravity_n();
   }
 
-  // versions corrupted by bias and noise
+  // Angular velocity measured by gyroscope, corrupted by bias and noise
   Vector3 measuredAngularVelocity(double t) const {
     return actualAngularVelocity(t) + estimatedBias_.gyroscope() +
            gyroSampler_.sample() / sqrt_dt_;
   }
+
+  /// Specific force measured by accelerometer, corrupted by bias and noise
   Vector3 measuredSpecificForce(double t) const {
     return actualSpecificForce(t) + estimatedBias_.accelerometer() +
            accSampler_.sample() / sqrt_dt_;
   }
 
-  const double& imuSampleTime() const { return imuSampleTime_; }
+  /// The IMU sample time (i.e. the time between two IMU measurements)
+  double imuSampleTime() const { return imuSampleTime_; }
 
   /// Integrate measurements for T seconds into a PIM
   PreintegratedImuMeasurements integrate(double T,
@@ -117,7 +120,6 @@ class GTSAM_EXPORT CombinedScenarioRunner : public ScenarioRunner {
 
  private:
   const SharedParams p_;
-  const Bias estimatedBias_;
   const Eigen::Matrix<double, 15, 15> preintMeasCov_;
 
  public:
@@ -129,7 +131,6 @@ class GTSAM_EXPORT CombinedScenarioRunner : public ScenarioRunner {
       : ScenarioRunner(scenario, static_cast<ScenarioRunner::SharedParams>(p),
                        imuSampleTime, bias),
         p_(p),
-        estimatedBias_(bias),
         preintMeasCov_(preintMeasCov) {}
 
   /// Integrate measurements for T seconds into a PIM
