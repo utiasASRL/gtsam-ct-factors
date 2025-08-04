@@ -10,6 +10,7 @@
 #include <gtsam/nonlinear/NonlinearFactor.h>
 #include <cassert>
 
+#pragma once
 using namespace std;
 
 namespace gtsam {
@@ -26,9 +27,19 @@ class WNOAMotionFactor
                 std::is_same_v<typename traits<Pose>::structure_category, vector_space_tag>,
                 "Pose type must be either a Lie group or vector space");
   
+  GTSAM_CONCEPT_ASSERT(IsLieGroup<Pose>);  // (CH) this could potentially be
+                                           // changed to Manifold check
+ public:
+  static constexpr int dim = traits<Pose>::dimension;
+
  private:
   // expose tangent vector
   using Velocity = typename gtsam::traits<Pose>::TangentVector;
+  using MatrixN = Eigen::Matrix<double, dim, dim>;
+  using VectorN = Eigen::Matrix<double, dim, 1>;
+  using Matrix2N = Eigen::Matrix<double, 2*dim, 2*dim>;
+  using Vector2N = Eigen::Matrix<double, 2*dim, 1>;
+  using MatrixNx2N = Eigen::Matrix<double, dim, 2*dim>;
   typedef NoiseModelFactorN<Pose, Velocity, Pose, Velocity> Base;
   typedef WNOAMotionFactor This;
   double delta_t_;
@@ -37,7 +48,6 @@ class WNOAMotionFactor
   // Provide access to the Matrix& version of evaluateError:
   using Base::evaluateError;
   // Dimension variable, used for convenience
-  static constexpr int dim = traits<Pose>::dimension;
   /**
   Constructor
   @param key1 key for the pose at t_k
@@ -49,7 +59,7 @@ class WNOAMotionFactor
   altered noise model based on the provided model.
   */
   WNOAMotionFactor(Key key1, Key key2, Key key3, Key key4, const double delta_t,
-                   const  Vector& Q)
+                   const VectorN& Q)
       : Base(This::buildWNOANoiseModel(delta_t, Q), key1, key2, key3, key4),
         delta_t_(delta_t) {}
 
@@ -137,19 +147,31 @@ class WNOAMotionFactor
     return err;
   }
 
-  // Function to build the specific covariance for the WNOA model.
-  static noiseModel::Gaussian::shared_ptr buildWNOANoiseModel(double timestep,
-                                                              const Vector& Q) {
-    // check size of Q matrix
-    assert(Q.size() == dim && "WNOA Q-matrix Dimensions");
+  // Functions to build the specific covariance for the WNOA model.
+  static Matrix2N buildWNOACovariance(double timestep, const VectorN& Q) {
+    assert(Q.size() == dim && "WNOA Q-matrix Dimensions");  // todo (Daniel): shouldn't be necessary with static types
     // construct the covariance matrix for the WNOA factor
-    Matrix covariance(2 * dim, 2 * dim);
-    Matrix Q_diag = Q.asDiagonal();
+    Matrix2N covariance;
+    MatrixN Q_diag = Q.asDiagonal();
     covariance << (1.0 / 3.0 * pow(timestep, 3)) * Q_diag,
         (1.0 / 2.0 * pow(timestep, 2)) * Q_diag, (1.0 / 2.0 * pow(timestep, 2)) * Q_diag,
         timestep * Q_diag;
-    // return model
-    return noiseModel::Gaussian::Covariance(covariance);
+    return covariance;
+  }
+
+  static inline noiseModel::Gaussian::shared_ptr buildWNOANoiseModel(
+      double timestep, const VectorN& Q) {
+    return noiseModel::Gaussian::Covariance(
+        buildWNOACovariance(timestep, Q));
+  }
+
+
+  static Matrix2N transitionFunction(double delta_t) {
+    // Construct the transition matrix for the WNOA factor
+    Matrix2N F;
+    F << Matrix::Identity(dim, dim), delta_t * Matrix::Identity(dim, dim),
+        Matrix::Zero(dim, dim), Matrix::Identity(dim, dim);
+    return F;
   }
 };
 
