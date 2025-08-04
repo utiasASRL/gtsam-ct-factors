@@ -28,3 +28,5 @@ _build
 /lib
 /include
 *.egg-info
+/results/*.csv
+/examples/*.asv
