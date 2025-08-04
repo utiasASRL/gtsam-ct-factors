@@ -4,7 +4,38 @@ from matplotlib.patches import Ellipse
 import matplotlib.pyplot as plt
 
 
-def plotTrajectory(filename, step=None, plot_cov=False, plot_heading=True):
+def load_csv(filename, step=None):
+    df = pd.read_csv(filename)
+    # subsample rows
+    if step:
+        nrows = len(df)
+        keeprows = range(0, len(df), step)
+        df = df.iloc[keeprows]
+
+    # Extract covariance elements into a list
+    covariances = []
+    for _, row in df.iterrows():
+        # Get covariance
+        cov = np.array(
+            [
+                [row["C11"], row["C12"], row["C13"]],
+                [row["C12"], row["C22"], row["C23"]],
+                [row["C13"], row["C23"], row["C33"]],
+            ]
+        )
+        covariances.append(cov)
+
+    return df, covariances
+
+
+def plotTrajectory(
+    filename,
+    filename_gt="/home/cho/gtsam-ct-factors/results/lost_gt.csv",
+    filename_steam=None,
+    step=None,
+    plot_cov=False,
+    plot_heading=True,
+):
     # GT landmark locations
     landmarks = np.array(
         [
@@ -27,26 +58,11 @@ def plotTrajectory(filename, step=None, plot_cov=False, plot_heading=True):
             [3.3851, 1.3623],
         ]
     )
-
-    df = pd.read_csv(filename)
-    # subsample rows
-    if step:
-        nrows = len(df)
-        keeprows = range(0, len(df), step)
-        df = df.iloc[keeprows]
-
-    # Extract covariance elements into a list
-    covariances = []
-    for _, row in df.iterrows():
-        # Get covariance
-        cov = np.array(
-            [
-                [row["C11"], row["C12"], row["C13"]],
-                [row["C12"], row["C22"], row["C23"]],
-                [row["C13"], row["C23"], row["C33"]],
-            ]
-        )
-        covariances.append(cov)
+    # Load solution
+    df, covariances = load_csv(filename, step)
+    df_gt, _ = load_csv(filename_gt, step)
+    if filename_steam is not None:
+        df_steam, _ = load_csv(filename_steam, step)
 
     x = df["x"].to_numpy()
     y = df["y"].to_numpy()
@@ -56,9 +72,15 @@ def plotTrajectory(filename, step=None, plot_cov=False, plot_heading=True):
     # plot landmarks
     plt.plot(landmarks[:, 0], landmarks[:, 1], "og", label=("Landmarks"))
     # trajectory
-    plt.plot(x, y, "-", label="Position", alpha=0.9, color="b")
+    plt.plot(x, y, "-", label="Traj - GTSAM", alpha=0.9, color="r")
+    if filename_steam is not None:
+        plt.plot(
+            df_steam["x"], df_steam["y"], "-", label="Traj - STEAM", alpha=0.9, color="g"
+        )
     # Starting point
     plt.plot(x[0], y[0], "o", label="Start", color="k")
+    # Plot ground truth
+    plt.plot(df_gt["x"], df_gt["y"], "-", color="k", alpha=0.5, label="ground truth")
     # Plot heading arrows
     if plot_heading:
         arrow_length = 0.2
@@ -77,10 +99,10 @@ def plotTrajectory(filename, step=None, plot_cov=False, plot_heading=True):
     # Plot covariance ellipses
     if plot_cov:
         for xi, yi, ti, cov in zip(x, y, theta, covariances):
-            cov2d = cov[:2, :2]
+            cov2d = cov[1:3, 1:3]
             vals, vecs = np.linalg.eigh(cov2d)
             angle = np.rad2deg(np.arctan2(*vecs[:, 1][::-1]) + ti)
-            factor = 5  # np.sqrt(2.447746830681) # 95 % samples inside ellipse
+            factor = 3  # np.sqrt(2.447746830681) # 95 % samples inside ellipse
             height, width = factor * 2 * np.sqrt(vals)  # factor of 2 for diameter
             ellipse = Ellipse(
                 (xi, yi),
@@ -100,9 +122,31 @@ def plotTrajectory(filename, step=None, plot_cov=False, plot_heading=True):
     plt.title("Trajectory")
     plt.axis("equal")
     plt.legend()
-    plt.show()
+    # plt.show()
 
 
 if __name__ == "__main__":
-    filename = "../../results/lost.csv"
-    plotTrajectory(filename=filename, plot_cov=True, step=1, plot_heading=False)
+    filename = "/home/cho/gtsam-ct-factors/results/lost.csv"
+    filename_steam = "/home/cho/gtsam-ct-factors/results/lost_steam.csv"
+    # plotTrajectory(
+    #     filename=filename,
+    #     filename_steam=filename_steam,
+    #     plot_cov=False,
+    #     step=1,
+    #     plot_heading=False,
+    # )
+    plotTrajectory(
+        filename=filename,
+        filename_steam=None,
+        plot_cov=True,
+        step=1,
+        plot_heading=False,
+    )
+    plotTrajectory(
+        filename=filename_steam,
+        filename_steam=None,
+        plot_cov=True,
+        step=1,
+        plot_heading=False,
+    )
+    plt.show()

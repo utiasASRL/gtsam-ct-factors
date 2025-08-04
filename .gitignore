@@ -1,4 +1,5 @@
 /build
+/build-steam
 /debug*
 .idea
 *.pyc

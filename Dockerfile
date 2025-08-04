@@ -43,6 +43,32 @@ RUN apt-get update && apt-get install -y \
 # tmux
 RUN apt-get update && apt-get install -y tmux
 
+# Clone and build yaml-cpp
+RUN git clone https://github.com/jbeder/yaml-cpp.git /opt/yaml-cpp \
+    && cd /opt/yaml-cpp \
+    && mkdir build && cd build \
+    && cmake .. -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DBUILD_SHARED_LIBS=OFF -DYAML_CPP_BUILD_TESTS=OFF \
+    && make -j$(nproc) \
+    && make install
+
+# Clone and build lgmath (for steam), install to /usr/local
+RUN mkdir -p /opt/lgmath \
+    && git clone https://github.com/utiasASRL/lgmath.git /opt/lgmath \
+    && cd /opt/lgmath \
+    && mkdir -p build && cd build \
+    && cmake .. \
+    && cmake --build . \
+    && cmake --install . 
+
+# Clone and build STEAM
+RUN mkdir -p /opt/steam \
+    && git clone https://github.com/utiasASRL/steam.git /opt/steam \
+    && cd /opt/steam \
+    && mkdir -p build && cd build \
+    && cmake .. -DUSE_AMENT=off \
+    && cmake --build . -j \
+    && cmake --install . 
+
 # Entrypoint script
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh

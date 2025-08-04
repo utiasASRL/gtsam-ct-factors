@@ -13,7 +13,7 @@
 #include <gtsam/inference/Symbol.h>
 #include <gtsam/nonlinear/Marginals.h>
 #include <gtsam/nonlinear/expressions.h>
-#include <gtsam/slam/WNOAFactors.h>
+#include <gtsam/slam/WNOAFactor.h>
 #include <gtsam/geometry/Point1.h>
 #include <gtsam/slam/dataset.h>
 
