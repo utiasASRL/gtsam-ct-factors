@@ -11,7 +11,6 @@
 
 #include "lgmath.hpp"
 #include "steam.hpp"
-#include "steam/trajectory/const_vel/helper.hpp"
 
 using namespace std;
 using namespace steam;
@@ -186,7 +185,7 @@ struct TrajStateVar {
 };
 
 /** \brief Function to save data to CSV */
-int saveResultToFile(vector<TrajStateVar>& states, Covariance& cov_post,
+int saveResultToFileSteam(vector<TrajStateVar>& states, Covariance& cov_post,
                      const string& filename) {
   // open file, print header
   ofstream poses_file(filename);
@@ -240,10 +239,10 @@ int main(int argc, char* argv[]) {
   bool include_prior = config["flags"]["prior"].as<bool>();
   bool include_odom = config["flags"]["odom"].as<bool>();
   bool include_wnoa = config["flags"]["wnoa"].as<bool>();
-  // bool include_br_meas = config["flags"]["br"].as<bool>();
+  bool include_br_meas = config["flags"]["br"].as<bool>();
   bool gt_init = config["flags"]["gt_init"].as<bool>();
   // Get inputs from param file
-  // double r_max = config["params"]["r_max"].as<double>();
+  double r_max = config["params"]["r_max"].as<double>();
   double del_t = config["params"]["del_t"].as<double>();
   int start = config["params"]["start"].as<int>();
   int end = config["params"]["end"].as<int>();
@@ -251,10 +250,10 @@ int main(int argc, char* argv[]) {
   auto sigma_wnoa =
       Eigen::Vector3d(config["noise"]["wnoa"].as<vector<double>>().data());
   double sigma_small = config["noise"]["odom_y"].as<double>();
-  // double mult_bearing = config["noise"]["bearing"].as<double>();
-  // double mult_range = config["noise"]["range"].as<double>();
-  // auto sigma_br = Eigen::Vector2d(sqrt(mult_bearing * data.b_var),
-  //                                 sqrt(mult_range * data.r_var));
+  double mult_bearing = config["noise"]["bearing"].as<double>();
+  double mult_range = config["noise"]["range"].as<double>();
+  auto sigma_br = Eigen::Vector2d(sqrt(mult_bearing * data.b_var),
+                                  sqrt(mult_range * data.r_var));
 
   ///
   /// Setup States
@@ -263,9 +262,15 @@ int main(int argc, char* argv[]) {
   // States
   vector<TrajStateVar> states;
   // Initialization
+  if (gt_init) {
+    cout << "Initializing with Ground Truth" << endl;
+  } else {
+    cout << "Initializing with Odometry Rollout" << endl;
+  }
   for (int i = start; i <= end; i++) {
     // current velocity for odometry (NOTE: Negative signs are required)
-    Eigen::Matrix<double, 6, 1> vel(-data.v[i], 0.0, 0.0, 0.0, 0.0, -data.om[i]);
+    Eigen::Matrix<double, 6, 1> vel(-data.v[i], 0.0, 0.0, 0.0, 0.0,
+                                    -data.om[i]);
     // Use gt for initial pose, or if initing from gt
     if (i == start || gt_init) {
       // get pose and vel
@@ -299,13 +304,14 @@ int main(int argc, char* argv[]) {
   // Add state variables
   for (const auto& state : states) {
     problem.addStateVariable(state.pose);
-    if (include_wnoa){
+    if (include_wnoa) {
       problem.addStateVariable(state.velocity);
     }
   }
 
   // Setup WNOA Prior
   if (include_wnoa) {
+    cout << "Adding WNOA prior" << endl;
     Eigen::Matrix<double, 6, 1> Qc_diag;
     Qc_diag << sigma_wnoa[0], sigma_wnoa[1], sigma_small, sigma_small,
         sigma_small, sigma_wnoa[2];
@@ -313,14 +319,14 @@ int main(int argc, char* argv[]) {
     for (const auto& state : states)
       traj.add(state.time, state.pose, state.velocity);
     traj.addPriorCostTerms(problem);
-    
   }
 
   // Add odometry measurements
   if (include_odom) {
+    cout << "Adding odometry measurements" << endl;
     // Setup shared noise and loss functions
     Eigen::Vector<double, 6> cov_diag;
-    double sigma_small_sq = pow(sigma_small,2);
+    double sigma_small_sq = pow(sigma_small, 2);
     cov_diag << data.v_var, sigma_small_sq, sigma_small_sq, sigma_small_sq,
         sigma_small_sq, data.om_var;
     cov_diag *= pow(del_t, 2);
@@ -334,7 +340,7 @@ int main(int argc, char* argv[]) {
       // Odometry Measurement
       Eigen::Matrix<double, 6, 1> odom_meas;
       odom_meas << data.v[i - 1], 0.0, 0.0, 0.0, 0.0, data.om[i - 1];
-      odom_meas *= -del_t; //NOTE velocity needs to be negated here.
+      odom_meas *= -del_t;  // NOTE velocity needs to be negated here.
       const auto pose_meas =
           se3::SE3StateVar::MakeShared(se3::SE3StateVar::T(odom_meas));
       pose_meas->locked() = true;  // lock this pose
@@ -342,7 +348,8 @@ int main(int argc, char* argv[]) {
       const auto pose_rel =
           se3::compose(states[ind].pose, se3::inverse(states[ind - 1].pose));
       // define error
-      const auto error_function = se3::tran2vec(se3::compose(se3::inverse(pose_meas), pose_rel));
+      const auto error_function =
+          se3::tran2vec(se3::compose(se3::inverse(pose_meas), pose_rel));
       // define cost
       const auto cost_term = WeightedLeastSqCostTerm<6>::MakeShared(
           error_function, noise_model, loss_function);
@@ -351,8 +358,55 @@ int main(int argc, char* argv[]) {
     }
   }
 
+  // Add range-bearing measurements
+  if (include_br_meas) {
+    cout << "Adding bearing range measurement factors" << endl;
+
+    // Define noise model
+    Eigen::Vector2d cov_diag_br = sigma_br.array().square();
+    const auto noise_model =
+        steam::StaticNoiseModel<2>::MakeShared(cov_diag_br.asDiagonal());
+    const auto loss_function = steam::L2LossFunc::MakeShared();
+
+    // Define landmarks
+    vector<vspace::VSpaceStateVar<4>::Ptr> landmarks(data.n_landmarks);
+    for (int j = 0; j < data.n_landmarks; j++) {
+      Eigen::Vector4d tmp;
+      tmp << data.landmarks(j, 0), data.landmarks(j, 1), 0.0, 1.0;
+      landmarks[j] = vspace::VSpaceStateVar<4>::MakeShared(tmp);
+      landmarks[j]->locked() = true;  // Fix the landmarks.
+    }
+    // Transformation to sensor frame
+    auto r_sv_v = Eigen::Vector3d(data.d, 0.0, 0.0);
+    auto C_sv = Eigen::Matrix3d::Identity();
+    const auto T_sv =
+        se3::SE3StateVar::MakeShared(se3::SE3StateVar::T(C_sv, r_sv_v));
+    T_sv->locked() = true;
+    int ind = 0;  // state index
+    for (int i = start; i <= end; i++) {
+      for (int j = 0; j < data.n_landmarks; j++) {
+        // Check if we have a valid measurement
+        if ((data.range(i, j) > 0.0) && (abs(data.bearing(i, j)) > 0.0) &&
+            (data.range(i, j) < r_max)) {
+          // bearing-range measurement
+          auto br_meas = Eigen::Vector2d(data.bearing(i, j), data.range(i, j));
+          // landmark in sensor frame
+          const auto T_si = compose(T_sv, states[ind].pose);
+          const auto landmark_s = stereo::compose(T_si, landmarks[j]);
+          const auto error_function = p2p::br2dError(landmark_s, br_meas);
+          // Add cost term to problem
+          const auto cost_term = WeightedLeastSqCostTerm<2>::MakeShared(
+              error_function, noise_model, loss_function);
+          problem.addCostTerm(cost_term);
+        }
+      }
+      ind++;  // update state index
+    }
+  }
+
   // Lock first pose, equivalent to prior on first pose
   if (include_prior) {
+    cout << "Locking First Pose" << endl;
     states[0].pose->locked() = true;
     states[0].velocity->locked() = true;
   }
@@ -382,8 +436,18 @@ int main(int argc, char* argv[]) {
   solver->optimize();
   // Get covariance
   Covariance cov_post(*solver);
+  // // Get the conditioning number at the solution
+  // Eigen::SparseMatrix<double> hessian_sp;
+  // Eigen::VectorXd grad;
+  // problem.buildGaussNewtonTerms(hessian_sp, grad);
+  // Eigen::MatrixXd hessian(hessian_sp);
+  // Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> esolver(hessian);
+  // Eigen::VectorXd eigenvalues = esolver.eigenvalues();
+  // cout << "min hess eig : " << eigenvalues[0] << endl;
+  // cout << "max hess eig : " << eigenvalues[eigenvalues.size() - 1] << endl;
+
   // Store to file
-  saveResultToFile(states, cov_post, output_file);
+  saveResultToFileSteam(states, cov_post, output_file);
 
   return 0;
 }
