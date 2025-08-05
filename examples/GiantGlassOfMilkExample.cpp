@@ -1,7 +1,9 @@
 #include "GiantGlassOfMilkExample.h"
 
 int main() {
-  // input processing
+  // input processing 
+  bool use_interpolation = true;
+
   string input_file = "GiantGlassOfMilk.csv";
   string output_file = "../results/milk.csv";
   
@@ -18,6 +20,10 @@ int main() {
   // Defining timing variables
   double dt = 0.1;
   double dt_meas = 5.0;
+  double dt_state = dt;
+  if (use_interpolation) {
+    dt_state = dt_meas;
+  }
 
   //Define noise variables
   double Qc = 0.01;
@@ -39,9 +45,10 @@ int main() {
   initialEstimate.insert(V(0),Vector1(0.0));
 
   // Run through all states and add WNOA prior factors between neighbouring states
-  for(unsigned int i = 0; i < times.rows() - 1; i++)
+  unsigned int num_states = (int)(times.tail<1>()(0) / dt_state) + 1;
+  for(unsigned int i = 0; i < num_states - 1; i++)
   {
-      graph.add(WNOAMotionFactor<Point1>(X(i),V(i),X(i+1),V(i+1),dt,Qc_mat));
+      graph.add(WNOAMotionFactor<Point1>(X(i),V(i),X(i+1),V(i+1),dt_state,Qc_mat));
 
       // Add initial guess for next state (zero)
       initialEstimate.insert(X(i+1),Point1(0.0));
@@ -52,10 +59,11 @@ int main() {
   int skip = dt_meas/dt; // Skip factor, depending on the measurement frequency
 
   // times_est, x_est, x_std, v_est, v_std, x_real, times_meas, x_meas, v_meas
-  Matrix result_matrix = Matrix::Zero(times.rows(), 9);
+  Matrix result_matrix = Matrix::Zero(1 + (num_states - 1) * dt_state/dt, 9);
 
-  for(unsigned int i = 0; i < times.rows(); i = i + skip)
-  {  
+
+  for(unsigned int i = 0; i < 1 + (num_states-1) * dt_state/dt; i = i + skip)
+  {
     // Save used measurements for plotting later
     result_matrix(i/skip, 6) = times(i);
     result_matrix(i/skip, 7) = x_meas(i);
@@ -65,8 +73,8 @@ int main() {
     Vector1 velocity_measurement(v_meas(i));
 
 
-    graph.add(PriorFactor<Point1>(X(i),position_measurement, positionNoise));
-    graph.add(PriorFactor<Vector1>(V(i),velocity_measurement, velocityNoise));
+    graph.add(PriorFactor<Point1>(X(i/skip),position_measurement, positionNoise));
+    graph.add(PriorFactor<Vector1>(V(i/skip),velocity_measurement, velocityNoise));
 
   }
 
@@ -75,21 +83,46 @@ int main() {
   Values result = optimizer.optimize();
   Marginals marginals(graph, result);
 
-  for(unsigned int i = 0; i < times.rows(); i++)
+  int result_mat_idx = 0;
+  Interpolator<Point1> interpolator(Qc_mat);
+  for(unsigned int i = 0; i < num_states; i++)
   {
     // Time
-    result_matrix(i, 0) = times(i);
+    result_matrix(result_mat_idx, 0) = i*dt_state;
 
     // X estimate
-    result_matrix(i, 1) = result.at<Point1>(X(i))(0);
-    result_matrix(i, 2) = std::sqrt(marginals.marginalCovariance(X(i))(0,0));
+    result_matrix(result_mat_idx, 1) = result.at<Point1>(X(i))(0);
+    result_matrix(result_mat_idx, 2) = std::sqrt(marginals.marginalCovariance(X(i))(0,0));
 
     // V estimate
-    result_matrix(i, 3) = result.at<Vector1>(V(i))(0);
-    result_matrix(i, 4) = std::sqrt(marginals.marginalCovariance(V(i))(0,0));
+    result_matrix(result_mat_idx, 3) = result.at<Vector1>(V(i))(0);
+    result_matrix(result_mat_idx, 4) = std::sqrt(marginals.marginalCovariance(V(i))(0,0));
 
     // X real
-    result_matrix(i, 5) = x_real(i);   
+    result_matrix(result_mat_idx, 5) = x_real(i * (int)(dt_state / dt));
+
+    result_mat_idx++;
+
+    if(i < num_states - 1) {
+      // Interpolate states
+      for(unsigned int j = 1; j < dt_state/dt; j++) {
+
+
+        std::pair<Point1, Vector1> interpolated_state;
+        std::pair<Point1, Vector1> first_state(result.at<Point1>(X(i)), result.at<Vector1>(V(i)));
+        std::pair<Point1, Vector1> second_state(result.at<Point1>(X(i+1)), result.at<Vector1>(V(i+1)));
+
+        interpolated_state = interpolator.interpolatePoseAndVelocity(first_state, i*dt_state, second_state, (i+1)*dt_state, i*dt_state + j * dt);
+
+        result_matrix(result_mat_idx, 0) = i*dt_state + j * dt;
+        result_matrix(result_mat_idx, 1) = interpolated_state.first(0);
+        result_matrix(result_mat_idx, 2) = 0;
+        result_matrix(result_mat_idx, 3) = interpolated_state.second(0);
+        result_matrix(result_mat_idx, 4) = 0;
+        result_matrix(result_mat_idx, 5) = x_real(i * (int)(dt_state / dt) + j);
+        result_mat_idx++;
+      }
+    }
 
   }
 
