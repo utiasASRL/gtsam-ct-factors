@@ -122,15 +122,18 @@ public:
     Vector2N gamma_k;
     gamma_k.topRows(dim).setZero();
     gamma_k.bottomRows(dim) = varpi_k;
-    VectorN xi = traits<PoseType>::Local(T_k, T_kp1);
-    MatrixN right_jac = PoseType::ExpmapDerivative(xi);
+    
+    MatrixN right_jac_inv;
+    VectorN xi = traits<PoseType>::Logmap(traits<PoseType>::Between(T_k, T_kp1), &right_jac_inv);
     Vector2N gamma_kp1;
-    gamma_kp1 << xi, right_jac.inverse() * varpi_kp1;
+    gamma_kp1 << xi, right_jac_inv * varpi_kp1;
 
+
+    auto xi_tau = Lambda_1 * gamma_k + Psi_1 * gamma_kp1;
     // Eq. (11.45) in the book
-    auto T_tau = T_k.compose(PoseType::Expmap(Lambda_1 * gamma_k + Psi_1 * gamma_kp1));
-    auto right_jac_tau = PoseType::ExpmapDerivative(traits<PoseType>::Local(T_k, T_tau));
-    auto varpi_tau = right_jac_tau.inverse() * (Lambda_2 * gamma_k + Psi_2 * gamma_kp1);
+    MatrixN right_jac_tau;
+    auto T_tau = traits<PoseType>::Compose(T_k,traits<PoseType>::Expmap(xi_tau, &right_jac_tau));
+    auto varpi_tau = right_jac_tau * (Lambda_2 * gamma_k + Psi_2 * gamma_kp1);
 
     return std::make_pair(T_tau, varpi_tau);
   }
@@ -186,5 +189,8 @@ protected:
 };
 
 // Explicit Instantiation.
+template class Interpolator<Point1>;
+template class Interpolator<Point2>;
+template class Interpolator<Point3>;
 template class Interpolator<Pose2>;
 template class Interpolator<Pose3>;
