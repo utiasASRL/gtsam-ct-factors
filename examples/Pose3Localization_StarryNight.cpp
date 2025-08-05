@@ -145,17 +145,6 @@ optimize(const std::vector<std::pair<double, Vector6>>& inputs,
 
 // --------------------------------------------------------------------------
 int main(int argc, char** argv) {
-  std::string filename_suffix = std::string("") +
-      (USE_WNOA_FACTOR ? "_wnoa" : "_no_wnoa") +
-      (USE_ODOM_FACTOR ? "_odom" : "_no_odom") +
-      (USE_MEASUREMENTS ? "_meas" : "_no_meas") +
-      (INIT_AT_GT ? "_gt_init" : "_odom_init") +
-      "_pose_interval_" + std::to_string(POSE_INTERVAL_MEAS) + "_max_pose_" + std::to_string(MAX_POSES);
-  std::string output_file_poses = "../results/starry_night_results_poses" + filename_suffix;
-  std::string output_file_poses_dr = "../results/starry_night_results_poses_dr" + filename_suffix;
-  std::string output_file_landmarks = "../results/starry_night_results_landmarks" + filename_suffix;
-  std::string output_file_marginals = "../results/starry_night_results_marginals" + filename_suffix;
-  std::string output_file_groundtruth = "../results/starry_night_groundtruth" + filename_suffix;
 
   // Parse command line arguments
   
@@ -206,6 +195,18 @@ int main(int argc, char** argv) {
     }
   }
 
+    std::string filename_suffix = std::string("") +
+      (USE_WNOA_FACTOR ? "_with_wnoa" : "_no_wnoa") +
+      (USE_ODOM_FACTOR ? "_with_odom" : "_no_odom") +
+      (USE_MEASUREMENTS ? "_with_meas" : "_no_meas") +
+      (INIT_AT_GT ? "_gt_init" : "_odom_init") +
+      "_pose_interval_" + std::to_string(POSE_INTERVAL_MEAS) + "_max_pose_" + std::to_string(MAX_POSES);
+  std::string output_file_poses = "../results/starry_night_results_poses" + filename_suffix;
+  std::string output_file_poses_dr = "../results/starry_night_results_poses_dr" + filename_suffix;
+  std::string output_file_landmarks = "../results/starry_night_results_landmarks" + filename_suffix;
+  std::string output_file_marginals = "../results/starry_night_results_marginals" + filename_suffix;
+  std::string output_file_groundtruth = "../results/starry_night_groundtruth" + filename_suffix;
+
   // Load inputs, metadata, ground truth poses and landmarks, and measurements
   std::vector<TimedInput> inputs;
   FileUtils::readInputs(inputs);
@@ -232,23 +233,8 @@ int main(int argc, char** argv) {
   std::cout.precision(3);
   Marginals marginals(graph, result);
 
-  // 6. Interpolate
-  // auto WNOAPSD = Vector6(1.0, 1.0, 1.0, 0.1, 0.1, 0.1).asDiagonal();  // power spectral density
-  // Interpolator<Pose3> interpolator(WNOAPSD);
-  // std::cout << "Interpolating poses and velocities..." << std::endl;
-  // auto [T_tau, varpi_tau] = interpolator.interpolatePoseAndVelocity(
-  //   result.at<Pose3>(Symbol('x', 0)), result.at<Vector6>(Symbol('v', 0)),
-  //   inputs[0].first, result.at<Pose3>(Symbol('x', 1)), result.at<Vector6>(Symbol('v', 1)),
-  //   inputs[1].first, inputs[0].first + (inputs[1].first - inputs[0].first) / 2.0);
-  // std::cout << "First pose and velocity: " << result.at<Pose3>(Symbol('x', 0)) << ", "
-  //           << result.at<Vector6>(Symbol('v', 0)).transpose() << std::endl;
-  // std::cout << "Second pose and velocity: " << result.at<Pose3>(Symbol('x', 1)) << ", "
-  //           << result.at<Vector6>(Symbol('v', 1)).transpose() << std::endl;
-  // std::cout << "Interpolated pose at t=" << inputs[0].first + (inputs[1].first - inputs[0].first) / 2.0
-  //           << ": " << T_tau << ", velocity: " << varpi_tau.transpose() << std::endl;
-
   // Test out interpolation after optimization
-  if (!USE_ODOM_FACTOR && USE_WNOA_FACTOR && POSE_INTERVAL_MEAS > 1) {
+  if (USE_WNOA_FACTOR && POSE_INTERVAL_MEAS > 1) {
     // Optimize again without adding intermediate poses into the factor graph
     auto [graph_small, initialEstimate_small, result_small] = optimize(inputs, measTripleVector, gtPoses, gtLandmarks, Cal, T_cv, odomNoise, stereoNoise, false);
 
@@ -267,13 +253,11 @@ int main(int argc, char** argv) {
         if (result_small.exists(poseSymbol)) {
           posesAndVelocities.emplace_back(result_small.at<Pose3>(poseSymbol), result_small.at<Vector6>(Symbol('v', poseID)));
           timestamps.push_back(inputs[poseID].first);
-          // std::cout << "Timestamp for pose " << poseID << ": " << inputs[poseID].first << std::endl;
         } else {
           std::cerr << "Error: Pose " << poseID << " does not exist in the result." << std::endl;
         }
       } else {
         queryTimes.push_back(inputs[poseID].first);
-        // std::cout << "Query time for pose " << poseID << ": " << inputs[poseID].first << std::endl;
       }
     }
 
@@ -289,7 +273,7 @@ int main(int argc, char** argv) {
         interp_counter++;
       }
     }
-    // Save the interpolated poses and velocities to files
+
     FileUtils::savePosesToFile(result_small, numPoses_largest_multiple, output_file_poses + "_interpolated", 1);
   }
 

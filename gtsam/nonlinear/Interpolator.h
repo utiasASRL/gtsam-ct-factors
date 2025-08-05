@@ -110,7 +110,7 @@ class Interpolator {
     auto [T_kp1, varpi_kp1] = Tvarpi_kp1;
 
     Matrix2N Lambda, Psi;  // ensure Lambda and Psi are 2*dim x 2*dim matrices,
-                           // rather than using auto below
+                           // rather than using auto in the line below
     std::tie(Lambda, Psi) = getLamdaPsi(t_k, t_kp1, t_tau);
 
     MatrixNx2N Lambda_1 = Lambda.topRows(dim);
@@ -174,7 +174,7 @@ class Interpolator {
 
  protected:
   std::pair<Matrix, Matrix> getLamdaPsi(double t_k, double t_kp1,
-                                        double t_tau) {
+                                        double t_tau) const {
     // Build transition matrices for all combinations
     double dt = t_kp1 - t_k;
     auto Phi_12 = transitionFunction_(dt);

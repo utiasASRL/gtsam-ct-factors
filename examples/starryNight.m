@@ -12,15 +12,16 @@ end
 
 %% load GTSAM results
 fp = '/home/daniel/gtsam/gtsam_repo/results/';  % filename prefix
-% [C_array, t_array] = load_poses([fp 'starry_night_results_poses.csv']);
-[C_array_wnoa, t_array_wnoa] = load_poses([fp 'starry_night_results_poses_dr_wnoa_no_odom_meas_odom_init_pose_interval_1_max_pose_1000.csv']);
-[C_array_interval, t_array_interval] = load_poses([fp 'starry_night_results_poses_wnoa_no_odom_meas_odom_init_1_1000.csv']);
-[C_array_interpolated, t_array_interpolated] = load_poses('/home/daniel/gtsam/gtsam_repo/results/starry_night_results_poses_wnoa_no_odom_meas_odom_init_1_1000.csv_interpolated.csv');
-[C_array_dr, t_array_dr] = load_poses('/home/daniel/gtsam/gtsam_repo/results/starry_night_results_poses_dr.csv');
+pose_interval = 10;
+[C_array_odom, t_array_odom] = load_poses([fp 'starry_night_results_poses_no_wnoa_with_odom_with_meas_odom_init_pose_interval_1_max_pose_1000.csv']);
+[C_array_wnoa, t_array_wnoa] = load_poses([fp 'starry_night_results_poses_with_wnoa_no_odom_with_meas_odom_init_pose_interval_1_max_pose_1000.csv']);
+[C_array_interval, t_array_interval] = load_poses([fp 'starry_night_results_poses_with_wnoa_no_odom_with_meas_gt_init_pose_interval_' num2str(pose_interval) '_max_pose_1000.csv']);
+[C_array_interpolated, t_array_interpolated] = load_poses([fp 'starry_night_results_poses_with_wnoa_no_odom_with_meas_gt_init_pose_interval_' num2str(pose_interval) '_max_pose_1000_interpolated.csv']);
+[C_array_dr, t_array_dr] = load_poses([fp 'starry_night_results_poses_dr_no_wnoa_with_odom_with_meas_odom_init_pose_interval_1_max_pose_1000.csv']);
 l_array = load_landmarks('/home/daniel/gtsam/gtsam_repo/results/starry_night_results_landmarks.csv');
 
 % get marginals
-marg_input = readmatrix('/home/daniel/gtsam/gtsam_repo/results/starry_night_results_marginals.csv');
+marg_input = readmatrix([fp 'starry_night_results_marginals_with_wnoa_no_odom_with_meas_odom_init_pose_interval_1_max_pose_1000.csv']);
 % each row is a flattened cov matrix
 P = reshape(marg_input', 6, 6, []);
 sigmas_3 = zeros(6, n);
@@ -35,37 +36,51 @@ C_k_trans = pagetranspose(C_k);
 figure
 scatter3(l_array(1,:), l_array(2,:), l_array(3,:), 'DisplayName', 'Landmarks')
 hold on
-% plot3(t_array(1,:), t_array(2,:), t_array(3,:), 'DisplayName', 'Gauss-Newton')  % solution from Gauss-Newton
-plot3(t_array_interval(1,:), t_array_interval(2,:), t_array_interval(3,:), '.-','DisplayName', 'Gauss-Newton')  % solution from Gauss-Newton
-plot3(t_array_interpolated(1,:), t_array_interpolated(2,:), t_array_interpolated(3,:), 'o-','DisplayName', 'Interpolated')
-% plot3(r_gt(1,:), r_gt(2,:), r_gt(3,:), 'DisplayName', 'Groundtruth')  % ground truth
+plot3(t_array_wnoa(1,:), t_array_wnoa(2,:), t_array_wnoa(3,:), 'LineWidth', 2, 'DisplayName', 'WNOA (no odometry) solution')
+plot3(t_array_odom(1,:), t_array_odom(2,:), t_array_odom(3,:), 'LineWidth', 2, 'DisplayName', 'Odometry solution')
+% plot3(t_array_interval(1,:), t_array_interval(2,:), t_array_interval(3,:), '.-', 'MarkerSize', 10, 'Color', 'r', 'DisplayName', 'All states in main solve')
+% plot3(t_array_interpolated(1,:), t_array_interpolated(2,:), t_array_interpolated(3,:), '.-', 'MarkerSize', 10, 'Color', 'b', 'DisplayName', 'Sparse states in main solve, interpolated afterwards')
+% scatter3(t_array_interval(1,1:pose_interval:end), t_array_interval(2,1:pose_interval:end), t_array_interval(3,1:pose_interval:end), 60, 'o', 'LineWidth', 2, 'MarkerEdgeColor', 'r', 'HandleVisibility', 'off')
+% scatter3(t_array_interpolated(1,1:pose_interval:end), t_array_interpolated(2,1:pose_interval:end), t_array_interpolated(3,1:pose_interval:end), 60, 'o', 'LineWidth', 2, 'MarkerEdgeColor', 'b', 'HandleVisibility', 'off')
+
+plot3(r_gt(1,:), r_gt(2,:), r_gt(3,:), 'LineWidth', 2, 'DisplayName', 'Groundtruth')  % ground truth
+% scatter3(r_gt(1,1:pose_interval:end), r_gt(2,1:pose_interval:end), r_gt(3,1:pose_interval:end), 60, 'o', 'LineWidth', 1, 'MarkerEdgeColor', 'black', 'HandleVisibility', 'off')
 % plot3(t_array_dr(1,:), t_array_dr(2,:), t_array_dr(3,:), 'DisplayName', 'Dead reckoning')  % dead reckoning
 % plot3(r_k(1,:), r_k(2,:), r_k(3,:), 'DisplayName', 'Dead reckoning MATLAB')  % dead reckoning
 xlabel('x'); ylabel('y'); zlabel('z')
 axis equal
-legend
+legend('Location', 'south')
 title('A3 with GTSAM')
 %% errors
-error_r = t_array - r_gt;
-error_theta = compute_error_theta(C_array, C_gt);
-
-error_r_dr = t_array - r_k;
-error_theta_dr = compute_error_theta(C_array, C_k_trans);
-%% plot
+error_r = t_array_wnoa - r_gt;
+error_theta = compute_error_theta(C_array_wnoa, C_gt);
+end_idx_diff = 0;
 errors_to_plot = [error_r; error_theta];
+
+% interp_end_idx = idivide(size(t_array_interval,2)-1, int16(pose_interval)) * pose_interval + 1;
+% end_idx_diff = size(t_array_interval,2) - interp_end_idx;
+% error_r_interp = t_array_interval(:,1:interp_end_idx) - t_array_interpolated;
+% error_theta_interp = compute_error_theta(C_array_interval(:,:,1:interp_end_idx), C_array_interpolated);
+% errors_to_plot = [error_r_interp; error_theta_interp];
+
+% error_r_dr = t_array - r_k;
+% error_theta_dr = compute_error_theta(C_array, C_k_trans);
 % errors_to_plot = [error_r_dr; error_theta_dr];
-% lim_trans = 0.15;
-% lim_rot = 0.1;
-lim_trans = 0.3;
-lim_rot = 0.3;
+
+lim_trans = 0.15;
+lim_rot = 0.15;
+% lim_trans = 0.3;
+% lim_rot = 0.3;
 figure
 set(gcf, 'Color', 'w');
 tiledlayout(6, 1, 'Padding', 'none', 'TileSpacing', 'compact');
 y_label_array = {'error in x', 'error in y', 'error in z', 'error in \theta_x', 'error in \theta_y', 'error in theta_z'};
 for i = 1:6
     nexttile(i);
-    plot(t(k1:k2), errors_to_plot(i,:));
+    % plot(t(k1:k2-end_idx_diff), errors_to_plot(i,:), '.', 'LineWidth', 1, 'Color', 'b');
+    plot(t(k1:k2-end_idx_diff), errors_to_plot(i,:), '-', 'LineWidth', 1, 'Color', 'b');
     hold on
+    % scatter(t(k1:pose_interval:k2-end_idx_diff), errors_to_plot(i,1:pose_interval:end), 'o', 'MarkerEdgeColor', 'blue');
     plot(t(k1:k2), sigmas_3(i,:), '--');
     plot(t(k1:k2), -sigmas_3(i,:), '--');
     xlabel('time (s)');
