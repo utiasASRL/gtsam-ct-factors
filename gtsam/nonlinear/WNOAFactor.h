@@ -1,6 +1,5 @@
 #include <gtsam/base/Lie.h>
 #include <gtsam/base/VectorSpace.h>
-#include <gtsam/base/ProductLieGroup.h>
 #include <gtsam/base/Testable.h>
 #include <gtsam/geometry/Point1.h>
 #include <gtsam/geometry/Point2.h>
