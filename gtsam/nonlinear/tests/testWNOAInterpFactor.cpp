@@ -11,8 +11,8 @@
 #include <gtsam/nonlinear/NonlinearEquality.h>
 #include <gtsam/nonlinear/NonlinearFactorGraph.h>
 #include <gtsam/nonlinear/Values.h>
-#include <gtsam/slam/WNOAFactor.h>
-#include <gtsam/slam/WNOAInterpolationFactor.h>
+#include <gtsam/nonlinear/WNOAFactor.h>
+#include <gtsam/nonlinear/WNOAInterpFactor.h>
 
 using namespace std;
 using namespace gtsam;
@@ -41,6 +41,7 @@ TEST(WNOAInterp, evalErr) {
   interp_data_p3.vel_keys = {V(0), V(1)};
   interp_data_p3.times = {0, 1};
   interp_data_p3.interp_time = 0.5;
+  Vector Q_psd = {1.0, 1.0};
 
   // Create a factor
   Point3 priorValue(0.5, 0.0, 0.0);
@@ -49,7 +50,7 @@ TEST(WNOAInterp, evalErr) {
   // Embed in wrapper factor
   auto interp_prior =
       WNOAInterpFactor<typename gtsam::PriorFactor<Point3>, Point3, 0>(
-          prior, interp_data_p3);
+          prior, interp_data_p3, Q_psd);
   Values values;
   values.insert(P(0), p0_p3);
   auto residual1 = interp_prior.unwhitenedError(values);
