@@ -11,7 +11,7 @@
 #include <gtsam/nonlinear/NonlinearEquality.h>
 #include <gtsam/nonlinear/NonlinearFactorGraph.h>
 #include <gtsam/nonlinear/Values.h>
-#include <gtsam/slam/WNOAFactor.h>
+#include <gtsam/nonlinear/WNOAFactor.h>
 
 using namespace std;
 using namespace gtsam;

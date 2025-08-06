@@ -19,7 +19,7 @@
 #include <unordered_map>
 #include <functional>
 #include <cstdlib>
-#include "Interpolator.h"
+#include <gtsam/nonlinear/Interpolator.h>
 #include "Pose3Localization_StarryNight.h"
 
 bool USE_MEASUREMENTS = true;

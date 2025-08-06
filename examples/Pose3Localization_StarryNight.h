@@ -54,7 +54,7 @@ using gtsam::Symbol;
 // have been provided with the library for solving robotics SLAM problems:
 #include <gtsam/sam/RangeFactor.h>
 #include <gtsam/slam/BetweenFactor.h>
-#include <gtsam/slam/WNOAFactor.h>
+#include <gtsam/nonlinear/WNOAFactor.h>
 #include <gtsam/slam/dataset.h>
 
 // Timing, with functions below, provides nice facilities to benchmark.
