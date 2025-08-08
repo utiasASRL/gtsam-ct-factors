@@ -121,7 +121,7 @@ class Interpolator {
   std::pair<PoseType, VelocityType> interpolatePoseAndVelocity(
       std::pair<PoseType, VelocityType> Tvarpi_k, double t_k,
       std::pair<PoseType, VelocityType> Tvarpi_kp1, double t_kp1,
-      double t_tau) {
+      double t_tau) const {
     // if t_tau is equal to t_k or t_kp1, return the corresponding pose and
     // velocity
     if (equal(t_tau, t_k)) {

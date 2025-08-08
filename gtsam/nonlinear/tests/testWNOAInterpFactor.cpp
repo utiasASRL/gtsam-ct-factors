@@ -5,7 +5,6 @@
  */
 
 #include <CppUnitLite/TestHarness.h>
-#include <gtsam/base/numericalDerivative.h>
 #include <gtsam/inference/Symbol.h>
 #include <gtsam/nonlinear/GaussNewtonOptimizer.h>
 #include <gtsam/nonlinear/NonlinearEquality.h>
@@ -34,26 +33,68 @@ Vector3 v1_p3 = 2.0 * v0_p3;
 using symbol_shorthand::P;
 using symbol_shorthand::V;
 
-TEST(WNOAInterp, evalErr) {
-  // Define interpolation data
-  InterpData interp_data_p3;
-  interp_data_p3.state_keys = {P(0), P(1)};
-  interp_data_p3.vel_keys = {V(0), V(1)};
-  interp_data_p3.times = {0, 1};
-  interp_data_p3.interp_time = 0.5;
-  Vector Q_psd = {1.0, 1.0};
+// Constructor test
+TEST(WNOAInterp, Constructor) {
+  // Interpolation data
+  InterpData data;
+  data.border_states[0] = StateData(P(0), V(0), 0.0);
+  data.border_states[1] = StateData(P(2), V(2), 1.0);
+  data.interp_states.push_back(StateData(P(1), V(1), 0.5));
+  const auto Q_psd = Vector3::Ones().eval();
 
   // Create a factor
   Point3 priorValue(0.5, 0.0, 0.0);
   auto model = noiseModel::Diagonal::Sigmas(Vector3::Ones());
-  auto prior = PriorFactor<Point3>(P(0), priorValue, model);
-  // Embed in wrapper factor
-  auto interp_prior =
-      WNOAInterpFactor<typename gtsam::PriorFactor<Point3>, Point3, 0>(
-          prior, interp_data_p3, Q_psd);
+  auto prior = PriorFactor<Point3>(P(1), priorValue, model);
+
+  // Construct factor
+  auto factor = WNOAInterpFactor<typename gtsam::PriorFactor<Point3>, Point3>(
+      prior, data, Q_psd);
+}
+
+TEST(WNOAInterp, Print) {
+  // Interpolation data
+  InterpData data;
+  data.border_states[0] = StateData(P(0), V(0), 0.0);
+  data.border_states[1] = StateData(P(2), V(2), 1.0);
+  data.interp_states.push_back(StateData(P(1), V(1), 0.5));
+  const auto Q_psd = Vector3::Ones().eval();
+
+  // Create a factor
+  Point3 priorValue(0.5, 0.0, 0.0);
+  auto model = noiseModel::Diagonal::Sigmas(Vector3::Ones());
+  auto prior = PriorFactor<Point3>(P(1), priorValue, model);
+
+  // Construct factor
+  auto factor = WNOAInterpFactor<typename gtsam::PriorFactor<Point3>, Point3>(
+      prior, data, Q_psd);
+
+  factor.print();
+}
+
+TEST(WNOAInterp, EvalErrorP3Unary) {
+  // Interpolation data
+  InterpData data;
+  data.border_states[0] = StateData(P(0), V(0), 0.0);
+  data.border_states[1] = StateData(P(2), V(2), 1.0);
+  data.interp_states.push_back(StateData(P(1), V(1), 0.5));
+  const auto Q_psd = Vector3::Ones().eval();
+  // Create a prior factor
+  Point3 priorValue(0.5, 0.0, 0.0);
+  const auto model = noiseModel::Diagonal::Sigmas(Vector3::Ones());
+  const auto prior = PriorFactor<Point3>(P(1), priorValue, model);
+  // Construct factor
+  const auto factor =
+      WNOAInterpFactor<typename gtsam::PriorFactor<Point3>, Point3>(prior, data,
+                                                                    Q_psd);
+
+  // zero velocity case
   Values values;
   values.insert(P(0), p0_p3);
-  auto residual1 = interp_prior.unwhitenedError(values);
+  values.insert(P(2), p0_p3);
+  values.insert(V(0), Vector3::Zero().eval());
+  values.insert(V(2), Vector3::Zero().eval());
+  auto residual1 = factor.unwhitenedError(values);
   auto residual2 = prior.evaluateError(p0_p3);
   CHECK(assert_equal(residual1, residual2, 1e-12));
 }
