@@ -28,7 +28,7 @@ struct StateData {
   Key pose;
   Key vel;
   double time;
-  // Default constructor
+  // Default constructor for easy init
   StateData() = default;
   // Constructor
   StateData(Key pose_in, Key vel_in, double time_in)
@@ -49,22 +49,22 @@ struct InterpData {
 
 /* Wrapper class that allows a variable of a factor to be replaced by a WNOA
  * interpolation */
-template <class InnerFactorType, class PoseType>
+template <class PoseType>
 class WNOAInterpFactor : public NoiseModelFactor {
  private:
   using Base = NoiseModelFactor;
-  using This = WNOAInterpFactor<InnerFactorType, PoseType>;
+  using This = WNOAInterpFactor<PoseType>;
   using VelocityType = typename gtsam::traits<PoseType>::TangentVector;
   static constexpr int dim = traits<PoseType>::dimension;
   // Inner factor that is called on interpolated values
-  const InnerFactorType inner_factor_;
+  const NoiseModelFactor& inner_factor_;
   // Interpolator class
   const Interpolator<PoseType> interpolator_;
   // Store interpolation information
-  const InterpData interp_data_;
+  const InterpData& interp_data_;
 
  public:
-  WNOAInterpFactor(const InnerFactorType& inner_factor,
+  WNOAInterpFactor(const NoiseModelFactor& inner_factor,
                    const InterpData& interp_data,
                    const Eigen::Vector<double, dim>& Q_psd)
       : Base(inner_factor.noiseModel(),

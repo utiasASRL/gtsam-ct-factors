@@ -48,8 +48,8 @@ TEST(WNOAInterp, Constructor) {
   auto prior = PriorFactor<Point3>(P(1), priorValue, model);
 
   // Construct factor
-  auto factor = WNOAInterpFactor<typename gtsam::PriorFactor<Point3>, Point3>(
-      prior, data, Q_psd);
+  const auto factor = WNOAInterpFactor<Point3>(prior, data, Q_psd);
+  
 }
 
 TEST(WNOAInterp, Print) {
@@ -66,8 +66,8 @@ TEST(WNOAInterp, Print) {
   auto prior = PriorFactor<Point3>(P(1), priorValue, model);
 
   // Construct factor
-  auto factor = WNOAInterpFactor<typename gtsam::PriorFactor<Point3>, Point3>(
-      prior, data, Q_psd);
+  const auto factor = WNOAInterpFactor<Point3>(prior, data, Q_psd);
+  
 
   factor.print();
 }
@@ -84,9 +84,7 @@ TEST(WNOAInterp, EvalErrorP3Unary) {
   const auto model = noiseModel::Diagonal::Sigmas(Vector3::Ones());
   const auto prior = PriorFactor<Point3>(P(1), priorValue, model);
   // Construct factor
-  const auto factor =
-      WNOAInterpFactor<typename gtsam::PriorFactor<Point3>, Point3>(prior, data,
-                                                                    Q_psd);
+  const auto factor = WNOAInterpFactor<Point3>(prior, data, Q_psd);
 
   // zero velocity case
   Values values;
@@ -98,6 +96,48 @@ TEST(WNOAInterp, EvalErrorP3Unary) {
   auto residual2 = prior.evaluateError(p0_p3);
   CHECK(assert_equal(residual1, residual2, 1e-12));
 }
+
+/* *************************************************************************
+ */
+
+//  TEST(WNOAInterp, EvalErrorSE3Unary) {
+//   // Interpolation data
+//   InterpData data;
+//   data.border_states[0] = StateData(P(0), V(0), 0.0);
+//   data.border_states[1] = StateData(P(2), V(2), 1.0);
+//   data.interp_states.push_back(StateData(P(1), V(1), 0.5));
+//   const auto Q_psd = Vector6::Ones().eval();
+//   // Define First Pose  with a general velocity
+//   Pose3 p0_se3 = Pose3::Expmap(Vector6(0.0, 0.0, 0.0, 0.0, 0.0, 0.0));
+//   Vector6 v0_se3(1, 0.0, 0.0, 0.0, 0.0, 0.0);
+//   double del_t = 0.1;
+//   // Define Second Pose with same velocity (to get an error)
+//   Pose3 p1_se3 = p0_se3.expmap(timestep * v0_se3);
+//   Vector6 v1_se3 = v0_se3;
+//   // Define Third Pose with same vel
+//   Pose3 p2_se3 = p0_se3.expmap(2 * timestep * v0_se3);
+//   Vector6 v2_se3 = v0_se3;
+  
+//   // Model 
+//   const auto model = noiseModel::Diagonal::Sigmas(Vector3::Ones());
+//   const auto prior = PriorFactor<Pose3>(P(1), p1_se3, model);
+//   // Construct factor
+//   const auto factor =
+//       WNOAInterpFactor<typename gtsam::PriorFactor<Point3>, Point3>(prior, data,
+//                                                                     Q_psd);
+
+//   // zero velocity case
+//   Values values;
+//   values.insert(P(0), p0_p3);
+//   values.insert(P(2), p0_p3);
+//   values.insert(V(0), Vector3::Zero().eval());
+//   values.insert(V(2), Vector3::Zero().eval());
+//   auto residual1 = factor.unwhitenedError(values);
+//   auto residual2 = prior.evaluateError(p0_p3);
+//   CHECK(assert_equal(residual1, residual2, 1e-12));
+// }
+
+
 
 /* *************************************************************************
  */
