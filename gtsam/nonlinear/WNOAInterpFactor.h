@@ -40,13 +40,17 @@ struct StateData {
  * times*/
 struct InterpData {
   // Border state information
-  StateData border_states[2];
+  array<StateData, 2> border_states;
   // Interpolated state information
   vector<StateData> interp_states;
-  // Power Spectral Density Matrix
-  Vector Q_psd;
-};
 
+  // Default constructor
+  InterpData() = default;
+  // Constructor
+  InterpData(const array<StateData, 2>& border_states_in,
+             const vector<StateData>& interp_states_in)
+      : border_states(border_states_in), interp_states(interp_states_in) {};
+};
 /* Wrapper class that allows a variable of a factor to be replaced by a WNOA
  * interpolation */
 template <class PoseType>
@@ -180,5 +184,10 @@ class WNOAInterpFactor : public NoiseModelFactor {
     return new_keys;
   }
 };
+
+/// traits
+template <class POSE>
+struct traits<WNOAInterpFactor<POSE> >
+    : public Testable<WNOAInterpFactor<POSE> > {};
 
 }  // namespace gtsam
