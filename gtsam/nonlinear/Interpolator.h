@@ -249,7 +249,6 @@ class Interpolator {
     return interpolatedSolution;
   }
 
- protected:
   std::pair<Matrix, Matrix> getLamdaPsi(double t_k, double t_kp1,
                                         double t_tau) const {
     // Build transition matrices for all combinations

@@ -13,6 +13,7 @@
 #include <gtsam/nonlinear/NonlinearFactor.h>
 #include <gtsam/nonlinear/Values.h>
 
+#include <algorithm>
 #include <stdexcept>
 #include <unordered_set>
 #include <utility>
@@ -25,9 +26,9 @@ namespace gtsam {
 /* @brief State data structure for keeping track of pose and velocity keys as
  * well as associated timestamp. Used in GP interpolation.*/
 struct StateData {
-  Key pose;
-  Key vel;
-  double time;
+  const Key pose;
+  const Key vel;
+  const double time;
   // Default constructor for easy init
   StateData() = default;
   // Constructor
@@ -35,24 +36,11 @@ struct StateData {
       : pose(pose_in), vel(vel_in), time(time_in) {};
 };
 
-/* @brief Struct for keeping track GP interpolation information.
- * Assumes that the times of the interpolated states are within the border state
- * times*/
-struct InterpData {
-  // Border state information
-  array<StateData, 2> border_states;
-  // Interpolated state information
-  vector<StateData> interp_states;
-
-  // Default constructor
-  InterpData() = default;
-  // Constructor
-  InterpData(const array<StateData, 2>& border_states_in,
-             const vector<StateData>& interp_states_in)
-      : border_states(border_states_in), interp_states(interp_states_in) {};
-};
 /* Wrapper class that allows a variable of a factor to be replaced by a WNOA
- * interpolation */
+ * interpolation.
+ * It is assumed that estimated state entries are sorted according to time.
+ * If using for WNOAInterpFactor, note that interpolation is performed for
+ * every state in interp_states */
 template <class PoseType>
 class WNOAInterpFactor : public NoiseModelFactor {
  private:
@@ -62,20 +50,54 @@ class WNOAInterpFactor : public NoiseModelFactor {
   static constexpr int dim = traits<PoseType>::dimension;
   // Inner factor that is called on interpolated values
   const NoiseModelFactor& inner_factor_;
+  // List of interpolated states
+  const vector<StateData>& interp_states_;
+  // List of estimated states
+  const vector<StateData>& estimated_states_;
   // Interpolator class
   const Interpolator<PoseType> interpolator_;
-  // Store interpolation information
-  const InterpData& interp_data_;
+  // map interpolated key to index of estimated state index (required for
+  // jacobians)
+  unordered_map<Key, int> interp_key_to_estimated;
+  // map interpolated state index to estimated state index
+  vector<int> interp_to_estimated;
 
  public:
   WNOAInterpFactor(const NoiseModelFactor& inner_factor,
-                   const InterpData& interp_data,
+                   const vector<StateData>& estimated_states,
+                   const vector<StateData>& interp_states,
                    const Eigen::Vector<double, dim>& Q_psd)
       : Base(inner_factor.noiseModel(),
-             This::get_outer_keys(inner_factor.keys(), interp_data)),
+             This::get_outer_keys(inner_factor.keys(), estimated_states,
+                                  interp_states)),
         inner_factor_(inner_factor),
-        interpolator_(Q_psd),
-        interp_data_(interp_data) {};
+        interp_states_(interp_states),
+        estimated_states_(estimated_states),
+        interpolator_(Q_psd) {
+    // Get list of estimated times
+    vector<double> estimated_times;
+    for (auto state : estimated_states) {
+      estimated_times.push_back(state.time);
+    }
+    // map interp states to estimated states
+    for (const auto& state : interp_states) {
+      auto it = std::lower_bound(estimated_times.begin(), estimated_times.end(),
+                                 state.time);
+      if (it == estimated_times.begin()) {
+        throw runtime_error(
+            "Interpolated state time is before all estimated state times");
+      } else if (it == estimated_times.end()) {
+        throw runtime_error(
+            "Interpolated state time is after all estimated state times");
+      } else {
+        // update maps with left index
+        int right_index = std::distance(estimated_times.begin(), it);
+        interp_to_estimated.push_back(right_index - 1);
+        interp_key_to_estimated[state.pose] = right_index - 1;
+        interp_key_to_estimated[state.vel] = right_index - 1;
+      }
+    }
+  };
 
   ~WNOAInterpFactor() override {};
 
@@ -105,12 +127,13 @@ class WNOAInterpFactor : public NoiseModelFactor {
   // Override of evaluateError required by NoiseModelFactorN derivatives
   Vector unwhitenedError(const Values& values,
                          OptionalMatrixVecType H = nullptr) const override {
-    // process interpolated states
-    const Values values_interp = get_interp_values(values);
+    // process interpolated states and get Jacobians
+    vector<pair<Matrix, Matrix>> LambdaPsi;
+    const Values values_interp = get_interp_values(values, LambdaPsi);
 
     // construct values for inner factor
     Values values_inner;
-    for (Key key : inner_factor_.keys()) {
+    for (const auto& key : inner_factor_.keys()) {
       if (values_interp.exists(key)) {
         // found key in interpolated values
         values_inner.insert(key, values_interp.at(key));
@@ -124,70 +147,102 @@ class WNOAInterpFactor : public NoiseModelFactor {
       }
     }
 
-    // Call inner factor's evaluate function with updated values.
-    auto error = inner_factor_.unwhitenedError(values_inner, H);
+    // Set up Jacobians for inner call if required
+    // vector<Matrix>* H_inner = nullptr;
+    // if (H){
+    //   // build vector of matrices
+    //   vector<Matrix> H_inner_;
+    //   for (auto key : inner_factor_.keys()){
+    //     H_inner_.push_back(Matrix());
+    //   }
+    //   // direct pointer at matrix vector
+    //   H_inner = boost::make_shared(H_inner_);
+    // }
+    // // Call inner factor's evaluate function with updated values and retrieve
+    // jacobians
+    auto error = inner_factor_.unwhitenedError(values_inner);
 
-    // Jacobian computations
+    // compute Jacobians for outer keys
+    // if (H){
+    //   //loop though outer keys
+    //   for (int i; i < keys_.size(); i++){
+    //     Key key = keys_[i];
+    //     if (values_inner.exists(key) && ){
+
+    //     }
+    //   }
+    // }
 
     return error;
   }
 
  private:
-  /* @brief Compute the interpolated values based on border state values */
-  Values get_interp_values(const Values& values) const {
-    // retrieve bordering states
-    const auto state_vel_0 =
-        make_pair(values.at<PoseType>(interp_data_.border_states[0].pose),
-                  values.at<VelocityType>(interp_data_.border_states[0].vel));
-    const auto state_vel_1 =
-        make_pair(values.at<PoseType>(interp_data_.border_states[1].pose),
-                  values.at<VelocityType>(interp_data_.border_states[1].vel));
-    // process all interpolated states, put results in values dictionary
-    Values values_interp;
-    for (StateData interp_state : interp_data_.interp_states) {
+  /* @brief Interpolate all interpolated states based on estimated states.
+   * Put their values in a Values structure and compute their Jacobians.*/
+  Values get_interp_values(const Values& values,
+                           vector<pair<Matrix, Matrix>>& PsiLambdas) const {
+    Values values_interp; //interpolated values
+    //loop through interpolated states and compute interpolation
+    for (uint i = 0; i < interp_states_.size(); i++) {
+      const StateData& interp_state = interp_states_[i];  // interpolated state
+      int index = interp_to_estimated[i];  // index of bordering estimated state
+      const StateData& left = estimated_states_[index];       // left border state
+      const StateData& right = estimated_states_[index + 1];  // right border state
+      // retrieve estimated states
+      const auto state_left = make_pair(values.at<PoseType>(left.pose),
+                                        values.at<VelocityType>(left.vel));
+      const auto state_right = make_pair(values.at<PoseType>(right.pose),
+                                         values.at<VelocityType>(right.vel));
       // Get interpolated state velocity pair
-      auto state_vel_pair = interpolator_.interpolatePoseAndVelocity(
-          state_vel_0, interp_data_.border_states[0].time, state_vel_1,
-          interp_data_.border_states[1].time, interp_state.time);
+      auto [pose, velocity] = interpolator_.interpolatePoseAndVelocity(
+          state_left, left.time, state_right, right.time, interp_state.time);
       // insert into values structure
-      values_interp.insert(interp_state.pose, state_vel_pair.first);
-      values_interp.insert(interp_state.vel, state_vel_pair.second);
+      values_interp.insert(interp_state.pose, pose);
+      values_interp.insert(interp_state.vel, velocity);
+      // compute jacobians
+      // NOTE: (CH) this should be done in previous call, but not implemented
+      // yet
+      PsiLambdas.push_back(
+          interpolator_.getLamdaPsi(left.time, right.time, interp_state.time));
     }
+
     return values_interp;
   }
 
   /* @brief This function retrieves the approapriate keys for the outer factor
    * based on the interpolation data and the inner factor*/
-  static inline KeyVector get_outer_keys(const KeyVector& inner_keys,
-                                         const InterpData& interp_data) {
-    // retreive inner factor keys and interpolation keys
-    KeyVector new_keys = {
-        interp_data.border_states[0].pose,
-        interp_data.border_states[0].vel,
-        interp_data.border_states[1].pose,
-        interp_data.border_states[1].vel,
-    };
+  static KeyVector get_outer_keys(const KeyVector& inner_keys,
+                                  const vector<StateData>& estimated_states,
+                                  const vector<StateData>& interp_states) {
+    // get set of estimated keys and add to key set
+    unordered_set<Key> outer_key_set;
+    for (const StateData& estimated_state : estimated_states) {
+      outer_key_set.insert(estimated_state.pose);
+      outer_key_set.insert(estimated_state.vel);
+    }
     // get set of interpolated keys
     unordered_set<Key> interp_key_set;
-    for (StateData interp_state_key : interp_data.interp_states) {
-      interp_key_set.insert(interp_state_key.pose);
-      interp_key_set.insert(interp_state_key.vel);
+    for (const StateData& interp_state : interp_states) {
+      interp_key_set.insert(interp_state.pose);
+      interp_key_set.insert(interp_state.vel);
     }
-    // add inner keys that are not being interpolated
+    // add inner keys that are not being interpolated and are not already in the
+    // our set of outer keys
     for (Key key : inner_keys) {
-      if (interp_key_set.count(key) == 0) {
-        new_keys.push_back(key);
+      if (interp_key_set.count(key) == 0 && outer_key_set.count(key) == 0) {
+        outer_key_set.insert(key);
       }
     }
 
-    // return the modified set of keys
-    return new_keys;
+    // Convert key set to key vector
+    KeyVector outer_keys(outer_key_set.begin(), outer_key_set.end());
+    return outer_keys;
   }
 };
 
 /// traits
 template <class POSE>
-struct traits<WNOAInterpFactor<POSE> >
-    : public Testable<WNOAInterpFactor<POSE> > {};
+struct traits<WNOAInterpFactor<POSE>>
+    : public Testable<WNOAInterpFactor<POSE>> {};
 
 }  // namespace gtsam
