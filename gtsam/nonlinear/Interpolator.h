@@ -208,7 +208,7 @@ class Interpolator {
         mainSolveSolution.at<PoseType>(mainSolveKeyMap.at(t_kp1).first),
         mainSolveSolution.at<VelocityType>(mainSolveKeyMap.at(t_kp1).second));
       
-      // Interpolate for all query times within this interval bucket
+      // Interpolate for all query times within this query interval (bucket)
       for (double t_tau : times) {
         auto pvtau = interpolatePoseAndVelocity(
             pvk, t_k, pvkp1, t_kp1, t_tau);
@@ -219,11 +219,15 @@ class Interpolator {
 
       // Compute covariances of the interpolated poses and velocities
       if (covarianceMap) {
+        // following (5.22) in paper
         KeyVector variables = {  // {p1, v1, p2, v2}
             mainSolveKeyMap.at(t_k).first, mainSolveKeyMap.at(t_k).second,
             mainSolveKeyMap.at(t_kp1).first, mainSolveKeyMap.at(t_kp1).second};
-        Matrix mainSolveMarginal =
-         marginals->jointMarginalCovariance(variables).fullMatrix();
+        Eigen::Matrix<double, 4*dim, 4*dim> mainSolveMarginalPermuted = 
+           marginals->jointMarginalCovariance(variables).fullMatrix();
+        // JointMarginal returns covariance in alphabetical order of the keys: {v1, p1, v2, p2} (why???)
+        Eigen::Matrix<double, 4*dim, 4*dim> mainSolveMarginal = 
+          reorderSymmetricMatrix(mainSolveMarginalPermuted, dim, {2, 0, 3, 1}); // reorder to {p1, v1, p2, v2}
         
         for (double t_tau : times) {
           auto pvtau = std::make_pair(
@@ -231,9 +235,10 @@ class Interpolator {
               interpolatedSolution.at<VelocityType>(interpolateKeyMap.at(t_tau).second));
           Matrix2N Sigma = computeConditionalCov(pvk, pvkp1, pvtau, t_k, t_kp1, t_tau);
           auto [Lambda, Psi] = getLamdaPsi(t_k, t_kp1, t_tau);  // todo: don't recompute this - already computed in interpolation step
-          Eigen::Matrix<double, 2 * dim, 4 * dim> LambdaPsi;
+          Eigen::Matrix<double, 2*dim, 4*dim> LambdaPsi;
           LambdaPsi << Lambda, Psi;
           Matrix2N cov = Sigma + LambdaPsi * mainSolveMarginal * LambdaPsi.transpose();
+          
           // upper left covariance block corresponds to pose, lower right block corresponds to velocity
           covarianceMap->insert({interpolateKeyMap.at(t_tau).first, cov.topLeftCorner(dim, dim)});
           covarianceMap->insert({interpolateKeyMap.at(t_tau).second, cov.bottomRightCorner(dim, dim)});
@@ -277,6 +282,20 @@ class Interpolator {
         F_tau.transpose() * Q_tau_next.inverse() * F_tau;
     Matrix2N Sigma = Sigma_inv.inverse();
     return Sigma;
+  }
+
+  static Matrix reorderSymmetricMatrix(const Matrix& mat, size_t block_size, const std::vector<size_t>& block_order) {
+    assert(mat.rows() == mat.cols() && "Matrix must be square");
+    assert(block_order.size() * block_size == static_cast<size_t>(mat.rows()) &&
+           "Block order size must match matrix dimensions");
+    Matrix reordered(mat.rows(), mat.cols());
+    for (size_t i = 0; i < block_order.size(); ++i)
+      for (size_t j = 0; j < block_order.size(); ++j)
+        reordered.block(i * block_size, j * block_size, block_size, block_size) =
+            mat.block(block_order[i] * block_size, block_order[j] * block_size,
+                      block_size, block_size);
+
+    return reordered;
   }
 
 };

@@ -116,14 +116,14 @@ figure
 set(gcf, 'Color', 'w');
 tiledlayout(6, 1, 'Padding', 'none', 'TileSpacing', 'compact');
 y_label_array = {'\sigma_x', '\sigma_y', '\sigma_z', '\sigma_\theta_x', '\sigma_\theta_y', '\sigma_\theta_z'};
-lim_trans = 2.0;
-lim_rot = 1.0;
+lim_trans = 3.0;
+lim_rot = 1.2;
 for i = 1:6
     nexttile(i);
-    plot(t(k1:k2), sigmas_3_interval(i,:), '-', 'LineWidth', 1.5, 'Color', 'blue');
+    plot(t(k1:k2), sigmas_3_interval(i,:), '-', 'LineWidth', 1.5, 'Color', 'blue', 'DisplayName', 'All states in main solve');
     hold on
-    scatter(t(k1:pose_interval:k2), sigmas_3_interval(i,1:pose_interval:end), 'o', 'LineWidth', 2, 'MarkerEdgeColor', 'blue');
-    plot(t(k1:k2-end_idx_diff), sigmas_3_interpolated(i,:), '.-', 'LineWidth', 1.5, 'Color', 'm');
+    plot(t(k1:k2-end_idx_diff), sigmas_3_interpolated(i,:), '.-', 'LineWidth', 1.5, 'Color', 'm', 'DisplayName', 'Sparse states in main solve');
+    scatter(t(k1:pose_interval:k2), sigmas_3_interval(i,1:pose_interval:end), 'o', 'LineWidth', 2, 'MarkerEdgeColor', 'blue', 'DisplayName', 'States with measurements');
     % scatter(t(k1:pose_interval:k2-end_idx_diff), sigmas_3_interval(i,1:pose_interval:end), 'o', 'MarkerEdgeColor', 'm');
     xlabel('time (s)');
     ylabel(y_label_array{i})
@@ -134,7 +134,10 @@ for i = 1:6
         ylim([0 lim_rot])
     end
 end
-
+nexttile(1)
+title('Covariance plot for WNOA with sparse measurements')
+nexttile(6)
+legend('Location','southoutside')
 %% old code - plot errors
 lim_trans = 0.15;
 lim_rot = 0.3;
