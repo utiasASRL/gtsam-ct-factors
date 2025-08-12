@@ -223,11 +223,12 @@ class Interpolator {
         KeyVector variables = {  // {p1, v1, p2, v2}
             mainSolveKeyMap.at(t_k).first, mainSolveKeyMap.at(t_k).second,
             mainSolveKeyMap.at(t_kp1).first, mainSolveKeyMap.at(t_kp1).second};
-        Eigen::Matrix<double, 4*dim, 4*dim> mainSolveMarginalPermuted = 
-           marginals->jointMarginalCovariance(variables).fullMatrix();
-        // JointMarginal returns covariance in alphabetical order of the keys: {v1, p1, v2, p2} (why???)
-        Eigen::Matrix<double, 4*dim, 4*dim> mainSolveMarginal = 
-          reorderSymmetricMatrix(mainSolveMarginalPermuted, dim, {2, 0, 3, 1}); // reorder to {p1, v1, p2, v2}
+        JointMarginal mainSolveMarginal = 
+           marginals->jointMarginalCovariance(variables);
+        // avoid using JointMarginal.fullMatrix() as it returns covariance
+        //in alphabetical order of the keys...
+        Eigen::Matrix<double, 4*dim, 4*dim> mainSolveMarginalMatrix = 
+          constructMatrixFromJointMarginal(mainSolveMarginal, variables, dim);
         
         for (double t_tau : times) {
           auto pvtau = std::make_pair(
@@ -237,7 +238,7 @@ class Interpolator {
           auto [Lambda, Psi] = getLamdaPsi(t_k, t_kp1, t_tau);  // todo: don't recompute this - already computed in interpolation step
           Eigen::Matrix<double, 2*dim, 4*dim> LambdaPsi;
           LambdaPsi << Lambda, Psi;
-          Matrix2N cov = Sigma + LambdaPsi * mainSolveMarginal * LambdaPsi.transpose();
+          Matrix2N cov = Sigma + LambdaPsi * mainSolveMarginalMatrix * LambdaPsi.transpose();
           
           // upper left covariance block corresponds to pose, lower right block corresponds to velocity
           covarianceMap->insert({interpolateKeyMap.at(t_tau).first, cov.topLeftCorner(dim, dim)});
@@ -284,7 +285,32 @@ class Interpolator {
     return Sigma;
   }
 
+  static Matrix constructMatrixFromJointMarginal(
+    const JointMarginal& blockMatrix,
+    const KeyVector& keyVector,
+    size_t blockSize) {
+    size_t n = keyVector.size();
+    Matrix M(n * blockSize, n * blockSize);
+
+    for (size_t i = 0; i < n; ++i) {
+      for (size_t j = 0; j <= i; ++j) { // symmetric block matrix: j <= i to avoid repeats
+        auto block = blockMatrix(keyVector[i], keyVector[j]); // query block
+        // fill in both (i, j) and (j, i) blocks
+        M.block(i * blockSize, j * blockSize, blockSize, blockSize) = block;
+        if (i != j) {
+          M.block(j * blockSize, i * blockSize, blockSize, blockSize) = block.transpose();
+        }
+      }
+    }
+    return M;
+  }
+
+  // Not used anymore, but may be useful in future
   static Matrix reorderSymmetricMatrix(const Matrix& mat, size_t block_size, const std::vector<size_t>& block_order) {
+    // This was previously used to reorder a matrix from JointMarginal.fullMatrix()
+    // e.g. if KeyVector is {p1, v1, p2, v2}, JointMarginal.fullMatrix() would
+    // be the marginal corresponding to {v1, v2, p1, p2}. Then, we could call
+    // reorderSymmetricMatrix(mainSolveMarginalPermuted, dim, {2, 0, 3, 1});
     assert(mat.rows() == mat.cols() && "Matrix must be square");
     assert(block_order.size() * block_size == static_cast<size_t>(mat.rows()) &&
            "Block order size must match matrix dimensions");

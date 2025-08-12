@@ -71,11 +71,11 @@ errors_to_plot = [error_r; error_theta];
 sigmas_to_plot = sigmas_3_interval(:,1:interp_end_idx);
 
 % interpolated errors
-% error_r = t_array_interpolated - r_gt(:,1:interp_end_idx);
-% error_theta = compute_error_theta(C_array_interpolated, C_gt(:,:,1:interp_end_idx));
-% end_idx_diff = size(t_array_interval,2) - interp_end_idx;
-% errors_to_plot = [error_r; error_theta];
-% sigmas_to_plot = sigmas_3_interpolated(:,1:interp_end_idx);
+error_r = t_array_interpolated - r_gt(:,1:interp_end_idx);
+error_theta = compute_error_theta(C_array_interpolated, C_gt(:,:,1:interp_end_idx));
+end_idx_diff = size(t_array_interval,2) - interp_end_idx;
+errors_to_plot = [error_r; error_theta];
+sigmas_to_plot = sigmas_3_interpolated(:,1:interp_end_idx);
 
 % error_r_dr = t_array - r_k;
 % error_theta_dr = compute_error_theta(C_array, C_k_trans);
