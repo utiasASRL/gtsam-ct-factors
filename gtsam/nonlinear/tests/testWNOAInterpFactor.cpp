@@ -5,6 +5,7 @@
  */
 
 #include <CppUnitLite/TestHarness.h>
+#include <gtsam/base/numericalDerivative.h>
 #include <gtsam/inference/Symbol.h>
 #include <gtsam/nonlinear/GaussNewtonOptimizer.h>
 #include <gtsam/nonlinear/NonlinearEquality.h>
@@ -13,6 +14,8 @@
 #include <gtsam/nonlinear/WNOAFactor.h>
 #include <gtsam/nonlinear/WNOAInterpFactor.h>
 #include <gtsam/slam/BetweenFactor.h>
+
+#include <unordered_map>
 
 using namespace std;
 using namespace gtsam;
@@ -260,6 +263,126 @@ TEST(WNOAInterp, EvalErrorSE3BtwnInterp) {
   residual = factor.unwhitenedError(values);  // new
   CHECK(assert_equal(residual, res_actual, 1e-12));
 }
+
+/* *************************************************************************
+ */
+TEST(WNOAInterp, JacobianPoint3UnaryPose) {
+  // Model
+  const auto model = noiseModel::Diagonal::Sigmas(Vector3::Ones());
+  const auto prior_factor = PriorFactor<Point3>(P(1), p1_p3, model);
+  // Construct factor for interpolated pose and velocity
+  const auto factor =
+      WNOAInterpFactor<Point3>(prior_factor, border, interp, Q_p3);
+
+  // Set up values
+  Values values;
+  values.insert(P(0), p0_p3);
+  values.insert(P(2), p2_p3);
+  values.insert(V(0), v0_p3);
+  values.insert(V(2), v2_p3);
+
+  // Create container for Jacobians
+  vector<Matrix> H(factor.keys().size());
+  // Get residual and Jacobian
+  auto residual = factor.unwhitenedError(values, &H);
+
+  unordered_map<Key, Matrix> Jacs;
+  KeyVector factor_keys = factor.keys();
+  for (uint i = 0; i < factor_keys.size(); i++) {
+    Jacs[factor_keys[i]] = H[i];
+  }
+
+  // define lambda function for derivatives
+  auto f = [&](auto& p0, auto& v0, auto& p2, auto& v2) {
+    Values values;
+    values.insert(P(0), p0);
+    values.insert(P(2), p2);
+    values.insert(V(0), v0);
+    values.insert(V(2), v2);
+    return factor.unwhitenedError(values);
+  };
+
+  // Compute numerical derivatives
+  double delta = 1e-6;
+  Matrix J_p0_num =
+      numericalDerivative41<Vector, Point3, Vector3, Point3, Vector3>(
+          f, p0_p3, v0_p3, p2_p3, v2_p3, delta);
+  Matrix J_v0_num =
+      numericalDerivative42<Vector, Point3, Vector3, Point3, Vector3>(
+          f, p0_p3, v0_p3, p2_p3, v2_p3, delta);
+  Matrix J_p2_num =
+      numericalDerivative43<Vector, Point3, Vector3, Point3, Vector3>(
+          f, p0_p3, v0_p3, p2_p3, v2_p3, delta);
+  Matrix J_v2_num =
+      numericalDerivative44<Vector, Point3, Vector3, Point3, Vector3>(
+          f, p0_p3, v0_p3, p2_p3, v2_p3, delta);
+
+  double tol = 1e-4;
+  EXPECT(assert_equal(Jacs[P(0)], J_p0_num, tol));
+  EXPECT(assert_equal(Jacs[V(0)], J_v0_num, tol));
+  EXPECT(assert_equal(Jacs[P(2)], J_p2_num, tol));
+  EXPECT(assert_equal(Jacs[V(2)], J_v2_num, tol));
+}
+
+// /* *************************************************************************
+//  */
+// TEST(WNOAInterp, JacobianSE3UnaryPose) {
+//   // Model
+//   const auto model = noiseModel::Diagonal::Sigmas(Vector6::Ones());
+//   const auto prior_factor = PriorFactor<Pose3>(P(1), p1_se3, model);
+//   // Construct factor for interpolated pose and velocity
+//   const auto factor =
+//       WNOAInterpFactor<Pose3>(prior_factor, border, interp, Q_se3);
+
+//   // Set up values
+//   Values values;
+//   values.insert(P(0), p0_se3);
+//   values.insert(P(2), p2_se3);
+//   values.insert(V(0), v0_se3);
+//   values.insert(V(2), v2_se3);
+
+//   // Create container for Jacobians
+//   vector<Matrix> H(factor.keys().size());
+//   // Get residual and Jacobian
+//   auto residual = factor.unwhitenedError(values, &H);
+
+//   unordered_map<Key, Matrix> Jacs;
+//   KeyVector factor_keys = factor.keys();
+//   for (uint i = 0; i < factor_keys.size(); i++) {
+//     Jacs[factor_keys[i]] = H[i];
+//   }
+
+//   // define lambda function for derivatives
+//   auto f = [&](auto& p0, auto& v0, auto& p2, auto& v2) {
+//     Values values;
+//     values.insert(P(0), p0);
+//     values.insert(P(2), p2);
+//     values.insert(V(0), v0);
+//     values.insert(V(2), v2);
+//     return factor.unwhitenedError(values);
+//   };
+
+//   // Compute numerical derivatives
+//   double delta = 1e-6;
+//   Matrix J_p0_num =
+//       numericalDerivative41<Vector, Pose3, Vector6, Pose3, Vector6>(
+//           f, p0_se3, v0_se3, p2_se3, v2_se3, delta);
+//   Matrix J_v0_num =
+//       numericalDerivative42<Vector, Pose3, Vector6, Pose3, Vector6>(
+//           f, p0_se3, v0_se3, p2_se3, v2_se3, delta);
+//   Matrix J_p2_num =
+//       numericalDerivative43<Vector, Pose3, Vector6, Pose3, Vector6>(
+//           f, p0_se3, v0_se3, p2_se3, v2_se3, delta);
+//   Matrix J_v2_num =
+//       numericalDerivative44<Vector, Pose3, Vector6, Pose3, Vector6>(
+//           f, p0_se3, v0_se3, p2_se3, v2_se3, delta);
+
+//   double tol = 1e-4;
+//   EXPECT(assert_equal(Jacs[P(0)], J_p0_num, tol));
+//   EXPECT(assert_equal(Jacs[V(0)], J_v0_num, tol));
+//   EXPECT(assert_equal(Jacs[P(2)], J_p2_num, tol));
+//   EXPECT(assert_equal(Jacs[V(2)], J_v2_num, tol));
+// }
 
 /* *************************************************************************
  */

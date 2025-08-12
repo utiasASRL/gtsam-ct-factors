@@ -38,7 +38,7 @@ struct StateData {
 
 /* Wrapper class that allows a variable of a factor to be replaced by a WNOA
  * interpolation.
- * It is assumed that estimated state entries are sorted according to time.
+ * It is assumed that estimated state entries are sorted by time.
  * If using for WNOAInterpFactor, note that interpolation is performed for
  * every state in interp_states */
 template <class PoseType>
@@ -58,9 +58,11 @@ class WNOAInterpFactor : public NoiseModelFactor {
   const Interpolator<PoseType> interpolator_;
   // map interpolated key to index of estimated state index (required for
   // jacobians)
-  unordered_map<Key, int> interp_key_to_estimated;
+  unordered_map<Key, int> interp_key_to_left_index;
   // map interpolated state index to estimated state index
   vector<int> interp_to_estimated;
+  // map outer key to outer key index (for Jacobians)
+  unordered_map<Key, int> outer_key_to_index;
 
  public:
   WNOAInterpFactor(const NoiseModelFactor& inner_factor,
@@ -93,9 +95,14 @@ class WNOAInterpFactor : public NoiseModelFactor {
         // update maps with left index
         int right_index = std::distance(estimated_times.begin(), it);
         interp_to_estimated.push_back(right_index - 1);
-        interp_key_to_estimated[state.pose] = right_index - 1;
-        interp_key_to_estimated[state.vel] = right_index - 1;
+        interp_key_to_left_index[state.pose] = right_index - 1;
+        interp_key_to_left_index[state.vel] = right_index - 1;
       }
+    }
+    // map outer keys to their associated index (used when mapping jacobians
+    // later)
+    for (uint i = 0; i < this->keys_.size(); i++) {
+      outer_key_to_index[this->keys_[i]] = i;
     }
   };
 
@@ -127,9 +134,10 @@ class WNOAInterpFactor : public NoiseModelFactor {
   // Override of evaluateError required by NoiseModelFactorN derivatives
   Vector unwhitenedError(const Values& values,
                          OptionalMatrixVecType H = nullptr) const override {
+    // Define mapping from interpolated keys to interpolation jacobians
+    unordered_map<Key, unordered_map<Key, Matrix>> InterpJacobians;
     // process interpolated states and get Jacobians
-    vector<pair<Matrix, Matrix>> LambdaPsi;
-    const Values values_interp = get_interp_values(values, LambdaPsi);
+    const Values values_interp = get_interp_values(values, InterpJacobians);
 
     // construct values for inner factor
     Values values_inner;
@@ -147,31 +155,41 @@ class WNOAInterpFactor : public NoiseModelFactor {
       }
     }
 
-    // Set up Jacobians for inner call if required
-    // vector<Matrix>* H_inner = nullptr;
-    // if (H){
-    //   // build vector of matrices
-    //   vector<Matrix> H_inner_;
-    //   for (auto key : inner_factor_.keys()){
-    //     H_inner_.push_back(Matrix());
-    //   }
-    //   // direct pointer at matrix vector
-    //   H_inner = boost::make_shared(H_inner_);
-    // }
-    // // Call inner factor's evaluate function with updated values and retrieve
-    // jacobians
-    auto error = inner_factor_.unwhitenedError(values_inner);
+    // Call inner factor error function with interpolated values.
+    vector<Matrix> H_inner(inner_factor_.keys().size());
+    Vector error;
+    if (H) {
+      error = inner_factor_.unwhitenedError(values_inner, &H_inner);
+    } else {
+      error = inner_factor_.unwhitenedError(values_inner);
+    }
 
     // compute Jacobians for outer keys
-    // if (H){
-    //   //loop though outer keys
-    //   for (int i; i < keys_.size(); i++){
-    //     Key key = keys_[i];
-    //     if (values_inner.exists(key) && ){
-
-    //     }
-    //   }
-    // }
+    if (H) {
+      // loop through inner keys and update outer keys (backpropagate)
+      for (uint i=0; i < inner_factor_.keys().size(); i++) {
+        Key inner_key = inner_factor_.keys()[i];
+        if (values_interp.exists(inner_key)) {
+          // get index left bordering state states
+          int left_index = interp_key_to_left_index.at(inner_key);
+          // get associated outer keys
+          KeyVector outer_keys = {estimated_states_[left_index].pose,
+                                  estimated_states_[left_index].vel,
+                                  estimated_states_[left_index + 1].pose,
+                                  estimated_states_[left_index + 1].vel};
+          // Loop over keys and update Jacobian
+          for (Key& outer_key : outer_keys) {
+            int k = outer_key_to_index.at(outer_key);
+            safeMatrixAdd((*H)[k],
+                          H_inner[i] * InterpJacobians[inner_key][outer_key]);
+          }
+        } else {
+          // not an interpolated key, directly map to outer jacobian
+          int k = outer_key_to_index.at(inner_key);
+          safeMatrixAdd((*H)[k], H_inner[i]);
+        }
+      }
+    }
 
     return error;
   }
@@ -179,15 +197,17 @@ class WNOAInterpFactor : public NoiseModelFactor {
  private:
   /* @brief Interpolate all interpolated states based on estimated states.
    * Put their values in a Values structure and compute their Jacobians.*/
-  Values get_interp_values(const Values& values,
-                           vector<pair<Matrix, Matrix>>& PsiLambdas) const {
-    Values values_interp; //interpolated values
-    //loop through interpolated states and compute interpolation
+  Values get_interp_values(
+      const Values& values,
+      unordered_map<Key, unordered_map<Key, Matrix>>& InterpJacobians) const {
+    Values values_interp;  // interpolated values
+    // loop through interpolated states and compute interpolation
     for (uint i = 0; i < interp_states_.size(); i++) {
       const StateData& interp_state = interp_states_[i];  // interpolated state
       int index = interp_to_estimated[i];  // index of bordering estimated state
-      const StateData& left = estimated_states_[index];       // left border state
-      const StateData& right = estimated_states_[index + 1];  // right border state
+      const StateData& left = estimated_states_[index];  // left border state
+      const StateData& right =
+          estimated_states_[index + 1];  // right border state
       // retrieve estimated states
       const auto state_left = make_pair(values.at<PoseType>(left.pose),
                                         values.at<VelocityType>(left.vel));
@@ -199,11 +219,29 @@ class WNOAInterpFactor : public NoiseModelFactor {
       // insert into values structure
       values_interp.insert(interp_state.pose, pose);
       values_interp.insert(interp_state.vel, velocity);
-      // compute jacobians
       // NOTE: (CH) this should be done in previous call, but not implemented
       // yet
-      PsiLambdas.push_back(
-          interpolator_.getLamdaPsi(left.time, right.time, interp_state.time));
+      // Retrieve Interpolation Jacobian
+      Eigen::Matrix<double, 2 * dim, 2 * dim> Lambda, Psi;
+      tie(Lambda, Psi) =
+          interpolator_.getLamdaPsi(left.time, right.time, interp_state.time);
+      // Split up interpolation Jacobian and define mappings
+      InterpJacobians[interp_state.pose][left.pose] =
+          Lambda.template block<dim, dim>(0, 0);
+      InterpJacobians[interp_state.pose][left.vel] =
+          Lambda.template block<dim, dim>(0, dim);
+      InterpJacobians[interp_state.pose][right.pose] =
+          Psi.template block<dim, dim>(0, 0);
+      InterpJacobians[interp_state.pose][right.vel] =
+          Psi.template block<dim, dim>(0, dim);
+      InterpJacobians[interp_state.vel][left.pose] =
+          Lambda.template block<dim, dim>(dim, 0);
+      InterpJacobians[interp_state.vel][left.vel] =
+          Lambda.template block<dim, dim>(dim, dim);
+      InterpJacobians[interp_state.vel][right.pose] =
+          Psi.template block<dim, dim>(dim, 0);
+      InterpJacobians[interp_state.vel][right.vel] =
+          Psi.template block<dim, dim>(dim, dim);
     }
 
     return values_interp;
@@ -237,6 +275,23 @@ class WNOAInterpFactor : public NoiseModelFactor {
     // Convert key set to key vector
     KeyVector outer_keys(outer_key_set.begin(), outer_key_set.end());
     return outer_keys;
+  }
+
+  /* @brief A function for safely adding to a Matrix with possibly unknown
+   * dimension. If the matrix is undefined, it adopts the dimensions of the
+   * matrix that is added .*/
+  template <typename DerivedA, typename DerivedB>
+  static void safeMatrixAdd(Eigen::MatrixBase<DerivedA>& dst,
+                            const Eigen::MatrixBase<DerivedB>& src) {
+    if (dst.rows() == 0 && dst.cols() == 0) {
+      // First assignment, adopt dimensions
+      dst.derived().resize(src.rows(), src.cols());
+      dst = src;
+    } else {
+      assert(dst.rows() == src.rows() && dst.cols() == src.cols() &&
+             "Dimension mismatch");
+      dst += src;
+    }
   }
 };
 
