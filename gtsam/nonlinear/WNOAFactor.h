@@ -44,7 +44,11 @@ class WNOAMotionFactor
   typedef WNOAMotionFactor This;
   double delta_t_;
 
+  inline static const MatrixN Identity = MatrixN::Identity();
+  inline static const MatrixN Zero = MatrixN::Zero();
+
  public:
+ 
   // Provide access to the Matrix& version of evaluateError:
   using Base::evaluateError;
   // Dimension variable, used for convenience
@@ -89,13 +93,13 @@ class WNOAMotionFactor
                        OptionalMatrixType Hv2) const override {
     // Note that p1 = T(t_k), p2 = T(t_{k+1})
     //  compute xi = log(T_k^-1 T_{k+1})^check
-    Matrix dxi_dT1(dim, dim);
-    Matrix dxi_dT2(dim, dim);
-    Vector xi(dim);
-    Matrix right_jac_inv(dim,dim);
+    MatrixN dxi_dT1;
+    MatrixN dxi_dT2;
+    VectorN xi;
+    MatrixN right_jac_inv;
     if (Hp1 || Hp2) {
-      Matrix dbetween_p1;
-      Matrix dbetween_p2;
+      MatrixN dbetween_p1;
+      MatrixN dbetween_p2;
       xi = traits<Pose>::Logmap(traits<Pose>::Between(p1, p2, &dbetween_p1, &dbetween_p2), &right_jac_inv);
       dxi_dT1 = right_jac_inv * dbetween_p1;
       dxi_dT2 = right_jac_inv * dbetween_p2;
@@ -103,12 +107,12 @@ class WNOAMotionFactor
       xi = traits<Pose>::Logmap(traits<Pose>::Between(p1, p2), &right_jac_inv);
     }
     // Compute error
-    Vector err(2 * dim);
+    Vector2N err;
 
     err << xi - delta_t_ * v1, right_jac_inv * v2 - v1;
     
     // Derivative of velocity error wrt xi
-    Matrix dvErr_dxi(dim, dim);
+    MatrixN dvErr_dxi;
     if (Hp1 || Hp2) {
       // Derivative of velocity error wrt xi
       // Zero for vector spaces, use an approximation for Lie groups
@@ -129,9 +133,7 @@ class WNOAMotionFactor
     }
     if (Hv1) {
       // Derivative of error wrt velocity v1
-      Eigen::Matrix<double, dim, dim> I =
-          Eigen::Matrix<double, dim, dim>::Identity();
-      *Hv1 = (Matrix(2 * dim, dim) << -delta_t_ * I, -I).finished();
+      *Hv1 = (Matrix(2 * dim, dim) << -delta_t_ * Identity, -Identity).finished();
     }
     if (Hp2) {
       // Derivative of error wrt pose p2
@@ -139,8 +141,6 @@ class WNOAMotionFactor
     }
     if (Hv2) {
       // Derivative of error wrt velocity v2
-      Eigen::Matrix<double, dim, dim> Zero =
-          Eigen::Matrix<double, dim, dim>::Zero();
       *Hv2 = (Matrix(2 * dim, dim) << Zero, right_jac_inv).finished();
     }
 
@@ -149,7 +149,6 @@ class WNOAMotionFactor
 
   // Functions to build the specific covariance for the WNOA model.
   static Matrix2N buildWNOACovariance(double timestep, const VectorN& Q) {
-    assert(Q.size() == dim && "WNOA Q-matrix Dimensions");  // todo (Daniel): shouldn't be necessary with static types
     // construct the covariance matrix for the WNOA factor
     Matrix2N covariance;
     MatrixN Q_diag = Q.asDiagonal();
@@ -169,9 +168,50 @@ class WNOAMotionFactor
   static Matrix2N transitionFunction(double delta_t) {
     // Construct the transition matrix for the WNOA factor
     Matrix2N F;
-    F << Matrix::Identity(dim, dim), delta_t * Matrix::Identity(dim, dim),
-        Matrix::Zero(dim, dim), Matrix::Identity(dim, dim);
+    F << Identity, delta_t * Identity,
+        Zero, Identity;
     return F;
+  }
+
+  static Matrix2N computeJacobianPrev(const std::pair<Pose, Velocity>& pv1,
+                        const std::pair<Pose, Velocity>& pv2, double delta_t) {
+    // corresponds to F in (11.20) in SER
+    auto & [p1, v1] = pv1;
+    auto & [p2, v2] = pv2;
+    MatrixN right_jac_inv;
+    (void) traits<Pose>::Logmap(traits<Pose>::Between(p1, p2), &right_jac_inv);
+    MatrixN T_k_km1;
+    MatrixN adjoint;
+    if constexpr (std::is_same_v<typename traits<Pose>::structure_category, vector_space_tag>) {
+      T_k_km1 = Identity;
+      adjoint = Zero;
+    } else {
+      T_k_km1 = p1.AdjointMap().inverse() * p2.AdjointMap();
+      adjoint = Pose::adjointMap(v2);
+    }
+    Matrix2N F;
+    F << right_jac_inv * T_k_km1, delta_t * Identity,
+    0.5 * adjoint * right_jac_inv * T_k_km1, Identity;
+    return F;
+  }
+
+  static Matrix2N computeJacobianNext(const std::pair<Pose, Velocity>& pv1,
+                        const std::pair<Pose, Velocity>& pv2, double delta_t) {
+    // corresponds to E in (11.21) in SER
+    auto & [p1, v1] = pv1;
+    auto & [p2, v2] = pv2;
+    MatrixN right_jac_inv;
+    (void) traits<Pose>::Logmap(traits<Pose>::Between(p1, p2), &right_jac_inv);
+    MatrixN adjoint;
+    if constexpr (std::is_same_v<typename traits<Pose>::structure_category, vector_space_tag>) {
+      adjoint = Zero;
+    } else {
+      adjoint = Pose::adjointMap(v2);
+    }
+    Matrix2N E;
+    E << right_jac_inv, Zero,
+    0.5 * adjoint * right_jac_inv, right_jac_inv;
+    return E;
   }
 };
 

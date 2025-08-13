@@ -54,7 +54,7 @@ using gtsam::Symbol;
 // have been provided with the library for solving robotics SLAM problems:
 #include <gtsam/sam/RangeFactor.h>
 #include <gtsam/slam/BetweenFactor.h>
-#include <gtsam/slam/WNOAFactor.h>
+#include <gtsam/nonlinear/WNOAFactor.h>
 #include <gtsam/slam/dataset.h>
 
 // Timing, with functions below, provides nice facilities to benchmark.
@@ -63,6 +63,7 @@ using gtsam::tictoc_print_;
 
 #include <gtsam/slam/StereoFactor.h>
 #include <gtsam/nonlinear/NonlinearEquality.h>
+#include <gtsam/nonlinear/Interpolator.h>
 
 // Standard headers, added last, so we know headers above work on their own.
 #include <fstream>
@@ -260,7 +261,12 @@ static void saveLandmarksToFile(Values& result,
   }
 }
 
-static void saveMarginalsToFile(const Marginals& marginals, size_t numPoses, const std::string& filename, size_t poseInterval = 1) {
+static void saveMarginalsToFile(
+  const Marginals& marginals,
+  size_t numPoses,
+  const std::string& filename,
+  size_t poseInterval = 1,
+  std::shared_ptr<Interpolator<Pose3>::CovarianceMap> interpCovarianceMap = nullptr) {
   std::ofstream marginalsFile(filename + ".csv");
   if (!marginalsFile.is_open()) {
     std::cerr << "Error opening file for writing marginals" << std::endl;
@@ -269,7 +275,24 @@ static void saveMarginalsToFile(const Marginals& marginals, size_t numPoses, con
   // marginalsFile << "PoseID\tCovariance\n";
   for (size_t poseID = 0; poseID < numPoses; poseID += poseInterval) {
     Symbol poseSymbol('x', poseID);
-    const Matrix& covariance = marginals.marginalCovariance(poseSymbol);
+    Matrix covariance;
+    try {
+      covariance = marginals.marginalCovariance(poseSymbol);
+    } catch (const std::out_of_range& e) {
+      // std::cerr << "Error retrieving covariance for pose " << poseID << ": " << e.what() << std::endl;
+      // get from interpCovarianceMap if available
+      if (interpCovarianceMap) {
+        auto it = interpCovarianceMap->find(poseSymbol);
+        if (it == interpCovarianceMap->end()) {
+          std::cerr << "NumPoses: " << numPoses << ", poseID: " << poseID << std::endl;
+          std::cerr << "Interpolated covariance map size: " << interpCovarianceMap->size() << std::endl;
+          throw std::out_of_range("Covariance for pose " + poseSymbol.string() + " not found in interpolation covariance map.");
+        }
+        covariance = it->second;
+      } else {
+        throw std::out_of_range("Covariance not available for pose " + poseSymbol.string());
+      }
+    }
     marginalsFile << covariance.reshaped(1, covariance.size()) << "\n";
   }
   marginalsFile.close();
