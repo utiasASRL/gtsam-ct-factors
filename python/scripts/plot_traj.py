@@ -30,7 +30,7 @@ def load_csv(fname, step=None):
 
 def plotTrajectory(
     fname,
-    fname_gt="/home/cho/gtsam-ct-factors/results/lost_gt.csv",
+    fname_gt="../../results/lost_gt.csv",
     fname_steam=None,
     step=None,
     plot_cov=False,
@@ -188,7 +188,7 @@ def plotTrajectory(
     plt.plot(landmarks[:, 0], landmarks[:, 1], "og", label="Landmarks")
     plt.plot(x, y, "-", label="Trajectory", alpha=0.9, color="r")
     plt.plot(x[0], y[0], "o", label="Start", color="k")
-    plt.plot(df_gt["x"], df_gt["y"], "-", color="k", alpha=0.5, label="ground truth")
+    plt.plot(df_gt["x"].to_numpy(), df_gt["y"].to_numpy(), "-", color="k", alpha=0.5, label="ground truth")
     if plot_heading:
         arrow_length = 0.2
         for xi, yi, ti in zip(x, y, theta):
@@ -233,12 +233,12 @@ def plotTrajectory(
 
 
 if __name__ == "__main__":
-    fname = "/home/cho/gtsam-ct-factors/results/lost.csv"
-    fname_steam = "/home/cho/gtsam-ct-factors/results/lost_steam.csv"
+    fname = "../../results/lost.csv"
+    fname_steam = None
     plotTrajectory(
         fname=fname,
         fname_steam=fname_steam,
-        plot_cov=False,
+        plot_cov=True,
         step=2,
         plot_heading=False,
     )
