@@ -106,19 +106,22 @@ class FrobeniusFactor : public NoiseModelFactorN<T, T> {
  * FrobeniusBetweenFactor is a BetweenFactor that evaluates the Frobenius norm
  * of the rotation error between measured and predicted (rather than the
  * Logmap of the error). This factor is only defined for fixed-dimension types,
- * and in fact only SO3 and SO4 really work, as we need SO<N>::AdjointMap.
+ * that are matrix Lie groups.
  */
 template <class T>
 class FrobeniusBetweenFactor : public NoiseModelFactorN<T, T> {
   GTSAM_CONCEPT_ASSERT(IsMatrixLieGroup<T>);
-  T T12_;  ///< measured rotation between T1 and T2
-  Eigen::Matrix<double, T::dimension, T::dimension>
-      T2hat_H_T1_;  ///< fixed derivative of T2hat wrpt T1
   inline constexpr static auto N = T::LieAlgebra::RowsAtCompileTime;
   inline constexpr static auto Dim = N * N;
-    
- public:
+  static_assert(N > 0, "The Lie algebra dimension N must be greater than 0.");
 
+ protected:
+  T T12_;  ///< measured rotation between T1 and T2
+
+  using MatrixN = Eigen::Matrix<double, N, N>;
+  using VectorD = Eigen::Matrix<double, Dim, 1>;
+
+ public:
   // Provide access to the Matrix& version of evaluateError:
   using NoiseModelFactor2<T, T>::evaluateError;
 
@@ -131,17 +134,15 @@ class FrobeniusBetweenFactor : public NoiseModelFactorN<T, T> {
   FrobeniusBetweenFactor(Key j1, Key j2, const T& T12,
                          const SharedNoiseModel& model = nullptr)
       : NoiseModelFactorN<T, T>(ConvertNoiseModel(model, Dim), j1, j2),
-        T12_(T12),
-        T2hat_H_T1_(traits<T>::AdjointMap(traits<T>::Inverse(T12_))) {}
+        T12_(T12) {}
 
   /// @}
   /// @name Testable
   /// @{
 
   /// print with optional string
-  void
-  print(const std::string &s,
-        const KeyFormatter &keyFormatter = DefaultKeyFormatter) const override {
+  void print(const std::string& s, const KeyFormatter& keyFormatter =
+                                       DefaultKeyFormatter) const override {
     std::cout << s << "FrobeniusBetweenFactor<" << demangle(typeid(T).name())
               << ">(" << keyFormatter(this->key1()) << ","
               << keyFormatter(this->key2()) << ")\n";
@@ -150,27 +151,78 @@ class FrobeniusBetweenFactor : public NoiseModelFactorN<T, T> {
   }
 
   /// assert equality up to a tolerance
-  bool equals(const NonlinearFactor &expected,
+  bool equals(const NonlinearFactor& expected,
               double tol = 1e-9) const override {
-    auto e = dynamic_cast<const FrobeniusBetweenFactor *>(&expected);
+    auto e = dynamic_cast<const FrobeniusBetweenFactor*>(&expected);
     return e != nullptr && NoiseModelFactorN<T, T>::equals(*e, tol) &&
            traits<T>::Equals(this->T12_, e->T12_, tol);
   }
 
   /// @}
-  /// @name NoiseModelFactorN methods 
+  /// @name NoiseModelFactorN methods
   /// @{
 
-  /// Error is Frobenius norm between T1*T12 and T2.
-  Vector evaluateError(const T& T1, const T& T2,
-                       OptionalMatrixType H1, OptionalMatrixType H2) const override {
-    const T T2hat = traits<T>::Compose(T1, T12_);
-    Eigen::Matrix<double, Dim, T::dimension> vec_H_T2hat;
-    Vector error = traits<T>::Vec(T2, H2) - traits<T>::Vec(T2hat, H1 ? &vec_H_T2hat : nullptr);
-    if (H1) *H1 = -vec_H_T2hat * T2hat_H_T1_;
+  /// Error is |inv(T2)*T1*T12_ - I|_F.
+  Vector evaluateError(const T& T1, const T& T2, OptionalMatrixType H1,
+                       OptionalMatrixType H2) const override {
+    // predict T2*T1
+    typename T::Jacobian H_T21_T2;
+    const T hatT21 = traits<T>::Between(T2, T1, H1 ? &H_T21_T2 : nullptr);
+
+    // Calculate \hat T21 * T12_, which is predicted to be I_NxN
+    typename T::Jacobian H_pred_hat;
+    const T pred = traits<T>::Compose(hatT21, T12_, H1 ? &H_pred_hat : nullptr);
+
+    // Move to constructor
+    const MatrixN I = MatrixN::Identity();
+    const VectorD vecI = Eigen::Map<const VectorD>(I.data());
+
+    // Calculate error
+    Eigen::Matrix<double, Dim, T::dimension> H_vec_pred;
+    Vector error = vecI - traits<T>::Vec(pred, H1 ? &H_vec_pred : nullptr);
+
+    // Do chain rule
+    const auto H_error_hat21 = - H_vec_pred * H_pred_hat;
+    if (H1) *H1 = H_error_hat21;  // H_pred_T1 is identity
+    if (H2) *H2 = H_error_hat21 * H_T21_T2;
     return error;
   }
   /// @}
+};
+
+/**
+ * OldFrobeniusBetweenFactor uses ||T2 - T1*T12_||_F, which only works if the
+ * Frobenius error is invariant to multiplying with an arbitrary element T.
+ */
+template <class T>
+class OldFrobeniusBetweenFactor : public FrobeniusBetweenFactor<T> {
+  inline constexpr static auto N = T::LieAlgebra::RowsAtCompileTime;
+  inline constexpr static auto Dim = N * N;
+
+  typename T::Jacobian T2hat_H_T1_;  ///< fixed derivative of T2hat wrpt T1
+
+ public:
+  // Provide access to the Matrix& version of evaluateError:
+  using NoiseModelFactor2<T, T>::evaluateError;
+
+  EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+
+  /// Construct from two keys and measured rotation
+  OldFrobeniusBetweenFactor(Key j1, Key j2, const T& T12,
+                            const SharedNoiseModel& model = nullptr)
+      : FrobeniusBetweenFactor<T>(j1, j2, T12, model),
+        T2hat_H_T1_(traits<T>::AdjointMap(traits<T>::Inverse(T12))) {}
+
+  /// Error is Frobenius norm between T1*T12 and T2.
+  Vector evaluateError(const T& T1, const T& T2, OptionalMatrixType H1,
+                       OptionalMatrixType H2) const override {
+    const T T2hat = traits<T>::Compose(T1, this->T12_);
+    Eigen::Matrix<double, Dim, T::dimension> vec_H_T2hat;
+    Vector error = traits<T>::Vec(T2, H2) -
+                   traits<T>::Vec(T2hat, H1 ? &vec_H_T2hat : nullptr);
+    if (H1) *H1 = -vec_H_T2hat * T2hat_H_T1_;
+    return error;
+  }
 };
 
 }  // namespace gtsam
