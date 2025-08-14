@@ -174,7 +174,8 @@ class Interpolator {
     gamma_kp1 << xi, right_jac_inv * varpi_kp1;
 
     auto xi_tau = Lambda_1 * gamma_k + Psi_1 * gamma_kp1;
-    // Eq. (11.45) in the book
+    auto xidot_tau = Lambda_2 * gamma_k + Psi_2 * gamma_kp1;
+    // Eq. (11.45) in Barfoot 2025
     MatrixN right_jac_tau;
     MatrixN dTtau_dTk;
     MatrixN dTtau_dxitau;
@@ -183,51 +184,67 @@ class Interpolator {
       T_tau = traits<PoseType>::Compose(
           T_k, traits<PoseType>::Expmap(xi_tau, &right_jac_tau), &dTtau_dTk,
           &dTtau_dxitau);
-          dTtau_dxitau = dTtau_dxitau * right_jac_tau;
+      dTtau_dxitau = dTtau_dxitau * right_jac_tau;
     } else {
       T_tau = traits<PoseType>::Compose(
           T_k, traits<PoseType>::Expmap(xi_tau, &right_jac_tau));
     }
-    auto varpi_tau = right_jac_tau * (Lambda_2 * gamma_k + Psi_2 * gamma_kp1);
+    auto varpi_tau = right_jac_tau * xidot_tau;
 
     // Compute Jacobians
     if (H) {
-      // Derivative of velocity error wrt xi
+      // Derivative of right Jacobians
       // Zero for vector spaces, use an approximation for Lie groups
       MatrixN dxidot_dxi;
-      if constexpr (std::is_same_v<typename traits<PoseType>::structure_category, vector_space_tag>) {
+      MatrixN dvarpitau_dxitau;
+      if constexpr (std::is_same_v<
+                        typename traits<PoseType>::structure_category,
+                        vector_space_tag>) {
         dxidot_dxi.setZero();
+        dvarpitau_dxitau.setZero();
       } else {
         // For Lie groups
         dxidot_dxi = -PoseType::adjointMap(varpi_kp1) / 2.0;
+        dvarpitau_dxitau = PoseType::adjointMap(xidot_tau) / 2.0;
       }
-      // dxidot_dxi = 0*dxidot_dxi;
-      
       // dgammakp1
       Eigen::Matrix<double, 2 * dim, dim> dgammakp1_dTk;
-      dgammakp1_dTk << dxi_dTk, dxidot_dxi * dxi_dTk;  
+      dgammakp1_dTk << dxi_dTk, dxidot_dxi * dxi_dTk;
       Eigen::Matrix<double, 2 * dim, dim> dgammakp1_dTkp1;
-      dgammakp1_dTkp1 << dxi_dTkp1, dxidot_dxi * dxi_dTkp1;  
+      dgammakp1_dTkp1 << dxi_dTkp1, dxidot_dxi * dxi_dTkp1;
       Eigen::Matrix<double, 2 * dim, dim> dgammakp1_dvarpikp1;
       dgammakp1_dvarpikp1 << Eigen::Matrix<double, dim, dim>::Zero(),
           right_jac_inv;
+      // dxitau
+      MatrixN dxitau_dTk = Psi_1 * dgammakp1_dTk;
+      MatrixN dxitau_dvarpik = Lambda_1.template block<dim, dim>(0, dim);
+      MatrixN dxitau_dTkp1 = Psi_1 * dgammakp1_dTkp1;
+      MatrixN dxitau_dvarpikp1 = Psi_1 * dgammakp1_dvarpikp1;
+      // dxidottau
+      MatrixN dxidottau_dTk = Psi_2 * dgammakp1_dTk;
+      MatrixN dxidottau_dvarpik = Lambda_2 * dgammakp1_dTk;
+      MatrixN dxidottau_dTkp1 = Psi_2 * dgammakp1_dTkp1;
+      MatrixN dxidottau_dvarpikp1 = Psi_2 * dgammakp1_dvarpikp1;
 
       // dTtau_dTk
-      (*H)[0] = dTtau_dTk + dTtau_dxitau * Psi_1 * dgammakp1_dTk;
+      (*H)[0] = dTtau_dTk + dTtau_dxitau * dxitau_dTk;
       // dTtau_dvarpik
-      (*H)[1] = dTtau_dxitau * Lambda_1.template block<dim,dim>(0,dim);
+      (*H)[1] = dTtau_dxitau * dxitau_dvarpik;
       // dTtau_dTkp1
-      (*H)[2] = dTtau_dxitau * Psi_1 * dgammakp1_dTkp1;
+      (*H)[2] = dTtau_dxitau * dxitau_dTkp1;
       // dTtau_dvarpikp1
-      (*H)[3] = dTtau_dxitau * Psi_1 * dgammakp1_dvarpikp1;
+      (*H)[3] = dTtau_dxitau * dxitau_dvarpikp1;
       // dvarpitau_dTk
-      (*H)[4] = right_jac_tau * Psi_2 * dgammakp1_dTk;
+      (*H)[4] = right_jac_tau * dxidottau_dTk + dvarpitau_dxitau * dxitau_dTk;
       // dvarpitau_dvarpik
-      (*H)[5] = right_jac_tau * Lambda_2 * dgammakp1_dTk;
+      (*H)[5] =
+          right_jac_tau * dxidottau_dvarpik + dvarpitau_dxitau * dxitau_dvarpik;
       // dvarpitau_dTkp1
-      (*H)[6] = right_jac_tau * Psi_2 * dgammakp1_dTkp1;
+      (*H)[6] =
+          right_jac_tau * dxidottau_dTkp1 + dvarpitau_dxitau * dxitau_dTkp1;
       // dvarpitau_dvarpikp1
-      (*H)[7] = right_jac_tau * Psi_2 * dgammakp1_dvarpikp1;
+      (*H)[7] = right_jac_tau * dxidottau_dvarpikp1 +
+                dvarpitau_dxitau * dxitau_dvarpikp1;
     }
 
     return std::make_pair(T_tau, varpi_tau);

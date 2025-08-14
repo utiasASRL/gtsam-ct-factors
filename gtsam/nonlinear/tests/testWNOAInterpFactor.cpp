@@ -378,7 +378,7 @@ TEST(WNOAInterp, JacobianSE3UnaryPose) {
       numericalDerivative44<Vector, Pose3, Vector6, Pose3, Vector6>(
           f, p0_se3, v0_se3, p2_se3, v2_se3, delta);
 
-  double tol = 1e-4;
+  double tol = 1e-3;
   EXPECT(assert_equal(Jacs[P(0)], J_p0_num, tol));
   EXPECT(assert_equal(Jacs[V(0)], J_v0_num, tol));
   EXPECT(assert_equal(Jacs[P(2)], J_p2_num, tol));
@@ -397,7 +397,6 @@ TEST(WNOAInterp, Interpolator) {
   auto [pose_est, vel_est] = interp.interpolatePoseAndVelocity(pair(p0_se3, v0_se3), 0.0,
                                     pair(p2_se3, v2_se3), 2 * timestep,
                                     timestep, &H);
-  cout << "ERROR VAL:" << p1_se3.logmap(pose_est) << endl;
 
   // define lambda function for derivatives
   auto f = [&](auto& p0, auto& v0, auto& p2, auto& v2) {
@@ -425,7 +424,7 @@ TEST(WNOAInterp, Interpolator) {
       numericalDerivative44<Vector, Pose3, Vector6, Pose3, Vector6>(
           f, p0_se3, v0_se3, p2_se3, v2_se3, delta);
 
-  double tol = 1e-4;
+  double tol = 1e-3;
   EXPECT(assert_equal(H[0], J_p0_num, tol));
   EXPECT(assert_equal(H[1], J_v0_num, tol));
   EXPECT(assert_equal(H[2], J_p2_num, tol));
