@@ -54,12 +54,12 @@ using gtsam::tictoc_print_;
 #include <fstream>
 #include <functional>
 #include <iostream>
+#include <optional>
 #include <random>
 #include <set>
 #include <string>
 #include <utility>
 #include <vector>
-#include <optional>
 
 using namespace gtsam;
 
@@ -77,7 +77,8 @@ class Interpolator {
   VectorN Q_psd_;  // Diagonal power Spectral Density for WNOA
   std::function<Matrix(double dt)> transitionFunction_;
   std::function<Matrix(double dt, const VectorN& Q_psd)> covarianceFunction_;
-  // Todo: need to make the below two functions generalize to cases with no velocities, e.g. WNOV
+  // Todo: need to make the below two functions generalize to cases with no
+  // velocities, e.g. WNOV
   std::function<Matrix(const std::pair<PoseType, VelocityType>&,
                        const std::pair<PoseType, VelocityType>&, double)>
       computeJacobianPrev_;
@@ -93,7 +94,7 @@ class Interpolator {
   using CovarianceMap = std::map<Key, Matrix>;
   // Note (Daniel): bit iffy about using double for timestamps as
   // keys, but it should be fine as long as the keys are not modified afterwards
-  
+
   Interpolator() = delete;
 
   Interpolator(
@@ -114,14 +115,14 @@ class Interpolator {
   // Default to WNOA
   Interpolator(const VectorN& Q_psd)
       : Interpolator(Q_psd, WNOAMotionFactor<PoseType>::transitionFunction,
-                      WNOAMotionFactor<PoseType>::buildWNOACovariance,
-                      WNOAMotionFactor<PoseType>::computeJacobianPrev,
-                      WNOAMotionFactor<PoseType>::computeJacobianNext) {}
+                     WNOAMotionFactor<PoseType>::buildWNOACovariance,
+                     WNOAMotionFactor<PoseType>::computeJacobianPrev,
+                     WNOAMotionFactor<PoseType>::computeJacobianNext) {}
 
   std::pair<PoseType, VelocityType> interpolatePoseAndVelocity(
       std::pair<PoseType, VelocityType> Tvarpi_k, double t_k,
-      std::pair<PoseType, VelocityType> Tvarpi_kp1, double t_kp1,
-      double t_tau) const {
+      std::pair<PoseType, VelocityType> Tvarpi_kp1, double t_kp1, double t_tau,
+      OptionalMatrixVecType H = nullptr) const {
     // if t_tau is equal to t_k or t_kp1, return the corresponding pose and
     // velocity
     if (equal(t_tau, t_k)) {
@@ -150,40 +151,106 @@ class Interpolator {
     gamma_k.topRows(dim).setZero();
     gamma_k.bottomRows(dim) = varpi_k;
 
+    // Note that p1 = T(t_k), p2 = T(t_{k+1})
+    //  compute xi = log(T_k^-1 T_{k+1})^check
+    MatrixN dxi_dTk;
+    MatrixN dxi_dTkp1;
+    VectorN xi;
     MatrixN right_jac_inv;
-    VectorN xi = traits<PoseType>::Logmap(traits<PoseType>::Between(T_k, T_kp1),
-                                          &right_jac_inv);
+    if (H) {
+      MatrixN dbetween_Tk;
+      MatrixN dbetween_Tkp1;
+      xi = traits<PoseType>::Logmap(
+          traits<PoseType>::Between(T_k, T_kp1, &dbetween_Tk, &dbetween_Tkp1),
+          &right_jac_inv);
+      dxi_dTk = right_jac_inv * dbetween_Tk;
+      dxi_dTkp1 = right_jac_inv * dbetween_Tkp1;
+    } else {
+      xi = traits<PoseType>::Logmap(traits<PoseType>::Between(T_k, T_kp1),
+                                    &right_jac_inv);
+    }
+
     Vector2N gamma_kp1;
     gamma_kp1 << xi, right_jac_inv * varpi_kp1;
 
     auto xi_tau = Lambda_1 * gamma_k + Psi_1 * gamma_kp1;
     // Eq. (11.45) in the book
     MatrixN right_jac_tau;
-    auto T_tau = traits<PoseType>::Compose(
-        T_k, traits<PoseType>::Expmap(xi_tau, &right_jac_tau));
+    MatrixN dTtau_dTk;
+    MatrixN dTtau_dxitau;
+    PoseType T_tau;
+    if (H) {
+      T_tau = traits<PoseType>::Compose(
+          T_k, traits<PoseType>::Expmap(xi_tau, &right_jac_tau), &dTtau_dTk,
+          &dTtau_dxitau);
+          dTtau_dxitau = dTtau_dxitau * right_jac_tau;
+    } else {
+      T_tau = traits<PoseType>::Compose(
+          T_k, traits<PoseType>::Expmap(xi_tau, &right_jac_tau));
+    }
     auto varpi_tau = right_jac_tau * (Lambda_2 * gamma_k + Psi_2 * gamma_kp1);
+
+    // Compute Jacobians
+    if (H) {
+      // Derivative of velocity error wrt xi
+      // Zero for vector spaces, use an approximation for Lie groups
+      MatrixN dxidot_dxi;
+      if constexpr (std::is_same_v<typename traits<PoseType>::structure_category, vector_space_tag>) {
+        dxidot_dxi.setZero();
+      } else {
+        // For Lie groups
+        dxidot_dxi = -PoseType::adjointMap(varpi_kp1) / 2.0;
+      }
+      // dxidot_dxi = 0*dxidot_dxi;
+      
+      // dgammakp1
+      Eigen::Matrix<double, 2 * dim, dim> dgammakp1_dTk;
+      dgammakp1_dTk << dxi_dTk, dxidot_dxi * dxi_dTk;  
+      Eigen::Matrix<double, 2 * dim, dim> dgammakp1_dTkp1;
+      dgammakp1_dTkp1 << dxi_dTkp1, dxidot_dxi * dxi_dTkp1;  
+      Eigen::Matrix<double, 2 * dim, dim> dgammakp1_dvarpikp1;
+      dgammakp1_dvarpikp1 << Eigen::Matrix<double, dim, dim>::Zero(),
+          right_jac_inv;
+
+      // dTtau_dTk
+      (*H)[0] = dTtau_dTk + dTtau_dxitau * Psi_1 * dgammakp1_dTk;
+      // dTtau_dvarpik
+      (*H)[1] = dTtau_dxitau * Lambda_1.template block<dim,dim>(0,dim);
+      // dTtau_dTkp1
+      (*H)[2] = dTtau_dxitau * Psi_1 * dgammakp1_dTkp1;
+      // dTtau_dvarpikp1
+      (*H)[3] = dTtau_dxitau * Psi_1 * dgammakp1_dvarpikp1;
+      // dvarpitau_dTk
+      (*H)[4] = right_jac_tau * Psi_2 * dgammakp1_dTk;
+      // dvarpitau_dvarpik
+      (*H)[5] = right_jac_tau * Lambda_2 * dgammakp1_dTk;
+      // dvarpitau_dTkp1
+      (*H)[6] = right_jac_tau * Psi_2 * dgammakp1_dTkp1;
+      // dvarpitau_dvarpikp1
+      (*H)[7] = right_jac_tau * Psi_2 * dgammakp1_dvarpikp1;
+    }
 
     return std::make_pair(T_tau, varpi_tau);
   }
 
   Values interpolatePosesAndVelocities(
-    const NonlinearFactorGraph& mainSolveGraph,
-    const Values& mainSolveSolution,
-    const TimestampKeyMap& mainSolveKeyMap,
-    const TimestampKeyMap& interpolateKeyMap,
-    std::shared_ptr<CovarianceMap> covarianceMap) {
-    
+      const NonlinearFactorGraph& mainSolveGraph,
+      const Values& mainSolveSolution, const TimestampKeyMap& mainSolveKeyMap,
+      const TimestampKeyMap& interpolateKeyMap,
+      std::shared_ptr<CovarianceMap> covarianceMap) {
     // Map from intervals [t1, t2) to query times inside that interval (bucket)
     std::map<std::pair<double, double>, std::vector<double>> queryBuckets;
 
     for (const auto& [t_tau, keys] : interpolateKeyMap) {
       if (t_tau < mainSolveKeyMap.begin()->first ||
           t_tau > mainSolveKeyMap.rbegin()->first) {
-        std::cerr << "Query time " << t_tau
-                  << " is out of bounds of the provided timestamps ranging from "
-                  << mainSolveKeyMap.begin()->first << " to "
-                  << mainSolveKeyMap.rbegin()->first << std::endl;
-        throw std::out_of_range("Query time is out of bounds of the provided timestamps.");
+        std::cerr
+            << "Query time " << t_tau
+            << " is out of bounds of the provided timestamps ranging from "
+            << mainSolveKeyMap.begin()->first << " to "
+            << mainSolveKeyMap.rbegin()->first << std::endl;
+        throw std::out_of_range(
+            "Query time is out of bounds of the provided timestamps.");
       }
       auto it2 = mainSolveKeyMap.upper_bound(t_tau);
       auto it1 = std::prev(it2);
@@ -192,9 +259,11 @@ class Interpolator {
 
     Values interpolatedSolution;
 
-    std::unique_ptr<Marginals> marginals;  // Only construct a Marginals if requested
+    std::unique_ptr<Marginals>
+        marginals;  // Only construct a Marginals if requested
     if (covarianceMap) {
-      marginals = std::make_unique<Marginals>(mainSolveGraph, mainSolveSolution);
+      marginals =
+          std::make_unique<Marginals>(mainSolveGraph, mainSolveSolution);
     }
     for (const auto& [interval, times] : queryBuckets) {
       double t_k = interval.first;
@@ -202,47 +271,56 @@ class Interpolator {
 
       // Get the poses and velocities at t_k and t_kp1
       auto pvk = std::make_pair(
-        mainSolveSolution.at<PoseType>(mainSolveKeyMap.at(t_k).first),
-        mainSolveSolution.at<VelocityType>(mainSolveKeyMap.at(t_k).second));
+          mainSolveSolution.at<PoseType>(mainSolveKeyMap.at(t_k).first),
+          mainSolveSolution.at<VelocityType>(mainSolveKeyMap.at(t_k).second));
       auto pvkp1 = std::make_pair(
-        mainSolveSolution.at<PoseType>(mainSolveKeyMap.at(t_kp1).first),
-        mainSolveSolution.at<VelocityType>(mainSolveKeyMap.at(t_kp1).second));
-      
+          mainSolveSolution.at<PoseType>(mainSolveKeyMap.at(t_kp1).first),
+          mainSolveSolution.at<VelocityType>(mainSolveKeyMap.at(t_kp1).second));
+
       // Interpolate for all query times within this query interval (bucket)
       for (double t_tau : times) {
-        auto pvtau = interpolatePoseAndVelocity(
-            pvk, t_k, pvkp1, t_kp1, t_tau);
+        auto pvtau = interpolatePoseAndVelocity(pvk, t_k, pvkp1, t_kp1, t_tau);
         auto [T_tau, varpi_tau] = pvtau;
         interpolatedSolution.insert(interpolateKeyMap.at(t_tau).first, T_tau);
-        interpolatedSolution.insert(interpolateKeyMap.at(t_tau).second, varpi_tau);
+        interpolatedSolution.insert(interpolateKeyMap.at(t_tau).second,
+                                    varpi_tau);
       }
 
       // Compute covariances of the interpolated poses and velocities
       if (covarianceMap) {
         // following (5.22) in paper
-        KeyVector variables = {  // {p1, v1, p2, v2}
+        KeyVector variables = {
+            // {p1, v1, p2, v2}
             mainSolveKeyMap.at(t_k).first, mainSolveKeyMap.at(t_k).second,
             mainSolveKeyMap.at(t_kp1).first, mainSolveKeyMap.at(t_kp1).second};
-        JointMarginal mainSolveMarginal = 
-           marginals->jointMarginalCovariance(variables);
+        JointMarginal mainSolveMarginal =
+            marginals->jointMarginalCovariance(variables);
         // avoid using JointMarginal.fullMatrix() as it returns covariance
-        //in alphabetical order of the keys...
-        Eigen::Matrix<double, 4*dim, 4*dim> mainSolveMarginalMatrix = 
-          constructMatrixFromJointMarginal(mainSolveMarginal, variables, dim);
-        
+        // in alphabetical order of the keys...
+        Eigen::Matrix<double, 4 * dim, 4 * dim> mainSolveMarginalMatrix =
+            constructMatrixFromJointMarginal(mainSolveMarginal, variables, dim);
+
         for (double t_tau : times) {
-          auto pvtau = std::make_pair(
-              interpolatedSolution.at<PoseType>(interpolateKeyMap.at(t_tau).first),
-              interpolatedSolution.at<VelocityType>(interpolateKeyMap.at(t_tau).second));
-          Matrix2N Sigma = computeConditionalCov(pvk, pvkp1, pvtau, t_k, t_kp1, t_tau);
-          auto [Lambda, Psi] = getLamdaPsi(t_k, t_kp1, t_tau);  // todo: don't recompute this - already computed in interpolation step
-          Eigen::Matrix<double, 2*dim, 4*dim> LambdaPsi;
+          auto pvtau = std::make_pair(interpolatedSolution.at<PoseType>(
+                                          interpolateKeyMap.at(t_tau).first),
+                                      interpolatedSolution.at<VelocityType>(
+                                          interpolateKeyMap.at(t_tau).second));
+          Matrix2N Sigma =
+              computeConditionalCov(pvk, pvkp1, pvtau, t_k, t_kp1, t_tau);
+          auto [Lambda, Psi] = getLamdaPsi(
+              t_k, t_kp1, t_tau);  // todo: don't recompute this - already
+                                   // computed in interpolation step
+          Eigen::Matrix<double, 2 * dim, 4 * dim> LambdaPsi;
           LambdaPsi << Lambda, Psi;
-          Matrix2N cov = Sigma + LambdaPsi * mainSolveMarginalMatrix * LambdaPsi.transpose();
-          
-          // upper left covariance block corresponds to pose, lower right block corresponds to velocity
-          covarianceMap->insert({interpolateKeyMap.at(t_tau).first, cov.topLeftCorner(dim, dim)});
-          covarianceMap->insert({interpolateKeyMap.at(t_tau).second, cov.bottomRightCorner(dim, dim)});
+          Matrix2N cov = Sigma + LambdaPsi * mainSolveMarginalMatrix *
+                                     LambdaPsi.transpose();
+
+          // upper left covariance block corresponds to pose, lower right block
+          // corresponds to velocity
+          covarianceMap->insert(
+              {interpolateKeyMap.at(t_tau).first, cov.topLeftCorner(dim, dim)});
+          covarianceMap->insert({interpolateKeyMap.at(t_tau).second,
+                                 cov.bottomRightCorner(dim, dim)});
         }
       }
     }
@@ -269,35 +347,35 @@ class Interpolator {
     return std::make_pair(Lambda, Psi);
   }
 
-  Matrix2N computeConditionalCov(
-      const std::pair<PoseType, VelocityType>& pvk,
-      const std::pair<PoseType, VelocityType>& pvkp1,
-      const std::pair<PoseType, VelocityType>& pvtau, double t_k,
-      double t_kp1, double t_tau) const {
+  Matrix2N computeConditionalCov(const std::pair<PoseType, VelocityType>& pvk,
+                                 const std::pair<PoseType, VelocityType>& pvkp1,
+                                 const std::pair<PoseType, VelocityType>& pvtau,
+                                 double t_k, double t_kp1, double t_tau) const {
     Matrix2N Q_tau_prev = covarianceFunction_(t_tau - t_k, Q_psd_);
     Matrix2N Q_tau_next = covarianceFunction_(t_kp1 - t_tau, Q_psd_);
     Matrix2N E_tau = computeJacobianPrev_(pvk, pvtau, t_tau - t_k);
     Matrix2N F_tau = computeJacobianNext_(pvtau, pvkp1, t_kp1 - t_tau);
     Matrix2N Sigma_inv = E_tau.transpose() * Q_tau_prev.inverse() * E_tau +
-        F_tau.transpose() * Q_tau_next.inverse() * F_tau;
+                         F_tau.transpose() * Q_tau_next.inverse() * F_tau;
     Matrix2N Sigma = Sigma_inv.inverse();
     return Sigma;
   }
 
   static Matrix constructMatrixFromJointMarginal(
-    const JointMarginal& blockMatrix,
-    const KeyVector& keyVector,
-    size_t blockSize) {
+      const JointMarginal& blockMatrix, const KeyVector& keyVector,
+      size_t blockSize) {
     size_t n = keyVector.size();
     Matrix M(n * blockSize, n * blockSize);
 
     for (size_t i = 0; i < n; ++i) {
-      for (size_t j = 0; j <= i; ++j) { // symmetric block matrix: j <= i to avoid repeats
-        auto block = blockMatrix(keyVector[i], keyVector[j]); // query block
+      for (size_t j = 0; j <= i;
+           ++j) {  // symmetric block matrix: j <= i to avoid repeats
+        auto block = blockMatrix(keyVector[i], keyVector[j]);  // query block
         // fill in both (i, j) and (j, i) blocks
         M.block(i * blockSize, j * blockSize, blockSize, blockSize) = block;
         if (i != j) {
-          M.block(j * blockSize, i * blockSize, blockSize, blockSize) = block.transpose();
+          M.block(j * blockSize, i * blockSize, blockSize, blockSize) =
+              block.transpose();
         }
       }
     }
@@ -305,10 +383,12 @@ class Interpolator {
   }
 
   // Not used anymore, but may be useful in future
-  static Matrix reorderSymmetricMatrix(const Matrix& mat, size_t block_size, const std::vector<size_t>& block_order) {
-    // This was previously used to reorder a matrix from JointMarginal.fullMatrix()
-    // e.g. if KeyVector is {p1, v1, p2, v2}, JointMarginal.fullMatrix() would
-    // be the marginal corresponding to {v1, v2, p1, p2}. Then, we could call
+  static Matrix reorderSymmetricMatrix(const Matrix& mat, size_t block_size,
+                                       const std::vector<size_t>& block_order) {
+    // This was previously used to reorder a matrix from
+    // JointMarginal.fullMatrix() e.g. if KeyVector is {p1, v1, p2, v2},
+    // JointMarginal.fullMatrix() would be the marginal corresponding to {v1,
+    // v2, p1, p2}. Then, we could call
     // reorderSymmetricMatrix(mainSolveMarginalPermuted, dim, {2, 0, 3, 1});
     assert(mat.rows() == mat.cols() && "Matrix must be square");
     assert(block_order.size() * block_size == static_cast<size_t>(mat.rows()) &&
@@ -316,13 +396,13 @@ class Interpolator {
     Matrix reordered(mat.rows(), mat.cols());
     for (size_t i = 0; i < block_order.size(); ++i)
       for (size_t j = 0; j < block_order.size(); ++j)
-        reordered.block(i * block_size, j * block_size, block_size, block_size) =
+        reordered.block(i * block_size, j * block_size, block_size,
+                        block_size) =
             mat.block(block_order[i] * block_size, block_order[j] * block_size,
                       block_size, block_size);
 
     return reordered;
   }
-
 };
 
 // Explicit Instantiation.

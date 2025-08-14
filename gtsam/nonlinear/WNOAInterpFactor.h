@@ -137,7 +137,12 @@ class WNOAInterpFactor : public NoiseModelFactor {
     // Define mapping from interpolated keys to interpolation jacobians
     unordered_map<Key, unordered_map<Key, Matrix>> InterpJacobians;
     // process interpolated states and get Jacobians
-    const Values values_interp = get_interp_values(values, InterpJacobians);
+    Values values_interp;
+    if (H) {
+      values_interp = get_interp_values(values, &InterpJacobians);
+    } else {
+      values_interp = get_interp_values(values);
+    }
 
     // construct values for inner factor
     Values values_inner;
@@ -167,7 +172,7 @@ class WNOAInterpFactor : public NoiseModelFactor {
     // compute Jacobians for outer keys
     if (H) {
       // loop through inner keys and update outer keys (backpropagate)
-      for (uint i=0; i < inner_factor_.keys().size(); i++) {
+      for (uint i = 0; i < inner_factor_.keys().size(); i++) {
         Key inner_key = inner_factor_.keys()[i];
         if (values_interp.exists(inner_key)) {
           // get index left bordering state states
@@ -191,15 +196,17 @@ class WNOAInterpFactor : public NoiseModelFactor {
       }
     }
 
+    // Modify Noise Model
+
     return error;
   }
 
  private:
   /* @brief Interpolate all interpolated states based on estimated states.
    * Put their values in a Values structure and compute their Jacobians.*/
-  Values get_interp_values(
-      const Values& values,
-      unordered_map<Key, unordered_map<Key, Matrix>>& InterpJacobians) const {
+  Values get_interp_values(const Values& values,
+                           unordered_map<Key, unordered_map<Key, Matrix>>*
+                               InterpJacobians = nullptr) const {
     Values values_interp;  // interpolated values
     // loop through interpolated states and compute interpolation
     for (uint i = 0; i < interp_states_.size(); i++) {
@@ -213,35 +220,35 @@ class WNOAInterpFactor : public NoiseModelFactor {
                                         values.at<VelocityType>(left.vel));
       const auto state_right = make_pair(values.at<PoseType>(right.pose),
                                          values.at<VelocityType>(right.vel));
+
       // Get interpolated state velocity pair
-      auto [pose, velocity] = interpolator_.interpolatePoseAndVelocity(
-          state_left, left.time, state_right, right.time, interp_state.time);
+      PoseType pose;
+      VelocityType velocity;
+      vector<Matrix> H(8);
+      if (InterpJacobians) {
+        tie(pose, velocity) = interpolator_.interpolatePoseAndVelocity(
+            state_left, left.time, state_right, right.time, interp_state.time,
+            &H);
+      } else {
+        tie(pose, velocity) = interpolator_.interpolatePoseAndVelocity(
+            state_left, left.time, state_right, right.time, interp_state.time);
+      }
+
       // insert into values structure
       values_interp.insert(interp_state.pose, pose);
       values_interp.insert(interp_state.vel, velocity);
-      // NOTE: (CH) this should be done in previous call, but not implemented
-      // yet
-      // Retrieve Interpolation Jacobian
-      Eigen::Matrix<double, 2 * dim, 2 * dim> Lambda, Psi;
-      tie(Lambda, Psi) =
-          interpolator_.getLamdaPsi(left.time, right.time, interp_state.time);
-      // Split up interpolation Jacobian and define mappings
-      InterpJacobians[interp_state.pose][left.pose] =
-          Lambda.template block<dim, dim>(0, 0);
-      InterpJacobians[interp_state.pose][left.vel] =
-          Lambda.template block<dim, dim>(0, dim);
-      InterpJacobians[interp_state.pose][right.pose] =
-          Psi.template block<dim, dim>(0, 0);
-      InterpJacobians[interp_state.pose][right.vel] =
-          Psi.template block<dim, dim>(0, dim);
-      InterpJacobians[interp_state.vel][left.pose] =
-          Lambda.template block<dim, dim>(dim, 0);
-      InterpJacobians[interp_state.vel][left.vel] =
-          Lambda.template block<dim, dim>(dim, dim);
-      InterpJacobians[interp_state.vel][right.pose] =
-          Psi.template block<dim, dim>(dim, 0);
-      InterpJacobians[interp_state.vel][right.vel] =
-          Psi.template block<dim, dim>(dim, dim);
+
+      // arrange jacobians in unordered map (for easy access later)
+      if (InterpJacobians) {
+        (*InterpJacobians)[interp_state.pose][left.pose] = H[0];
+        (*InterpJacobians)[interp_state.pose][left.vel] = H[1];
+        (*InterpJacobians)[interp_state.pose][right.pose] = H[2];
+        (*InterpJacobians)[interp_state.pose][right.vel] = H[3];
+        (*InterpJacobians)[interp_state.vel][left.pose] = H[4];
+        (*InterpJacobians)[interp_state.vel][left.vel] = H[5];
+        (*InterpJacobians)[interp_state.vel][right.pose] = H[6];
+        (*InterpJacobians)[interp_state.vel][right.vel] = H[7];
+      }
     }
 
     return values_interp;
