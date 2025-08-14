@@ -25,37 +25,37 @@ static double timestep = 0.1;
 
 
 /**** Point1 Test Variables*****/
-Point1 v0_p1(1.0);
-Vector1 p0_p1(1.0);
+Point1 p0_p1(1.0);
+Vector1 v0_p1(1.0);
 // Define Second Pose with 2x the velocity (to get an error)
 Point1 p1_p1 = p0_p1 + timestep * v0_p1;
 Vector1 v1_p1 = 2.0 * v0_p1;
 
 /**** Point2 Test Variables*****/
-Point2 v0_p2(1.0, 2.0);
-Vector2 p0_p2(1.0, 2.0);
+Point2 p0_p2(1.0, 2.0);
+Vector2 v0_p2(1.0, 2.0);
 // Define Second Pose with 2x the velocity (to get an error)
 Point2 p1_p2 = p0_p2 + timestep * v0_p2;
 Vector2 v1_p2 = 2.0 * v0_p2;
 
 /**** Point3 Test Variables*****/
-Point3 v0_p3(1.0, 2.0, 3.0);
-Vector3 p0_p3(1.0, 2.0, 3.0);
+Point3 p0_p3(1.0, 2.0, 3.0);
+Vector3 v0_p3(1.0, 2.0, 3.0);
 // Define Second Pose with 2x the velocity (to get an error)
 Point3 p1_p3 = p0_p3 + timestep * v0_p3;
 Vector3 v1_p3 = 2.0 * v0_p3;
 
 /**** SE(2) Test Variables*****/
-Vector3 v0_se2(1.0, 2.0, 0.1);
 Pose2 p0_se2(1.0, 0.0, 0.5);
+Vector3 v0_se2(1.0, 2.0, 0.1);
 // Define Second Pose with 2x the velocity (to get an error)
 Pose2 p1_se2 = p0_se2.expmap(timestep * v0_se2);
 Vector3 v1_se2 = 2.0 * v0_se2;
 
 /***** SE(3) Test Variables******/
 // Define First Pose  with a general velocity
-Vector6 v0_se3(0.1, 0.0, 0.0, 1.0, 0.0, 2.0);
 Pose3 p0_se3 = Pose3::Expmap(Vector6(0.5, 0.0, 0.2, 1.0, 0.0, 0.0));
+Vector6 v0_se3(0.1, 0.0, 0.0, 1.0, 0.0, 2.0);
 // Define Second Pose with 2x the velocity (to get an error)
 Pose3 p1_se3 = p0_se3.expmap(timestep * v0_se3);
 Vector6 v1_se3 = 2.0 * v0_se3;
