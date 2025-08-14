@@ -7,12 +7,14 @@
 #include <gtsam/nonlinear/GaussNewtonOptimizer.h>
 #include <gtsam/nonlinear/LevenbergMarquardtOptimizer.h>
 #include <gtsam/nonlinear/LevenbergMarquardtParams.h>
+#include <gtsam/nonlinear/ContinuousTimeOptimizer.h>
+#include <gtsam/nonlinear/ContinuousTimeParams.h>
 #include <gtsam/nonlinear/Marginals.h>
 #include <gtsam/nonlinear/Values.h>
 #include <gtsam/slam/BetweenFactor.h>
 #include <gtsam/slam/dataset.h>
 #include <gtsam/slam/expressions.h>
-#include <gtsam/slam/WNOAFactor.h>
+#include <gtsam/nonlinear/WNOAFactor.h>
 #include <yaml-cpp/yaml.h>
 #include <gtsam/nonlinear/ISAM2.h>
 #include <gtsam/nonlinear/ISAM2Params.h>

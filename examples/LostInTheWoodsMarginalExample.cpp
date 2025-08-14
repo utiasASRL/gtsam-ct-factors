@@ -1,4 +1,4 @@
-#include "LostInTheWoodsISAMExample.h"
+#include "LostInTheWoodsMarginalExample.h"
 
 int main(int argc, char* argv[]) {
   // Get configuration data
@@ -154,7 +154,7 @@ int main(int argc, char* argv[]) {
   // Collect some states that will be considered "interpolated"
   KeyVector interpolatedKeys; //interpolated keys, which we will eliminate
   KeyVector remainingKeys; // these keys will remain in the graph
-  int M = 3;
+  int M = 200; // number of interolated states between remaining states
   for (int i = start; i <= end; i++) {
 
     if((i-start)%M != 0 && i != end) {
@@ -168,173 +168,46 @@ int main(int argc, char* argv[]) {
   }
 
 
-  auto start_time = std::chrono::high_resolution_clock::now();
+  // Record start time
+  auto startTime = std::chrono::high_resolution_clock::now();
 
-  // construct graphs that contain factors with involve interpolated keys
-  // and those that do not
-  // This is necessary because we will eliminate the interpolated keys
-  // and we want to keep the remaining factors in the graph.
-  ExpressionFactorGraph graph_interpolated, graph_remaining;
-  for(auto factor : graph)
-  {
-    bool has_interpolated_key = false;
-    for(const auto& key : factor->keys()) {
-      if(std::find(interpolatedKeys.begin(), interpolatedKeys.end(), key) != interpolatedKeys.end()) {
-        has_interpolated_key = true;
-        break;
-      }
-    }
-    if(has_interpolated_key)
-      graph_interpolated.add(factor);
-    else
-      graph_remaining.add(factor);
-  }
+  ContinuousTimeParams params;
+  params.setInterpolatedStates(interpolatedKeys);
+  params.maxInnerIterations = 10; // Set maximum inner iterations
+  params.deltaThreshold = 1e-1; // Set delta threshold for convergence
+  ContinuousTimeOptimizer ctOptimizer(graph, currentEstimate, params);
 
-  std::cout << "Original graph has " << graph.size() << " factors." << std::endl;
-  std::cout << "Graph with interpolated keys has " << graph_interpolated.size() << " factors." << std::endl;
-  std::cout << "Graph with remaining keys has " << graph_remaining.size() << " factors." << std::endl;
+  auto results_ct = ctOptimizer.optimize();
 
- 
-  
-  graph.saveGraph("results/lost_graph_full.dot", currentEstimate);
-  graph_interpolated.saveGraph("results/lost_graph_inter.dot", currentEstimate);
-  graph_remaining.saveGraph("results/lost_graph_remain.dot", currentEstimate);
+  // Record and print end time
+  auto endTime = std::chrono::high_resolution_clock::now();
+  auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime);
+  cout << "CT Optimizer took " << duration.count() << " milliseconds." << endl;
 
-  for(unsigned int iter = 0; iter < 100; iter++)
-  {
-    std::cout << "Iteration " << iter << "..." << std::endl;
-    // We now linearize the full graph at the current estimate
-    auto linearGraph = graph.linearize(currentEstimate);
-
-    // we now eliminate the interpolated keys from the linearized graph
-    // this gives us a bayes net and a remaining graph
-    auto [bayesNet, remainingGraph] = linearGraph->eliminatePartialSequential(interpolatedKeys);
-
-    if(iter == 0)
-    {
-      bayesNet->saveGraph("results/lost_bayes_net.dot");
-      remainingGraph->saveGraph("results/lost_remaining_graph.dot");
-    }
-
-    // Store a set of original factors
-    std::vector<GaussianFactor::shared_ptr> originalFactors;
-    for (size_t i = 0; i < linearGraph->size(); ++i) {
-      originalFactors.push_back((*linearGraph)[i]);
-    }
-
-    // Remaining graph after elimination
-    std::vector<GaussianFactor::shared_ptr> newFactors;
-    for (size_t i = 0; i < remainingGraph->size(); ++i) {
-      newFactors.push_back((*remainingGraph)[i]);
-    }
-
-    // Detect which of the new factors are different from the original factors and only keep those
-    std::vector<GaussianFactor::shared_ptr> differentFactors;
-    for (const auto& newFactor : newFactors) {
-      bool found = false;
-      for (const auto& originalFactor : originalFactors) {
-        if (newFactor == originalFactor) {
-          found = true;
-          break;
-        }
-      }
-      if (!found) {
-        differentFactors.push_back(newFactor);
-      }
-    }
-
-    Values updatedValues = currentEstimate;
-    // Run a couple iterations on the smaller graph, adding in the fixed factors from elimination of the interpolated keys
-    VectorValues total_delta;
-    for(int i = 0; i < 10; i++)
-    {
-      std::cout << "Inner iteration " << i << "..." << std::endl;
-      auto linear_remaining_graph = graph_remaining.linearize(updatedValues);
-
-      // add in the different factors from the elimination
-      for(const auto& factor : differentFactors)
-      {
-        linear_remaining_graph->add(*factor);
-      }
+  // Record start time for baseline
+  auto startTimeBaseline = std::chrono::high_resolution_clock::now();
 
 
-      if(iter == 0 && i == 0) {
-        linear_remaining_graph->saveGraph("results/lost_graph_small.dot");
-      }
+  GaussNewtonOptimizer optimizer(graph, currentEstimate);
+  auto results_baseline = optimizer.optimize();
 
-      // solve linear system
-      auto delta = linear_remaining_graph->optimize();
+  // Record and print end time for baseline
+  auto endTimeBaseline = std::chrono::high_resolution_clock::now();
+  auto durationBaseline = std::chrono::duration_cast<std::chrono::milliseconds>(endTimeBaseline - startTimeBaseline);
+  cout << "Baseline Optimizer took " << durationBaseline.count() << " milliseconds." << endl;
 
-      // update current estimate given a delta
-      updatedValues = updatedValues.retract(delta);
-      total_delta = currentEstimate.localCoordinates(updatedValues);
+  cout << "CT Optimizer finished in " << ctOptimizer.iterations() << " iterations." << endl;
+  cout << "Baseline Optimizer finished in " << optimizer.iterations() << " iterations." << endl;
 
-      //if (total_delta.norm() > 0.05) {
-      //  break;
-      //}
-
-    }
-
-    Values newEstimate;
-    // Run through all vales in updatedValues except last one
-    for (size_t i = 0; i < updatedValues.size() - 1; i++) {
-      // print all keys and values
-      Key currentKey = updatedValues.keys()[i];
-      std::cout << "Key: " << currentKey << std::endl;
-      // If you want to print the value, you need to handle the type explicitly.
-      // For example, if you expect Pose2 or Vector3, you can do:
-      if (updatedValues.exists(currentKey)) {
-        try {
-          const Pose2& pose = updatedValues.at<Pose2>(currentKey);
-          std::cout << "Pose2 Value: " << pose << std::endl;
-        } catch (...) {
-          try {
-        const Vector3& vec = updatedValues.at<Vector3>(currentKey);
-        std::cout << "Vector3 Value: " << vec.transpose() << std::endl;
-          } catch (...) {
-        std::cout << "Unknown value type for key: " << currentKey << std::endl;
-          }
-        }
-      }
-    }
-
-    //Get vector values from current estimate
-    VectorValues delta = total_delta;
-
-    // Extract only the values for the remaining keys
-    VectorValues deltaRemaining;
-    for (const auto& key : remainingKeys) {
-      if (delta.exists(key)) {
-        deltaRemaining.insert(key, delta.at(key));
-      }
-    }
-
-    //Use this to get the delta for the interpolated keys
-    VectorValues deltaInterpolated = bayesNet->optimize(deltaRemaining);
+  // Resulting error
+  cout << "CT Optimizer error: " << ctOptimizer.error() << endl;
+  cout << "Baseline Optimizer error: " << optimizer.error() << endl;
 
 
-    std::cout << "Norm of delta: " << deltaInterpolated.norm() << std::endl;
-
-    //Update the interpolated keys in the current estimate
-    currentEstimate = currentEstimate.retract(deltaInterpolated);
-
-    if(deltaInterpolated.norm() < 1e-6) {
-      std::cout << "Converged after " << iter + 1 << " iterations." << std::endl;
-      break;
-    }
-
-  }
-
-  Values result = currentEstimate;
-
-
-  auto end_time = std::chrono::high_resolution_clock::now();
-  auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count();
-  cout << "Optimization took " << duration << " milliseconds." << endl;
 
   // Save results
   cout << "Optimizer has finished...saving results..." << endl;
-  saveResultToFile(result, graph, output_file);
+  saveResultToFile(results_ct, graph, output_file);
   saveResultToFile(gt, graph, "results/lost_gt.csv");
 
   return 0;

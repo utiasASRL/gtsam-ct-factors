@@ -16,7 +16,7 @@
 #include <gtsam/nonlinear/WNOAFactor.h>
 #include <gtsam/geometry/Point1.h>
 #include <gtsam/slam/dataset.h>
-#include <examples/Interpolator.h>
+#include <gtsam/nonlinear/Interpolator.h>
 
 using namespace gtsam;
 
