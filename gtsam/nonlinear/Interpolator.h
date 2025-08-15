@@ -378,6 +378,7 @@ class Interpolator {
     return Sigma;
   }
 
+protected:
   static Matrix constructMatrixFromJointMarginal(
       const JointMarginal& blockMatrix, const KeyVector& keyVector,
       size_t blockSize) {

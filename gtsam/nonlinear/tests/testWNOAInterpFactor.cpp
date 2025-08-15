@@ -147,7 +147,7 @@ TEST(WNOAInterp, EvalErrorP3Unary) {
 
 TEST(WNOAInterp, EvalErrorSE3UnaryPose) {
   // Model
-  const auto model = noiseModel::Diagonal::Sigmas(Vector3::Ones());
+  const auto model = noiseModel::Diagonal::Sigmas(Vector6::Ones());
   const auto prior_pose = PriorFactor<Pose3>(P(1), p1_se3, model);
   // Construct factor for interpolated pose and velocity
   const auto factor_pose =
@@ -172,7 +172,7 @@ TEST(WNOAInterp, EvalErrorSE3UnaryPose) {
  */
 TEST(WNOAInterp, EvalErrorSE3UnaryVel) {
   // Model
-  const auto model = noiseModel::Diagonal::Sigmas(Vector3::Ones());
+  const auto model = noiseModel::Diagonal::Sigmas(Vector6::Ones());
   using VelType = traits<Pose3>::TangentVector;
   const auto prior_vel = PriorFactor<VelType>(V(1), v1_se3, model);
   // Construct factor for interpolated pose and velocity
@@ -199,7 +199,7 @@ TEST(WNOAInterp, EvalErrorSE3UnaryVel) {
 
 TEST(WNOAInterp, EvalErrorSE3BetweenPose) {
   // Model
-  const auto model = noiseModel::Diagonal::Sigmas(Vector3::Ones());
+  const auto model = noiseModel::Diagonal::Sigmas(Vector6::Ones());
   // construct relative pose
   const Pose3 p01_se3 = p0_se3.inverse().compose(p1_se3);
   const auto between_factor = BetweenFactor<Pose3>(P(0), P(1), p01_se3, model);
@@ -238,7 +238,7 @@ TEST(WNOAInterp, EvalErrorSE3BtwnInterp) {
   const Pose3 p4_se3 = p0_se3.expmap(4 * timestep * v0_se3);
   Vector6 v2_se3 = v0_se3;
   // Model
-  const auto model = noiseModel::Diagonal::Sigmas(Vector3::Ones());
+  const auto model = noiseModel::Diagonal::Sigmas(Vector6::Ones());
   const auto between_factor =
       BetweenFactor<Pose3>(P(1), P(3), Pose3::Identity(), model);
   // Construct factor for interpolated pose and velocity
@@ -394,9 +394,9 @@ TEST(WNOAInterp, Interpolator) {
 
   // Get analytic Jacobians
   vector<Matrix> H(8);
-  auto [pose_est, vel_est] = interp.interpolatePoseAndVelocity(pair(p0_se3, v0_se3), 0.0,
-                                    pair(p2_se3, v2_se3), 2 * timestep,
-                                    timestep, &H);
+  auto [pose_est, vel_est] = interp.interpolatePoseAndVelocity(
+      pair(p0_se3, v0_se3), 0.0, pair(p2_se3, v2_se3), 2 * timestep, timestep,
+      &H);
 
   // define lambda function for derivatives
   auto f = [&](auto& p0, auto& v0, auto& p2, auto& v2) {
@@ -429,6 +429,52 @@ TEST(WNOAInterp, Interpolator) {
   EXPECT(assert_equal(H[1], J_v0_num, tol));
   EXPECT(assert_equal(H[2], J_p2_num, tol));
   EXPECT(assert_equal(H[3], J_v2_num, tol));
+}
+
+/* *************************************************************************
+ */
+
+TEST(WNOAInterp, NoiseModelUpdate) {
+  // Model
+  const auto model = noiseModel::Diagonal::Sigmas(Vector6::Ones());
+  const auto prior_factor = PriorFactor<Pose3>(P(1), p1_se3, model);
+  auto cov_prior = model->covariance();
+  // Factor with changing measurement noise
+  const auto factor =
+      WNOAInterpFactor<Pose3>(prior_factor, border, interp, Q_se3 * 100);
+  // Get initial covariance
+  auto cov_init =
+      dynamic_pointer_cast<noiseModel::Gaussian>(factor.noiseModel())
+          ->covariance();
+  // Factor with fixed meas noise
+  const auto factor_fixed =
+      WNOAInterpFactor<Pose3>(prior_factor, border, interp, Q_se3, true);
+  // Set up values
+  Values values;
+  values.insert(P(0), p0_se3);
+  values.insert(P(2), p2_se3);
+  values.insert(V(0), v0_se3);
+  values.insert(V(2), v2_se3);
+  // Call error functions
+  factor.unwhitenedError(values);
+  factor.print();
+  factor_fixed.unwhitenedError(values);
+  factor.print();
+  // get new covariances
+  auto cov_mod = dynamic_pointer_cast<noiseModel::Gaussian>(factor.noiseModel())
+                     ->covariance();
+  auto cov_fixed =
+      dynamic_pointer_cast<noiseModel::Gaussian>(factor_fixed.noiseModel())
+          ->covariance();
+  cout << "PRIOR:\n" << cov_prior << endl;
+  cout << "INIT:\n" << cov_init << endl;
+  cout << "FIXED:\n" << cov_fixed << endl;
+  cout << "MOD:\n" << cov_mod << endl;
+
+  // Assertions
+  EXPECT(assert_equal(cov_prior, cov_init));
+  EXPECT(assert_equal(cov_prior, cov_fixed));
+  EXPECT(assert_inequal(cov_prior, cov_mod));
 }
 
 int main() {
