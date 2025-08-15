@@ -90,7 +90,7 @@ namespace gtsam {
       bool operator==(const OTHER& rhs) const {
         if (this->size() != rhs.size()) return false;
         if (this->size() == 0) return true;
-        return std::equal(begin(), end(), rhs.begin());
+        return std::equal(begin(), end(), rhs.begin(), rhs.end());
       }
     };
 
