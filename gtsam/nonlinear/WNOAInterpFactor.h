@@ -78,8 +78,8 @@ class WNOAInterpFactor : public NoiseModelFactor {
                    const Eigen::Vector<double, dim>& Q_psd,
                    const bool fixed_noise_model = false)
       : Base(inner_factor.noiseModel(),
-             This::get_outer_keys(inner_factor.keys(), estimated_states,
-                                  interp_states)),
+             This::getOuterKeys(inner_factor.keys(), estimated_states,
+                                interp_states)),
         inner_factor_(inner_factor),
         interp_states_(interp_states),
         estimated_states_(estimated_states),
@@ -140,25 +140,87 @@ class WNOAInterpFactor : public NoiseModelFactor {
   // unwhitenedError
   using Base::unwhitenedError;
 
-  // Override of evaluateError required by NoiseModelFactorN derivatives
+  // Override of unwhitened error function required by derivatives of
+  // NoiseModelFactor
   Vector unwhitenedError(const Values& values,
                          OptionalMatrixVecType H = nullptr) const override {
+    return computeInterpolatedError(values, H);
+  }
+
+  /* @brief Custom version of linearize function that allows us to update the
+   * noise model on-the-fly. This is required to accurately represent the
+   * uncertainty of measurements on interpolated states.*/
+  std::shared_ptr<GaussianFactor> linearize(const Values& x) const override {
+    // if noise model fixed, just use the NonlinearFactor linearize approach.
+    if (fixed_noise_model_) {
+      return Base::linearize(x);
+    }
+
+    // Only linearize if the factor is active
+    if (!active(x)) return std::shared_ptr<JacobianFactor>();
+
+    // Call evaluate error to get Jacobians and RHS vector b
+    std::vector<Matrix> A(size());
+    std::vector<Matrix> JacInner(inner_factor_.size());
+    std::vector<Matrix2N> InterpCondCovs(interp_states_.size());
+    Vector b = -computeInterpolatedError(x, &A, &JacInner, &InterpCondCovs);
+    // get interpolated noise model
+    auto noise_model = getInterpolatedNoiseModel(JacInner, InterpCondCovs);
+    // Whiten the corresponding system now
+    noise_model->WhitenSystem(A, b);
+
+    // Fill in terms, needed to create JacobianFactor below
+    std::vector<std::pair<Key, Matrix>> terms(size());
+    for (size_t j = 0; j < size(); ++j) {
+      terms[j].first = keys()[j];
+      terms[j].second.swap(A[j]);
+    }
+
+    // TODO pass unwhitened + noise model to Gaussian factor
+    using noiseModel::Constrained;
+    if (noiseModel_ && noiseModel_->isConstrained())
+      return GaussianFactor::shared_ptr(new JacobianFactor(
+          terms, b,
+          std::static_pointer_cast<Constrained>(noiseModel_)->unit()));
+    else {
+      return GaussianFactor::shared_ptr(new JacobianFactor(terms, b));
+    }
+  }
+
+  /* @brief Returns the noise model including the increase in covariance due to
+   * interpolation. */
+  SharedGaussian noiseModel(Values& x) const {
+    // if fixed noise then just return the standard gaussian model
+    if (fixed_noise_model_) {
+      return dynamic_pointer_cast<noiseModel::Gaussian>(Base::noiseModel());
+    }
+    // Call evaluate error to get inner Jacobians and convariances
+    std::vector<Matrix> JacInner(inner_factor_.size());
+    std::vector<Matrix2N> InterpCondCovs(interp_states_.size());
+    Vector b =
+        -computeInterpolatedError(x, nullptr, &JacInner, &InterpCondCovs);
+    // get interpolated noise model
+    return getInterpolatedNoiseModel(JacInner, InterpCondCovs);
+  }
+
+ private:
+  /* Computes the unwhitened error, and, optionally, the inner factor jacobians
+   * and interpolated conditional covariances*/
+  Vector computeInterpolatedError(
+      const Values& values, OptionalMatrixVecType H = nullptr,
+      OptionalMatrixVecType H_inner = nullptr,
+      vector<Matrix2N>* InterpCondCovs = nullptr) const {
     // Define mapping from interpolated keys to interpolation jacobians
     // Nested Key: map[interp key][estimated key] = Jac
     unordered_map<Key, unordered_map<Key, Matrix>> InterpJacobians;
-    // Define mapping from interpolated keys to conditional covariances
-    unordered_map<Key, MatrixN> InterpCovariances;
     // process interpolated states, get Jacobians and covariances
     Values values_interp;
-    if (H && !fixed_noise_model_) {
+    if (H) {
+      // Compute interpolation Jacobians
       values_interp =
-          get_interp_values(values, &InterpJacobians, &InterpCovariances);
-    } else if (H) {
-      values_interp = get_interp_values(values, &InterpJacobians);
-    } else if (!fixed_noise_model_){
-      values_interp = get_interp_values(values, nullptr, &InterpCovariances);
+          getInterpolatedValues(values, &InterpJacobians, InterpCondCovs);
     } else {
-      values_interp = get_interp_values(values);
+      values_interp = getInterpolatedValues(values, nullptr, InterpCondCovs);
     }
 
     // construct values for inner factor
@@ -178,17 +240,16 @@ class WNOAInterpFactor : public NoiseModelFactor {
     }
 
     // Call inner factor error function with interpolated values.
-    vector<Matrix> H_inner(inner_factor_.keys().size());
     Vector error;
+    vector<Matrix> H_inner_(inner_factor_.size());
+    if (!H_inner) {
+      // link to pointer passed in
+      H_inner = &H_inner_;
+    }
     if (H || !fixed_noise_model_) {
-      error = inner_factor_.unwhitenedError(values_inner, &H_inner);
+      error = inner_factor_.unwhitenedError(values_inner, H_inner);
     } else {
       error = inner_factor_.unwhitenedError(values_inner);
-    }
-
-    // Update noise model
-    if (!fixed_noise_model_) {
-      update_noise_model(H_inner, InterpCovariances);
     }
 
     // compute Jacobians for outer keys
@@ -207,13 +268,13 @@ class WNOAInterpFactor : public NoiseModelFactor {
           // Loop over keys and update Jacobian
           for (Key& outer_key : outer_keys) {
             int k = outer_key_to_index.at(outer_key);
-            safeMatrixAdd((*H)[k],
-                          H_inner[i] * InterpJacobians[inner_key][outer_key]);
+            safeMatrixAdd(
+                (*H)[k], (*H_inner)[i] * InterpJacobians[inner_key][outer_key]);
           }
         } else {
           // not an interpolated key, directly map to outer jacobian
           int k = outer_key_to_index.at(inner_key);
-          safeMatrixAdd((*H)[k], H_inner[i]);
+          safeMatrixAdd((*H)[k], (*H_inner)[i]);
         }
       }
     }
@@ -221,13 +282,12 @@ class WNOAInterpFactor : public NoiseModelFactor {
     return error;
   }
 
- private:
   /* @brief Interpolate all interpolated states based on estimated states.
    * Put their values in a Values structure and compute their Jacobians.*/
-  Values get_interp_values(
+  Values getInterpolatedValues(
       const Values& values,
       unordered_map<Key, unordered_map<Key, Matrix>>* InterpJacobians = nullptr,
-      unordered_map<Key, MatrixN>* InterpCovariances = nullptr) const {
+      vector<Matrix2N>* InterpCondCovs = nullptr) const {
     Values values_interp;  // interpolated values
     // loop through interpolated states and compute interpolation
     for (uint i = 0; i < interp_states_.size(); i++) {
@@ -272,16 +332,11 @@ class WNOAInterpFactor : public NoiseModelFactor {
       }
 
       // Conditional covariance of interpolated states for noise model update
-      // NOTE: we neglect the cross covariances (even between pose and vel of
-      // same state)
-      if (InterpCovariances) {
-        Matrix2N Sigma_tau = interpolator_.computeConditionalCov(
-            state_left, state_right, pair(pose, velocity), left.time,
-            right.time, interp_state.time);
-        (*InterpCovariances)[interp_state.pose] =
-            Sigma_tau.template block<dim, dim>(0, 0);
-        (*InterpCovariances)[interp_state.vel] =
-            Sigma_tau.template block<dim, dim>(dim, dim);
+      if (InterpCondCovs) {
+        (*InterpCondCovs)
+            .push_back(interpolator_.computeConditionalCov(
+                state_left, state_right, pair(pose, velocity), left.time,
+                right.time, interp_state.time));
       }
     }
 
@@ -290,9 +345,9 @@ class WNOAInterpFactor : public NoiseModelFactor {
 
   /* @brief This function retrieves the approapriate keys for the outer factor
    * based on the interpolation data and the inner factor*/
-  static KeyVector get_outer_keys(const KeyVector& inner_keys,
-                                  const vector<StateData>& estimated_states,
-                                  const vector<StateData>& interp_states) {
+  static KeyVector getOuterKeys(const KeyVector& inner_keys,
+                                const vector<StateData>& estimated_states,
+                                const vector<StateData>& interp_states) {
     // get set of estimated keys and add to key set
     unordered_set<Key> outer_key_set;
     for (const StateData& estimated_state : estimated_states) {
@@ -318,40 +373,60 @@ class WNOAInterpFactor : public NoiseModelFactor {
     return outer_keys;
   }
 
-  /* Update the noise model for the wrapper factor. This depends on the
+  /* Gets a new noise model for the wrapper factor. This depends on the
    * linearization point and the current estimate of the covariance of the
    * interpolated state */
-  void update_noise_model(
+  SharedGaussian getInterpolatedNoiseModel(
       const vector<Matrix>& Jacobians,
-      unordered_map<Key, MatrixN>& InterpCovariances) const {
+      const vector<Matrix2N>& InterpCondCovs) const {
     // Get noise model of inner factor
     noiseModel::Gaussian::shared_ptr noise_model_ptr =
         dynamic_pointer_cast<noiseModel::Gaussian>(inner_factor_.noiseModel());
-    // Check that the measurement noise is set up as a gaussian (non-null cast)
+    // Check that the measurement noise is set up as a gaussian
     assert(noise_model_ptr &&
            "Noise model of inner factor must be noiseModel::Gaussian or "
            "derivative");
-    Matrix meas_cov = noise_model_ptr->covariance();
+
+    // Initialize new covariance with the existing measurement covariance
+    int err_dim = noise_model_ptr->dim();
+    Matrix noise_cov = noise_model_ptr->covariance();
 
     // Compute the covariance update based on interpolated states
-    for (uint i=0; i < inner_factor_.keys().size(); i++) {
-      Key key = inner_factor_.keys()[i];
-      if (InterpCovariances.count(key) > 0) {
-        MatrixN Sigma_tau = InterpCovariances.at(key);
-        meas_cov += Jacobians[i] * Sigma_tau * Jacobians[i].transpose();
+    KeyVector inner_keys = inner_factor_.keys();
+    unordered_map<Key, int> key_index;
+    for (uint i = 0; i < inner_keys.size(); i++) {
+      key_index[inner_keys[i]] = i;
+    }
+    // Note: Here, we leverage the block-diagonal approximation of the
+    // interpolated covariances (i.e., independence approximation)
+    for (uint i = 0; i < interp_states_.size(); i++) {
+      const StateData& state = interp_states_[i];
+      // Retrieve Jacobians from inner factor
+      Matrix G_pose(err_dim, dim);
+      Matrix G_vel(err_dim, dim);
+      if (key_index.count(state.pose) > 0) {
+        G_pose = Jacobians[key_index[state.pose]];
+      } else {
+        G_pose.setZero();
       }
+      if (key_index.count(state.vel) > 0) {
+        G_vel = Jacobians[key_index[state.vel]];
+      } else {
+        G_vel.setZero();
+      }
+      Matrix G_tau(err_dim, 2 * dim);
+      G_tau << G_pose, G_vel;
+      // add covariance
+      noise_cov += G_tau * InterpCondCovs[i] * G_tau.transpose();
     }
 
-    // Update the motion model
-    // We need a const_case here to be able to modify the noise model, even
-    // though our member functions are const
-    const_cast<WNOAInterpFactor<PoseType>*>(this)->noiseModel_ =
-        noiseModel::Gaussian::Covariance(meas_cov);
+    // Return interpolated noise model
+    return noiseModel::Gaussian::Covariance(noise_cov);
   }
 
-  /* @brief A function for safely adding to a Matrix with possibly unknown
-   * dimension. If the matrix is undefined, it adopts the dimensions of the
-   * matrix that is added .*/
+  /* @brief A helper function for safely adding to a Matrix with possibly
+   * unknown dimension. If the matrix is undefined, it adopts the dimensions of
+   * the matrix that is added .*/
   template <typename DerivedA, typename DerivedB>
   static inline void safeMatrixAdd(Eigen::MatrixBase<DerivedA>& dst,
                                    const Eigen::MatrixBase<DerivedB>& src) {
