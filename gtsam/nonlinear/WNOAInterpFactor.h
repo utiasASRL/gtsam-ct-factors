@@ -205,7 +205,7 @@ class WNOAInterpFactor : public NoiseModelFactor {
 
  private:
   /* Computes the unwhitened error, and, optionally, the inner factor jacobians
-   * and interpolated conditional covariances*/
+   * and interpolated conditional covariances.*/
   Vector computeInterpolatedError(
       const Values& values, OptionalMatrixVecType H = nullptr,
       OptionalMatrixVecType H_inner = nullptr,
@@ -333,10 +333,10 @@ class WNOAInterpFactor : public NoiseModelFactor {
 
       // Conditional covariance of interpolated states for noise model update
       if (InterpCondCovs) {
-        (*InterpCondCovs)
-            .push_back(interpolator_.computeConditionalCov(
-                state_left, state_right, pair(pose, velocity), left.time,
-                right.time, interp_state.time));
+        Matrix2N Sigma_tau = interpolator_.computeConditionalCov(
+            state_left, state_right, pair(pose, velocity), left.time,
+            right.time, interp_state.time);
+        (*InterpCondCovs)[i] = Sigma_tau;  // assumed preallocated vector
       }
     }
 

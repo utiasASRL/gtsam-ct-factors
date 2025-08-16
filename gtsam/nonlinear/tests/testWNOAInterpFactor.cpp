@@ -434,14 +434,14 @@ TEST(WNOAInterp, Interpolator) {
 /* *************************************************************************
  */
 
-TEST(WNOAInterp, NoiseModelUpdate) {
+TEST(WNOAInterp, NoiseModelPrior) {
   // Model
   const auto model = noiseModel::Diagonal::Sigmas(Vector6::Ones());
   const auto prior_factor = PriorFactor<Pose3>(P(1), p1_se3, model);
   auto cov_prior = model->covariance();
   // Factor with changing measurement noise
   const auto factor =
-      WNOAInterpFactor<Pose3>(prior_factor, border, interp, Q_se3 * 100);
+      WNOAInterpFactor<Pose3>(prior_factor, border, interp, Q_se3);
   // Factor with fixed meas noise
   const auto factor_fixed =
       WNOAInterpFactor<Pose3>(prior_factor, border, interp, Q_se3, true);
@@ -452,10 +452,52 @@ TEST(WNOAInterp, NoiseModelUpdate) {
   values.insert(V(0), v0_se3);
   values.insert(V(2), v2_se3);
   // Call error functions
-  SharedGaussian noise_model = factor.noiseModel(values);
-  auto cov = noise_model->covariance();
-  cout << "Cov:\n" << cov << endl;
-  model->print("");
+  auto cov = factor.noiseModel(values)->covariance();
+  auto cov_fixed = factor_fixed.noiseModel(values)->covariance();
+  // Verify that the covariance has changed from the prior
+  EXPECT(assert_equal(cov_fixed, cov_prior));
+  EXPECT(assert_inequal(cov, cov_prior));
+}
+
+/* *************************************************************************
+ */
+
+TEST(WNOAInterp, NoiseModelBtwn) {
+  // Same as between above, but using two interpolated states with different
+  // boundaries
+  vector<StateData> border = {StateData(P(0), V(0), 0.0),
+                              StateData(P(2), V(2), 2 * timestep),
+                              StateData(P(4), V(4), 4 * timestep)};
+  vector<StateData> interp = {StateData(P(1), V(1), timestep),
+                              StateData(P(3), V(3), 3 * timestep)};
+  const Pose3 p3_se3 = p0_se3.expmap(3 * timestep * v0_se3);
+  const Pose3 p4_se3 = p0_se3.expmap(4 * timestep * v0_se3);
+  Vector6 v2_se3 = v0_se3;
+  // Model
+  const auto model = noiseModel::Diagonal::Sigmas(Vector6::Ones());
+  const auto cov_inner = model->covariance();
+  const auto between_factor =
+      BetweenFactor<Pose3>(P(1), P(3), Pose3::Identity(), model);
+  // Construct factor for interpolated pose and velocity
+  const auto factor =
+      WNOAInterpFactor<Pose3>(between_factor, border, interp, Q_se3);
+  const auto factor_fixed = 
+      WNOAInterpFactor<Pose3>(between_factor, border, interp, Q_se3, true);
+  // Set up values
+  Values values;
+  values.insert(P(0), p0_se3);
+  values.insert(P(2), p2_se3);
+  values.insert(P(4), p4_se3);
+  values.insert(V(0), v0_se3);
+  values.insert(V(2), v2_se3);
+  values.insert(V(4), v0_se3);
+
+  // Call error functions
+  auto cov = factor.noiseModel(values)->covariance();
+  auto cov_fixed = factor_fixed.noiseModel(values)->covariance();
+  // Verify that the covariance has changed from the prior
+  EXPECT(assert_equal(cov_fixed, cov_inner));
+  EXPECT(assert_inequal(cov, cov_inner));
 }
 
 int main() {
