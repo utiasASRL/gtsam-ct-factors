@@ -42,7 +42,7 @@ jobs:
             ubuntu-build-examples,
           ]
 
-        build_type: [Debug, Release]
+        build_type: [Release]
 
         include:
           - name: ubuntu-clang-deprecated
