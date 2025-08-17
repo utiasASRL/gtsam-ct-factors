@@ -243,7 +243,7 @@ class WNOAInterpFactor : public NoiseModelFactor {
     Vector error;
     vector<Matrix> H_inner_(inner_factor_.size());
     if (!H_inner) {
-      // link to pointer passed in
+      // if H_inner not passed in, use local variable.
       H_inner = &H_inner_;
     }
     if (H || !fixed_noise_model_) {
@@ -277,6 +277,7 @@ class WNOAInterpFactor : public NoiseModelFactor {
           safeMatrixAdd((*H)[k], (*H_inner)[i]);
         }
       }
+      
     }
 
     return error;

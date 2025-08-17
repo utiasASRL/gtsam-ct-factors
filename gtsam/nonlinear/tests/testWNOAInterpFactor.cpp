@@ -434,7 +434,7 @@ TEST(WNOAInterp, Interpolator) {
 /* *************************************************************************
  */
 
-TEST(WNOAInterp, NoiseModelPrior) {
+TEST(WNOAInterp, NoiseModelSE3Unary) {
   // Model
   const auto model = noiseModel::Diagonal::Sigmas(Vector6::Ones());
   const auto prior_factor = PriorFactor<Pose3>(P(1), p1_se3, model);
@@ -462,7 +462,7 @@ TEST(WNOAInterp, NoiseModelPrior) {
 /* *************************************************************************
  */
 
-TEST(WNOAInterp, NoiseModelBtwn) {
+TEST(WNOAInterp, NoiseModelSE3Btwn) {
   // Same as between above, but using two interpolated states with different
   // boundaries
   vector<StateData> border = {StateData(P(0), V(0), 0.0),
@@ -481,7 +481,7 @@ TEST(WNOAInterp, NoiseModelBtwn) {
   // Construct factor for interpolated pose and velocity
   const auto factor =
       WNOAInterpFactor<Pose3>(between_factor, border, interp, Q_se3);
-  const auto factor_fixed = 
+  const auto factor_fixed =
       WNOAInterpFactor<Pose3>(between_factor, border, interp, Q_se3, true);
   // Set up values
   Values values;
@@ -498,6 +498,155 @@ TEST(WNOAInterp, NoiseModelBtwn) {
   // Verify that the covariance has changed from the prior
   EXPECT(assert_equal(cov_fixed, cov_inner));
   EXPECT(assert_inequal(cov, cov_inner));
+}
+
+/* *************************************************************************
+ */
+
+TEST(WNOAInterp, NoiseModelP3Btwn) {
+  // Same as between above, but using two interpolated states with different
+  // boundaries
+  vector<StateData> border = {StateData(P(0), V(0), 0.0),
+                              StateData(P(2), V(2), 2 * timestep),
+                              StateData(P(4), V(4), 4 * timestep)};
+  vector<StateData> interp = {StateData(P(1), V(1), timestep),
+                              StateData(P(3), V(3), 3 * timestep)};
+  // const Point3 p3_p3 = p0_p3 + 3 * timestep * v0_p3;
+  const Point3 p4_p3 = p0_p3 + 4 * timestep * v0_p3;
+  Vector3 v2_p3 = v0_p3;
+  // Model
+  const auto model = noiseModel::Diagonal::Sigmas(Vector3::Ones());
+  const auto cov_inner = model->covariance();
+  const auto between_factor =
+      BetweenFactor<Point3>(P(1), P(3), Point3::Identity(), model);
+  // Construct factor for interpolated pose and velocity
+  const auto factor =
+      WNOAInterpFactor<Point3>(between_factor, border, interp, Q_p3);
+
+  // Set up values
+  Values values;
+  values.insert(P(0), p0_p3);
+  values.insert(P(2), p2_p3);
+  values.insert(P(4), p4_p3);
+  values.insert(V(0), v0_p3);
+  values.insert(V(2), v2_p3);
+  values.insert(V(4), v0_p3);
+
+  // Get modified noise model
+  auto cov = factor.noiseModel(values)->covariance();
+  // subtract original covariance
+  Matrix cov_diff = cov - cov_inner;
+  // verify same as 2x interpolated conditional covariance
+  // Note: Jacobians for Point3 are identity
+  auto interpolator = Interpolator<Point3>(Q_p3);
+  auto Sigma_tau = interpolator.computeConditionalCov(
+      pair(p0_p3, v0_p3), pair(p2_p3, v2_p3), pair(p1_p3, v1_p3), 0.0,
+      2 * timestep, timestep);
+  EXPECT(assert_equal(cov_diff, 2 * Sigma_tau.block<3, 3>(0, 0)));
+}
+
+/* *************************************************************************
+ */
+
+TEST(WNOAInterp, LinearizeSE3Btwn) {
+  // Same as between above, but using two interpolated states with different
+  // boundaries
+  vector<StateData> border = {StateData(P(0), V(0), 0.0),
+                              StateData(P(2), V(2), 2 * timestep),
+                              StateData(P(4), V(4), 4 * timestep)};
+  vector<StateData> interp = {StateData(P(1), V(1), timestep),
+                              StateData(P(3), V(3), 3 * timestep)};
+  const Pose3 p3_se3 = p0_se3.expmap(3 * timestep * v0_se3);
+  const Pose3 p4_se3 = p0_se3.expmap(4 * timestep * v0_se3);
+  Vector6 v2_se3 = v0_se3;
+  // Model
+  const auto model = noiseModel::Diagonal::Sigmas(Vector6::Ones());
+  const auto between_factor =
+      BetweenFactor<Pose3>(P(1), P(3), p1_se3.inverse() * p3_se3, model);
+  // Construct factor for interpolated pose and velocity
+  const auto factor =
+      WNOAInterpFactor<Pose3>(between_factor, border, interp, Q_se3);
+
+  // Set up values
+  Values values;
+  values.insert(P(0), p0_se3);
+  values.insert(P(2), p2_se3);
+  values.insert(P(4), p4_se3);
+  values.insert(V(0), v0_se3);
+  values.insert(V(2), v2_se3);
+  values.insert(V(4), v0_se3);
+
+  // Call Linearize function
+  auto lin_factor =
+      dynamic_pointer_cast<JacobianFactor>(factor.linearize(values));
+  Vector6 error = lin_factor->getb();
+  EXPECT(assert_equal(error, Vector6::Zero().eval()));
+}
+
+/* *************************************************************************
+ */
+
+TEST(WNOAInterp, SE3OptimTest) {
+  // Define optimization:
+  //       unary
+  //         |
+  //  0 ---- 1 ---- 2 ----- 3 ----- 4
+  //  e      i      e       i       e
+  //          --- between ---
+  vector<StateData> border1 = {StateData(P(0), V(0), 0.0),
+                               StateData(P(2), V(2), 2 * timestep)};
+  vector<StateData> border2 = {StateData(P(0), V(0), 0.0),
+                               StateData(P(2), V(2), 2 * timestep),
+                               StateData(P(4), V(4), 4 * timestep)};
+  vector<StateData> interp1 = {StateData(P(1), V(1), timestep)};
+  vector<StateData> interp2 = {StateData(P(1), V(1), timestep),
+                               StateData(P(3), V(3), 3 * timestep)};
+  const Pose3 p3_se3 = p0_se3.expmap(3 * timestep * v0_se3);
+  const Pose3 p4_se3 = p0_se3.expmap(4 * timestep * v0_se3);
+  // Define nominal factors
+  const auto model = noiseModel::Diagonal::Sigmas(Vector6::Ones());
+  const auto between_factor =
+      BetweenFactor<Pose3>(P(1), P(3), p1_se3.inverse() * p3_se3, model);
+  const auto prior_pose_factor = PriorFactor<Pose3>(P(1), p1_se3, model);
+  const auto prior_vel_factor = PriorFactor<Vector6>(V(1), v0_se3, model);
+
+  // Define graph
+  NonlinearFactorGraph graph;
+
+  // Construct interpolated factors
+  graph.add(
+      WNOAInterpFactor<Pose3>(prior_pose_factor, border1, interp1, Q_se3));
+  graph.add(WNOAInterpFactor<Pose3>(prior_vel_factor, border1, interp1, Q_se3));
+  graph.add(WNOAInterpFactor<Pose3>(between_factor, border2, interp2, Q_se3));
+
+  // Add WNOA factors
+  graph.add(
+      WNOAMotionFactor<Pose3>(P(0), V(0), P(2), V(2), 2 * timestep, Q_se3));
+  graph.add(
+      WNOAMotionFactor<Pose3>(P(2), V(2), P(4), V(4), 2 * timestep, Q_se3));
+
+  // Set up values at ground truth solution
+  Values values;
+  values.insert(P(0), p0_se3);
+  values.insert(P(1), p1_se3);
+  values.insert(P(2), p2_se3);
+  values.insert(P(3), p3_se3);
+  values.insert(P(4), p4_se3);
+  values.insert(V(0), v0_se3);  // Same velocity for all points
+  values.insert(V(1), v0_se3);
+  values.insert(V(2), v0_se3);
+  values.insert(V(3), v0_se3);
+  values.insert(V(4), v0_se3);
+  // Set up optimizer
+  GaussNewtonOptimizer optimizer(graph, values);
+  // We expect the initial to be zero because config is the ground truth
+  DOUBLES_EQUAL(0.0, optimizer.error(), 1e-9);
+  // Iterate once, and the config should not have changed
+  optimizer.iterate();
+  DOUBLES_EQUAL(0.0, optimizer.error(), 1e-9);
+  // Complete solution
+  optimizer.optimize();
+  DOUBLES_EQUAL(0.0, optimizer.error(), 1e-6);
 }
 
 int main() {
