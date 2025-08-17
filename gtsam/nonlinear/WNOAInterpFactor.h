@@ -63,9 +63,9 @@ class WNOAInterpFactor : public NoiseModelFactor {
   const Interpolator<PoseType> interpolator_;
   // disable noise model updates
   const bool fixed_noise_model_;
-  // map interpolated key to index of estimated state index (required for
+  // map interpolated key to index of left estimated state (required for
   // jacobians)
-  unordered_map<Key, int> interp_key_to_left_index;
+  unordered_map<Key, int> interp_key_to_left;
   // map interpolated state index to estimated state index
   vector<int> interp_to_estimated;
   // map outer key to outer key index (for Jacobians)
@@ -77,21 +77,22 @@ class WNOAInterpFactor : public NoiseModelFactor {
                    const vector<StateData>& interp_states,
                    const Eigen::Vector<double, dim>& Q_psd,
                    const bool fixed_noise_model = false)
-      : Base(inner_factor.noiseModel(),
-             This::getOuterKeys(inner_factor.keys(), estimated_states,
-                                interp_states)),
+      : Base(inner_factor.noiseModel()),
         inner_factor_(inner_factor),
         interp_states_(interp_states),
         estimated_states_(estimated_states),
         interpolator_(Q_psd),
         fixed_noise_model_(fixed_noise_model) {
-    // Get list of estimated times
-    vector<double> estimated_times;
+    
+    
+    // PROCESS INTERPOLATED STATES
+    vector<double> estimated_times; // vector of estimated times
     for (auto state : estimated_states) {
       estimated_times.push_back(state.time);
     }
-    // map interp states to estimated states
-    for (const auto& state : interp_states) {
+    for (uint i = 0; i < interp_states.size(); i++) {
+      StateData state = interp_states[i];
+      // Search for associated bordering states
       auto it = std::lower_bound(estimated_times.begin(), estimated_times.end(),
                                  state.time);
       if (it == estimated_times.begin()) {
@@ -102,12 +103,31 @@ class WNOAInterpFactor : public NoiseModelFactor {
             "Interpolated state time is after all estimated state times");
       } else {
         // update maps with left index
-        int right_index = std::distance(estimated_times.begin(), it);
-        interp_to_estimated.push_back(right_index - 1);
-        interp_key_to_left_index[state.pose] = right_index - 1;
-        interp_key_to_left_index[state.vel] = right_index - 1;
+        int ind = std::distance(estimated_times.begin(), it);
+        interp_to_estimated.push_back(ind - 1);
+        interp_key_to_left[state.pose] = ind - 1;
+        interp_key_to_left[state.vel] = ind - 1;
       }
     }
+
+    // DEFINE KEYS
+    // Go through inner keys and add to outer keys accordingly
+    unordered_set<Key> outer_key_set;
+    for (Key key : inner_factor.keys()){
+      if (interp_key_to_left.find(key) == interp_key_to_left.end()) {
+        // inner key is not interpolated, add to outer keys
+        outer_key_set.insert(key);
+      } else {
+        // inner key is interpolated, add associated border state keys
+        int left_ind = interp_key_to_left[key]; // left border index
+        outer_key_set.insert(estimated_states[left_ind].pose);
+        outer_key_set.insert(estimated_states[left_ind].vel);
+        outer_key_set.insert(estimated_states[left_ind+1].pose);
+        outer_key_set.insert(estimated_states[left_ind+1].vel);
+      }
+    }
+    keys_ = KeyVector(outer_key_set.begin(), outer_key_set.end());
+
     // map outer keys to their associated index (used when mapping jacobians
     // later)
     for (uint i = 0; i < this->keys_.size(); i++) {
@@ -259,7 +279,7 @@ class WNOAInterpFactor : public NoiseModelFactor {
         Key inner_key = inner_factor_.keys()[i];
         if (values_interp.exists(inner_key)) {
           // get index left bordering state states
-          int left_index = interp_key_to_left_index.at(inner_key);
+          int left_index = interp_key_to_left.at(inner_key);
           // get associated outer keys
           KeyVector outer_keys = {estimated_states_[left_index].pose,
                                   estimated_states_[left_index].vel,
@@ -342,36 +362,6 @@ class WNOAInterpFactor : public NoiseModelFactor {
     }
 
     return values_interp;
-  }
-
-  /* @brief This function retrieves the approapriate keys for the outer factor
-   * based on the interpolation data and the inner factor*/
-  static KeyVector getOuterKeys(const KeyVector& inner_keys,
-                                const vector<StateData>& estimated_states,
-                                const vector<StateData>& interp_states) {
-    // get set of estimated keys and add to key set
-    unordered_set<Key> outer_key_set;
-    for (const StateData& estimated_state : estimated_states) {
-      outer_key_set.insert(estimated_state.pose);
-      outer_key_set.insert(estimated_state.vel);
-    }
-    // get set of interpolated keys
-    unordered_set<Key> interp_key_set;
-    for (const StateData& interp_state : interp_states) {
-      interp_key_set.insert(interp_state.pose);
-      interp_key_set.insert(interp_state.vel);
-    }
-    // add inner keys that are not being interpolated and are not already in the
-    // our set of outer keys
-    for (Key key : inner_keys) {
-      if (interp_key_set.count(key) == 0 && outer_key_set.count(key) == 0) {
-        outer_key_set.insert(key);
-      }
-    }
-
-    // Convert key set to key vector
-    KeyVector outer_keys(outer_key_set.begin(), outer_key_set.end());
-    return outer_keys;
   }
 
   /* Gets a new noise model for the wrapper factor. This depends on the

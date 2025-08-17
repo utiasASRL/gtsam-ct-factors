@@ -53,10 +53,13 @@ static Vector6 v1_se3 = v0_se3;
 static Pose3 p2_se3 = p0_se3.expmap(2 * timestep * v0_se3);
 static Vector6 v2_se3 = v0_se3;
 
-// Default interpolation scheme
+// Define interpolation parameters
+// Add random border and interpolated states
 static vector<StateData> border = {StateData(P(0), V(0), 0.0),
-                                   StateData(P(2), V(2), 2 * timestep)};
-static vector<StateData> interp = {StateData(P(1), V(1), timestep)};
+                                   StateData(P(2), V(2), 2 * timestep),
+                                   StateData(P(3), V(3), 100 * timestep)};
+static vector<StateData> interp = {StateData(P(1), V(1), timestep),
+                                   StateData(P(4), V(4), timestep)};
 
 // Constructor test
 TEST(WNOAInterp, Constructor) {
@@ -70,12 +73,11 @@ TEST(WNOAInterp, Constructor) {
   KeyVector inner_keys = prior.keys();
   KeyVector outer_keys = factor.keys();
   // Make sure keys defined properly
+  CHECK(outer_keys.size() == 4);
   CHECK(find(outer_keys.begin(), outer_keys.end(), P(0)) != outer_keys.end());
   CHECK(find(outer_keys.begin(), outer_keys.end(), P(2)) != outer_keys.end());
   CHECK(find(outer_keys.begin(), outer_keys.end(), V(0)) != outer_keys.end());
   CHECK(find(outer_keys.begin(), outer_keys.end(), V(2)) != outer_keys.end());
-  CHECK(find(outer_keys.begin(), outer_keys.end(), P(1)) == outer_keys.end());
-  CHECK(find(outer_keys.begin(), outer_keys.end(), V(1)) == outer_keys.end());
 }
 
 TEST(WNOAInterp, Print) {
@@ -207,7 +209,6 @@ TEST(WNOAInterp, EvalErrorSE3BetweenPose) {
   const auto factor =
       WNOAInterpFactor<Pose3>(between_factor, border, interp, Q_se3);
 
-  factor.print();
   // Set up values
   Values values;
   values.insert(P(0), p0_se3);
@@ -245,7 +246,6 @@ TEST(WNOAInterp, EvalErrorSE3BtwnInterp) {
   const auto factor =
       WNOAInterpFactor<Pose3>(between_factor, border, interp, Q_se3);
 
-  factor.print();
   // Set up values
   Values values;
   values.insert(P(0), p0_se3);
@@ -593,14 +593,11 @@ TEST(WNOAInterp, SE3OptimTest) {
   //  0 ---- 1 ---- 2 ----- 3 ----- 4
   //  e      i      e       i       e
   //          --- between ---
-  vector<StateData> border1 = {StateData(P(0), V(0), 0.0),
-                               StateData(P(2), V(2), 2 * timestep)};
-  vector<StateData> border2 = {StateData(P(0), V(0), 0.0),
-                               StateData(P(2), V(2), 2 * timestep),
-                               StateData(P(4), V(4), 4 * timestep)};
-  vector<StateData> interp1 = {StateData(P(1), V(1), timestep)};
-  vector<StateData> interp2 = {StateData(P(1), V(1), timestep),
-                               StateData(P(3), V(3), 3 * timestep)};
+  vector<StateData> border = {StateData(P(0), V(0), 0.0),
+                              StateData(P(2), V(2), 2 * timestep),
+                              StateData(P(4), V(4), 4 * timestep)};
+  vector<StateData> interp = {StateData(P(1), V(1), timestep),
+                              StateData(P(3), V(3), 3 * timestep)};
   const Pose3 p3_se3 = p0_se3.expmap(3 * timestep * v0_se3);
   const Pose3 p4_se3 = p0_se3.expmap(4 * timestep * v0_se3);
   // Define nominal factors
@@ -614,10 +611,9 @@ TEST(WNOAInterp, SE3OptimTest) {
   NonlinearFactorGraph graph;
 
   // Construct interpolated factors
-  graph.add(
-      WNOAInterpFactor<Pose3>(prior_pose_factor, border1, interp1, Q_se3));
-  graph.add(WNOAInterpFactor<Pose3>(prior_vel_factor, border1, interp1, Q_se3));
-  graph.add(WNOAInterpFactor<Pose3>(between_factor, border2, interp2, Q_se3));
+  graph.add(WNOAInterpFactor<Pose3>(prior_pose_factor, border, interp, Q_se3));
+  graph.add(WNOAInterpFactor<Pose3>(prior_vel_factor, border, interp, Q_se3));
+  graph.add(WNOAInterpFactor<Pose3>(between_factor, border, interp, Q_se3));
 
   // Add WNOA factors
   graph.add(
@@ -647,6 +643,24 @@ TEST(WNOAInterp, SE3OptimTest) {
   // Complete solution
   optimizer.optimize();
   DOUBLES_EQUAL(0.0, optimizer.error(), 1e-6);
+
+  // perturb solution and converge again
+  Values values_pert;
+  values_pert.insert(P(0), p0_se3.expmap(Vector6(0.001,0.001,0.001,0.1,0.1,0.1)));
+  values_pert.insert(P(1), p1_se3.expmap(Vector6(0.001,0.001,0.001,0.1,0.1,0.1)));
+  values_pert.insert(P(2), p2_se3.expmap(Vector6(0.001,0.001,0.001,0.1,0.1,0.1)));
+  values_pert.insert(P(3), p3_se3.expmap(Vector6(0.001,0.001,0.001,0.1,0.1,0.1)));
+  values_pert.insert(P(4), p4_se3.expmap(Vector6(0.001,0.001,0.001,0.1,0.1,0.1)));
+  values_pert.insert(V(0), v0_se3 + Vector6(1.0,1.0,1.0,1.0,1.0,1.0)*0.1);  // Same velocity for all points
+  values_pert.insert(V(1), v0_se3 + Vector6(1.0,1.0,1.0,1.0,1.0,1.0)*0.1);
+  values_pert.insert(V(2), v0_se3 + Vector6(1.0,1.0,1.0,1.0,1.0,1.0)*0.1);
+  values_pert.insert(V(3), v0_se3 + Vector6(1.0,1.0,1.0,1.0,1.0,1.0)*0.1);
+  values_pert.insert(V(4), v0_se3 + Vector6(1.0,1.0,1.0,1.0,1.0,1.0)*0.1);
+  // Set up optimizer
+  GaussNewtonOptimizer optimizer2(graph, values_pert);
+  // Check that we converge to solution
+  optimizer2.optimize();
+  DOUBLES_EQUAL(0.0, optimizer2.error(), 1e-4);
 }
 
 int main() {
