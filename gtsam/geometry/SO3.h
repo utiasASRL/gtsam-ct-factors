@@ -27,6 +27,7 @@
 #include <gtsam/geometry/SOn.h>
 
 #include <vector>
+#include <optional>
 
 namespace gtsam {
 
@@ -237,10 +238,9 @@ struct GTSAM_EXPORT DexpFunctor : public ExpmapFunctor {
   double dE() const;
 
  protected:
-  // Lazy caches stored as NaN-initialized scalars
-  static constexpr double kNan = std::numeric_limits<double>::quiet_NaN();
-  mutable double C_{kNan}, D_{kNan}, E_{kNan};  ///< C, D and E lazily computed.
-  mutable double dA_{kNan}, dB_{kNan}, dC_{kNan}, dE_{kNan};  ///< lazy c(θ)′/θ
+  // Lazy caches stored as std::optional
+  mutable std::optional<double> C_, D_, E_;  ///< C, D and E lazily computed.
+  mutable std::optional<double> dA_, dB_, dC_, dE_;  ///< lazy c(θ)′/θ
 };
 }  //  namespace so3
 
