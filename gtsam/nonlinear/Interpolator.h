@@ -141,7 +141,7 @@ class Interpolator {
         t_diff = t_tau - t_k;
       } else if (t_tau > t_kp1 || std::isinf(t_k)) {
         t_diff = t_tau - t_kp1;
-      } else {
+      } else {  // shouldn't happen unless this code is bugged
         throw std::runtime_error("Unexpected case in interpolatePoseAndVelocity");
       }
       // follow (11.5) in the book
@@ -154,6 +154,15 @@ class Interpolator {
       auto T_tau = traits<PoseType>::Compose(
         T_ex, traits<PoseType>::Expmap(gamma_ex.topRows(dim), nullptr));
       auto varpi_tau = gamma_ex.bottomRows(dim);
+
+      if (mainSolveMarginalMatrix) {
+        // compute covariance of the extrapolated pose and velocity
+        // assume that mainSolveMarginalMatrix corresponds to the covariance of Tvarpi_extrapolate_point
+        assert(mainSolveMarginalMatrix->rows() == 2 * dim && mainSolveMarginalMatrix->cols() == 2 * dim);
+        Matrix2N Sigma = covarianceFunction_(t_diff, Q_psd_);
+        // (11.5) in the book
+        *covarianceOut = Sigma + Psi * *mainSolveMarginalMatrix * Psi.transpose();
+      }
       return std::make_pair(T_tau, varpi_tau);
 
     } else {
@@ -251,9 +260,16 @@ class Interpolator {
       Matrix covarianceOut;  // (2*dim, 2*dim)
       if (covarianceMapOut) {
         // following (5.22) in paper
-        KeyVector variables = {  // {p1, v1, p2, v2}
+        KeyVector variables;
+        if (std::isinf(t_k)) {
+          variables = {mainSolveKeyMap.at(t_kp1).first, mainSolveKeyMap.at(t_kp1).second}; // {p2, v2}
+        } else if (std::isinf(t_kp1)) {
+          variables = {mainSolveKeyMap.at(t_k).first, mainSolveKeyMap.at(t_k).second}; // {p1, v1}
+        } else {
+          variables = {  // {p1, v1, p2, v2}
             mainSolveKeyMap.at(t_k).first, mainSolveKeyMap.at(t_k).second,
             mainSolveKeyMap.at(t_kp1).first, mainSolveKeyMap.at(t_kp1).second};
+        }
         JointMarginal mainSolveMarginal = 
            marginals->jointMarginalCovariance(variables);
         // avoid using JointMarginal.fullMatrix() as it returns covariance
@@ -318,6 +334,7 @@ class Interpolator {
   }
 
   static Matrix constructMatrixFromJointMarginal(
+    // construct the full covariance matrix using the order given by keyVector
     const JointMarginal& blockMatrix,
     const KeyVector& keyVector,
     size_t blockSize) {

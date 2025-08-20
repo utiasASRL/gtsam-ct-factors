@@ -264,8 +264,8 @@ int main(int argc, char** argv) {
 
     // Add all non-main-solve poses into the queryKeyMap
     TimestampKeyMap queryKeyMap;
-    size_t numPoses_largest_multiple = (numPoses - 1) / POSE_INTERVAL_MEAS * POSE_INTERVAL_MEAS + 1;
-    for (size_t poseID = 0; poseID < numPoses_largest_multiple; ++poseID) {
+    // size_t numPoses_largest_multiple = (numPoses - 1) / POSE_INTERVAL_MEAS * POSE_INTERVAL_MEAS + 1;
+    for (size_t poseID = 0; poseID < numPoses; ++poseID) {
       if (poseID % POSE_INTERVAL_MEAS != 0) {  // not a main solve pose
         auto queryTime = inputs[poseID].first;
         queryKeyMap[queryTime] = std::make_pair(Symbol('x', poseID), Symbol('v', poseID));
@@ -296,11 +296,11 @@ int main(int argc, char** argv) {
 
     std::cout << "Interpolated " << interpolatedValues.size() << " poses and velocities." << std::endl;
 
-    FileUtils::savePosesToFile(results_all, numPoses_largest_multiple, output_file_poses + "_interpolated", 1);
+    FileUtils::savePosesToFile(results_all, numPoses, output_file_poses + "_interpolated", 1);
     if (INTERP_COVARIANCE) {
       Marginals marginals_small(graph_small, results_all);
       std::cout << "Constructed marginals for main-solve component of interpolation." << std::endl;
-      FileUtils::saveMarginalsToFile(marginals_small, numPoses_largest_multiple, output_file_marginals + "_interpolated", 1, covarianceMap);
+      FileUtils::saveMarginalsToFile(marginals_small, numPoses, output_file_marginals + "_interpolated", 1, covarianceMap);
     }
   }
 
