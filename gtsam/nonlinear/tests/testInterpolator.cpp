@@ -60,7 +60,7 @@ using symbol_shorthand::V;
 
 /* ************************************************************************* */
 TEST(Interpolator, Constructor) {
-  // Create an Interpolator for different types of poses
+  // Test that constructors work for different types of poses
   Interpolator<Point1> interpolatorP1(Q_p1);
   Interpolator<Point2> interpolatorP2(Q_p2);
   Interpolator<Point3> interpolatorP3(Q_p3);
@@ -69,16 +69,89 @@ TEST(Interpolator, Constructor) {
 }
 
 /* ************************************************************************* */
+/* COMMON-VELOCITY TESTS
+    * These tests check that if the velocities are the same at the two endpoints,
+    * and the second pose is obtained by applying the common velocity to the first,
+    * then the interpolated velocity should be the same as well, and the pose
+    * should be linear interpolation in the tangent space.
+*/
+
+TEST(Interpolator, InterpolatePoseAndVelocityP1) {
+  Interpolator<Point1> interpolator(Q_p1);
+  Vector1 v_common(2.0);
+  Point1 p0_p1_common_v = p0_p1;
+  Point1 p1_p1_common_v = p0_p1_common_v + timestep * v_common;
+  for (double ratio = 0.0; ratio <= 1.0; ratio += 0.1) {
+    auto pvtau = interpolator.interpolatePoseAndVelocity(
+        std::make_pair(p0_p1_common_v, v_common), 0.0,
+        std::make_pair(p1_p1_common_v, v_common), timestep, timestep * ratio);
+    Point1 expectedPose = p0_p1_common_v + ratio * timestep * v_common;
+    CHECK(assert_equal(expectedPose, pvtau.first));
+    CHECK(assert_equal(v_common, pvtau.second));
+  }
+}
+/* ************************************************************************* */
+TEST(Interpolator, InterpolatePoseAndVelocityP2) {
+  Interpolator<Point2> interpolator(Q_p2);
+  Vector2 v_common(0.5, -0.5);
+  Point2 p0_p2_common_v = p0_p2;
+  Point2 p1_p2_common_v = p0_p2_common_v + timestep * v_common;
+  for (double ratio = 0.0; ratio <= 1.0; ratio += 0.1) {
+    auto pvtau = interpolator.interpolatePoseAndVelocity(
+        std::make_pair(p0_p2_common_v, v_common), 0.0,
+        std::make_pair(p1_p2_common_v, v_common), timestep, timestep * ratio);
+    Point2 expectedPose = p0_p2_common_v + ratio * timestep * v_common;
+    CHECK(assert_equal(expectedPose, pvtau.first));
+    CHECK(assert_equal(v_common, pvtau.second));
+  }
+}
+/* ************************************************************************* */
+TEST(Interpolator, InterpolatePoseAndVelocityP3) {
+  Interpolator<Point3> interpolator(Q_p3);
+  Vector3 v_common(0.5, -0.5, 0.5);
+  Point3 p0_p3_common_v = p0_p3;
+  Point3 p1_p3_common_v = p0_p3_common_v + timestep * v_common;
+  for (double ratio = 0.0; ratio <= 1.0; ratio += 0.1) {
+    auto pvtau = interpolator.interpolatePoseAndVelocity(
+        std::make_pair(p0_p3_common_v, v_common), 0.0,
+        std::make_pair(p1_p3_common_v, v_common), timestep, timestep * ratio);
+    Point3 expectedPose = p0_p3_common_v + ratio * timestep * v_common;
+    CHECK(assert_equal(expectedPose, pvtau.first));
+    CHECK(assert_equal(v_common, pvtau.second));
+  }
+}
+/* ************************************************************************* */
+
 TEST(Interpolator, InterpolatePoseAndVelocitySE2) {
   Interpolator<Pose2> interpolator(Q_se2);
   Vector3 v_common(0.65, -0.1, 0.15);
-  Pose2 p1_se2_new = p0_se2.expmap(timestep * v_common);
-  auto pvtau = interpolator.interpolatePoseAndVelocity(
-      std::make_pair(p0_se2, v_common), 0.0,
-      std::make_pair(p1_se2_new, v_common), timestep, timestep * 0.5);
-  Pose2 expectedPose = p0_se2.expmap(0.5 * timestep * v_common);
-  CHECK(assert_equal(expectedPose, pvtau.first));
-  CHECK(assert_equal(v_common, pvtau.second));
+  Pose2 p0_se2_common_v = p0_se2;
+  Pose2 p1_se2_common_v = p0_se2_common_v.expmap(timestep * v_common);
+  for (double ratio = 0.0; ratio <= 1.0; ratio += 0.1) {
+    auto pvtau = interpolator.interpolatePoseAndVelocity(
+        std::make_pair(p0_se2_common_v, v_common), 0.0,
+        std::make_pair(p1_se2_common_v, v_common), timestep, timestep * ratio);
+    Pose2 expectedPose = p0_se2_common_v.expmap(ratio * timestep * v_common);
+    CHECK(assert_equal(expectedPose, pvtau.first));
+    CHECK(assert_equal(v_common, pvtau.second));
+  }
+}
+
+/* ************************************************************************* */
+TEST(Interpolator, InterpolatePoseAndVelocitySE3) {
+  Interpolator<Pose3> interpolator(Q_se3);
+  Vector6 v_common(0.15, -0.25, 0.35, 0.45, -0.55, 0.65);
+  Pose3 p0_se3_common_v = p0_se3;
+  Pose3 p1_se3_common_v = p0_se3_common_v.expmap(timestep * v_common);
+  for (double ratio = 0.0; ratio <= 1.0; ratio += 0.1) {
+    auto pvtau = interpolator.interpolatePoseAndVelocity(
+        std::make_pair(p0_se3_common_v, v_common), 0.0,
+        std::make_pair(p1_se3_common_v, v_common), timestep, timestep * ratio);
+    Pose3 expectedPose = p0_se3_common_v.expmap(ratio * timestep * v_common);
+    double tol = 1e-8;  // larger tolerance since Lie groups have approximations
+    CHECK(assert_equal(expectedPose, pvtau.first, tol));
+    CHECK(assert_equal(v_common, pvtau.second, tol));
+  }
 }
 
 /* ************************************************************************* */
@@ -297,6 +370,7 @@ TEST(Interpolator, FrameRotationSE2) {
   Pose2 p0_transformed = T_frame.compose(p0_se2);
   Pose2 p1_transformed = T_frame.compose(p1_se2);
   Vector3 Q_se2_isotropic = Vector3::Ones() * 0.8;  // isotropic noise for SE(2)
+  // Use an isotropic noise to avoid a non-isotropic noise in the new frame
   Interpolator<Pose2> interpolator(Q_se2_isotropic);
 
     for (double ratio = 0.0; ratio <= 1.0; ratio += 0.1) {
@@ -326,6 +400,7 @@ TEST(Interpolator, FrameRotationSE3) {
   Pose3 p0_transformed = T_frame.compose(p0_se3);
   Pose3 p1_transformed = T_frame.compose(p1_se3);
   Vector6 Q_se3_isotropic = Vector6::Ones() * 0.8;  // isotropic noise for SE(3)
+  // Use an isotropic noise to avoid a non-isotropic noise in the new frame
   Interpolator<Pose3> interpolator(Q_se3_isotropic);
     for (double ratio = 0.0; ratio <= 1.0; ratio += 0.1) {
         // pvtau1: Interpolate in the original frame
@@ -347,6 +422,9 @@ TEST(Interpolator, FrameRotationSE3) {
 }
 
 /* ************************************************************************* */
+/* Todo: write tests for covariance interpolation,
+check that computation of psi and lambda using Eq. (11.41) in the book is consistent
+with Eq. (5.23) in the paper. */
 
 int main() {
   TestResult tr;
