@@ -122,7 +122,9 @@ class Interpolator {
   std::pair<PoseType, VelocityType> interpolatePoseAndVelocity(
       std::pair<PoseType, VelocityType> Tvarpi_k, double t_k,
       std::pair<PoseType, VelocityType> Tvarpi_kp1, double t_kp1,
-      double t_tau) const {
+      double t_tau,
+      const std::shared_ptr<Matrix>& mainSolveMarginalMatrix = nullptr,
+      Matrix* covarianceOut = nullptr) const {
     // if t_tau is equal to t_k or t_kp1, return the corresponding pose and
     // velocity
     if (equal(t_tau, t_k)) {
@@ -184,8 +186,17 @@ class Interpolator {
       auto T_tau = traits<PoseType>::Compose(
           T_k, traits<PoseType>::Expmap(xi_tau, &right_jac_tau));
       auto varpi_tau = right_jac_tau * (Lambda_2 * gamma_k + Psi_2 * gamma_kp1);
+      auto Tvarpi_tau = std::make_pair(T_tau, varpi_tau);
+      
+      if (mainSolveMarginalMatrix) {
+        // compute covariance of the interpolated pose and velocity
+        Matrix2N Sigma = computeConditionalCov(Tvarpi_k, Tvarpi_kp1, Tvarpi_tau, t_k, t_kp1, t_tau);
+        Eigen::Matrix<double, 2*dim, 4*dim> LambdaPsi;
+        LambdaPsi << Lambda, Psi;
+        *covarianceOut = Sigma + LambdaPsi * *mainSolveMarginalMatrix * LambdaPsi.transpose();
+      }
 
-      return std::make_pair(T_tau, varpi_tau);
+      return Tvarpi_tau;
     }
   }
 
@@ -194,7 +205,7 @@ class Interpolator {
     const Values& mainSolveSolution,
     const TimestampKeyMap& mainSolveKeyMap,
     const TimestampKeyMap& interpolateKeyMap,
-    std::shared_ptr<CovarianceMap> covarianceMap) const {
+    std::shared_ptr<CovarianceMap>& covarianceMapOut = nullptr) const {
     
     // Map from intervals [t1, t2) to query times inside that interval (bucket)
     std::map<std::pair<double, double>, std::vector<double>> queryBuckets;
@@ -218,7 +229,7 @@ class Interpolator {
     Values interpolatedSolution;
 
     std::unique_ptr<Marginals> marginals;  // Only construct a Marginals if requested
-    if (covarianceMap) {
+    if (covarianceMapOut) {
       marginals = std::make_unique<Marginals>(mainSolveGraph, mainSolveSolution);
     }
     for (const auto& [interval, times] : queryBuckets) {
@@ -235,17 +246,10 @@ class Interpolator {
         std::make_pair(mainSolveSolution.at<PoseType>(mainSolveKeyMap.at(t_kp1).first),
                        mainSolveSolution.at<VelocityType>(mainSolveKeyMap.at(t_kp1).second));
       
-      // Interpolate for all query times within this query interval (bucket)
-      for (double t_tau : times) {
-        auto pvtau = interpolatePoseAndVelocity(
-            pvk, t_k, pvkp1, t_kp1, t_tau);
-        auto [T_tau, varpi_tau] = pvtau;
-        interpolatedSolution.insert(interpolateKeyMap.at(t_tau).first, T_tau);
-        interpolatedSolution.insert(interpolateKeyMap.at(t_tau).second, varpi_tau);
-      }
-
       // Compute covariances of the interpolated poses and velocities
-      if (covarianceMap) {
+      std::shared_ptr<Matrix> mainSolveMarginalMatrix;  // (4*dim, 4*dim)
+      Matrix covarianceOut;  // (2*dim, 2*dim)
+      if (covarianceMapOut) {
         // following (5.22) in paper
         KeyVector variables = {  // {p1, v1, p2, v2}
             mainSolveKeyMap.at(t_k).first, mainSolveKeyMap.at(t_k).second,
@@ -254,22 +258,22 @@ class Interpolator {
            marginals->jointMarginalCovariance(variables);
         // avoid using JointMarginal.fullMatrix() as it returns covariance
         //in alphabetical order of the keys...
-        Eigen::Matrix<double, 4*dim, 4*dim> mainSolveMarginalMatrix = 
-          constructMatrixFromJointMarginal(mainSolveMarginal, variables, dim);
-        
-        for (double t_tau : times) {
-          auto pvtau = std::make_pair(
-              interpolatedSolution.at<PoseType>(interpolateKeyMap.at(t_tau).first),
-              interpolatedSolution.at<VelocityType>(interpolateKeyMap.at(t_tau).second));
-          Matrix2N Sigma = computeConditionalCov(pvk, pvkp1, pvtau, t_k, t_kp1, t_tau);
-          auto [Lambda, Psi] = getLamdaPsi(t_k, t_kp1, t_tau);  // todo: don't recompute this - already computed in interpolation step
-          Eigen::Matrix<double, 2*dim, 4*dim> LambdaPsi;
-          LambdaPsi << Lambda, Psi;
-          Matrix2N cov = Sigma + LambdaPsi * mainSolveMarginalMatrix * LambdaPsi.transpose();
-          
+        mainSolveMarginalMatrix = 
+          std::make_shared<Matrix>(constructMatrixFromJointMarginal(mainSolveMarginal, variables, dim));
+      }
+
+      // Interpolate for all query times within this query interval (bucket)
+      for (double t_tau : times) {
+        auto pvtau = interpolatePoseAndVelocity(
+            pvk, t_k, pvkp1, t_kp1, t_tau, mainSolveMarginalMatrix,
+            &covarianceOut);
+        auto [T_tau, varpi_tau] = pvtau;
+        interpolatedSolution.insert(interpolateKeyMap.at(t_tau).first, T_tau);
+        interpolatedSolution.insert(interpolateKeyMap.at(t_tau).second, varpi_tau);
+        if (covarianceMapOut) {
           // upper left covariance block corresponds to pose, lower right block corresponds to velocity
-          covarianceMap->insert({interpolateKeyMap.at(t_tau).first, cov.topLeftCorner(dim, dim)});
-          covarianceMap->insert({interpolateKeyMap.at(t_tau).second, cov.bottomRightCorner(dim, dim)});
+          (*covarianceMapOut)[interpolateKeyMap.at(t_tau).first] = covarianceOut.topLeftCorner(dim, dim);
+          (*covarianceMapOut)[interpolateKeyMap.at(t_tau).second] = covarianceOut.bottomRightCorner(dim, dim);
         }
       }
     }
