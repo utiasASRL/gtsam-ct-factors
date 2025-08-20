@@ -124,59 +124,59 @@ DexpFunctor::DexpFunctor(const Vector3& omega)
     : DexpFunctor(omega, kNearZeroThresholdSq, kNearPiThresholdSq) {}
 
 double DexpFunctor::C() const {
-  if (std::isnan(C_)) {
+  if (!C_.has_value()) {
     // Usually stable, even near pi (1-0)/pi^2
     C_ = !nearZero ? (1.0 - A) / theta2 : (one_6th - theta2 * one_120th);
   }
-  return C_;
+  return C_.value();
 }
 
 double DexpFunctor::D() const {
-  if (std::isnan(D_)) {
+  if (!D_.has_value()) {
     D_ = !nearZero ? (nearPi ? (k1_Pi2 + (k2_Pi3 - k1_4Pi) * (M_PI - theta))
                              : ((1.0 - A / (2.0 * B)) / theta2))
                    : (one_12th + theta2 * one_720th);
   }
-  return D_;
+  return D_.value();
 }
 
 double DexpFunctor::E() const {
-  if (std::isnan(E_)) {
+  if (!E_.has_value()) {
     E_ = !nearZero ? ((1.0 - 2.0 * B) / (2.0 * theta2))
                    : (one_24th - theta2 * one_720th);
   }
-  return E_;
+  return E_.value();
 }
 
 double DexpFunctor::dA() const {
-  if (std::isnan(dA_)) {
+  if (!dA_.has_value()) {
     // Identity: dA = A′/θ = C − B (valid for all θ, with our near-zero series)
     dA_ = C() - B;
   }
-  return dA_;
+  return dA_.value();
 }
 
 double DexpFunctor::dB() const {
-  if (std::isnan(dB_)) {
+  if (!dB_.has_value()) {
     dB_ =
         !nearZero ? ((A - 2.0 * B) / theta2) : (-one_12th + theta2 * one_180th);
   }
-  return dB_;
+  return dB_.value();
 }
 
 double DexpFunctor::dC() const {
-  if (std::isnan(dC_)) {
+  if (!dC_.has_value()) {
     dC_ = !nearZero ? ((B - 3.0 * C()) / theta2)
                     : (-one_60th + theta2 * one_1260th);
   }
-  return dC_;
+  return dC_.value();
 }
 
 double DexpFunctor::dE() const {
-  if (std::isnan(dE_)) {
+  if (!dE_.has_value()) {
     dE_ = !nearZero ? (-(dB() + 2.0 * E()) / theta2) : (-one_360th);
   }
-  return dE_;
+  return dE_.value();
 }
 
 // --- Kernels ---
