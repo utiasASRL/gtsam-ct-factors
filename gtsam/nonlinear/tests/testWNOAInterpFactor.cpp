@@ -52,6 +52,12 @@ static Vector6 v1_se3 = v0_se3;
 // Define Third Pose with same vel
 static Pose3 p2_se3 = p0_se3.expmap(2 * timestep * v0_se3);
 static Vector6 v2_se3 = v0_se3;
+// Define Third Pose with same vel
+static Pose3 p3_se3 = p0_se3.expmap(3 * timestep * v0_se3);
+static Vector6 v3_se3 = v0_se3;
+// Define Third Pose with same vel
+static Pose3 p4_se3 = p0_se3.expmap(4 * timestep * v0_se3);
+static Vector6 v4_se3 = v0_se3;
 
 // Define interpolation parameters
 // Add random border and interpolated states
@@ -64,13 +70,13 @@ static vector<StateData> interp = {StateData(P(1), V(1), timestep),
 // Constructor test
 TEST(WNOAInterp, Constructor) {
   // Create a factor
-  auto model = noiseModel::Diagonal::Sigmas(Vector3::Ones());
-  auto prior = PriorFactor<Point3>(P(1), p0_p3, model);
+  const auto model = noiseModel::Diagonal::Sigmas(Vector3::Ones());
+  const auto prior = std::make_shared<PriorFactor<Point3>>(P(1), p0_p3, model);
 
   // wrap factor
   const auto factor = WNOAInterpFactor<Point3>(prior, border, interp, Q_p3);
   // get factor keys
-  KeyVector inner_keys = prior.keys();
+  KeyVector inner_keys = prior->keys();
   KeyVector outer_keys = factor.keys();
   // Make sure keys defined properly
   CHECK(outer_keys.size() == 4);
@@ -84,13 +90,13 @@ TEST(WNOAInterp, Print) {
   // Create a factor
   Point3 priorValue(0.5, 0.0, 0.0);
   auto model = noiseModel::Diagonal::Sigmas(Vector3::Ones());
-  auto prior = PriorFactor<Point3>(P(1), priorValue, model);
+  auto prior = std::make_shared<PriorFactor<Point3>>(P(1), priorValue, model);
 
   // Construct factor
   const auto factor = WNOAInterpFactor<Point3>(prior, border, interp, Q_p3);
 
   factor.print();
-  cout << endl << endl;
+  cout << endl;
 }
 
 TEST(WNOAInterp, EvalErrorP3Unary) {
@@ -98,24 +104,24 @@ TEST(WNOAInterp, EvalErrorP3Unary) {
   // Create a prior factor and interpolated version
   const auto model = noiseModel::Diagonal::Sigmas(Vector3::Ones());
   // prior at first pose
-  auto prior = PriorFactor<Point3>(P(1), p0_p3, model);
+  auto prior = std::make_shared<PriorFactor<Point3>>(P(1), p0_p3, model);
   auto factor =
       boost::make_shared<WNOAInterpFactor<Point3>>(prior, border, interp, Q_p3);
   Values values;
-
   values.insert(P(0), p0_p3);
   values.insert(P(2), p0_p3);
   values.insert(V(0), Vector3::Zero().eval());  // zero vel
   values.insert(V(2), Vector3::Zero().eval());
+  // compute residuals
   auto residual1 = factor->unwhitenedError(values);
-  auto residual2 = prior.evaluateError(p0_p3);  // same as start pose
+  auto residual2 = prior->evaluateError(p0_p3);  // same as start pose
   auto res_actual = Vector3::Zero().eval();
   CHECK(assert_equal(residual1, res_actual, 1e-12));
   // CHECK(assert_equal(residual2, res_actual, 1e-12));
 
   // DIFFERENT POSE, ZERO VELOCITY
   // prior at pose 1 (between 0 and 2)
-  prior = PriorFactor<Point3>(P(1), p1_p3, model);
+  prior = std::make_shared<PriorFactor<Point3>>(P(1), p1_p3, model);
   factor =
       boost::make_shared<WNOAInterpFactor<Point3>>(prior, border, interp, Q_p3);
   values.update(P(0), p0_p3);
@@ -124,13 +130,13 @@ TEST(WNOAInterp, EvalErrorP3Unary) {
   values.update(V(2), Vector3::Zero().eval());
   // Evaluate
   residual1 = factor->unwhitenedError(values);
-  residual2 = prior.evaluateError(p1_p3);
+  residual2 = prior->evaluateError(p1_p3);
   CHECK(assert_equal(residual1, res_actual, 1e-12));
   // CHECK(assert_equal(residual2, res_actual, 1e-12));
 
   // DIFFERENT POSE, WITH VELOCITY
   // prior at pose 1 (between 0 and 2)
-  prior = PriorFactor<Point3>(P(1), p1_p3, model);
+  prior = std::make_shared<PriorFactor<Point3>>(P(1), p1_p3, model);
   factor =
       boost::make_shared<WNOAInterpFactor<Point3>>(prior, border, interp, Q_p3);
   values.update(P(0), p0_p3);
@@ -139,7 +145,7 @@ TEST(WNOAInterp, EvalErrorP3Unary) {
   values.update(V(2), v0_p3);
   // Evaluate
   residual1 = factor->unwhitenedError(values);
-  residual2 = prior.evaluateError(p1_p3);
+  residual2 = prior->evaluateError(p1_p3);
   CHECK(assert_equal(residual1, res_actual, 1e-12));
   // CHECK(assert_equal(residual2, res_actual, 1e-12));
 }
@@ -150,7 +156,8 @@ TEST(WNOAInterp, EvalErrorP3Unary) {
 TEST(WNOAInterp, EvalErrorSE3UnaryPose) {
   // Model
   const auto model = noiseModel::Diagonal::Sigmas(Vector6::Ones());
-  const auto prior_pose = PriorFactor<Pose3>(P(1), p1_se3, model);
+  const auto prior_pose =
+      std::make_shared<PriorFactor<Pose3>>(P(1), p1_se3, model);
   // Construct factor for interpolated pose and velocity
   const auto factor_pose =
       WNOAInterpFactor<Pose3>(prior_pose, border, interp, Q_se3);
@@ -166,33 +173,7 @@ TEST(WNOAInterp, EvalErrorSE3UnaryPose) {
   const auto res_zero = Vector6::Zero();
   auto residual = factor_pose.unwhitenedError(values);  // new
   CHECK(assert_equal(residual, res_zero, 1e-12));
-  residual = prior_pose.evaluateError(p1_se3);  // original
-  CHECK(assert_equal(residual, res_zero, 1e-12));
-}
-
-/* *************************************************************************
- */
-TEST(WNOAInterp, EvalErrorSE3UnaryVel) {
-  // Model
-  const auto model = noiseModel::Diagonal::Sigmas(Vector6::Ones());
-  using VelType = traits<Pose3>::TangentVector;
-  const auto prior_vel = PriorFactor<VelType>(V(1), v1_se3, model);
-  // Construct factor for interpolated pose and velocity
-  const auto factor_vel =
-      WNOAInterpFactor<Pose3>(prior_vel, border, interp, Q_se3);
-
-  // Set up values
-  Values values;
-  values.insert(P(0), p0_se3);
-  values.insert(P(2), p2_se3);
-  values.insert(V(0), v0_se3);
-  values.insert(V(2), v2_se3);
-
-  // Check vel residuals
-  const auto res_zero = Vector6::Zero();
-  auto residual = factor_vel.unwhitenedError(values);  // new
-  CHECK(assert_equal(residual, res_zero, 1e-12));
-  residual = prior_vel.evaluateError(v1_se3);  // original
+  residual = prior_pose->evaluateError(p1_se3);  // original
   CHECK(assert_equal(residual, res_zero, 1e-12));
 }
 
@@ -204,7 +185,8 @@ TEST(WNOAInterp, EvalErrorSE3BetweenPose) {
   const auto model = noiseModel::Diagonal::Sigmas(Vector6::Ones());
   // construct relative pose
   const Pose3 p01_se3 = p0_se3.inverse().compose(p1_se3);
-  const auto between_factor = BetweenFactor<Pose3>(P(0), P(1), p01_se3, model);
+  const auto between_factor =
+      std::make_shared<BetweenFactor<Pose3>>(P(0), P(1), p01_se3, model);
   // Construct factor for interpolated pose and velocity
   const auto factor =
       WNOAInterpFactor<Pose3>(between_factor, border, interp, Q_se3);
@@ -220,7 +202,7 @@ TEST(WNOAInterp, EvalErrorSE3BetweenPose) {
   const auto res_zero = Vector6::Zero();
   auto residual = factor.unwhitenedError(values);  // new
   CHECK(assert_equal(residual, res_zero, 1e-12));
-  residual = between_factor.evaluateError(p0_se3, p1_se3);  // original
+  residual = between_factor->evaluateError(p0_se3, p1_se3);  // original
   CHECK(assert_equal(residual, res_zero, 1e-12));
 }
 
@@ -240,8 +222,8 @@ TEST(WNOAInterp, EvalErrorSE3BtwnInterp) {
   Vector6 v2_se3 = v0_se3;
   // Model
   const auto model = noiseModel::Diagonal::Sigmas(Vector6::Ones());
-  const auto between_factor =
-      BetweenFactor<Pose3>(P(1), P(3), Pose3::Identity(), model);
+  const auto between_factor = std::make_shared<BetweenFactor<Pose3>>(
+      P(1), P(3), Pose3::Identity(), model);
   // Construct factor for interpolated pose and velocity
   const auto factor =
       WNOAInterpFactor<Pose3>(between_factor, border, interp, Q_se3);
@@ -258,7 +240,7 @@ TEST(WNOAInterp, EvalErrorSE3BtwnInterp) {
   // construct relative pose
   const Pose3 p13_se3 = p1_se3.inverse().compose(p3_se3);
   const Vector6 res_actual = Pose3::Logmap(p13_se3);
-  auto residual = between_factor.evaluateError(p1_se3, p3_se3);  // original
+  auto residual = between_factor->evaluateError(p1_se3, p3_se3);  // original
   // Check pose residuals
   CHECK(assert_equal(residual, res_actual, 1e-12));
   residual = factor.unwhitenedError(values);  // new
@@ -270,7 +252,8 @@ TEST(WNOAInterp, EvalErrorSE3BtwnInterp) {
 TEST(WNOAInterp, JacobianPoint3UnaryPose) {
   // Model
   const auto model = noiseModel::Diagonal::Sigmas(Vector3::Ones());
-  const auto prior_factor = PriorFactor<Point3>(P(1), p1_p3, model);
+  const auto prior_factor =
+      std::make_shared<PriorFactor<Point3>>(P(1), p1_p3, model);
   // Construct factor for interpolated pose and velocity
   const auto factor =
       WNOAInterpFactor<Point3>(prior_factor, border, interp, Q_p3);
@@ -330,7 +313,8 @@ TEST(WNOAInterp, JacobianPoint3UnaryPose) {
 TEST(WNOAInterp, JacobianSE3UnaryPose) {
   // Model
   const auto model = noiseModel::Diagonal::Sigmas(Vector6::Ones());
-  const auto prior_factor = PriorFactor<Pose3>(P(1), p1_se3, model);
+  const auto prior_factor =
+      std::make_shared<PriorFactor<Pose3>>(P(1), p1_se3, model);
   // Construct factor for interpolated pose and velocity
   const auto factor =
       WNOAInterpFactor<Pose3>(prior_factor, border, interp, Q_se3);
@@ -437,7 +421,8 @@ TEST(WNOAInterp, Interpolator) {
 TEST(WNOAInterp, NoiseModelSE3Unary) {
   // Model
   const auto model = noiseModel::Diagonal::Sigmas(Vector6::Ones());
-  const auto prior_factor = PriorFactor<Pose3>(P(1), p1_se3, model);
+  const auto prior_factor =
+      std::make_shared<PriorFactor<Pose3>>(P(1), p1_se3, model);
   auto cov_prior = model->covariance();
   // Factor with changing measurement noise
   const auto factor =
@@ -476,8 +461,8 @@ TEST(WNOAInterp, NoiseModelSE3Btwn) {
   // Model
   const auto model = noiseModel::Diagonal::Sigmas(Vector6::Ones());
   const auto cov_inner = model->covariance();
-  const auto between_factor =
-      BetweenFactor<Pose3>(P(1), P(3), Pose3::Identity(), model);
+  const auto between_factor = std::make_shared<BetweenFactor<Pose3>>(
+      P(1), P(3), Pose3::Identity(), model);
   // Construct factor for interpolated pose and velocity
   const auto factor =
       WNOAInterpFactor<Pose3>(between_factor, border, interp, Q_se3);
@@ -517,8 +502,8 @@ TEST(WNOAInterp, NoiseModelP3Btwn) {
   // Model
   const auto model = noiseModel::Diagonal::Sigmas(Vector3::Ones());
   const auto cov_inner = model->covariance();
-  const auto between_factor =
-      BetweenFactor<Point3>(P(1), P(3), Point3::Identity(), model);
+  const auto between_factor = std::make_shared<BetweenFactor<Point3>>(
+      P(1), P(3), Point3::Identity(), model);
   // Construct factor for interpolated pose and velocity
   const auto factor =
       WNOAInterpFactor<Point3>(between_factor, border, interp, Q_p3);
@@ -561,8 +546,8 @@ TEST(WNOAInterp, LinearizeSE3Btwn) {
   Vector6 v2_se3 = v0_se3;
   // Model
   const auto model = noiseModel::Diagonal::Sigmas(Vector6::Ones());
-  const auto between_factor =
-      BetweenFactor<Pose3>(P(1), P(3), p1_se3.inverse() * p3_se3, model);
+  const auto between_factor = std::make_shared<BetweenFactor<Pose3>>(
+      P(1), P(3), p1_se3.inverse() * p3_se3, model);
   // Construct factor for interpolated pose and velocity
   const auto factor =
       WNOAInterpFactor<Pose3>(between_factor, border, interp, Q_se3);
@@ -602,10 +587,12 @@ TEST(WNOAInterp, SE3OptimTest) {
   const Pose3 p4_se3 = p0_se3.expmap(4 * timestep * v0_se3);
   // Define nominal factors
   const auto model = noiseModel::Diagonal::Sigmas(Vector6::Ones());
-  const auto between_factor =
-      BetweenFactor<Pose3>(P(1), P(3), p1_se3.inverse() * p3_se3, model);
-  const auto prior_pose_factor = PriorFactor<Pose3>(P(1), p1_se3, model);
-  const auto prior_vel_factor = PriorFactor<Vector6>(V(1), v0_se3, model);
+  const auto between_factor = std::make_shared<BetweenFactor<Pose3>>(
+      P(1), P(3), p1_se3.inverse() * p3_se3, model);
+  const auto prior_pose_factor =
+      std::make_shared<PriorFactor<Pose3>>(P(1), p1_se3, model);
+  const auto prior_vel_factor =
+      std::make_shared<PriorFactor<Vector6>>(V(1), v0_se3, model);
 
   // Define graph
   NonlinearFactorGraph graph;
@@ -624,15 +611,17 @@ TEST(WNOAInterp, SE3OptimTest) {
   // Set up values at ground truth solution
   Values values;
   values.insert(P(0), p0_se3);
-  values.insert(P(1), p1_se3);
   values.insert(P(2), p2_se3);
-  values.insert(P(3), p3_se3);
   values.insert(P(4), p4_se3);
   values.insert(V(0), v0_se3);  // Same velocity for all points
-  values.insert(V(1), v0_se3);
   values.insert(V(2), v0_se3);
-  values.insert(V(3), v0_se3);
   values.insert(V(4), v0_se3);
+  // the following keys should not be required
+  // values.insert(P(1), p1_se3);
+  // values.insert(P(3), p3_se3);
+  // values.insert(V(1), v0_se3);
+  // values.insert(V(3), v0_se3);
+
   // Set up optimizer
   GaussNewtonOptimizer optimizer(graph, values);
   // We expect the initial to be zero because config is the ground truth
@@ -646,22 +635,106 @@ TEST(WNOAInterp, SE3OptimTest) {
 
   // perturb solution and converge again
   Values values_pert;
-  values_pert.insert(P(0), p0_se3.expmap(Vector6(0.001,0.001,0.001,0.1,0.1,0.1)));
-  values_pert.insert(P(1), p1_se3.expmap(Vector6(0.001,0.001,0.001,0.1,0.1,0.1)));
-  values_pert.insert(P(2), p2_se3.expmap(Vector6(0.001,0.001,0.001,0.1,0.1,0.1)));
-  values_pert.insert(P(3), p3_se3.expmap(Vector6(0.001,0.001,0.001,0.1,0.1,0.1)));
-  values_pert.insert(P(4), p4_se3.expmap(Vector6(0.001,0.001,0.001,0.1,0.1,0.1)));
-  values_pert.insert(V(0), v0_se3 + Vector6(1.0,1.0,1.0,1.0,1.0,1.0)*0.1);  // Same velocity for all points
-  values_pert.insert(V(1), v0_se3 + Vector6(1.0,1.0,1.0,1.0,1.0,1.0)*0.1);
-  values_pert.insert(V(2), v0_se3 + Vector6(1.0,1.0,1.0,1.0,1.0,1.0)*0.1);
-  values_pert.insert(V(3), v0_se3 + Vector6(1.0,1.0,1.0,1.0,1.0,1.0)*0.1);
-  values_pert.insert(V(4), v0_se3 + Vector6(1.0,1.0,1.0,1.0,1.0,1.0)*0.1);
+  values_pert.insert(
+      P(0), p0_se3.expmap(Vector6(0.001, 0.001, 0.001, 0.1, 0.1, 0.1)));
+
+  values_pert.insert(
+      P(2), p2_se3.expmap(Vector6(0.001, 0.001, 0.001, 0.1, 0.1, 0.1)));
+
+  values_pert.insert(
+      P(4), p4_se3.expmap(Vector6(0.001, 0.001, 0.001, 0.1, 0.1, 0.1)));
+  values_pert.insert(V(0), v0_se3 + Vector6(1.0, 1.0, 1.0, 1.0, 1.0, 1.0) *
+                                        0.1);  // Same velocity for all points
+  values_pert.insert(V(2),
+                     v0_se3 + Vector6(1.0, 1.0, 1.0, 1.0, 1.0, 1.0) * 0.1);
+  values_pert.insert(V(4),
+                     v0_se3 + Vector6(1.0, 1.0, 1.0, 1.0, 1.0, 1.0) * 0.1);
+  // the following keys should not be required
+  //  values_pert.insert(P(1),
+  //  p1_se3.expmap(Vector6(0.001,0.001,0.001,0.1,0.1,0.1)));
+  //  values_pert.insert(P(3),
+  //  p3_se3.expmap(Vector6(0.001,0.001,0.001,0.1,0.1,0.1)));
+  //  values_pert.insert(V(1), v0_se3 + Vector6(1.0,1.0,1.0,1.0,1.0,1.0)*0.1);
+  //  values_pert.insert(V(3), v0_se3 + Vector6(1.0,1.0,1.0,1.0,1.0,1.0)*0.1);
+
   // Set up optimizer
   GaussNewtonOptimizer optimizer2(graph, values_pert);
   // Check that we converge to solution
   optimizer2.optimize();
   DOUBLES_EQUAL(0.0, optimizer2.error(), 1e-4);
 }
+
+// TEST(WNOAInterp, SE3InterpGraph) {
+//   // Test automatic interpolation
+//   // Define optimization:
+//   //       unary
+//   //         |
+//   //  0 ---- 1 ---- 2 ----- 3 ----- 4
+//   //  e      i      e       i       e
+//   //          --- between ---
+
+//   // Define nominal factors
+//   const auto model = noiseModel::Diagonal::Sigmas(Vector6::Ones());
+//   const auto between_factor =
+//       BetweenFactor<Pose3>(P(1), P(3), p1_se3.inverse() * p3_se3, model);
+//   const auto prior_pose_factor = PriorFactor<Pose3>(P(1), p1_se3, model);
+//   const auto prior_vel_factor = PriorFactor<Vector6>(V(1), v0_se3, model);
+
+//   // Generate original graph
+//   NonlinearFactorGraph graph;
+//   graph.add(between_factor);
+//   graph.add(prior_pose_factor);
+//   graph.add(prior_vel_factor);
+
+//   // Interpolate the graph
+//   vector<StateData> border = {StateData(P(0), V(0), 0.0),
+//                               StateData(P(4), V(4), 4 * timestep),
+//                               StateData(P(2), V(2), 2 * timestep)};
+//   vector<StateData> interp = {StateData(P(3), V(3), 3 * timestep),
+//                               StateData(P(1), V(1), timestep)};
+//   auto new_graph = InterpolateFactorGraph<Pose3>(graph, interp, border,
+//   Q_se3);
+
+//   // Set up values at ground truth solution
+//   Values values;
+//   values.insert(P(0), p0_se3);
+//   values.insert(P(2), p2_se3);
+//   values.insert(P(4), p4_se3);
+//   values.insert(V(0), v0_se3);  // Same velocity for all points
+//   values.insert(V(2), v0_se3);
+//   values.insert(V(4), v0_se3);
+//   // Set up optimizer
+//   GaussNewtonOptimizer optimizer(new_graph, values);
+//   // We expect the initial to be zero because config is the ground truth
+//   DOUBLES_EQUAL(0.0, optimizer.error(), 1e-9);
+//   // Iterate once, and the config should not have changed
+//   optimizer.iterate();
+//   DOUBLES_EQUAL(0.0, optimizer.error(), 1e-9);
+//   // Complete solution
+//   optimizer.optimize();
+//   DOUBLES_EQUAL(0.0, optimizer.error(), 1e-6);
+
+//   // perturb solution and converge again
+//   Values values_pert;
+//   values_pert.insert(
+//       P(0), p0_se3.expmap(Vector6(0.001, 0.001, 0.001, 0.1, 0.1, 0.1)));
+//   values_pert.insert(
+//       P(2), p2_se3.expmap(Vector6(0.001, 0.001, 0.001, 0.1, 0.1, 0.1)));
+//   values_pert.insert(
+//       P(4), p4_se3.expmap(Vector6(0.001, 0.001, 0.001, 0.1, 0.1, 0.1)));
+//   values_pert.insert(V(0), v0_se3 + Vector6(1.0, 1.0, 1.0, 1.0, 1.0, 1.0) *
+//                                         0.1);  // Same velocity for all
+//                                         points
+//   values_pert.insert(V(2),
+//                      v0_se3 + Vector6(1.0, 1.0, 1.0, 1.0, 1.0, 1.0) * 0.1);
+//   values_pert.insert(V(4),
+//                      v0_se3 + Vector6(1.0, 1.0, 1.0, 1.0, 1.0, 1.0) * 0.1);
+//   // Set up optimizer
+//   GaussNewtonOptimizer optimizer2(graph, values_pert);
+//   // Check that we converge to solution
+//   optimizer2.optimize();
+//   DOUBLES_EQUAL(0.0, optimizer2.error(), 1e-4);
+// }
 
 int main() {
   TestResult tr;
