@@ -262,7 +262,7 @@ class Interpolator {
     auto Q_12 = covarianceFunction_(dt, Q_psd_);
     auto Q_1tau = covarianceFunction_(t_tau - t_k, Q_psd_);
 
-    // Eq. (11.41) in the book - can also use (5.23) in the paper
+    // Eq. (11.41) in the book
     auto Lambda =
         Phi_1tau - Q_1tau * Phi_tau2.transpose() * Q_12.inverse() * Phi_12;
     auto Psi = Q_1tau * Phi_tau2.transpose() * Q_12.inverse();
@@ -275,6 +275,7 @@ class Interpolator {
       const std::pair<PoseType, VelocityType>& pvkp1,
       const std::pair<PoseType, VelocityType>& pvtau, double t_k,
       double t_kp1, double t_tau) const {
+    // see Figure 5.4 in the paper
     Matrix2N Q_tau_prev = covarianceFunction_(t_tau - t_k, Q_psd_);
     Matrix2N Q_tau_next = covarianceFunction_(t_kp1 - t_tau, Q_psd_);
     Matrix2N E_tau = computeJacobianPrev_(pvk, pvtau, t_tau - t_k);
