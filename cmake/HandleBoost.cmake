@@ -20,37 +20,57 @@ if(MSVC)
     endif()
 endif()
 
-
-# Store these in variables so they are automatically replicated in GTSAMConfig.cmake and such.
-set(BOOST_FIND_MINIMUM_VERSION 1.65)
-set(BOOST_FIND_MINIMUM_COMPONENTS serialization system filesystem thread program_options date_time timer chrono regex)
-
-find_package(Boost ${BOOST_FIND_MINIMUM_VERSION} COMPONENTS ${BOOST_FIND_MINIMUM_COMPONENTS} REQUIRED)
-
-# Required components
-if(NOT Boost_SERIALIZATION_LIBRARY OR NOT Boost_SYSTEM_LIBRARY OR NOT Boost_FILESYSTEM_LIBRARY OR
-    NOT Boost_THREAD_LIBRARY OR NOT Boost_DATE_TIME_LIBRARY)
-  message(FATAL_ERROR "Missing required Boost components >= v1.65, please install/upgrade Boost or configure your search paths.")
+# Prefer Boost's CMake package over FindBoost when available (CMake >= 3.30)
+if(POLICY CMP0167)
+  cmake_policy(SET CMP0167 NEW)
 endif()
 
+set(BOOST_FIND_MINIMUM_VERSION 1.70)
+# Do NOT include 'system' as a required component; it's header-only in modern Boost
+set(BOOST_FIND_MINIMUM_COMPONENTS serialization filesystem thread program_options date_time timer chrono regex)
+
+# Prefer the Boost CMake package (CONFIG); fall back to the module if needed.
+# Make 'system' optional to support Boost >= 1.69 where it is header-only.
+find_package(Boost ${BOOST_FIND_MINIMUM_VERSION} REQUIRED
+             COMPONENTS ${BOOST_FIND_MINIMUM_COMPONENTS}
+             OPTIONAL_COMPONENTS system CONFIG)
+
+# Verify required imported targets exist (works for both BoostConfig and FindBoost)
+foreach(_t IN ITEMS Boost::serialization Boost::filesystem Boost::thread Boost::date_time)
+  if(NOT TARGET ${_t})
+    message(FATAL_ERROR "Missing required Boost component target: ${_t}. Please install/upgrade Boost or set BOOST_ROOT/Boost_DIR correctly.")
+  endif()
+endforeach()
+
 option(GTSAM_DISABLE_NEW_TIMERS "Disables using Boost.chrono for timing" OFF)
-# Allow for not using the timer libraries on boost < 1.48 (GTSAM timing code falls back to old timer library)
+
 set(GTSAM_BOOST_LIBRARIES
   Boost::serialization
-  Boost::system
   Boost::filesystem
   Boost::thread
   Boost::date_time
   Boost::regex
 )
-if (GTSAM_DISABLE_NEW_TIMERS)
-    message("WARNING:  GTSAM timing instrumentation manually disabled")
-    list_append_cache(GTSAM_COMPILE_DEFINITIONS_PUBLIC DGTSAM_DISABLE_NEW_TIMERS)
+
+# Link Boost::system only when the target exists (older Boost providing a stub library)
+if(TARGET Boost::system)
+  list(APPEND GTSAM_BOOST_LIBRARIES Boost::system)
+endif()
+
+if(GTSAM_DISABLE_NEW_TIMERS)
+  message("WARNING:  GTSAM timing instrumentation manually disabled")
+  list_append_cache(GTSAM_COMPILE_DEFINITIONS_PUBLIC DGTSAM_DISABLE_NEW_TIMERS)
 else()
-    if(Boost_TIMER_LIBRARY)
-      list(APPEND GTSAM_BOOST_LIBRARIES Boost::timer Boost::chrono)
+  # Prefer linking Boost::timer and Boost::chrono if available as imported targets
+  if(TARGET Boost::timer AND TARGET Boost::chrono)
+    list(APPEND GTSAM_BOOST_LIBRARIES Boost::timer Boost::chrono)
+  else()
+    # Fall back: when using the header-only timer, librt is needed on Linux only
+    if(UNIX AND NOT APPLE)
+      list(APPEND GTSAM_BOOST_LIBRARIES rt)
+      message("WARNING:  Using header-only Boost timer; adding -lrt on Linux.")
     else()
-      list(APPEND GTSAM_BOOST_LIBRARIES rt) # When using the header-only boost timer library, need -lrt
-      message("WARNING:  GTSAM timing instrumentation will use the older, less accurate, Boost timer library because boost older than 1.48 was found.")
+      message("WARNING:  Using header-only Boost timer; no extra libs required on this platform.")
     endif()
+  endif()
 endif()
