@@ -34,15 +34,29 @@ In the root library folder execute:
 mkdir build
 cd build
 cmake ..
-make check (optional, runs unit tests)
+make check  # optional, runs all unit tests
 make install
 ```
 
 Prerequisites:
 
-- [Boost](http://www.boost.org/users/download/) >= 1.65 (Ubuntu: `sudo apt-get install libboost-all-dev`)
-- [CMake](http://www.cmake.org/cmake/resources/software.html) >= 3.0 (Ubuntu: `sudo apt-get install cmake`)
-- A modern compiler, i.e., at least gcc 4.7.3 on Linux.
+- A modern compiler:
+    - Mac: at least xcode-14.2
+    - Linux: at least clang-11 or gcc-9
+    - Windows: at least msvc-14.2
+- [CMake](http://www.cmake.org/cmake/resources/software.html) >= 3.0
+    - Ubuntu: `sudo apt-get install cmake`
+
+Optional Boost prerequisite:
+
+Boost is now *optional*. Two cmake flags govern its behavior:
+ - `GTSAM_USE_BOOST_FEATURES` = `ON|OFF`: some of our timers and concept checking in the tests still depend on boost.
+ - `GTSAM_ENABLE_BOOST_SERIALIZATION` = `ON|OFF`: serialization of factor graphs, factors, etc still is done using boost
+
+If one or both of these flags are `ON`, you need to install [Boost](http://www.boost.org/users/download/) >= 1.70
+    - Mac: `brew install boost`
+    - Ubuntu: `sudo apt-get install libboost-all-dev`
+    - Windows: recommend https://github.com/microsoft/vcpkg
 
 Optional prerequisites - used automatically if findable by CMake:
 
