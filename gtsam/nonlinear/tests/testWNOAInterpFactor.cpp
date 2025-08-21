@@ -616,11 +616,6 @@ TEST(WNOAInterp, SE3OptimTest) {
   values.insert(V(0), v0_se3);  // Same velocity for all points
   values.insert(V(2), v0_se3);
   values.insert(V(4), v0_se3);
-  // the following keys should not be required
-  // values.insert(P(1), p1_se3);
-  // values.insert(P(3), p3_se3);
-  // values.insert(V(1), v0_se3);
-  // values.insert(V(3), v0_se3);
 
   // Set up optimizer
   GaussNewtonOptimizer optimizer(graph, values);
@@ -649,13 +644,6 @@ TEST(WNOAInterp, SE3OptimTest) {
                      v0_se3 + Vector6(1.0, 1.0, 1.0, 1.0, 1.0, 1.0) * 0.1);
   values_pert.insert(V(4),
                      v0_se3 + Vector6(1.0, 1.0, 1.0, 1.0, 1.0, 1.0) * 0.1);
-  // the following keys should not be required
-  //  values_pert.insert(P(1),
-  //  p1_se3.expmap(Vector6(0.001,0.001,0.001,0.1,0.1,0.1)));
-  //  values_pert.insert(P(3),
-  //  p3_se3.expmap(Vector6(0.001,0.001,0.001,0.1,0.1,0.1)));
-  //  values_pert.insert(V(1), v0_se3 + Vector6(1.0,1.0,1.0,1.0,1.0,1.0)*0.1);
-  //  values_pert.insert(V(3), v0_se3 + Vector6(1.0,1.0,1.0,1.0,1.0,1.0)*0.1);
 
   // Set up optimizer
   GaussNewtonOptimizer optimizer2(graph, values_pert);
@@ -664,77 +652,78 @@ TEST(WNOAInterp, SE3OptimTest) {
   DOUBLES_EQUAL(0.0, optimizer2.error(), 1e-4);
 }
 
-// TEST(WNOAInterp, SE3InterpGraph) {
-//   // Test automatic interpolation
-//   // Define optimization:
-//   //       unary
-//   //         |
-//   //  0 ---- 1 ---- 2 ----- 3 ----- 4
-//   //  e      i      e       i       e
-//   //          --- between ---
+TEST(WNOAInterp, SE3InterpGraph) {
+  // Test automatic interpolation
+  // Define optimization:
+  //       unary
+  //         |
+  //  0 ---- 1 ---- 2 ----- 3 ----- 4
+  //  e      i      e       i       e
+  //          --- between ---
 
-//   // Define nominal factors
-//   const auto model = noiseModel::Diagonal::Sigmas(Vector6::Ones());
-//   const auto between_factor =
-//       BetweenFactor<Pose3>(P(1), P(3), p1_se3.inverse() * p3_se3, model);
-//   const auto prior_pose_factor = PriorFactor<Pose3>(P(1), p1_se3, model);
-//   const auto prior_vel_factor = PriorFactor<Vector6>(V(1), v0_se3, model);
+  // Define nominal factors
+  const auto model = noiseModel::Diagonal::Sigmas(Vector6::Ones());
+  const auto between_factor =
+      BetweenFactor<Pose3>(P(1), P(3), p1_se3.inverse() * p3_se3, model);
+  const auto prior_pose_factor = PriorFactor<Pose3>(P(1), p1_se3, model);
+  const auto prior_vel_factor = PriorFactor<Vector6>(V(1), v0_se3, model);
 
-//   // Generate original graph
-//   NonlinearFactorGraph graph;
-//   graph.add(between_factor);
-//   graph.add(prior_pose_factor);
-//   graph.add(prior_vel_factor);
+  // Generate original graph
+  NonlinearFactorGraph graph;
+  graph.add(between_factor);
+  graph.add(prior_pose_factor);
+  graph.add(prior_vel_factor);
 
-//   // Interpolate the graph
-//   vector<StateData> border = {StateData(P(0), V(0), 0.0),
-//                               StateData(P(4), V(4), 4 * timestep),
-//                               StateData(P(2), V(2), 2 * timestep)};
-//   vector<StateData> interp = {StateData(P(3), V(3), 3 * timestep),
-//                               StateData(P(1), V(1), timestep)};
-//   auto new_graph = InterpolateFactorGraph<Pose3>(graph, interp, border,
-//   Q_se3);
+  // Interpolate the graph
+  vector<StateData> border_shfl = {StateData(P(0), V(0), 0.0),
+                                   StateData(P(4), V(4), 4 * timestep),
+                                   StateData(P(2), V(2), 2 * timestep)};
+  vector<StateData> interp_shfl = {StateData(P(3), V(3), 3 * timestep),
+                                   StateData(P(1), V(1), timestep)};
+  auto new_graph =
+      InterpolateFactorGraph<Pose3>(graph, border_shfl, interp_shfl, Q_se3);
 
-//   // Set up values at ground truth solution
-//   Values values;
-//   values.insert(P(0), p0_se3);
-//   values.insert(P(2), p2_se3);
-//   values.insert(P(4), p4_se3);
-//   values.insert(V(0), v0_se3);  // Same velocity for all points
-//   values.insert(V(2), v0_se3);
-//   values.insert(V(4), v0_se3);
-//   // Set up optimizer
-//   GaussNewtonOptimizer optimizer(new_graph, values);
-//   // We expect the initial to be zero because config is the ground truth
-//   DOUBLES_EQUAL(0.0, optimizer.error(), 1e-9);
-//   // Iterate once, and the config should not have changed
-//   optimizer.iterate();
-//   DOUBLES_EQUAL(0.0, optimizer.error(), 1e-9);
-//   // Complete solution
-//   optimizer.optimize();
-//   DOUBLES_EQUAL(0.0, optimizer.error(), 1e-6);
+  new_graph.print();
+  // Set up values at ground truth solution
+  Values values;
+  values.insert(P(0), p0_se3);
+  values.insert(P(2), p2_se3);
+  values.insert(P(4), p4_se3);
+  values.insert(V(0), v0_se3);  // Same velocity for all points
+  values.insert(V(2), v0_se3);
+  values.insert(V(4), v0_se3);
+  // Set up optimizer
+  GaussNewtonOptimizer optimizer(new_graph, values);
+  // We expect the initial to be zero because config is the ground truth
+  DOUBLES_EQUAL(0.0, optimizer.error(), 1e-9);
+  // Iterate once, and the config should not have changed
+  optimizer.iterate();
+  DOUBLES_EQUAL(0.0, optimizer.error(), 1e-9);
+  // Complete solution
+  optimizer.optimize();
+  DOUBLES_EQUAL(0.0, optimizer.error(), 1e-6);
 
-//   // perturb solution and converge again
-//   Values values_pert;
-//   values_pert.insert(
-//       P(0), p0_se3.expmap(Vector6(0.001, 0.001, 0.001, 0.1, 0.1, 0.1)));
-//   values_pert.insert(
-//       P(2), p2_se3.expmap(Vector6(0.001, 0.001, 0.001, 0.1, 0.1, 0.1)));
-//   values_pert.insert(
-//       P(4), p4_se3.expmap(Vector6(0.001, 0.001, 0.001, 0.1, 0.1, 0.1)));
-//   values_pert.insert(V(0), v0_se3 + Vector6(1.0, 1.0, 1.0, 1.0, 1.0, 1.0) *
-//                                         0.1);  // Same velocity for all
-//                                         points
-//   values_pert.insert(V(2),
-//                      v0_se3 + Vector6(1.0, 1.0, 1.0, 1.0, 1.0, 1.0) * 0.1);
-//   values_pert.insert(V(4),
-//                      v0_se3 + Vector6(1.0, 1.0, 1.0, 1.0, 1.0, 1.0) * 0.1);
-//   // Set up optimizer
-//   GaussNewtonOptimizer optimizer2(graph, values_pert);
-//   // Check that we converge to solution
-//   optimizer2.optimize();
-//   DOUBLES_EQUAL(0.0, optimizer2.error(), 1e-4);
-// }
+  // perturb solution and converge again
+  Values values_pert;
+  values_pert.insert(
+      P(0), p0_se3.expmap(Vector6(0.001, 0.001, 0.001, 0.1, 0.1, 0.1)));
+  values_pert.insert(
+      P(2), p2_se3.expmap(Vector6(0.001, 0.001, 0.001, 0.1, 0.1, 0.1)));
+  values_pert.insert(
+      P(4), p4_se3.expmap(Vector6(0.001, 0.001, 0.001, 0.1, 0.1, 0.1)));
+  values_pert.insert(V(0),
+                     v0_se3 + Vector6(1.0, 1.0, 1.0, 1.0, 1.0, 1.0) * 0.1);
+  // Same velocity for all points
+  values_pert.insert(V(2),
+                     v0_se3 + Vector6(1.0, 1.0, 1.0, 1.0, 1.0, 1.0) * 0.1);
+  values_pert.insert(V(4),
+                     v0_se3 + Vector6(1.0, 1.0, 1.0, 1.0, 1.0, 1.0) * 0.1);
+  // Set up optimizer
+  GaussNewtonOptimizer optimizer2(new_graph, values_pert);
+  // Check that we converge to solution
+  optimizer2.optimize();
+  DOUBLES_EQUAL(0.0, optimizer2.error(), 1e-4);
+}
 
 int main() {
   TestResult tr;
