@@ -681,9 +681,8 @@ TEST(WNOAInterp, SE3InterpGraph) {
   vector<StateData> interp_shfl = {StateData(P(3), V(3), 3 * timestep),
                                    StateData(P(1), V(1), timestep)};
   auto new_graph =
-      InterpolateFactorGraph<Pose3>(graph, border_shfl, interp_shfl, Q_se3);
+      interpolateFactorGraph<Pose3>(graph, border_shfl, interp_shfl, Q_se3);
 
-  new_graph.print();
   // Set up values at ground truth solution
   Values values;
   values.insert(P(0), p0_se3);
@@ -700,8 +699,17 @@ TEST(WNOAInterp, SE3InterpGraph) {
   optimizer.iterate();
   DOUBLES_EQUAL(0.0, optimizer.error(), 1e-9);
   // Complete solution
-  optimizer.optimize();
+  Values result = optimizer.optimize();
   DOUBLES_EQUAL(0.0, optimizer.error(), 1e-6);
+
+  // Test value interpolation
+  Values result_interp = updateInterpValues<Pose3>(new_graph, result, border_shfl, interp_shfl, Q_se3);
+
+  auto p3_se3_est = result_interp.at<Pose3>(P(3));
+  auto p1_se3_est = result_interp.at<Pose3>(P(1));
+
+  EXPECT(assert_equal(p3_se3, p3_se3_est, 1e-6));
+  EXPECT(assert_equal(p1_se3, p1_se3_est, 1e-6));
 
   // perturb solution and converge again
   Values values_pert;

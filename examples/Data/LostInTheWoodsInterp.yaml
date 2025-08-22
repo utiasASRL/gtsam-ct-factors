@@ -1,6 +1,6 @@
 files:
   input : "examples/Data/LostInTheWoods.txt"
-  output : "results/lost.csv" 
+  output : "results/lost_interp.csv" 
   gt_out : "results/lost_gt.csv"
   interp_raw_file: "results/lost_interp_raw.csv"
 params:
@@ -15,8 +15,8 @@ flags:
   br: true
   gt_init: false
 interp:
-  enable: false
-  interp_period: 10 
+  enable: true
+  interp_period: 5
 noise:
   prior: [1e-2, 1e-2, 1e-3]
   odom_y: 1.0e-2

@@ -13,6 +13,7 @@
 #include <gtsam/slam/dataset.h>
 #include <gtsam/slam/expressions.h>
 #include <gtsam/nonlinear/WNOAFactor.h>
+#include <gtsam/nonlinear/WNOAInterpFactor.h>
 #include <yaml-cpp/yaml.h>
 
 #include <Eigen/Dense>
@@ -191,7 +192,7 @@ class DatasetLoader {
 int saveResultToFile(Values& result, NonlinearFactorGraph& graph,
                      const string& filename) {
   // Get marginals
-  Marginals marginals(graph, result);
+  Marginals marginals(graph, result, Marginals::Factorization::QR);
 
   // open file, print header
   ofstream poses_file(filename);

@@ -445,7 +445,7 @@ class WNOAInterpFactor : public NoiseModelFactor {
  * to all estimated states. Any factors that do not include any interpolated
  * states are added to the new graph, unaltered.  */
 template <class PoseType>
-NonlinearFactorGraph InterpolateFactorGraph(const NonlinearFactorGraph& graph,
+NonlinearFactorGraph interpolateFactorGraph(const NonlinearFactorGraph& graph,
                                             const vector<StateData>& est,
                                             const vector<StateData>& interp,
                                             Vector Q_psd) {
@@ -488,7 +488,7 @@ NonlinearFactorGraph InterpolateFactorGraph(const NonlinearFactorGraph& graph,
           "Interpolated state time is after all estimated state times");
     } else {
       // map interp to left border index
-      int left_ind = std::distance(est_srt.begin(), it)-1;
+      int left_ind = std::distance(est_srt.begin(), it) - 1;
       interp_to_left_ind[i] = left_ind;
       // map keys to interp state
       key_to_interp[state.pose] = i;
@@ -499,6 +499,8 @@ NonlinearFactorGraph InterpolateFactorGraph(const NonlinearFactorGraph& graph,
   for (auto& factor : graph) {
     // handle null factor
     if (!factor) continue;
+    // if the factor is a WNOA motion factor, do not add it
+    if (dynamic_pointer_cast<WNOAMotionFactor<PoseType>>(factor)) continue;
     // get ordered sets of interpolated and estimated states
     set<int> interp_inds;
     set<int> est_inds;
@@ -540,6 +542,42 @@ NonlinearFactorGraph InterpolateFactorGraph(const NonlinearFactorGraph& graph,
   }
 
   return new_graph;
+}
+
+template <class PoseType>
+Values updateInterpValues(const NonlinearFactorGraph& interp_graph,
+                          const Values& values,
+                          const vector<StateData>& estim_states,
+                          const vector<StateData>& interp_states,
+                          const Vector Q_psd) {
+  // assert that the pose is the right kind of variable
+  static_assert(
+      std::is_same_v<typename traits<PoseType>::structure_category,
+                     lie_group_tag> ||
+          std::is_same_v<typename traits<PoseType>::structure_category,
+                         vector_space_tag>,
+      "Pose type must be either a Lie group or vector space");
+  // check dimension on the power spectral density matrix
+  assert(traits<PoseType>::dimension == Q_psd.size());
+  // Define interpolator
+  Interpolator<PoseType> interpolator(Q_psd);
+  // generate timestamp maps required by interpolator
+  using TimestampKeyMap = typename Interpolator<PoseType>::TimestampKeyMap;
+  TimestampKeyMap interp_key_map;
+  for (auto& state : interp_states) {
+    interp_key_map[state.time] = pair(state.pose, state.vel);
+  }
+  TimestampKeyMap estim_key_map;
+  for (auto& state : estim_states) {
+    estim_key_map[state.time] = pair(state.pose, state.vel);
+  }
+  // get interpolated values
+  Values interp_vals = interpolator.interpolatePosesAndVelocities(
+      interp_graph, values, estim_key_map, interp_key_map);
+  // update values
+  Values values_updated(values);
+  values_updated.insert(interp_vals);
+  return values_updated;
 }
 
 /// traits

@@ -12,6 +12,8 @@ int main(int argc, char* argv[]) {
   string input_file = config["files"]["input"].as<string>();
   string output_file = config["files"]["output"].as<string>();
   string gt_output_file = config["files"]["gt_out"].as<string>();
+  string interp_raw_file = config["files"]["interp_raw_file"].as<string>(); 
+
   // Load dataset
   DatasetLoader data;
   data.loadFromFile(input_file);
@@ -23,6 +25,9 @@ int main(int argc, char* argv[]) {
   bool include_wnoa = config["flags"]["wnoa"].as<bool>();
   bool include_br_meas = config["flags"]["br"].as<bool>();
   bool gt_init = config["flags"]["gt_init"].as<bool>();
+  // interpolation
+  bool interp_enable = config["interp"]["enable"].as<bool>();
+  uint interp_period = config["interp"]["interp_period"].as<uint>();
   // Get inputs from param file
   double r_max = config["params"]["r_max"].as<double>();
   double del_t = config["params"]["del_t"].as<double>();
@@ -55,7 +60,7 @@ int main(int argc, char* argv[]) {
   if (include_prior) {
     cout << "Adding Prior on start pose: " << sigma_prior << endl;
     graph.add(PriorFactor<Pose2>(Symbol('x', start), startPose, priorNoise));
-    if (include_wnoa) {
+    if (include_wnoa || interp_enable) {
       // Add in velocity prior on first state
       cout << "Adding Prior on start velocity" << endl;
       Vector vel_init = Vector3(data.v[start], 0.0, data.om[start]);
@@ -70,12 +75,14 @@ int main(int argc, char* argv[]) {
       // define odometry measurement
       Pose2 odom(data.v[i - 1] * del_t, 0.0, data.om[i - 1] * del_t);
       // add factor to graph
-      const auto factor = BetweenFactor<Pose2>(Symbol('x', i - 1), Symbol('x', i), odom, odoNoise);
+      const auto factor = BetweenFactor<Pose2>(Symbol('x', i - 1),
+                                               Symbol('x', i), odom, odoNoise);
       graph.add(factor);
     }
   }
 
   // White-Noise-On-Acceleration Prior
+  // Only add if not adding later for interpolated factors
   if (include_wnoa) {
     cout << "Adding WNOA factors" << endl;
     // Add WNOA Motion Factors between states
@@ -116,11 +123,15 @@ int main(int argc, char* argv[]) {
   }
   // Get ground truth solution
   Values gt;
+  vector<StateData> all_states;
   for (int i = start; i <= end; i++) {
     gt.insert(Symbol('x', i),
               Pose2(data.x_true[i], data.y_true[i], data.th_true[i]));
-    if (include_wnoa) {
+    if (include_wnoa || interp_enable) {
       gt.insert(Symbol('v', i), Vector3(data.v[i], 0.0, data.om[i]));
+      // create vector of states for interpolation
+      all_states.push_back(
+          StateData(Symbol('x', i), Symbol('v', i), data.t[i]));
     }
   }
   // Initialization
@@ -135,7 +146,7 @@ int main(int argc, char* argv[]) {
       if (i == start) {
         initial.insert(Symbol('x', i), startPose);
         Vector3 zero = Vector3::Zero();
-        if (include_wnoa) {
+        if (include_wnoa || interp_enable) {
           initial.insert(Symbol('v', i), zero);
         }
       } else {
@@ -144,21 +155,49 @@ int main(int argc, char* argv[]) {
         Pose2 odom = Pose2::Expmap(vel_t);
         initial.insert(Symbol('x', i),
                        initial.at<Pose2>(Symbol('x', i - 1)).compose(odom));
-        if (include_wnoa) {
+        if (include_wnoa || interp_enable) {
           initial.insert(Symbol('v', i), vel);
         }
       }
     }
   }
-
-  // Run optimizer
+  // set up optimizer
   LevenbergMarquardtParams params;
   params.setVerbosityLM("SUMMARY");
-  Values result =
-      LevenbergMarquardtOptimizer(graph, initial, params).optimize();
+
+  // Run optimizer
+  Values result;
+  Values result_interp;
+  if (interp_enable) {
+    cout << "Interpolation enabled!" << endl;
+    // process states into estimated and interpolated
+    vector<StateData> interp;
+    vector<StateData> estim;
+    for (size_t i = 0; i < all_states.size(); i++) {
+      if (i == 0 || i == all_states.size() - 1 || i % interp_period == 0) {
+        estim.push_back(all_states[i]);
+      } else {
+        interp.push_back(all_states[i]);
+        // remove interpolated states from initial values
+        initial.erase(all_states[i].pose);
+        initial.erase(all_states[i].vel);
+      }
+    }
+    // Generate interpolated version of graph
+    NonlinearFactorGraph graph_interp =
+        interpolateFactorGraph<Pose2>(graph, estim, interp, sigma_wnoa);
+    // Run optimizer
+    result_interp =
+        LevenbergMarquardtOptimizer(graph_interp, initial, params).optimize();
+    // save intermediate result with only estimated states
+    saveResultToFile(result_interp, graph_interp, interp_raw_file);
+    // Recover interpolated means using interpolator
+    result = updateInterpValues<Pose2>(graph_interp, result_interp, estim, interp, sigma_wnoa);    
+  } else {
+    result = LevenbergMarquardtOptimizer(graph, initial, params).optimize();
+  }
   // Save results
   cout << "Optimizer has finished...saving results..." << endl;
-
   saveResultToFile(result, graph, output_file);
   saveResultToFile(gt, graph, "results/lost_gt.csv");
 

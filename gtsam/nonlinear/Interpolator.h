@@ -254,7 +254,7 @@ class Interpolator {
       const NonlinearFactorGraph& mainSolveGraph,
       const Values& mainSolveSolution, const TimestampKeyMap& mainSolveKeyMap,
       const TimestampKeyMap& interpolateKeyMap,
-      std::shared_ptr<CovarianceMap> covarianceMap) {
+      std::shared_ptr<CovarianceMap> covarianceMap = nullptr) {
     // Map from intervals [t1, t2) to query times inside that interval (bucket)
     std::map<std::pair<double, double>, std::vector<double>> queryBuckets;
 

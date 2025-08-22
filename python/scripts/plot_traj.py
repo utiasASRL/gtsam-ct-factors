@@ -235,11 +235,20 @@ def plotTrajectory(
 if __name__ == "__main__":
     fname = "/home/cho/gtsam-ct-factors/results/lost.csv"
     fname_steam = "/home/cho/gtsam-ct-factors/results/lost_steam.csv"
+    fname_interp = "/home/cho/gtsam-ct-factors/results/lost_interp.csv"
+    # plotTrajectory(
+    #     fname=fname,
+    #     fname_steam=fname_steam,
+    #     plot_cov=False,
+    #     step=2,
+    #     plot_heading=False,
+    # )
     plotTrajectory(
         fname=fname,
-        fname_steam=fname_steam,
-        plot_cov=False,
-        step=2,
+        fname_steam=fname_interp,
+        plot_cov=True,
+        step=1,
         plot_heading=False,
     )
+    
     
