@@ -49,6 +49,7 @@ legend('Location', 'south')
 title('A3 with GTSAM')
 %% errors
 interp_end_idx = idivide(size(t_array_interpolated,2)-1, int16(pose_interval)) * pose_interval + 1;
+interp_end_idx = size(t_array_interpolated,2);
 
 % odom errors
 % error_r = t_array_wnoa - r_gt;
@@ -111,6 +112,8 @@ end
 
 %% just plotting covariance
 interp_end_idx = idivide(size(t_array_interpolated,2)-1, int16(pose_interval)) * pose_interval + 1;
+interp_end_idx = size(t_array_interpolated,2);
+
 end_idx_diff = size(t_array_interval,2) - interp_end_idx;
 figure
 set(gcf, 'Color', 'w');

@@ -3,6 +3,7 @@ files:
   output : "results/lost.csv" 
   gt_out : "results/lost_gt.csv"
   interp_raw_file: "results/lost_interp_raw.csv"
+  interp_out : "results/lost_interp.csv" 
 params:
   r_max: 1.0
   del_t: 0.1
@@ -15,7 +16,7 @@ flags:
   br: true
   gt_init: false
 interp:
-  enable: false
+  enable: true
   interp_period: 10 
 noise:
   prior: [1e-2, 1e-2, 1e-3]
