@@ -29,9 +29,11 @@ def load_csv(fname, step=None):
 
 
 def plotTrajectory(
-    fname,
+    fname1,
+    fname2=None,
+    label1="GTSAM Trajectory",
+    label2="STEAM Trajectory",
     fname_gt="/home/cho/gtsam-ct-factors/results/lost_gt.csv",
-    fname_steam=None,
     step=None,
     plot_cov=False,
     plot_heading=True,
@@ -59,18 +61,18 @@ def plotTrajectory(
         ]
     )
 
-    # If both fname and fname_steam are given and plot_cov is True, plot side-by-side with covariances
-    if fname_steam is not None and plot_cov:
-        df, covariances = load_csv(fname, step)
-        df_steam, covariances_steam = load_csv(fname_steam, step)
+    # If both fname1 and fname2 are given and plot_cov is True, plot side-by-side with covariances
+    if fname2 is not None and plot_cov:
+        df1, covariances1 = load_csv(fname1, step)
+        df2, covariances2 = load_csv(fname2, step)
         df_gt, _ = load_csv(fname_gt, step)
 
         fig, axs = plt.subplots(1, 2, figsize=(16, 6), sharex=True, sharey=True)
         for ax, df_plot, covs, title, color in zip(
             axs,
-            [df, df_steam],
-            [covariances, covariances_steam],
-            ["GTSAM Trajectory", "STEAM Trajectory"],
+            [df1, df2],
+            [covariances1, covariances2],
+            [label1, label2],
             ["r", "g"],
         ):
             x = df_plot["x"].to_numpy()
@@ -123,27 +125,27 @@ def plotTrajectory(
         return
 
     # If plot_cov is False, plot both trajectories on the same plot
-    if fname_steam is not None and not plot_cov:
-        df, _ = load_csv(fname, step)
-        df_steam, _ = load_csv(fname_steam, step)
+    if fname2 is not None and not plot_cov:
+        df1, _ = load_csv(fname1, step)
+        df2, _ = load_csv(fname2, step)
         df_gt, _ = load_csv(fname_gt, step)
 
-        x = df["x"].to_numpy()
-        y = df["y"].to_numpy()
-        theta = df["theta"].to_numpy()
-        x_steam = df_steam["x"].to_numpy()
-        y_steam = df_steam["y"].to_numpy()
-        theta_steam = df_steam["theta"].to_numpy()
+        x1 = df1["x"].to_numpy()
+        y1 = df1["y"].to_numpy()
+        theta1 = df1["theta"].to_numpy()
+        x2 = df2["x"].to_numpy()
+        y2 = df2["y"].to_numpy()
+        theta2 = df2["theta"].to_numpy()
 
         plt.figure(figsize=(8, 6))
         plt.plot(landmarks[:, 0], landmarks[:, 1], "og", label="Landmarks")
-        plt.plot(x, y, "-", label="Traj - GTSAM", alpha=0.9, color="r")
-        plt.plot(x_steam, y_steam, "-", label="Traj - STEAM", alpha=0.9, color="g")
-        plt.plot(x[0], y[0], "o", label="Start", color="k")
+        plt.plot(x1, y1, "-", label=label1, alpha=0.9, color="r")
+        plt.plot(x2, y2, "-", label=label2, alpha=0.9, color="g")
+        plt.plot(x1[0], y1[0], "o", label="Start", color="k")
         plt.plot(df_gt["x"], df_gt["y"], "-", color="k", alpha=0.5, label="ground truth")
         if plot_heading:
             arrow_length = 0.2
-            for xi, yi, ti in zip(x, y, theta):
+            for xi, yi, ti in zip(x1, y1, theta1):
                 plt.arrow(
                     xi,
                     yi,
@@ -155,7 +157,7 @@ def plotTrajectory(
                     ec="r",
                     alpha=0.5,
                 )
-            for xi, yi, ti in zip(x_steam, y_steam, theta_steam):
+            for xi, yi, ti in zip(x2, y2, theta2):
                 plt.arrow(
                     xi,
                     yi,
@@ -176,22 +178,22 @@ def plotTrajectory(
         plt.show()
         return
 
-    # If only fname is provided (fname_steam is None), plot single trajectory
-    df, covariances = load_csv(fname, step)
+    # If only fname1 is provided (fname2 is None), plot single trajectory
+    df1, covariances1 = load_csv(fname1, step)
     df_gt, _ = load_csv(fname_gt, step)
 
-    x = df["x"].to_numpy()
-    y = df["y"].to_numpy()
-    theta = df["theta"].to_numpy()
+    x1 = df1["x"].to_numpy()
+    y1 = df1["y"].to_numpy()
+    theta1 = df1["theta"].to_numpy()
 
     plt.figure(figsize=(8, 6))
     plt.plot(landmarks[:, 0], landmarks[:, 1], "og", label="Landmarks")
-    plt.plot(x, y, "-", label="Trajectory", alpha=0.9, color="r")
-    plt.plot(x[0], y[0], "o", label="Start", color="k")
+    plt.plot(x1, y1, "-", label=label1, alpha=0.9, color="r")
+    plt.plot(x1[0], y1[0], "o", label="Start", color="k")
     plt.plot(df_gt["x"], df_gt["y"], "-", color="k", alpha=0.5, label="ground truth")
     if plot_heading:
         arrow_length = 0.2
-        for xi, yi, ti in zip(x, y, theta):
+        for xi, yi, ti in zip(x1, y1, theta1):
             plt.arrow(
                 xi,
                 yi,
@@ -204,7 +206,7 @@ def plotTrajectory(
                 alpha=0.5,
             )
     if plot_cov:
-        for xi, yi, ti, cov in zip(x, y, theta, covariances):
+        for xi, yi, ti, cov in zip(x1, y1, theta1, covariances1):
             cov2d = cov[0:2, 0:2]
             vals, vecs = np.linalg.eigh(cov2d)
             angle = np.rad2deg(np.arctan2(*vecs[:, 1][::-1]))
@@ -233,20 +235,27 @@ def plotTrajectory(
 
 
 if __name__ == "__main__":
-    fname = "/home/cho/gtsam-ct-factors/results/lost.csv"
+    fname_full = "/home/cho/gtsam-ct-factors/results/lost.csv"
     fname_steam = "/home/cho/gtsam-ct-factors/results/lost_steam.csv"
     fname_interp = "/home/cho/gtsam-ct-factors/results/lost_interp.csv"
-    # plotTrajectory(
-    #     fname=fname,
-    #     fname_steam=fname_steam,
-    #     plot_cov=False,
-    #     step=2,
-    #     plot_heading=False,
-    # )
+    fname_interp_raw = "/home/cho/gtsam-ct-factors/results/lost_interp_raw.csv"
+    
     plotTrajectory(
-        fname=fname,
-        fname_steam=fname_interp,
-        plot_cov=True,
+        fname1=fname_full,
+        fname2=fname_interp,
+        label1="Full Solve",
+        label2="Interp Solve",
+        plot_cov=False,
+        step=1,
+        plot_heading=False,
+    )
+    
+    plotTrajectory(
+        fname1=fname_full,
+        fname2=fname_interp_raw,
+        label1="Full Solve",
+        label2="Est Only",
+        plot_cov=False,
         step=1,
         plot_heading=False,
     )

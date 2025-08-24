@@ -13,7 +13,7 @@ int main(int argc, char* argv[]) {
   string output_file = config["files"]["output"].as<string>();
   string gt_output_file = config["files"]["gt_out"].as<string>();
   string interp_raw_file = config["files"]["interp_raw_file"].as<string>(); 
-
+  string interp_out = config["files"]["interp_out"].as<string>(); 
   // Load dataset
   DatasetLoader data;
   data.loadFromFile(input_file);
@@ -28,6 +28,9 @@ int main(int argc, char* argv[]) {
   // interpolation
   bool interp_enable = config["interp"]["enable"].as<bool>();
   uint interp_period = config["interp"]["interp_period"].as<uint>();
+  if (interp_enable) {
+    output_file = interp_out;
+  }
   // Get inputs from param file
   double r_max = config["params"]["r_max"].as<double>();
   double del_t = config["params"]["del_t"].as<double>();
