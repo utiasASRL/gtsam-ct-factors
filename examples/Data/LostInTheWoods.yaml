@@ -5,18 +5,19 @@ files:
   interp_raw_file: "results/lost_interp_raw.csv"
   interp_out : "results/lost_interp.csv" 
 params:
-  r_max: 1.0
+  r_max: 4.0
   del_t: 0.1
   start: 1000
   end: 2000
 flags:
-  prior: false
+  prior: true
   odom: false
   wnoa: true
   br: true
   gt_init: false
+  solve_slam: true
 interp:
-  enable: true
+  enable: false
   interp_period: 10 
 noise:
   prior: [1e-2, 1e-2, 1e-3]
