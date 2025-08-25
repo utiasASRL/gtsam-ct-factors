@@ -157,6 +157,19 @@ class WNOAMotionFactor
     return covariance;
   }
 
+  static Matrix2N buildInverseWNOACovariance(double timestep, const VectorN& Q) {
+    // construct the inverse covariance matrix for the WNOA factor
+    Matrix2N inverse_covariance;
+    MatrixN Q_inv_diag = Q.cwiseInverse().asDiagonal();
+    inverse_covariance << (12.0 / (timestep * timestep * timestep)) * Q_inv_diag,
+        (-6.0 / (timestep * timestep)) * Q_inv_diag,
+        (-6.0 / (timestep * timestep)) * Q_inv_diag,
+        (4.0 / timestep) * Q_inv_diag;
+
+    return inverse_covariance;
+  }
+
+
   static inline noiseModel::Gaussian::shared_ptr buildWNOANoiseModel(
       double timestep, const VectorN& Q) {
     return noiseModel::Gaussian::Covariance(

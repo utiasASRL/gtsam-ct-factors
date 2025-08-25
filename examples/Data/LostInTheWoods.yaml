@@ -17,7 +17,7 @@ flags:
   gt_init: false
   solve_slam: true
 interp:
-  enable: false
+  enable: true
   interp_period: 10 
 noise:
   prior: [1e-2, 1e-2, 1e-3]
