@@ -48,9 +48,56 @@ Interpolator<PoseType>::interpolatePoseAndVelocity(
     // NOTE: (CTH) need to make these first cases also provide jacobians and
     // covariances if necessary
     if (equal(t_tau, t_k)) {
+      if(H)
+      {
+        // dTtau_dTk
+        (*H)[0] = MatrixN::Identity();
+        // dTtau_dvarpik
+        (*H)[1] = MatrixN::Zero();
+        // dTtau_dTkp1
+        (*H)[2] = MatrixN::Zero();
+        // dTtau_dvarpikp1
+        (*H)[3] = MatrixN::Zero();
+        // dvarpitau_dTk
+        (*H)[4] = MatrixN::Zero();
+        // dvarpitau_dvarpik
+        (*H)[5] = MatrixN::Identity();
+        // dvarpitau_dTkp1
+        (*H)[6] = MatrixN::Zero();
+        // dvarpitau_dvarpikp1
+        (*H)[7] = MatrixN::Zero();
+      }
+      if(covarianceOut && mainSolveMarginalMatrix) {
+        // if t_tau == t_k, then the covariance is the same as that of Tvarpi_k
+        *covarianceOut = *mainSolveMarginalMatrix.topLeftCorner(dim*2, dim*2);
+      }
       return Tvarpi_k;
+      
 
     } else if (equal(t_tau, t_kp1)) {
+      if(H)
+      {
+        // dTtau_dTk
+        (*H)[0] = MatrixN::Zero();
+        // dTtau_dvarpik
+        (*H)[1] = MatrixN::Zero();
+        // dTtau_dTkp1
+        (*H)[2] = MatrixN::Identity();
+        // dTtau_dvarpikp1
+        (*H)[3] = MatrixN::Zero();
+        // dvarpitau_dTk
+        (*H)[4] = MatrixN::Zero();
+        // dvarpitau_dvarpik
+        (*H)[5] = MatrixN::Zero();
+        // dvarpitau_dTkp1
+        (*H)[6] = MatrixN::Zero();
+        // dvarpitau_dvarpikp1
+        (*H)[7] = MatrixN::Identity();
+      }
+      if(covarianceOut && mainSolveMarginalMatrix) {
+        // if t_tau == t_kp1, then the covariance is the same as that of Tvarpi_kp1
+        *covarianceOut = *mainSolveMarginalMatrix.bottomRightCorner(dim*2, dim*2);
+      }
       return Tvarpi_kp1;
 
     } else if (t_tau < t_k || t_tau > t_kp1 || std::isinf(t_k) ||
