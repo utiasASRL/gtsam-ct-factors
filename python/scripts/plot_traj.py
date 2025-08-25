@@ -16,11 +16,19 @@ def load_csv(fname, step=None):
     covariances = []
     for _, row in df.iterrows():
         # Get covariance
-        cov = np.array(
+        if "C33" in row: # Detect size of covariance matrix (pose or landmark)
+            cov = np.array(
             [
                 [row["C11"], row["C12"], row["C13"]],
                 [row["C12"], row["C22"], row["C23"]],
                 [row["C13"], row["C23"], row["C33"]],
+            ]
+            )
+        else:
+            cov = np.array(
+            [
+                [row["C11"], row["C12"]],
+                [row["C12"], row["C22"]],
             ]
         )
         covariances.append(cov)
@@ -33,10 +41,11 @@ def plotTrajectory(
     fname2=None,
     label1="GTSAM Trajectory",
     label2="STEAM Trajectory",
-    fname_gt="/home/cho/gtsam-ct-factors/results/lost_gt.csv",
+    fname_gt="../../results/lost_gt.csv",
     step=None,
     plot_cov=False,
     plot_heading=True,
+    plot_landmark_estimates=False,
 ):
     # GT landmark locations
     landmarks = np.array(
@@ -67,21 +76,60 @@ def plotTrajectory(
         df2, covariances2 = load_csv(fname2, step)
         df_gt, _ = load_csv(fname_gt, step)
 
+        df1_lm = None
+        df2_lm = None
+        cov1_lm = None
+        cov2_lm = None
+        if plot_landmark_estimates:
+            fname1_lm = fname1.replace(".csv", "_landmarks.csv")
+            fname2_lm = fname2.replace(".csv", "_landmarks.csv")
+            df1_lm, cov1_lm = load_csv(fname1_lm, None)
+            df2_lm, cov2_lm = load_csv(fname2_lm, None)
+
         fig, axs = plt.subplots(1, 2, figsize=(16, 6), sharex=True, sharey=True)
-        for ax, df_plot, covs, title, color in zip(
+        for ax, df_plot, covs, title, color, df_lm, lm_cov in zip(
             axs,
             [df1, df2],
             [covariances1, covariances2],
             [label1, label2],
             ["r", "g"],
+            [df1_lm, df2_lm],
+            [cov1_lm, cov2_lm],
         ):
             x = df_plot["x"].to_numpy()
             y = df_plot["y"].to_numpy()
             theta = df_plot["theta"].to_numpy()
-            ax.plot(landmarks[:, 0], landmarks[:, 1], "og", label="Landmarks")
+            x_gt = df_gt["x"].to_numpy()
+            y_gt = df_gt["y"].to_numpy()
+            theta_gt = df_gt["theta"].to_numpy()
+            
+            ax.plot(landmarks[:, 0], landmarks[:, 1], "ok", alpha=0.5, label="Landmarks")
             ax.plot(x, y, "-", label=title, alpha=0.9, color=color)
             ax.plot(x[0], y[0], "o", label="Start", color="k")
-            ax.plot(df_gt["x"], df_gt["y"], "-", color="k", alpha=0.5, label="ground truth")
+            ax.plot(x_gt, y_gt, "-", color="k", alpha=0.5, label="ground truth")
+
+            if plot_landmark_estimates:
+                lm_x = df_lm["x"].to_numpy()
+                lm_y = df_lm["y"].to_numpy()
+                ax.plot(lm_x, lm_y, "o", label="Estimated Landmarks", color=color)
+                # Plot covariances of landmarks
+                for lmx, lmy, lmcov in zip(lm_x, lm_y, lm_cov):
+                    lmcov2d = lmcov[0:2, 0:2]
+                    vals, vecs = np.linalg.eigh(lmcov2d)
+                    angle = np.rad2deg(np.arctan2(*vecs[:, 1][::-1]))
+                    factor = 3
+                    height, width = factor * 2 * np.sqrt(vals)
+                    ellipse = Ellipse(
+                        (lmx, lmy),
+                        width,
+                        height,
+                        angle=angle,
+                        edgecolor=None,
+                        alpha=0.2,
+                        facecolor=color,
+                        lw=1,
+                    )
+                    ax.add_patch(ellipse)
             # Plot heading arrows if requested
             if plot_heading:
                 arrow_length = 0.2
@@ -130,19 +178,39 @@ def plotTrajectory(
         df2, _ = load_csv(fname2, step)
         df_gt, _ = load_csv(fname_gt, step)
 
+        df1_lm = None
+        df2_lm = None
+        cov1_lm = None
+        cov2_lm = None
+        if plot_landmark_estimates:
+            fname1_lm = fname1.replace(".csv", "_landmarks.csv")
+            fname2_lm = fname2.replace(".csv", "_landmarks.csv")
+            df1_lm, cov1_lm = load_csv(fname1_lm, None)
+            df2_lm, cov2_lm = load_csv(fname2_lm, None)
+
         x1 = df1["x"].to_numpy()
         y1 = df1["y"].to_numpy()
         theta1 = df1["theta"].to_numpy()
         x2 = df2["x"].to_numpy()
         y2 = df2["y"].to_numpy()
         theta2 = df2["theta"].to_numpy()
+        x_gt = df_gt["x"].to_numpy()
+        y_gt = df_gt["y"].to_numpy()
+        theta_gt = df_gt["theta"].to_numpy()
 
         plt.figure(figsize=(8, 6))
-        plt.plot(landmarks[:, 0], landmarks[:, 1], "og", label="Landmarks")
+        plt.plot(landmarks[:, 0], landmarks[:, 1], "ok", alpha=0.5, label="Landmarks")
         plt.plot(x1, y1, "-", label=label1, alpha=0.9, color="r")
         plt.plot(x2, y2, "-", label=label2, alpha=0.9, color="g")
         plt.plot(x1[0], y1[0], "o", label="Start", color="k")
-        plt.plot(df_gt["x"], df_gt["y"], "-", color="k", alpha=0.5, label="ground truth")
+        plt.plot(x_gt, y_gt, "-", color="k", alpha=0.5, label="ground truth")
+        if plot_landmark_estimates:
+            lm1_x = df1_lm["x"].to_numpy()
+            lm1_y = df1_lm["y"].to_numpy()
+            lm2_x = df2_lm["x"].to_numpy()
+            lm2_y = df2_lm["y"].to_numpy()
+            plt.plot(lm1_x, lm1_y, "o", color="r")
+            plt.plot(lm2_x, lm2_y, "o", color="g")
         if plot_heading:
             arrow_length = 0.2
             for xi, yi, ti in zip(x1, y1, theta1):
@@ -182,15 +250,46 @@ def plotTrajectory(
     df1, covariances1 = load_csv(fname1, step)
     df_gt, _ = load_csv(fname_gt, step)
 
+    df1_lm = None
+    cov1_lm = None
+    if plot_landmark_estimates:
+        fname1_lm = fname1.replace(".csv", "_landmarks.csv")
+        df1_lm, cov1_lm = load_csv(fname1_lm, None)
+
     x1 = df1["x"].to_numpy()
     y1 = df1["y"].to_numpy()
     theta1 = df1["theta"].to_numpy()
+    x_gt = df_gt["x"].to_numpy()
+    y_gt = df_gt["y"].to_numpy()
+    theta_gt = df_gt["theta"].to_numpy()
 
     plt.figure(figsize=(8, 6))
-    plt.plot(landmarks[:, 0], landmarks[:, 1], "og", label="Landmarks")
+    plt.plot(landmarks[:, 0], landmarks[:, 1], "ok", alpha=0.5, label="Landmarks")
     plt.plot(x1, y1, "-", label=label1, alpha=0.9, color="r")
     plt.plot(x1[0], y1[0], "o", label="Start", color="k")
-    plt.plot(df_gt["x"], df_gt["y"], "-", color="k", alpha=0.5, label="ground truth")
+    plt.plot(x_gt, y_gt, "-", color="k", alpha=0.5, label="ground truth")
+    if plot_landmark_estimates:
+        lm_x = df1_lm["x"].to_numpy()
+        lm_y = df1_lm["y"].to_numpy()
+        plt.plot(lm_x, lm_y, "o", label="Estimated Landmarks", color="r")
+        if plot_cov:
+            for lmx, lmy, lmcov in zip(lm_x, lm_y, lm_cov):
+                lmcov2d = lmcov[0:2, 0:2]
+                vals, vecs = np.linalg.eigh(lmcov2d)
+                angle = np.rad2deg(np.arctan2(*vecs[:, 1][::-1]))
+                factor = 3
+                height, width = factor * 2 * np.sqrt(vals)
+                ellipse = Ellipse(
+                    (lmx, lmy),
+                    width,
+                    height,
+                    angle=angle,
+                    edgecolor=None,
+                    alpha=0.2,
+                    facecolor=color,
+                    lw=1,
+                )
+                ax.add_patch(ellipse)
     if plot_heading:
         arrow_length = 0.2
         for xi, yi, ti in zip(x1, y1, theta1):
@@ -235,19 +334,20 @@ def plotTrajectory(
 
 
 if __name__ == "__main__":
-    fname_full = "/home/cho/gtsam-ct-factors/results/lost.csv"
-    fname_steam = "/home/cho/gtsam-ct-factors/results/lost_steam.csv"
-    fname_interp = "/home/cho/gtsam-ct-factors/results/lost_interp.csv"
-    fname_interp_raw = "/home/cho/gtsam-ct-factors/results/lost_interp_raw.csv"
-    
+    fname_full = "../../results/lost.csv"
+    fname_steam = "../../results/lost_steam.csv"
+    fname_interp = "../../results/lost_interp.csv"
+    fname_interp_raw = "../../results/lost_interp_raw.csv"
+
     plotTrajectory(
         fname1=fname_full,
         fname2=fname_interp,
         label1="Full Solve",
         label2="Interp Solve",
-        plot_cov=False,
+        plot_cov=True,
         step=1,
         plot_heading=False,
+        plot_landmark_estimates=True,
     )
     
     plotTrajectory(
@@ -255,9 +355,10 @@ if __name__ == "__main__":
         fname2=fname_interp_raw,
         label1="Full Solve",
         label2="Est Only",
-        plot_cov=False,
+        plot_cov=True,
         step=1,
         plot_heading=False,
+        plot_landmark_estimates=True,
     )
     
     

@@ -25,6 +25,7 @@ int main(int argc, char* argv[]) {
   bool include_wnoa = config["flags"]["wnoa"].as<bool>();
   bool include_br_meas = config["flags"]["br"].as<bool>();
   bool gt_init = config["flags"]["gt_init"].as<bool>();
+  bool solve_slam = config["flags"]["solve_slam"].as<bool>();
   // interpolation
   bool interp_enable = config["interp"]["enable"].as<bool>();
   uint interp_period = config["interp"]["interp_period"].as<uint>();
@@ -97,6 +98,9 @@ int main(int argc, char* argv[]) {
   }
 
   // BearingRange Measurements
+  // Create a list of 18 booleans that track which landmarks have been observed
+  // at least once
+  vector<bool> landmark_observed(data.n_landmarks, false);
   if (include_br_meas) {
     cout << "Adding bearing range measurement factors" << endl;
 
@@ -111,15 +115,21 @@ int main(int argc, char* argv[]) {
       // Define Key
       Key xi = Symbol('x', i);
       for (int j = 0; j < data.n_landmarks; j++) {
+        Key landmark = Symbol('l', j);
         // Check if we have a valid measurement
         if ((data.range(i, j) > 0.0) && (abs(data.bearing(i, j)) > 0.0) &&
             (data.range(i, j) < r_max)) {
+          // Landmark has been observed
+          landmark_observed[j] = true;
           // Get Bearing Range measurement
           BearingRange2 measurement(Rot2(data.bearing(i, j)), data.range(i, j));
           // Compute the bearing and range Prediction
-          auto predict = BearingRangeLandmarkPrediction(xi, landmarks[j], T_vs);
-          // Define Factor
-          graph.addExpressionFactor(predict, measurement, measNoise);
+          // If we solve slam, use unknown landmark variable, otherwise use ground-truth value
+            auto predict = solve_slam
+              ? BearingRangeLandmarkPredictionSLAM(xi, landmark, T_vs)
+              : BearingRangeLandmarkPrediction(xi, landmarks[j], T_vs);
+            // Define Factor
+            graph.addExpressionFactor(predict, measurement, measNoise);
         }
       }
     }
@@ -137,6 +147,14 @@ int main(int argc, char* argv[]) {
           StateData(Symbol('x', i), Symbol('v', i), data.t[i]));
     }
   }
+  // Ground truth for landmarks
+  for (int j = 0; j < data.n_landmarks; j++) {
+    
+    gt.insert(Symbol('l', j),
+              Point2(data.landmarks(j, 0), data.landmarks(j, 1)));
+  }
+
+
   // Initialization
   Values initial;
   if (gt_init) {
@@ -164,6 +182,22 @@ int main(int argc, char* argv[]) {
       }
     }
   }
+
+  // Initialize landmarks if doing full SLAM
+  if(solve_slam)
+  {
+    // Initialize landmarks at zero
+    for (int j = 0; j < data.n_landmarks; j++) {
+      
+      // Only add keys for landmarks that have been observed
+      if(landmark_observed[j])
+      {
+        initial.insert(Symbol('l', j),
+                Point2(0,0));
+      }
+    }
+  }
+
   // set up optimizer
   LevenbergMarquardtParams params;
   params.setVerbosityLM("SUMMARY");
@@ -193,7 +227,7 @@ int main(int argc, char* argv[]) {
     result_interp =
         LevenbergMarquardtOptimizer(graph_interp, initial, params).optimize();
     // save intermediate result with only estimated states
-    saveResultToFile(result_interp, graph_interp, interp_raw_file);
+    saveResultToFile(result_interp, graph_interp, interp_raw_file, solve_slam);
     // Recover interpolated means using interpolator
     result = updateInterpValues<Pose2>(graph_interp, result_interp, estim, interp, sigma_wnoa);    
   } else {
@@ -201,7 +235,7 @@ int main(int argc, char* argv[]) {
   }
   // Save results
   cout << "Optimizer has finished...saving results..." << endl;
-  saveResultToFile(result, graph, output_file);
+  saveResultToFile(result, graph, output_file, solve_slam);
   saveResultToFile(gt, graph, "results/lost_gt.csv");
 
   return 0;

@@ -190,7 +190,7 @@ class DatasetLoader {
 
 // --- Save Poses to CSV ---
 int saveResultToFile(Values& result, NonlinearFactorGraph& graph,
-                     const string& filename) {
+                     const string& filename, bool save_landmarks = false) {
   
   cout << "Writing solve output to " << filename << endl;
   // Get marginals
@@ -209,11 +209,33 @@ int saveResultToFile(Values& result, NonlinearFactorGraph& graph,
                  << cov(2, 2) << "\n";
     }
     poses_file.close();
-    return 1;
   } else {
     cerr << "Error opening file" << endl;
     return 0;
   }
+
+  if(save_landmarks) {
+    string filename_lm = filename;
+    filename_lm.replace(filename_lm.find(".csv"), 4, "_landmarks.csv");
+    // open file, print header
+    ofstream landmarks_file(filename_lm);
+    if (landmarks_file.is_open()) {
+      landmarks_file << "key,x,y,C11,C12,C22\n";  // Header for Point2
+      // filter results for Point2
+      for (const auto& [key, point] : result.extract<Point2>()) {
+        Matrix cov = marginals.marginalCovariance(key);
+        landmarks_file << key << "," << point.x() << "," << point.y() << ","
+                      << cov(0, 0) << "," << cov(0, 1) << ","
+                      << cov(1, 1) << "\n";
+      }
+      landmarks_file.close();
+    }
+    else {
+      cerr << "Error opening file" << endl;
+      return 0;
+    }
+  }
+  return 1;
 }
 
 typedef BearingRange<Pose2, Point2> BearingRange2;
@@ -222,6 +244,19 @@ typedef Expression<BearingRange2> BearingRange2_;
 // Expression function for Range-Bearing to fixed Landmark factor
 BearingRange2_ BearingRangeLandmarkPrediction(Key posekey,
                                               const Point2 landmark,
+                                              const Pose2 T_vs) {
+  // Define Expression for pose and landmark
+  Pose2_ T_iv(posekey);
+  Point2_ landmark_(landmark);
+  // Compose transformation to get sensor frame
+  Pose2_ T_is = compose(T_iv, Pose2_(T_vs));
+  // Compute the bearing and range to the point
+  return BearingRange2_(BearingRange2::Measure, T_is, landmark_);
+}
+
+// Expression function for Range-Bearing to non-fixed Landmark factor
+BearingRange2_ BearingRangeLandmarkPredictionSLAM(Key posekey,
+                                              const Key landmark,
                                               const Pose2 T_vs) {
   // Define Expression for pose and landmark
   Pose2_ T_iv(posekey);
