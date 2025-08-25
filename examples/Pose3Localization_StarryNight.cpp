@@ -33,8 +33,8 @@ auto WNOAPSD = Vector6(1.0, 1.0, 1.0, 0.1, 0.1, 0.1);  // power spectral density
 
 size_t numPoses, numLandmarks;
 
-using TimestampKeyMap = std::map<double, std::pair<Key, Key>>;  // todo: don't redefine this, use the one in Interpolator.h
-using CovarianceMap = std::map<Key, Matrix>;  // todo: don't redefine this, use the one in Interpolator.h
+using TimestampKeyMap = Interpolator<Pose3>::TimestampKeyMap;
+using CovarianceMap = Interpolator<Pose3>::CovarianceMap;
 
 std::tuple<NonlinearFactorGraph, Values, Values, TimestampKeyMap>
 optimize(const std::vector<std::pair<double, Vector6>>& inputs,
@@ -95,7 +95,6 @@ optimize(const std::vector<std::pair<double, Vector6>>& inputs,
 
   // initialize poses and velocities
   if (INIT_AT_GT) {
-    // numPoses = gtPoses.size();
     for (size_t poseID = 0; poseID < numPoses; poseID += poseInterval) {
       initialEstimate.insert(Symbol('x', poseID), gtPoses[poseID]);
     }
@@ -127,11 +126,13 @@ optimize(const std::vector<std::pair<double, Vector6>>& inputs,
   // tried to use Expression<StereoPoint2> but it does not work
   // auto prediction = StereoPoint2_(&project2_static, T_cv_, Point3_(landmark), Cal_);
 
-  // for localization, add all groundtruth landmark positions
+  // since we're doing localization, add all groundtruth landmark positions
+  // for SLAM, simply comment this section out. Maybe add a prior on the landmarks if unstable
   for (size_t landmarkID = 0; landmarkID < numLandmarks; ++landmarkID) {
     graph.add(NonlinearEquality<Point3>(Symbol('l', landmarkID), gtLandmarks[landmarkID]));
     initialEstimate.insert(Symbol('l', landmarkID), gtLandmarks[landmarkID]);
   }
+
   if (USE_MEASUREMENTS) {    
     // Add stereo measurement factors
     for (const auto& measTriple : measTripleVector) {
@@ -165,7 +166,6 @@ optimize(const std::vector<std::pair<double, Vector6>>& inputs,
 int main(int argc, char** argv) {
 
   // Parse command line arguments
-  
   auto parseBool = [](const std::string& s) {
     if (s == "true" || s == "1") return true;
     if (s == "false" || s == "0") return false;
@@ -279,20 +279,6 @@ int main(int argc, char** argv) {
     for (const auto& [key, value] : interpolatedValues) {
       results_all.insert(key, value);
     }
-
-    // // get the starting iterator
-    // auto it = interpolatedPosesAndVelocities.begin();
-    // for (size_t poseID = 0; poseID < numPoses_largest_multiple; ++poseID) {
-    //   if (poseID % POSE_INTERVAL_MEAS != 0) {
-    //     const auto& interpValue = it->second;
-    //     result_small.insert(Symbol('x', poseID), interpValue->pose);
-    //     result_small.insert(Symbol('v', poseID), interpValue->velocity);
-    //     if (INTERP_COVARIANCE) {
-    //       marginals.addCovariance(Symbol('x', poseID), interpValue->covariance);
-    //     }
-    //     it++;
-    //   }
-    // }
 
     std::cout << "Interpolated " << interpolatedValues.size() << " poses and velocities." << std::endl;
 

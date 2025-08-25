@@ -57,6 +57,20 @@ Vector6 v1_se3(0.2, -0.1, 0.4, 0.6, -0.5, 0.3);
 using symbol_shorthand::P;
 using symbol_shorthand::V;
 
+// Helper function to generate a diagonally dominant SPD covariance matrix
+Matrix randomCovariance(int n) {
+  // random symmetric matrix
+  Matrix R = Matrix::Random(n, n);
+  Matrix sym = (R + R.transpose()) / 2.0;
+
+  // make diagonally dominant
+  Matrix cov = sym;
+  for (int i = 0; i < n; i++) {
+    cov(i, i) = std::abs(sym.row(i).sum()) + 1.0;
+  }
+  return cov;
+}
+
 /* ************************************************************************* */
 TEST(Interpolator, Constructor) {
   // Test that constructors work for different types of poses
@@ -67,6 +81,73 @@ TEST(Interpolator, Constructor) {
   Interpolator<Pose3> interpolatorSE3(Q_se3);
 }
 
+/* ************************************************************************* */
+/* COVARIANCE TESTS
+ * Simple test to check that covariance is computed and has correct size.
+ */
+
+TEST(Interpolator, CovarianceP1) {
+  Interpolator<Point1> interpolator(Q_p1);
+  Matrix covariance;
+  // generate a random SPD covariance matrix for (p0, v0, p1, v1)
+  Matrix mainSolveMarginal = randomCovariance(4);
+  auto mainSolveMarginalPtr = std::make_shared<Matrix>(mainSolveMarginal);
+  (void) interpolator.interpolatePoseAndVelocity(
+      std::make_pair(p0_p1, v0_p1), 0.0, std::make_pair(p1_p1, v1_p1),
+      timestep, 0.05, nullptr, mainSolveMarginalPtr, &covariance);
+  CHECK(covariance.rows() == 2 && covariance.cols() == 2);
+}
+/* ************************************************************************* */
+TEST(Interpolator, CovarianceP2) {
+  Interpolator<Point2> interpolator(Q_p2);
+  Matrix covariance;
+  // generate a random SPD covariance matrix for (p0, v0, p1, v1)
+  Matrix mainSolveMarginal = randomCovariance(8);
+  auto mainSolveMarginalPtr = std::make_shared<Matrix>(mainSolveMarginal);
+  (void) interpolator.interpolatePoseAndVelocity(
+      std::make_pair(p0_p2, v0_p2), 0.0, std::make_pair(p1_p2, v1_p2),
+      timestep, 0.05, nullptr, mainSolveMarginalPtr, &covariance);
+  CHECK(covariance.rows() == 4 && covariance.cols() == 4);
+}
+/* ************************************************************************* */
+TEST(Interpolator, CovarianceP3) {
+  Interpolator<Point3> interpolator(Q_p3);
+  Matrix covariance;
+  // generate a random SPD covariance matrix for (p0, v0, p1, v1)
+  Matrix mainSolveMarginal = randomCovariance(12);
+  auto mainSolveMarginalPtr = std::make_shared<Matrix>(mainSolveMarginal);
+  (void) interpolator.interpolatePoseAndVelocity(
+      std::make_pair(p0_p3, v0_p3), 0.0, std::make_pair(p1_p3, v1_p3),
+      timestep, 0.05, nullptr, mainSolveMarginalPtr, &covariance);
+  CHECK(covariance.rows() == 6 && covariance.cols() == 6);
+}
+/* ************************************************************************* */
+TEST(Interpolator, CovarianceSE2) {
+  Interpolator<Pose2> interpolator(Q_se2);
+  Matrix covariance;
+  // generate a random SPD covariance matrix for (p0, v0, p1, v1)
+  Matrix mainSolveMarginal = randomCovariance(12);
+  auto mainSolveMarginalPtr = std::make_shared<Matrix>(mainSolveMarginal);
+  (void) interpolator.interpolatePoseAndVelocity(
+      std::make_pair(p0_se2, v0_se2), 0.0,
+      std::make_pair(p1_se2, v1_se2), timestep, 0.05, nullptr,
+      mainSolveMarginalPtr, &covariance);
+  CHECK(covariance.rows() == 6 && covariance.cols() == 6);
+}
+/* ************************************************************************* */
+TEST(Interpolator, CovarianceSE3) {
+  Interpolator<Pose3> interpolator(Q_se3);
+  Matrix covariance;
+  // generate a random SPD covariance matrix for (p0, v0, p1, v1)
+  Matrix mainSolveMarginal = randomCovariance(24);
+  auto mainSolveMarginalPtr = std::make_shared<Matrix>(mainSolveMarginal);
+  (void) interpolator.interpolatePoseAndVelocity(
+      std::make_pair(p0_se3, v0_se3), 0.0,
+      std::make_pair(p1_se3, v1_se3), timestep, 0.05, nullptr,
+      mainSolveMarginalPtr, &covariance);
+  CHECK(covariance.rows() == 12 && covariance.cols() == 12);
+}
+  
 /* ************************************************************************* */
 /* COMMON-VELOCITY TESTS
  * These tests check that if the velocities are the same at the two endpoints,
