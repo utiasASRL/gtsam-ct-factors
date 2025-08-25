@@ -78,6 +78,7 @@ class Interpolator {
   VectorN Q_psd_;  // Diagonal power Spectral Density for WNOA
   std::function<Matrix(double dt)> transitionFunction_;
   std::function<Matrix(double dt, const VectorN& Q_psd)> covarianceFunction_;
+  std::function<Matrix(double dt, const VectorN& Q_psd)> inverseCovarianceFunction_;
   // Todo: need to make the below two functions generalize to cases with no
   // velocities, e.g. WNOV
   std::function<Matrix(const std::pair<PoseType, VelocityType>&,
@@ -101,6 +102,7 @@ class Interpolator {
   Interpolator(
       const VectorN& Q_psd, std::function<Matrix(double dt)> transitionFunction,
       std::function<Matrix(double dt, const VectorN& Q_psd)> covarianceFunction,
+      std::function<Matrix(double dt, const VectorN& Q_psd)> inverseCovarianceFunction,
       std::function<Matrix(const std::pair<PoseType, VelocityType>&,
                            const std::pair<PoseType, VelocityType>&, double)>
           computeJacobianPrev,
@@ -110,6 +112,7 @@ class Interpolator {
       : Q_psd_(Q_psd),
         transitionFunction_(transitionFunction),
         covarianceFunction_(covarianceFunction),
+        inverseCovarianceFunction_(inverseCovarianceFunction),
         computeJacobianPrev_(computeJacobianPrev),
         computeJacobianNext_(computeJacobianNext) {}
 
@@ -117,6 +120,7 @@ class Interpolator {
   Interpolator(const VectorN& Q_psd)
       : Interpolator(Q_psd, WNOAMotionFactor<PoseType>::transitionFunction,
                      WNOAMotionFactor<PoseType>::buildWNOACovariance,
+                     WNOAMotionFactor<PoseType>::buildInverseWNOACovariance,
                      WNOAMotionFactor<PoseType>::computeJacobianPrev,
                      WNOAMotionFactor<PoseType>::computeJacobianNext) {}
 
@@ -401,13 +405,13 @@ class Interpolator {
     auto Phi_tau2 = transitionFunction_(t_kp1 - t_tau);
 
     // Construct Q
-    auto Q_12 = covarianceFunction_(dt, Q_psd_);
+    auto Q_12_inv = inverseCovarianceFunction_(dt, Q_psd_);
     auto Q_1tau = covarianceFunction_(t_tau - t_k, Q_psd_);
 
     // Eq. (11.41) in the book
     auto Lambda =
-        Phi_1tau - Q_1tau * Phi_tau2.transpose() * Q_12.inverse() * Phi_12;
-    auto Psi = Q_1tau * Phi_tau2.transpose() * Q_12.inverse();
+        Phi_1tau - Q_1tau * Phi_tau2.transpose() * Q_12_inv * Phi_12;
+    auto Psi = Q_1tau * Phi_tau2.transpose() * Q_12_inv;
 
     return std::make_pair(Lambda, Psi);
   }
@@ -417,12 +421,12 @@ class Interpolator {
                                  const std::pair<PoseType, VelocityType>& pvtau,
                                  double t_k, double t_kp1, double t_tau) const {
     // see Figure 5.4 in the paper
-    Matrix2N Q_tau_prev = covarianceFunction_(t_tau - t_k, Q_psd_);
-    Matrix2N Q_tau_next = covarianceFunction_(t_kp1 - t_tau, Q_psd_);
+    Matrix2N Q_tau_prev_inv = inverseCovarianceFunction_(t_tau - t_k, Q_psd_);
+    Matrix2N Q_tau_next_inv = inverseCovarianceFunction_(t_kp1 - t_tau, Q_psd_);
     Matrix2N E_tau = computeJacobianPrev_(pvk, pvtau, t_tau - t_k);
     Matrix2N F_tau = computeJacobianNext_(pvtau, pvkp1, t_kp1 - t_tau);
-    Matrix2N Sigma_inv = E_tau.transpose() * Q_tau_prev.inverse() * E_tau +
-                         F_tau.transpose() * Q_tau_next.inverse() * F_tau;
+    Matrix2N Sigma_inv = E_tau.transpose() * Q_tau_prev_inv * E_tau +
+                         F_tau.transpose() * Q_tau_next_inv * F_tau;
     Matrix2N Sigma = Sigma_inv.inverse();
     return Sigma;
   }
