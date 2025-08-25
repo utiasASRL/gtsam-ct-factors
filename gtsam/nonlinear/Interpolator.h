@@ -291,8 +291,17 @@ class Interpolator {
         (*H)[7] = right_jac_tau * dxidottau_dvarpikp1 +
                   dvarpitau_dxitau * dxitau_dvarpikp1;
       }
-
-      return std::make_pair(T_tau, varpi_tau);
+      
+      // Output pair
+      auto Tvarpi_tau = std::make_pair(T_tau, varpi_tau);
+      // compute covariance of the interpolated pose and velocity, if required
+      if (mainSolveMarginalMatrix) {
+        Matrix2N Sigma = computeConditionalCov(Tvarpi_k, Tvarpi_kp1, Tvarpi_tau, t_k, t_kp1, t_tau);
+        Eigen::Matrix<double, 2*dim, 4*dim> LambdaPsi;
+        LambdaPsi << Lambda, Psi;
+        *covarianceOut = Sigma + LambdaPsi * *mainSolveMarginalMatrix * LambdaPsi.transpose();
+      }
+      return Tvarpi_tau;
     }
   }
 

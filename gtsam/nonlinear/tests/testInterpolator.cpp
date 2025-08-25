@@ -592,7 +592,7 @@ TEST(Interpolator, PoseJacobians) {
 TEST(Interpolator, VelJacobians) {
   // Redefine poses along a smooth trajectory
   const Pose3 p0_se3 = Pose3::Expmap(Vector6(0.5, 0.0, 0.0, 0.0, 0.0, 0.0));
-  const Vector6 v0_se3(1, 0.0, 0.5, 0.1, 0.0, 0.0);
+  const Vector6 v0_se3(1, 0.1, 0.5, 0.1, 0.1, 0.1);
   // const Pose3 p1_se3 = p0_se3.expmap(timestep * v0_se3);
   const Vector6 v1_se3 = v0_se3;
   const Pose3 p2_se3 = p0_se3.expmap(2 * timestep * v0_se3);
@@ -614,30 +614,29 @@ TEST(Interpolator, VelJacobians) {
 
     tie(pose, vel) = interp.interpolatePoseAndVelocity(
         pair(p0, v0), 0.0, pair(p2, v2), 2 * timestep, timestep);
-
-    return vel - v1_se3;
+    Vector6 err = vel - v1_se3;
+    return err;
   };
 
   // Compute numerical derivatives
-  double delta = 1e-6;
+  double delta = 1e-5;  // delta
+  double tol = 1e-2;    // tolerance
   Matrix J_p0_num =
-      numericalDerivative41<Vector, Pose3, Vector6, Pose3, Vector6>(
+      numericalDerivative41<Vector6, Pose3, Vector6, Pose3, Vector6>(
           f, p0_se3, v0_se3, p2_se3, v2_se3, delta);
   Matrix J_v0_num =
-      numericalDerivative42<Vector, Pose3, Vector6, Pose3, Vector6>(
+      numericalDerivative42<Vector6, Pose3, Vector6, Pose3, Vector6>(
           f, p0_se3, v0_se3, p2_se3, v2_se3, delta);
   Matrix J_p2_num =
-      numericalDerivative43<Vector, Pose3, Vector6, Pose3, Vector6>(
+      numericalDerivative43<Vector6, Pose3, Vector6, Pose3, Vector6>(
           f, p0_se3, v0_se3, p2_se3, v2_se3, delta);
   Matrix J_v2_num =
-      numericalDerivative44<Vector, Pose3, Vector6, Pose3, Vector6>(
+      numericalDerivative44<Vector6, Pose3, Vector6, Pose3, Vector6>(
           f, p0_se3, v0_se3, p2_se3, v2_se3, delta);
-
-  double tol = 1e-2;
-  EXPECT(assert_equal( J_p0_num, H[4], tol));
-  EXPECT(assert_equal( J_v0_num, H[5], tol));
-  EXPECT(assert_equal( J_p2_num, H[6], tol));
-  EXPECT(assert_equal( J_v2_num, H[7], tol));
+  EXPECT(assert_equal(J_v0_num, H[5], tol));
+  EXPECT(assert_equal(J_p2_num, H[6], tol));
+  EXPECT(assert_equal(J_p0_num, H[4], tol));
+  EXPECT(assert_equal(J_v2_num, H[7], tol));
 }
 
 /* ************************************************************************* */
