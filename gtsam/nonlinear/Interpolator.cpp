@@ -69,7 +69,7 @@ Interpolator<PoseType>::interpolatePoseAndVelocity(
       }
       if(covarianceOut && mainSolveMarginalMatrix) {
         // if t_tau == t_k, then the covariance is the same as that of Tvarpi_k
-        *covarianceOut = *mainSolveMarginalMatrix.topLeftCorner(dim*2, dim*2);
+        *covarianceOut = mainSolveMarginalMatrix->topLeftCorner(dim*2, dim*2);
       }
       return Tvarpi_k;
       
@@ -96,7 +96,7 @@ Interpolator<PoseType>::interpolatePoseAndVelocity(
       }
       if(covarianceOut && mainSolveMarginalMatrix) {
         // if t_tau == t_kp1, then the covariance is the same as that of Tvarpi_kp1
-        *covarianceOut = *mainSolveMarginalMatrix.bottomRightCorner(dim*2, dim*2);
+        *covarianceOut = mainSolveMarginalMatrix->bottomRightCorner(dim*2, dim*2);
       }
       return Tvarpi_kp1;
 
