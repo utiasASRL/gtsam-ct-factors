@@ -8,11 +8,11 @@
 #include <gtsam/base/numericalDerivative.h>
 #include <gtsam/inference/Symbol.h>
 #include <gtsam/nonlinear/GaussNewtonOptimizer.h>
+#include <gtsam/nonlinear/Interpolator.h>
 #include <gtsam/nonlinear/NonlinearEquality.h>
 #include <gtsam/nonlinear/NonlinearFactorGraph.h>
 #include <gtsam/nonlinear/Values.h>
 #include <gtsam/nonlinear/WNOAFactor.h>
-#include <gtsam/nonlinear/Interpolator.h>
 
 using namespace std;
 using namespace gtsam;
@@ -23,7 +23,6 @@ static Vector3 Q_p3(0.9, 0.8, 0.7);
 static Vector3 Q_se2(0.9, 0.8, 0.7);
 static Vector6 Q_se3(0.9, 0.8, 0.7, 0.6, 0.5, 0.4);
 static double timestep = 0.1;
-
 
 /**** Point1 Test Variables*****/
 Point1 p0_p1(1.0);
@@ -70,11 +69,11 @@ TEST(Interpolator, Constructor) {
 
 /* ************************************************************************* */
 /* COMMON-VELOCITY TESTS
-    * These tests check that if the velocities are the same at the two endpoints,
-    * and the second pose is obtained by applying the common velocity to the first,
-    * then the interpolated velocity should be the same as well, and the pose
-    * should be linear interpolation in the tangent space.
-*/
+ * These tests check that if the velocities are the same at the two endpoints,
+ * and the second pose is obtained by applying the common velocity to the first,
+ * then the interpolated velocity should be the same as well, and the pose
+ * should be linear interpolation in the tangent space.
+ */
 
 TEST(Interpolator, InterpolatePoseAndVelocityP1) {
   Interpolator<Point1> interpolator(Q_p1);
@@ -156,23 +155,24 @@ TEST(Interpolator, InterpolatePoseAndVelocitySE3) {
 
 /* ************************************************************************* */
 /* EXTRAPOLATION TESTS
-    * These tests check that extrapolation works correctly when the query time is outside the interval.
-    * The extrapolated pose should be the same as if we applied the velocity to the last pose.
-*/
+ * These tests check that extrapolation works correctly when the query time is
+ * outside the interval. The extrapolated pose should be the same as if we
+ * applied the velocity to the last pose.
+ */
 TEST(Interpolator, ExtrapolatePoseAndVelocityP1) {
   Interpolator<Point1> interpolator(Q_p1);
   for (double ratio = 0.0; ratio <= 1.0; ratio += 0.1) {
     auto pvtau = interpolator.interpolatePoseAndVelocity(
-        std::make_pair(p0_p1, v0_p1), 0.0,
-        std::make_pair(p1_p1, v1_p1), timestep, -timestep * ratio);
+        std::make_pair(p0_p1, v0_p1), 0.0, std::make_pair(p1_p1, v1_p1),
+        timestep, -timestep * ratio);
     Point1 expectedPose = p0_p1 + (-ratio) * timestep * v0_p1;
     CHECK(assert_equal(expectedPose, pvtau.first));
     CHECK(assert_equal(v0_p1, pvtau.second));
-    
+
     pvtau = interpolator.interpolatePoseAndVelocity(
-        std::make_pair(p0_p1, v0_p1), -timestep,
-        std::make_pair(p1_p1, v1_p1), 0, timestep * ratio);
-    expectedPose = p1_p1 + (ratio) * timestep * v1_p1;
+        std::make_pair(p0_p1, v0_p1), -timestep, std::make_pair(p1_p1, v1_p1),
+        0, timestep * ratio);
+    expectedPose = p1_p1 + (ratio)*timestep * v1_p1;
     CHECK(assert_equal(expectedPose, pvtau.first));
     CHECK(assert_equal(v1_p1, pvtau.second));
   }
@@ -182,16 +182,16 @@ TEST(Interpolator, ExtrapolatePoseAndVelocityP2) {
   Interpolator<Point2> interpolator(Q_p2);
   for (double ratio = 0.0; ratio <= 1.0; ratio += 0.1) {
     auto pvtau = interpolator.interpolatePoseAndVelocity(
-        std::make_pair(p0_p2, v0_p2), 0.0,
-        std::make_pair(p1_p2, v1_p2), timestep, -timestep * ratio);
+        std::make_pair(p0_p2, v0_p2), 0.0, std::make_pair(p1_p2, v1_p2),
+        timestep, -timestep * ratio);
     Point2 expectedPose = p0_p2 + (-ratio) * timestep * v0_p2;
     CHECK(assert_equal(expectedPose, pvtau.first));
     CHECK(assert_equal(v0_p2, pvtau.second));
 
     pvtau = interpolator.interpolatePoseAndVelocity(
-        std::make_pair(p0_p2, v0_p2), -timestep,
-        std::make_pair(p1_p2, v1_p2), 0, timestep * ratio);
-    expectedPose = p1_p2 + (ratio) * timestep * v1_p2;
+        std::make_pair(p0_p2, v0_p2), -timestep, std::make_pair(p1_p2, v1_p2),
+        0, timestep * ratio);
+    expectedPose = p1_p2 + (ratio)*timestep * v1_p2;
     CHECK(assert_equal(expectedPose, pvtau.first));
     CHECK(assert_equal(v1_p2, pvtau.second));
   }
@@ -201,16 +201,16 @@ TEST(Interpolator, ExtrapolatePoseAndVelocityP3) {
   Interpolator<Point3> interpolator(Q_p3);
   for (double ratio = 0.0; ratio <= 1.0; ratio += 0.1) {
     auto pvtau = interpolator.interpolatePoseAndVelocity(
-        std::make_pair(p0_p3, v0_p3), 0.0,
-        std::make_pair(p1_p3, v1_p3), timestep, -timestep * ratio);
+        std::make_pair(p0_p3, v0_p3), 0.0, std::make_pair(p1_p3, v1_p3),
+        timestep, -timestep * ratio);
     Point3 expectedPose = p0_p3 + (-ratio) * timestep * v0_p3;
     CHECK(assert_equal(expectedPose, pvtau.first));
     CHECK(assert_equal(v0_p3, pvtau.second));
 
     pvtau = interpolator.interpolatePoseAndVelocity(
-        std::make_pair(p0_p3, v0_p3), -timestep,
-        std::make_pair(p1_p3, v1_p3), 0, timestep * ratio);
-    expectedPose = p1_p3 + (ratio) * timestep * v1_p3;
+        std::make_pair(p0_p3, v0_p3), -timestep, std::make_pair(p1_p3, v1_p3),
+        0, timestep * ratio);
+    expectedPose = p1_p3 + (ratio)*timestep * v1_p3;
     CHECK(assert_equal(expectedPose, pvtau.first));
     CHECK(assert_equal(v1_p3, pvtau.second));
   }
@@ -221,8 +221,8 @@ TEST(Interpolator, ExtrapolatePoseAndVelocitySE2) {
   Interpolator<Pose2> interpolator(Q_se2);
   for (double ratio = 0.0; ratio <= 1.0; ratio += 0.1) {
     auto pvtau = interpolator.interpolatePoseAndVelocity(
-        std::make_pair(p0_se2, v0_se2), 0.0,
-        std::make_pair(p1_se2, v1_se2), timestep, -timestep * ratio);
+        std::make_pair(p0_se2, v0_se2), 0.0, std::make_pair(p1_se2, v1_se2),
+        timestep, -timestep * ratio);
     Pose2 expectedPose = p0_se2.expmap(-ratio * timestep * v0_se2);
     CHECK(assert_equal(expectedPose, pvtau.first));
     CHECK(assert_equal(v0_se2, pvtau.second));
@@ -241,8 +241,8 @@ TEST(Interpolator, ExtrapolatePoseAndVelocitySE3) {
   Interpolator<Pose3> interpolator(Q_se3);
   for (double ratio = 0.0; ratio <= 1.0; ratio += 0.1) {
     auto pvtau = interpolator.interpolatePoseAndVelocity(
-        std::make_pair(p0_se3, v0_se3), 0.0,
-        std::make_pair(p1_se3, v1_se3), timestep, -timestep * ratio);
+        std::make_pair(p0_se3, v0_se3), 0.0, std::make_pair(p1_se3, v1_se3),
+        timestep, -timestep * ratio);
     Pose3 expectedPose = p0_se3.expmap(-ratio * timestep * v0_se3);
     CHECK(assert_equal(expectedPose, pvtau.first));
     CHECK(assert_equal(v0_se3, pvtau.second));
@@ -258,19 +258,20 @@ TEST(Interpolator, ExtrapolatePoseAndVelocitySE3) {
 
 /* ************************************************************************* */
 /* FORWARD-BACKWARD TESTS
-    * These tests check that interpolating forward is the same as interpolating backward with negative velocities.
-    * Should be exact for vector spaces (Point1, Point2, Point3), and approximate for Lie groups (Pose2, Pose3).
+ * These tests check that interpolating forward is the same as interpolating
+ * backward with negative velocities. Should be exact for vector spaces (Point1,
+ * Point2, Point3), and approximate for Lie groups (Pose2, Pose3).
  */
 TEST(Interpolator, ForwardBackwardP1) {
   Interpolator<Point1> interpolator(Q_p1);
   for (double ratio = 0.0; ratio <= 1.0; ratio += 0.1) {
     auto pvtau1 = interpolator.interpolatePoseAndVelocity(
-        std::make_pair(p0_p1, v0_p1), 0.0,
-        std::make_pair(p1_p1, v1_p1), timestep, timestep * ratio);
+        std::make_pair(p0_p1, v0_p1), 0.0, std::make_pair(p1_p1, v1_p1),
+        timestep, timestep * ratio);
     // swap poses and velocities, make velocities negative
     auto pvtau2 = interpolator.interpolatePoseAndVelocity(
-        std::make_pair(p1_p1, -v1_p1), 0.0,
-        std::make_pair(p0_p1, -v0_p1), timestep, timestep * (1 - ratio));
+        std::make_pair(p1_p1, -v1_p1), 0.0, std::make_pair(p0_p1, -v0_p1),
+        timestep, timestep * (1 - ratio));
     double tol = 1e-8;
     CHECK(assert_equal(pvtau1.first, pvtau2.first, tol));
     CHECK(assert_equal(pvtau1.second, (-pvtau2.second).eval(), tol));
@@ -281,12 +282,12 @@ TEST(Interpolator, ForwardBackwardP2) {
   Interpolator<Point2> interpolator(Q_p2);
   for (double ratio = 0.0; ratio <= 1.0; ratio += 0.1) {
     auto pvtau1 = interpolator.interpolatePoseAndVelocity(
-        std::make_pair(p0_p2, v0_p2), 0.0,
-        std::make_pair(p1_p2, v1_p2), timestep, timestep * ratio);
+        std::make_pair(p0_p2, v0_p2), 0.0, std::make_pair(p1_p2, v1_p2),
+        timestep, timestep * ratio);
     // swap poses and velocities, make velocities negative
     auto pvtau2 = interpolator.interpolatePoseAndVelocity(
-        std::make_pair(p1_p2, -v1_p2), 0.0,
-        std::make_pair(p0_p2, -v0_p2), timestep, timestep * (1 - ratio));
+        std::make_pair(p1_p2, -v1_p2), 0.0, std::make_pair(p0_p2, -v0_p2),
+        timestep, timestep * (1 - ratio));
     double tol = 1e-8;
     CHECK(assert_equal(pvtau1.first, pvtau2.first, tol));
     CHECK(assert_equal(pvtau1.second, (-pvtau2.second).eval(), tol));
@@ -297,12 +298,12 @@ TEST(Interpolator, ForwardBackwardP3) {
   Interpolator<Point3> interpolator(Q_p3);
   for (double ratio = 0.0; ratio <= 1.0; ratio += 0.1) {
     auto pvtau1 = interpolator.interpolatePoseAndVelocity(
-        std::make_pair(p0_p3, v0_p3), 0.0,
-        std::make_pair(p1_p3, v1_p3), timestep, timestep * ratio);
+        std::make_pair(p0_p3, v0_p3), 0.0, std::make_pair(p1_p3, v1_p3),
+        timestep, timestep * ratio);
     // swap poses and velocities, make velocities negative
     auto pvtau2 = interpolator.interpolatePoseAndVelocity(
-        std::make_pair(p1_p3, -v1_p3), 0.0,
-        std::make_pair(p0_p3, -v0_p3), timestep, timestep * (1 - ratio));
+        std::make_pair(p1_p3, -v1_p3), 0.0, std::make_pair(p0_p3, -v0_p3),
+        timestep, timestep * (1 - ratio));
     double tol = 1e-8;
     CHECK(assert_equal(pvtau1.first, pvtau2.first, tol));
     CHECK(assert_equal(pvtau1.second, (-pvtau2.second).eval(), tol));
@@ -313,12 +314,12 @@ TEST(Interpolator, ForwardBackwardSE2) {
   Interpolator<Pose2> interpolator(Q_se2);
   for (double ratio = 0.0; ratio <= 1.0; ratio += 0.1) {
     auto pvtau1 = interpolator.interpolatePoseAndVelocity(
-        std::make_pair(p0_se2, v0_se2), 0.0,
-        std::make_pair(p1_se2, v1_se2), timestep, timestep * ratio);
+        std::make_pair(p0_se2, v0_se2), 0.0, std::make_pair(p1_se2, v1_se2),
+        timestep, timestep * ratio);
     // swap poses and velocities, make velocities negative
     auto pvtau2 = interpolator.interpolatePoseAndVelocity(
-        std::make_pair(p1_se2, -v1_se2), 0.0,
-        std::make_pair(p0_se2, -v0_se2), timestep, timestep * (1 - ratio));
+        std::make_pair(p1_se2, -v1_se2), 0.0, std::make_pair(p0_se2, -v0_se2),
+        timestep, timestep * (1 - ratio));
     double tol = 1e-3;  // larger tolerance since Lie groups have approximations
     CHECK(assert_equal(pvtau1.first, pvtau2.first, tol));
     CHECK(assert_equal(pvtau1.second, (-pvtau2.second).eval(), tol));
@@ -329,12 +330,12 @@ TEST(Interpolator, ForwardBackwardSE3) {
   Interpolator<Pose3> interpolator(Q_se3);
   for (double ratio = 0.0; ratio <= 1.0; ratio += 0.1) {
     auto pvtau1 = interpolator.interpolatePoseAndVelocity(
-        std::make_pair(p0_se3, v0_se3), 0.0,
-        std::make_pair(p1_se3, v1_se3), timestep, timestep * ratio);
+        std::make_pair(p0_se3, v0_se3), 0.0, std::make_pair(p1_se3, v1_se3),
+        timestep, timestep * ratio);
     // swap poses and velocities, make velocities negative
     auto pvtau2 = interpolator.interpolatePoseAndVelocity(
-        std::make_pair(p1_se3, -v1_se3), 0.0,
-        std::make_pair(p0_se3, -v0_se3), timestep, timestep * (1 - ratio));
+        std::make_pair(p1_se3, -v1_se3), 0.0, std::make_pair(p0_se3, -v0_se3),
+        timestep, timestep * (1 - ratio));
     double tol = 1e-2;  // larger tolerance since Lie groups have approximations
     CHECK(assert_equal(pvtau1.first, pvtau2.first, tol));
     CHECK(assert_equal(pvtau1.second, (-pvtau2.second).eval(), tol));
@@ -343,21 +344,22 @@ TEST(Interpolator, ForwardBackwardSE3) {
 
 /* ************************************************************************* */
 /* FRAME TRANSFORMATION TESTS
-    * These tests check that the interpolator is agnostic to the frame of reference.
-    * The test is done by transforming the poses and velocities to a different frame and checking if the interpolation is consistent.
-    * Note: we separate rotation and translation in SE2 and SE3 to avoid coupling effects.
+ * These tests check that the interpolator is agnostic to the frame of
+ * reference. The test is done by transforming the poses and velocities to a
+ * different frame and checking if the interpolation is consistent. Note: we
+ * separate rotation and translation in SE2 and SE3 to avoid coupling effects.
  */
 TEST(Interpolator, FrameTranslationP1) {
   Point1 T_frame(0.5);  // simple translation
   Point1 p0_transformed = p0_p1 + T_frame;
   Point1 p1_transformed = p1_p1 + T_frame;
   Interpolator<Point1> interpolator(Q_p1);
-  
+
   for (double ratio = 0.0; ratio <= 1.0; ratio += 0.1) {
     // pvtau1: Interpolate in the original frame
     auto pvtau1 = interpolator.interpolatePoseAndVelocity(
-        std::make_pair(p0_p1, v0_p1), 0.0,
-        std::make_pair(p1_p1, v1_p1), timestep, timestep * ratio);
+        std::make_pair(p0_p1, v0_p1), 0.0, std::make_pair(p1_p1, v1_p1),
+        timestep, timestep * ratio);
 
     // pvtau2: Interpolate in the transformed frame
     auto pvtau2 = interpolator.interpolatePoseAndVelocity(
@@ -366,7 +368,8 @@ TEST(Interpolator, FrameTranslationP1) {
 
     // Transform pvtau2 back to the original frame
     Point1 pvtau2_pose = pvtau2.first - T_frame;
-    Vector1 pvtau2_velocity = pvtau2.second; // body-frame velocity is invariant
+    Vector1 pvtau2_velocity =
+        pvtau2.second;  // body-frame velocity is invariant
 
     double tol = 1e-8;  // should be exact for Point1
     CHECK(assert_equal(pvtau1.first, pvtau2_pose, tol));
@@ -379,23 +382,24 @@ TEST(Interpolator, FrameTranslationP2) {
   Point2 p0_transformed = p0_p2 + T_frame;
   Point2 p1_transformed = p1_p2 + T_frame;
   Interpolator<Point2> interpolator(Q_p2);
-    for (double ratio = 0.0; ratio <= 1.0; ratio += 0.1) {
-        // pvtau1: Interpolate in the original frame
-        auto pvtau1 = interpolator.interpolatePoseAndVelocity(
-            std::make_pair(p0_p2, v0_p2), 0.0,
-            std::make_pair(p1_p2, v1_p2), timestep, timestep * ratio);
-    
-        // pvtau2: Interpolate in the transformed frame
-        auto pvtau2 = interpolator.interpolatePoseAndVelocity(
-            std::make_pair(p0_transformed, v0_p2), 0.0,
-            std::make_pair(p1_transformed, v1_p2), timestep, timestep * ratio);
-        // Transform pvtau2 back to the original frame
-        Point2 pvtau2_pose = pvtau2.first - T_frame;
-        Vector2 pvtau2_velocity = pvtau2.second; // body-frame velocity is invariant
-        double tol = 1e-8;  // should be exact for Point2
-        CHECK(assert_equal(pvtau1.first, pvtau2_pose, tol));
-        CHECK(assert_equal(pvtau1.second, pvtau2_velocity, tol));
-    }
+  for (double ratio = 0.0; ratio <= 1.0; ratio += 0.1) {
+    // pvtau1: Interpolate in the original frame
+    auto pvtau1 = interpolator.interpolatePoseAndVelocity(
+        std::make_pair(p0_p2, v0_p2), 0.0, std::make_pair(p1_p2, v1_p2),
+        timestep, timestep * ratio);
+
+    // pvtau2: Interpolate in the transformed frame
+    auto pvtau2 = interpolator.interpolatePoseAndVelocity(
+        std::make_pair(p0_transformed, v0_p2), 0.0,
+        std::make_pair(p1_transformed, v1_p2), timestep, timestep * ratio);
+    // Transform pvtau2 back to the original frame
+    Point2 pvtau2_pose = pvtau2.first - T_frame;
+    Vector2 pvtau2_velocity =
+        pvtau2.second;  // body-frame velocity is invariant
+    double tol = 1e-8;  // should be exact for Point2
+    CHECK(assert_equal(pvtau1.first, pvtau2_pose, tol));
+    CHECK(assert_equal(pvtau1.second, pvtau2_velocity, tol));
+  }
 }
 /* ************************************************************************* */
 TEST(Interpolator, FrameTranslationP3) {
@@ -403,22 +407,23 @@ TEST(Interpolator, FrameTranslationP3) {
   Point3 p0_transformed = p0_p3 + T_frame;
   Point3 p1_transformed = p1_p3 + T_frame;
   Interpolator<Point3> interpolator(Q_p3);
-    for (double ratio = 0.0; ratio <= 1.0; ratio += 0.1) {
-        // pvtau1: Interpolate in the original frame
-        auto pvtau1 = interpolator.interpolatePoseAndVelocity(
-            std::make_pair(p0_p3, v0_p3), 0.0,
-            std::make_pair(p1_p3, v1_p3), timestep, timestep * ratio);
-        // pvtau2: Interpolate in the transformed frame
-        auto pvtau2 = interpolator.interpolatePoseAndVelocity(
-            std::make_pair(p0_transformed, v0_p3), 0.0,
-            std::make_pair(p1_transformed, v1_p3), timestep, timestep * ratio);
-        // Transform pvtau2 back to the original frame
-        Point3 pvtau2_pose = pvtau2.first - T_frame;
-        Vector3 pvtau2_velocity = pvtau2.second; // body-frame velocity is invariant
-        double tol = 1e-8;  // should be exact for Point3
-        CHECK(assert_equal(pvtau1.first, pvtau2_pose, tol));
-        CHECK(assert_equal(pvtau1.second, pvtau2_velocity, tol));
-    }
+  for (double ratio = 0.0; ratio <= 1.0; ratio += 0.1) {
+    // pvtau1: Interpolate in the original frame
+    auto pvtau1 = interpolator.interpolatePoseAndVelocity(
+        std::make_pair(p0_p3, v0_p3), 0.0, std::make_pair(p1_p3, v1_p3),
+        timestep, timestep * ratio);
+    // pvtau2: Interpolate in the transformed frame
+    auto pvtau2 = interpolator.interpolatePoseAndVelocity(
+        std::make_pair(p0_transformed, v0_p3), 0.0,
+        std::make_pair(p1_transformed, v1_p3), timestep, timestep * ratio);
+    // Transform pvtau2 back to the original frame
+    Point3 pvtau2_pose = pvtau2.first - T_frame;
+    Vector3 pvtau2_velocity =
+        pvtau2.second;  // body-frame velocity is invariant
+    double tol = 1e-8;  // should be exact for Point3
+    CHECK(assert_equal(pvtau1.first, pvtau2_pose, tol));
+    CHECK(assert_equal(pvtau1.second, pvtau2_velocity, tol));
+  }
 }
 /* ************************************************************************* */
 TEST(Interpolator, FrameTranslationSE2) {
@@ -426,22 +431,23 @@ TEST(Interpolator, FrameTranslationSE2) {
   Pose2 p0_transformed = Pose2(Rot2::Identity(), T_frame).compose(p0_se2);
   Pose2 p1_transformed = Pose2(Rot2::Identity(), T_frame).compose(p1_se2);
   Interpolator<Pose2> interpolator(Q_se2);
-    for (double ratio = 0.0; ratio <= 1.0; ratio += 0.1) {
-        // pvtau1: Interpolate in the original frame
-        auto pvtau1 = interpolator.interpolatePoseAndVelocity(
-            std::make_pair(p0_se2, v0_se2), 0.0,
-            std::make_pair(p1_se2, v1_se2), timestep, timestep * ratio);
-        // pvtau2: Interpolate in the transformed frame
-        auto pvtau2 = interpolator.interpolatePoseAndVelocity(
-            std::make_pair(p0_transformed, v0_se2), 0.0,
-            std::make_pair(p1_transformed, v1_se2), timestep, timestep * ratio);
-        // Transform pvtau2 back to the original frame
-        Pose2 pvtau2_pose = Pose2(Rot2::Identity(), -T_frame).compose(pvtau2.first);
-        Vector3 pvtau2_velocity = pvtau2.second; // body-frame velocity is invariant
-        double tol = 1e-8;  // should be exact for SE(2) translation
-        CHECK(assert_equal(pvtau1.first, pvtau2_pose, tol));
-        CHECK(assert_equal(pvtau1.second, pvtau2_velocity, tol));
-    }
+  for (double ratio = 0.0; ratio <= 1.0; ratio += 0.1) {
+    // pvtau1: Interpolate in the original frame
+    auto pvtau1 = interpolator.interpolatePoseAndVelocity(
+        std::make_pair(p0_se2, v0_se2), 0.0, std::make_pair(p1_se2, v1_se2),
+        timestep, timestep * ratio);
+    // pvtau2: Interpolate in the transformed frame
+    auto pvtau2 = interpolator.interpolatePoseAndVelocity(
+        std::make_pair(p0_transformed, v0_se2), 0.0,
+        std::make_pair(p1_transformed, v1_se2), timestep, timestep * ratio);
+    // Transform pvtau2 back to the original frame
+    Pose2 pvtau2_pose = Pose2(Rot2::Identity(), -T_frame).compose(pvtau2.first);
+    Vector3 pvtau2_velocity =
+        pvtau2.second;  // body-frame velocity is invariant
+    double tol = 1e-8;  // should be exact for SE(2) translation
+    CHECK(assert_equal(pvtau1.first, pvtau2_pose, tol));
+    CHECK(assert_equal(pvtau1.second, pvtau2_velocity, tol));
+  }
 }
 /* ************************************************************************* */
 TEST(Interpolator, FrameTranslationSE3) {
@@ -449,22 +455,23 @@ TEST(Interpolator, FrameTranslationSE3) {
   Pose3 p0_transformed = Pose3(Rot3::Identity(), T_frame).compose(p0_se3);
   Pose3 p1_transformed = Pose3(Rot3::Identity(), T_frame).compose(p1_se3);
   Interpolator<Pose3> interpolator(Q_se3);
-    for (double ratio = 0.0; ratio <= 1.0; ratio += 0.1) {
-        // pvtau1: Interpolate in the original frame
-        auto pvtau1 = interpolator.interpolatePoseAndVelocity(
-            std::make_pair(p0_se3, v0_se3), 0.0,
-            std::make_pair(p1_se3, v1_se3), timestep, timestep * ratio);
-        // pvtau2: Interpolate in the transformed frame
-        auto pvtau2 = interpolator.interpolatePoseAndVelocity(
-            std::make_pair(p0_transformed, v0_se3), 0.0,
-            std::make_pair(p1_transformed, v1_se3), timestep, timestep * ratio);
-        // Transform pvtau2 back to the original frame
-        Pose3 pvtau2_pose = Pose3(Rot3::Identity(), -T_frame).compose(pvtau2.first);
-        Vector6 pvtau2_velocity = pvtau2.second; // body-frame velocity is invariant
-        double tol = 1e-8;  // should be exact for SE(3) translation
-        CHECK(assert_equal(pvtau1.first, pvtau2_pose, tol));
-        CHECK(assert_equal(pvtau1.second, pvtau2_velocity, tol));
-    }
+  for (double ratio = 0.0; ratio <= 1.0; ratio += 0.1) {
+    // pvtau1: Interpolate in the original frame
+    auto pvtau1 = interpolator.interpolatePoseAndVelocity(
+        std::make_pair(p0_se3, v0_se3), 0.0, std::make_pair(p1_se3, v1_se3),
+        timestep, timestep * ratio);
+    // pvtau2: Interpolate in the transformed frame
+    auto pvtau2 = interpolator.interpolatePoseAndVelocity(
+        std::make_pair(p0_transformed, v0_se3), 0.0,
+        std::make_pair(p1_transformed, v1_se3), timestep, timestep * ratio);
+    // Transform pvtau2 back to the original frame
+    Pose3 pvtau2_pose = Pose3(Rot3::Identity(), -T_frame).compose(pvtau2.first);
+    Vector6 pvtau2_velocity =
+        pvtau2.second;  // body-frame velocity is invariant
+    double tol = 1e-8;  // should be exact for SE(3) translation
+    CHECK(assert_equal(pvtau1.first, pvtau2_pose, tol));
+    CHECK(assert_equal(pvtau1.second, pvtau2_velocity, tol));
+  }
 }
 /* ************************************************************************* */
 TEST(Interpolator, FrameRotationSE2) {
@@ -475,25 +482,26 @@ TEST(Interpolator, FrameRotationSE2) {
   // Use an isotropic noise to avoid a non-isotropic noise in the new frame
   Interpolator<Pose2> interpolator(Q_se2_isotropic);
 
-    for (double ratio = 0.0; ratio <= 1.0; ratio += 0.1) {
-        // pvtau1: Interpolate in the original frame
-        auto pvtau1 = interpolator.interpolatePoseAndVelocity(
-            std::make_pair(p0_se2, v0_se2), 0.0,
-            std::make_pair(p1_se2, v1_se2), timestep, timestep * ratio);
+  for (double ratio = 0.0; ratio <= 1.0; ratio += 0.1) {
+    // pvtau1: Interpolate in the original frame
+    auto pvtau1 = interpolator.interpolatePoseAndVelocity(
+        std::make_pair(p0_se2, v0_se2), 0.0, std::make_pair(p1_se2, v1_se2),
+        timestep, timestep * ratio);
 
-        // pvtau2: Interpolate in the transformed frame
-        auto pvtau2 = interpolator.interpolatePoseAndVelocity(
-            std::make_pair(p0_transformed, v0_se2), 0.0,
-            std::make_pair(p1_transformed, v1_se2), timestep, timestep * ratio);
+    // pvtau2: Interpolate in the transformed frame
+    auto pvtau2 = interpolator.interpolatePoseAndVelocity(
+        std::make_pair(p0_transformed, v0_se2), 0.0,
+        std::make_pair(p1_transformed, v1_se2), timestep, timestep * ratio);
 
-        // Transform pvtau2 back to the original frame
-        Pose2 pvtau2_pose = T_frame.inverse().compose(pvtau2.first);
-        Vector3 pvtau2_velocity = pvtau2.second; // body-frame velocity is invariant
+    // Transform pvtau2 back to the original frame
+    Pose2 pvtau2_pose = T_frame.inverse().compose(pvtau2.first);
+    Vector3 pvtau2_velocity =
+        pvtau2.second;  // body-frame velocity is invariant
 
-        double tol = 1e-3;  // larger tolerance since Lie groups have approximations
-        CHECK(assert_equal(pvtau1.first, pvtau2_pose, tol));
-        CHECK(assert_equal(pvtau1.second, pvtau2_velocity, tol));
-    }
+    double tol = 1e-3;  // larger tolerance since Lie groups have approximations
+    CHECK(assert_equal(pvtau1.first, pvtau2_pose, tol));
+    CHECK(assert_equal(pvtau1.second, pvtau2_velocity, tol));
+  }
 }
 
 /* ************************************************************************* */
@@ -504,29 +512,138 @@ TEST(Interpolator, FrameRotationSE3) {
   Vector6 Q_se3_isotropic = Vector6::Ones() * 0.8;  // isotropic noise for SE(3)
   // Use an isotropic noise to avoid a non-isotropic noise in the new frame
   Interpolator<Pose3> interpolator(Q_se3_isotropic);
-    for (double ratio = 0.0; ratio <= 1.0; ratio += 0.1) {
-        // pvtau1: Interpolate in the original frame
-        auto pvtau1 = interpolator.interpolatePoseAndVelocity(
-            std::make_pair(p0_se3, v0_se3), 0.0,
-            std::make_pair(p1_se3, v1_se3), timestep, timestep * ratio);
+  for (double ratio = 0.0; ratio <= 1.0; ratio += 0.1) {
+    // pvtau1: Interpolate in the original frame
+    auto pvtau1 = interpolator.interpolatePoseAndVelocity(
+        std::make_pair(p0_se3, v0_se3), 0.0, std::make_pair(p1_se3, v1_se3),
+        timestep, timestep * ratio);
 
-        // pvtau2: Interpolate in the transformed frame
-        auto pvtau2 = interpolator.interpolatePoseAndVelocity(
-            std::make_pair(p0_transformed, v0_se3), 0.0,
-            std::make_pair(p1_transformed, v1_se3), timestep, timestep * ratio);
-        // Transform pvtau2 back to the original frame
-        Pose3 pvtau2_pose = T_frame.inverse().compose(pvtau2.first);
-        Vector6 pvtau2_velocity = pvtau2.second; // body-frame velocity is invariant
-        double tol = 1e-2;  // larger tolerance since Lie groups have approximations
-        CHECK(assert_equal(pvtau1.first, pvtau2_pose, tol));
-        CHECK(assert_equal(pvtau1.second, pvtau2_velocity, tol));
-    }
+    // pvtau2: Interpolate in the transformed frame
+    auto pvtau2 = interpolator.interpolatePoseAndVelocity(
+        std::make_pair(p0_transformed, v0_se3), 0.0,
+        std::make_pair(p1_transformed, v1_se3), timestep, timestep * ratio);
+    // Transform pvtau2 back to the original frame
+    Pose3 pvtau2_pose = T_frame.inverse().compose(pvtau2.first);
+    Vector6 pvtau2_velocity =
+        pvtau2.second;  // body-frame velocity is invariant
+    double tol = 1e-2;  // larger tolerance since Lie groups have approximations
+    CHECK(assert_equal(pvtau1.first, pvtau2_pose, tol));
+    CHECK(assert_equal(pvtau1.second, pvtau2_velocity, tol));
+  }
+}
+
+/* *************************************************************************
+ */
+
+TEST(Interpolator, PoseJacobians) {
+  // Redefine poses along a smooth trajectory
+  const Pose3 p0_se3 = Pose3::Expmap(Vector6(0.5, 0.0, 0.0, 0.0, 0.0, 0.0));
+  const Vector6 v0_se3(1, 0.0, 0.5, 0.1, 0.0, 0.0);
+  const Pose3 p1_se3 = p0_se3.expmap(timestep * v0_se3);
+  // const Vector6 v1_se3 = v0_se3;
+  const Pose3 p2_se3 = p0_se3.expmap(2 * timestep * v0_se3);
+  const Vector6 v2_se3 = v0_se3;
+
+  // Create Interpolator
+  Interpolator<Pose3> interp(Vector6::Ones());
+
+  // Get analytic Jacobians
+  vector<Matrix> H(8);
+  auto [pose_est, vel_est] = interp.interpolatePoseAndVelocity(
+      pair(p0_se3, v0_se3), 0.0, pair(p2_se3, v2_se3), 2 * timestep, timestep,
+      &H);
+
+  // define lambda function for derivatives
+  auto f = [&](auto& p0, auto& v0, auto& p2, auto& v2) {
+    Pose3 pose;
+    Vector6 vel;
+
+    tie(pose, vel) = interp.interpolatePoseAndVelocity(
+        pair(p0, v0), 0.0, pair(p2, v2), 2 * timestep, timestep);
+
+    return p1_se3.logmap(pose);
+  };
+
+  // Compute numerical derivatives
+  double delta = 1e-6;
+  Matrix J_p0_num =
+      numericalDerivative41<Vector, Pose3, Vector6, Pose3, Vector6>(
+          f, p0_se3, v0_se3, p2_se3, v2_se3, delta);
+  Matrix J_v0_num =
+      numericalDerivative42<Vector, Pose3, Vector6, Pose3, Vector6>(
+          f, p0_se3, v0_se3, p2_se3, v2_se3, delta);
+  Matrix J_p2_num =
+      numericalDerivative43<Vector, Pose3, Vector6, Pose3, Vector6>(
+          f, p0_se3, v0_se3, p2_se3, v2_se3, delta);
+  Matrix J_v2_num =
+      numericalDerivative44<Vector, Pose3, Vector6, Pose3, Vector6>(
+          f, p0_se3, v0_se3, p2_se3, v2_se3, delta);
+
+  double tol = 1e-3;
+  EXPECT(assert_equal(J_p0_num,H[0], tol));
+  EXPECT(assert_equal(J_v0_num,H[1], tol));
+  EXPECT(assert_equal(J_p2_num,H[2], tol));
+  EXPECT(assert_equal(J_v2_num,H[3], tol));
+}
+
+/* *************************************************************************
+ */
+
+TEST(Interpolator, VelJacobians) {
+  // Redefine poses along a smooth trajectory
+  const Pose3 p0_se3 = Pose3::Expmap(Vector6(0.5, 0.0, 0.0, 0.0, 0.0, 0.0));
+  const Vector6 v0_se3(1, 0.0, 0.5, 0.1, 0.0, 0.0);
+  // const Pose3 p1_se3 = p0_se3.expmap(timestep * v0_se3);
+  const Vector6 v1_se3 = v0_se3;
+  const Pose3 p2_se3 = p0_se3.expmap(2 * timestep * v0_se3);
+  const Vector6 v2_se3 = v0_se3;
+
+  // Create Interpolator
+  Interpolator<Pose3> interp(Vector6::Ones());
+
+  // Get analytic Jacobians
+  vector<Matrix> H(8);
+  auto [pose_est, vel_est] = interp.interpolatePoseAndVelocity(
+      pair(p0_se3, v0_se3), 0.0, pair(p2_se3, v2_se3), 2 * timestep, timestep,
+      &H);
+
+  // define lambda function for derivatives
+  auto f = [&](auto& p0, auto& v0, auto& p2, auto& v2) {
+    Pose3 pose;
+    Vector6 vel;
+
+    tie(pose, vel) = interp.interpolatePoseAndVelocity(
+        pair(p0, v0), 0.0, pair(p2, v2), 2 * timestep, timestep);
+
+    return vel - v1_se3;
+  };
+
+  // Compute numerical derivatives
+  double delta = 1e-6;
+  Matrix J_p0_num =
+      numericalDerivative41<Vector, Pose3, Vector6, Pose3, Vector6>(
+          f, p0_se3, v0_se3, p2_se3, v2_se3, delta);
+  Matrix J_v0_num =
+      numericalDerivative42<Vector, Pose3, Vector6, Pose3, Vector6>(
+          f, p0_se3, v0_se3, p2_se3, v2_se3, delta);
+  Matrix J_p2_num =
+      numericalDerivative43<Vector, Pose3, Vector6, Pose3, Vector6>(
+          f, p0_se3, v0_se3, p2_se3, v2_se3, delta);
+  Matrix J_v2_num =
+      numericalDerivative44<Vector, Pose3, Vector6, Pose3, Vector6>(
+          f, p0_se3, v0_se3, p2_se3, v2_se3, delta);
+
+  double tol = 1e-2;
+  EXPECT(assert_equal( J_p0_num, H[4], tol));
+  EXPECT(assert_equal( J_v0_num, H[5], tol));
+  EXPECT(assert_equal( J_p2_num, H[6], tol));
+  EXPECT(assert_equal( J_v2_num, H[7], tol));
 }
 
 /* ************************************************************************* */
 /* Todo: write tests for covariance interpolation,
-check that computation of psi and lambda using Eq. (11.41) in the book is consistent
-with Eq. (5.23) in the paper. */
+check that computation of psi and lambda using Eq. (11.41) in the book is
+consistent with Eq. (5.23) in the paper. */
 
 int main() {
   TestResult tr;
