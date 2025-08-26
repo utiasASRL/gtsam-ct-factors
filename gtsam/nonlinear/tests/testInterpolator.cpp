@@ -721,9 +721,127 @@ TEST(Interpolator, VelJacobians) {
 }
 
 /* ************************************************************************* */
-/* Todo: write tests for covariance interpolation,
+/* LAMBDA AND PSI TESTS
 check that computation of psi and lambda using Eq. (11.41) in the book is
 consistent with Eq. (5.23) in the paper. */
+
+TEST(Interpolator, LambdaPsiConsistencyP1) {
+  Interpolator<Point1> interpolator(Q_p1);
+  for (double ratio = 0.1; ratio <= 0.9; ratio += 0.1) {
+    // get lambda and psi using Eq. (11.41) in the book
+    auto [Lambda_book, Psi_book] = interpolator.getLambdaPsi(
+        0.0, timestep, timestep * ratio);
+    
+    // get lambda and psi using Eq. (5.23) in the paper
+    auto pvk = std::make_pair(p0_p1, v0_p1);
+    auto pvkp1 = std::make_pair(p1_p1, v1_p1);
+    auto pvtau = interpolator.interpolatePoseAndVelocity(
+        pvk, 0.0, pvkp1, timestep, timestep * ratio);
+    Matrix Lambda_paper(2,2), Psi_paper(2,2);
+    (void) interpolator.computeConditionalCov(
+        pvk, pvkp1, pvtau, 0.0, timestep, timestep * ratio,
+        &Lambda_paper, &Psi_paper);
+    EXPECT(assert_equal(Lambda_paper, Lambda_book));
+    EXPECT(assert_equal(Psi_paper, Psi_book));
+    
+  }
+}
+
+/* ************************************************************************* */
+TEST(Interpolator, LambdaPsiConsistencyP2) {
+  Interpolator<Point2> interpolator(Q_p2);
+  for (double ratio = 0.1; ratio <= 0.9; ratio += 0.1) {
+    // get lambda and psi using Eq. (11.41) in the book
+    auto [Lambda_book, Psi_book] = interpolator.getLambdaPsi(
+        0.0, timestep, timestep * ratio);
+
+    // get lambda and psi using Eq. (5.23) in the paper
+    auto pvk = std::make_pair(p0_p2, v0_p2);
+    auto pvkp1 = std::make_pair(p1_p2, v1_p2);
+    auto pvtau = interpolator.interpolatePoseAndVelocity(
+        pvk, 0.0, pvkp1, timestep, timestep * ratio);
+    Matrix Lambda_paper(2,2), Psi_paper(2,2);
+    (void) interpolator.computeConditionalCov(
+        pvk, pvkp1, pvtau, 0.0, timestep, timestep * ratio,
+        &Lambda_paper, &Psi_paper);
+    EXPECT(assert_equal(Lambda_paper, Lambda_book));
+    EXPECT(assert_equal(Psi_paper, Psi_book));
+
+  }
+}
+
+/* ************************************************************************* */
+TEST(Interpolator, LambdaPsiConsistencyP3) {
+  Interpolator<Point3> interpolator(Q_p3);
+  for (double ratio = 0.1; ratio <= 0.9; ratio += 0.1) {
+    // get lambda and psi using Eq. (11.41) in the book
+    auto [Lambda_book, Psi_book] = interpolator.getLambdaPsi(
+        0.0, timestep, timestep * ratio);
+    // get lambda and psi using Eq. (5.23) in the paper
+    auto pvk = std::make_pair(p0_p3, v0_p3);
+    auto pvkp1 = std::make_pair(p1_p3, v1_p3);
+    auto pvtau = interpolator.interpolatePoseAndVelocity(
+        pvk, 0.0, pvkp1, timestep, timestep * ratio);
+    Matrix Lambda_paper(3,3), Psi_paper(3,3);
+    (void) interpolator.computeConditionalCov(
+        pvk, pvkp1, pvtau, 0.0, timestep, timestep * ratio,
+        &Lambda_paper, &Psi_paper);
+    EXPECT(assert_equal(Lambda_paper, Lambda_book));
+    EXPECT(assert_equal(Psi_paper, Psi_book));
+
+  }
+}
+// The tests below are commented out because the required tolerance are ~1e1
+// /* ************************************************************************* */
+// TEST(Interpolator, LambdaPsiConsistencySE2) {
+//   Interpolator<Pose2> interpolator(Q_se2);
+//   for (double ratio = 0.1; ratio <= 0.9; ratio += 0.1) {
+//     // get lambda and psi using Eq. (11.41) in the book
+//     auto [Lambda_book, Psi_book] = interpolator.getLambdaPsi(
+//         0.0, timestep, timestep * ratio);
+//     // get lambda and psi using Eq. (5.23) in the paper
+//     auto pvk = std::make_pair(p0_se2, v0_se2);
+//     auto pvkp1 = std::make_pair(p1_se2, v1_se2);
+//     auto pvtau = interpolator.interpolatePoseAndVelocity(
+//         pvk, 0.0, pvkp1, timestep, timestep * ratio);
+//     Matrix Lambda_paper(3,3), Psi_paper(3,3);
+//     (void) interpolator.computeConditionalCov(
+//         pvk, pvkp1, pvtau, 0.0, timestep, timestep * ratio,
+//         &Lambda_paper, &Psi_paper);
+//     double tol = 1e-2;  // larger tolerance since Lie groups have approximations
+//     EXPECT(assert_equal(Lambda_paper, Lambda_book,tol));
+//     EXPECT(assert_equal(Psi_paper, Psi_book,tol));
+//   }
+// }
+
+// /* ************************************************************************* */
+// TEST(Interpolator, LambdaPsiConsistencySE3) {
+//   Interpolator<Pose3> interpolator(Q_se3);
+//   for (double ratio = 0.1; ratio <= 0.9; ratio += 0.1) {
+//     // get lambda and psi using Eq. (11.41) in the book
+//     auto [Lambda_book, Psi_book] = interpolator.getLambdaPsi(
+//         0.0, timestep, timestep * ratio);
+//     // get lambda and psi using Eq. (5.23) in the paper
+//     auto pvk = std::make_pair(p0_se3, v0_se3);
+//     auto pvkp1 = std::make_pair(p1_se3, v1_se3);
+//     auto pvtau = interpolator.interpolatePoseAndVelocity(
+//         pvk, 0.0, pvkp1, timestep, timestep * ratio);
+//     Matrix Lambda_paper(6,6), Psi_paper(6,6);
+//     (void) interpolator.computeConditionalCov(
+//         pvk, pvkp1, pvtau, 0.0, timestep, timestep * ratio,
+//         &Lambda_paper, &Psi_paper);
+//     double tol = 1e-2;  // larger tolerance since Lie groups have approximations
+//     EXPECT(assert_equal(Lambda_paper, Lambda_book,tol));
+//     std::cout << "Lambda_paper: \n"
+//               << std::setprecision(3) << Lambda_paper << std::endl;
+//     EXPECT(assert_equal(Psi_paper, Psi_book,tol));
+//     std::cout << "Psi_paper: \n"
+//               << std::setprecision(3) << Psi_paper << std::endl;
+//   }
+// }
+
+/* ************************************************************************* */
+/* Todo: write better tests for covariance interpolation */
 
 int main() {
   TestResult tr;
