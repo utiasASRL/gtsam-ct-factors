@@ -45,8 +45,6 @@ Interpolator<PoseType>::interpolatePoseAndVelocity(
 
     // if t_tau is equal to t_k or t_kp1, return the corresponding pose and
     // velocity
-    // NOTE: (CTH) need to make these first cases also provide jacobians and
-    // covariances if necessary
     if (equal(t_tau, t_k)) {
       if(H)
       {
