@@ -133,13 +133,16 @@ class Interpolator {
       const TimestampKeyMap& interpolateKeyMap,
       std::shared_ptr<CovarianceMap> covarianceMapOut = nullptr) const;
 
-  std::pair<Matrix, Matrix> getLamdaPsi(double t_k, double t_kp1,
+  std::pair<Matrix, Matrix> getLambdaPsi(double t_k, double t_kp1,
                                         double t_tau) const;
-
+  
+  // if Lambda and Psi are provided, they will be computed using (5.23)
   Matrix2N computeConditionalCov(const std::pair<PoseType, VelocityType>& pvk,
                                  const std::pair<PoseType, VelocityType>& pvkp1,
                                  const std::pair<PoseType, VelocityType>& pvtau,
-                                 double t_k, double t_kp1, double t_tau) const;
+                                 double t_k, double t_kp1, double t_tau,
+                                 OptionalMatrixType Lambda = nullptr,
+                                 OptionalMatrixType Psi = nullptr) const;
 
  protected:
   // construct the full covariance matrix using the order given by keyVector

@@ -144,7 +144,7 @@ Interpolator<PoseType>::interpolatePoseAndVelocity(
       Matrix2N Lambda,
           Psi;  // ensure Lambda and Psi are 2*dim x 2*dim matrices,
                 // rather than using auto in the line below
-      std::tie(Lambda, Psi) = getLamdaPsi(t_k, t_kp1, t_tau);
+      std::tie(Lambda, Psi) = getLambdaPsi(t_k, t_kp1, t_tau);
 
       MatrixNx2N Lambda_1 = Lambda.topRows(dim);
       MatrixNx2N Lambda_2 = Lambda.bottomRows(dim);
@@ -254,11 +254,21 @@ Interpolator<PoseType>::interpolatePoseAndVelocity(
       
       // Output pair
       auto Tvarpi_tau = std::make_pair(T_tau, varpi_tau);
+
       // compute covariance of the interpolated pose and velocity, if required
       if (mainSolveMarginalMatrix) {
-        Matrix2N Sigma = computeConditionalCov(Tvarpi_k, Tvarpi_kp1, Tvarpi_tau, t_k, t_kp1, t_tau);
         Eigen::Matrix<double, 2*dim, 4*dim> LambdaPsi;
+
+        // uncomment this block to recompute Lambda and Psi using (5.23) in paper
+        // Matrix Lambda_paper(2*dim, 2*dim), Psi_paper(2*dim, 2*dim);
+        // Matrix2N Sigma = computeConditionalCov(Tvarpi_k, Tvarpi_kp1, Tvarpi_tau, t_k, t_kp1, t_tau,
+        //                                       &Lambda_paper, &Psi_paper);
+        // LambdaPsi << Lambda_paper, Psi_paper;
+
+        // use existing Lambda and Psi computed from (11.41) in the book
+        Matrix2N Sigma = computeConditionalCov(Tvarpi_k, Tvarpi_kp1, Tvarpi_tau, t_k, t_kp1, t_tau);
         LambdaPsi << Lambda, Psi;
+
         *covarianceOut = Sigma + LambdaPsi * *mainSolveMarginalMatrix * LambdaPsi.transpose();
       }
       return Tvarpi_tau;
@@ -367,7 +377,7 @@ Values Interpolator<PoseType>::interpolatePosesAndVelocities(
 
 template <typename PoseType>
 std::pair<Matrix, Matrix>
-Interpolator<PoseType>::getLamdaPsi(double t_k, double t_kp1,
+Interpolator<PoseType>::getLambdaPsi(double t_k, double t_kp1,
                                     double t_tau) const {
 
     // Build transition matrices for all combinations
@@ -394,16 +404,32 @@ Interpolator<PoseType>::computeConditionalCov(
     const std::pair<PoseType, VelocityType>& pvk,
     const std::pair<PoseType, VelocityType>& pvkp1,
     const std::pair<PoseType, VelocityType>& pvtau,
-    double t_k, double t_kp1, double t_tau) const {
+    double t_k, double t_kp1, double t_tau,
+    OptionalMatrixType Lambda,
+    OptionalMatrixType Psi) const {
+
+    // Todo (Daniel): handle the case when t_tau == t_k or t_tau == t_kp1
+    assert(t_tau > t_k && t_tau < t_kp1 &&
+           "t_tau must be in the interval (t_k, t_kp1)");
 
     // see Figure 5.4 in the paper
     Matrix2N Q_tau_prev_inv = inverseCovarianceFunction_(t_tau - t_k, Q_psd_);
     Matrix2N Q_tau_next_inv = inverseCovarianceFunction_(t_kp1 - t_tau, Q_psd_);
-    Matrix2N E_tau = computeJacobianPrev_(pvk, pvtau, t_tau - t_k);
-    Matrix2N F_tau = computeJacobianNext_(pvtau, pvkp1, t_kp1 - t_tau);
+    Matrix2N E_tau = computeJacobianNext_(pvk, pvtau, t_tau - t_k);
+    Matrix2N F_k_tau = computeJacobianPrev_(pvtau, pvkp1, t_kp1 - t_tau);
     Matrix2N Sigma_inv = E_tau.transpose() * Q_tau_prev_inv * E_tau +
-                         F_tau.transpose() * Q_tau_next_inv * F_tau;
+                         F_k_tau.transpose() * Q_tau_next_inv * F_k_tau;
     Matrix2N Sigma = Sigma_inv.inverse();
+    
+    // (5.23) in the paper
+    if (Lambda) {
+        Matrix2N F_tau_km1 = computeJacobianPrev_(pvk, pvtau, t_tau - t_k);
+        *Lambda = Sigma * E_tau.transpose() * Q_tau_prev_inv * F_tau_km1;
+    }
+    if (Psi) {
+        Matrix2N E_k = computeJacobianNext_(pvk, pvkp1, t_kp1 - t_k);
+        *Psi = Sigma * F_k_tau.transpose() * Q_tau_next_inv * E_k;
+    }
     return Sigma;
 }
 
