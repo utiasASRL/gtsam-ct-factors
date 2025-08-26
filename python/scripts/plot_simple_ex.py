@@ -36,29 +36,33 @@ def load_csv(fname, step=None):
 
     return df, covariances
 
-def plot_axes_at_points(ax, x, y, theta, length=0.2):
+def plot_axes_at_points(ax, x, y, theta, length=0.2, greyscale=False):
     """Plot small 2D frames (axes) at each (x, y, theta) pose."""
     for xi, yi, thetai in zip(x, y, theta):
         # Origin
-        ax.plot(xi, yi, marker='o', color='k', markersize=2)
-        # X axis (red)
+        color_o = 'k' if not greyscale else (0.3, 0.3, 0.3, 0.7)
+        color_x = 'r' if not greyscale else (0.5, 0.5, 0.5, 0.7)
+        color_y = 'g' if not greyscale else (0.7, 0.7, 0.7, 0.7)
+        ax.plot(xi, yi, marker='o', color=color_o, markersize=2)
         ax.arrow(xi, yi, length * np.cos(thetai), length * np.sin(thetai),
-                 head_width=0.05, head_length=0.05, fc='r', ec='r', linewidth=1)
-        # Y axis (green)
+                    head_width=0.05, head_length=0.05, fc=color_x, ec=color_x, linewidth=1)
         ax.arrow(xi, yi, -length * np.sin(thetai), length * np.cos(thetai),
-                 head_width=0.05, head_length=0.05, fc='g', ec='g', linewidth=1)
-        
-def plot_se2_trajectory(ax, csv_path, title):
+                    head_width=0.05, head_length=0.05, fc=color_y, ec=color_y, linewidth=1)
+
+def plot_se2_trajectory(ax, csv_path, title, greyscale=False):
     df, covariances = load_csv(csv_path)
     x = df['x']
     y = df['y']
     theta = df['theta']
 
-    plot_axes_at_points(ax, x, y, theta, length=0.2)
-    
+    plot_axes_at_points(ax, x, y, theta, length=0.2, greyscale=greyscale)
+
     # Plot covariance ellipses if available and 2D
     for xi, yi, cov in zip(x, y, covariances):
-        plot_cov_ellipse(ax, xi, yi, cov, n_std=1, edgecolor=None, facecolor='tab:blue', lw=1, alpha=0.25)
+        if greyscale:
+            plot_cov_ellipse(ax, xi, yi, cov, n_std=1, edgecolor=None, facecolor=(0.8, 0.8, 0.8, 0.25), lw=1, alpha=0.25)
+        else:
+            plot_cov_ellipse(ax, xi, yi, cov, n_std=1, edgecolor=None, facecolor='tab:blue', lw=1, alpha=0.25)
 
     ax.set_aspect('equal')
     ax.set_xlabel('x [m]')
@@ -66,8 +70,6 @@ def plot_se2_trajectory(ax, csv_path, title):
     ax.set_title(title)
     ax.legend()
     ax.grid(True)
-    
-               
 
 def plot_cov_ellipse(ax, xi, yi, cov, n_std=1.0, **kwargs):
     """Plot a covariance ellipse centered at mean with covariance cov."""
@@ -85,6 +87,8 @@ def plot_cov_ellipse(ax, xi, yi, cov, n_std=1.0, **kwargs):
     ax.add_patch(ellipse)
 
 
+
+
 if __name__ == "__main__":
     paths = ["results/simple_ex_full.csv",
              "results/simple_ex_estim.csv",
@@ -97,6 +101,11 @@ if __name__ == "__main__":
     fig, axs = plt.subplots(2, 2, figsize=(8, 6))
     axs = axs.flatten()
     for i, csv_path in enumerate(paths):
-        plot_se2_trajectory(axs[i], csv_path, titles[i])
+        if i == 0:
+            plot_se2_trajectory(axs[i], csv_path, titles[i])
+        else:
+            plot_se2_trajectory(axs[i], paths[0], titles[i], greyscale=True)
+            plot_se2_trajectory(axs[i], csv_path, titles[i])
+            
     plt.tight_layout()
     plt.show()

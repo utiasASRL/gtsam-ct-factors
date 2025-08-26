@@ -1,6 +1,6 @@
-#include "LostInTheWoodsExample.h"
-
 #include <gtsam/nonlinear/Interpolator.h>
+
+#include "LostInTheWoodsExample.h"
 
 using namespace std;
 using namespace gtsam;
@@ -11,10 +11,10 @@ using symbol_shorthand::V;
 void runInterpExample() {
   // Define Noise Models
   Vector sigma_unary = Vector3::Ones();  // diagonal of unary meas
-  Vector sigma_wnoa = Vector3::Ones();       // WNOA Power Spectral Density
+  Vector sigma_wnoa = Vector3::Ones();  // WNOA Power Spectral Density
 
   // Parameters for trajectory
-  int n_points = 50;      // total number of points
+  int n_points = 50;       // total number of points
   int period_interp = 25;  // number of interpolated points between borders
   double del_t = 0.1;      // timestep
   Vector3 velocity;
@@ -56,7 +56,7 @@ void runInterpExample() {
   Values result_full =
       LevenbergMarquardtOptimizer(graph, values_init, params).optimize();
   // Save results
-  
+
   // Set up interpolated states
   vector<StateData> interpolated_states;
   vector<StateData> estimated_states;
@@ -77,25 +77,26 @@ void runInterpExample() {
       graph, estimated_states, interpolated_states, sigma_wnoa);
   // run optimization on interpolated version
   Values result_interp =
-      LevenbergMarquardtOptimizer(graph_interp, values_interp_init, params).optimize();
-  
+      LevenbergMarquardtOptimizer(graph_interp, values_interp_init, params)
+          .optimize();
+
   // define covariance map
   auto cov_map_interp = std::make_shared<Interpolator<Pose2>::CovarianceMap>();
   // recover interpolated values and covariances
-  Values result_recov =
-      updateInterpValues<Pose2>(graph_interp, result_interp, estimated_states,
-                                interpolated_states, sigma_wnoa, cov_map_interp);
+  Values result_recov = updateInterpValues<Pose2>(
+      graph_interp, result_interp, estimated_states, interpolated_states,
+      sigma_wnoa, cov_map_interp);
 
   // Save the results to files
   // Full solve
-  saveResultToFile(result_full, graph, "results/simple_ex_full.csv"); 
+  saveResultToFile(result_full, graph, "results/simple_ex_full.csv");
   // Just estimated states
   saveResultToFile(result_interp, graph_interp, "results/simple_ex_estim.csv");
   // All states, with covariance from graph
   saveResultToFile(result_recov, graph, "results/simple_ex_interp_graph.csv");
   // All states, with covariance recovered from interpolation.
-  saveResultToFile(result_recov, graph_interp, "results/simple_ex_interp.csv", false, cov_map_interp);
-
+  saveResultToFile(result_recov, graph_interp, "results/simple_ex_interp.csv",
+                   false, cov_map_interp);
 }
 
 int main(int argc, char* argv[]) {
