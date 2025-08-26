@@ -16,7 +16,7 @@ void runInterpExample() {
   int period_interp = 10;  // number of interpolated points between borders
   double del_t = 0.1;      // timestep
   Vector3 velocity;
-  velocity << 1.0, 0.0, 0.01;
+  velocity << 1.0, 0.0, 0.1;
   Pose2 pose_init(0.0, 0.0, 0.0);
 
   // Init graphs, values, states

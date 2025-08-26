@@ -69,6 +69,10 @@ RUN mkdir -p /opt/steam \
     && cmake --build . -j \
     && cmake --install . 
 
+# VNC SETUP
+RUN apt-get update && apt-get install -y \
+    x11vnc xvfb xfce4 xfce4-terminal
+
 # Entrypoint script
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
