@@ -87,13 +87,15 @@ def plot_cov_ellipse(ax, xi, yi, cov, n_std=1.0, **kwargs):
 
 if __name__ == "__main__":
     paths = ["results/simple_ex_full.csv",
+             "results/simple_ex_estim.csv",
              "results/simple_ex_interp.csv",
-             "results/simple_ex_recov.csv"]
+             "results/simple_ex_interp_graph.csv"]
     titles = ["full solve", 
+              "just estimated",
               "interpolated",
-              "interp + recover mean"]
-    
-    fig, axs = plt.subplots(1, 3, figsize=(18, 6))
+              "interp via graph"]
+    fig, axs = plt.subplots(2, 2, figsize=(8, 6))
+    axs = axs.flatten()
     for i, csv_path in enumerate(paths):
         plot_se2_trajectory(axs[i], csv_path, titles[i])
     plt.tight_layout()

@@ -5,7 +5,7 @@
 export DISPLAY=:1
 
 # Start a virtual framebuffer for that display
-Xvfb $DISPLAY -screen 0 1280x800x16 &
+Xvfb $DISPLAY -screen 0 1920x1080x16 &
 
 # Start desktop environment (optional)
 startxfce4 &
