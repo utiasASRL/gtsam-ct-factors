@@ -208,13 +208,13 @@ int main(int argc, char* argv[]) {
   if (interp_enable) {
     cout << "Interpolation enabled!" << endl;
     // process states into estimated and interpolated
-    vector<StateData> interp;
-    vector<StateData> estim;
+    set<StateData> interp;
+    set<StateData> estim;
     for (size_t i = 0; i < all_states.size(); i++) {
       if (i == 0 || i == all_states.size() - 1 || i % interp_period == 0) {
-        estim.push_back(all_states[i]);
+        estim.insert(all_states[i]);
       } else {
-        interp.push_back(all_states[i]);
+        interp.insert(all_states[i]);
         // remove interpolated states from initial values
         initial.erase(all_states[i].pose);
         initial.erase(all_states[i].vel);
