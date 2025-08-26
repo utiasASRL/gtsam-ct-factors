@@ -17,6 +17,7 @@
 #include <gtsam/geometry/Point1.h>
 #include <gtsam/slam/dataset.h>
 #include <gtsam/nonlinear/Interpolator.h>
+#include <yaml-cpp/yaml.h>
 
 using namespace gtsam;
 

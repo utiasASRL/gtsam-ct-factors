@@ -1,21 +1,20 @@
 #include "GiantGlassOfMilkExample.h"
 
 int main() {
-  // input processing 
-  bool use_interpolation = true;
 
-  string input_file = "GiantGlassOfMilk.csv";
-  string output_file = "../results/milk.csv";
+  // Get configuration data
+  string config_file = "../examples/Data/GiantGlassOfMilk.yaml";
+  YAML::Node config = YAML::LoadFile(config_file);
+
+  // Load Files
+  string input_file = config["files"]["input"].as<string>();
+  string output_file = config["files"]["output"].as<string>();
+
+  // input processing 
+  bool use_interpolation = config["params"]["interp"].as<bool>();
+
   
   string filename = findExampleDataFile(input_file);
-
-  // if interpolation, add _interp to output filename
-  if (use_interpolation) {
-    size_t pos = output_file.rfind(".csv");
-    if (pos != std::string::npos) {
-      output_file.insert(pos, "_inter");
-    }
-  }
 
   // Loading data as: t, x, v, x_real
   Matrix data = load_csv<Eigen::MatrixXd>(filename, false);
@@ -27,7 +26,7 @@ int main() {
 
   // Defining timing variables
   double dt = 0.1;
-  double dt_meas = 5.0;
+  double dt_meas = config["params"]["dt_meas"].as<double>();
   double dt_state = dt;
   if (use_interpolation) {
     dt_state = dt_meas;
