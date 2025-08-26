@@ -1,9 +1,18 @@
 #include "GiantGlassOfMilkExample.h"
 
 int main() {
-  // input processing
-  string input_file = "GiantGlassOfMilk.csv";
-  string output_file = "../results/milk.csv";
+
+  // Get configuration data
+  string config_file = "../examples/Data/GiantGlassOfMilk.yaml";
+  YAML::Node config = YAML::LoadFile(config_file);
+
+  // Load Files
+  string input_file = config["files"]["input"].as<string>();
+  string output_file = config["files"]["output"].as<string>();
+
+  // input processing 
+  bool use_interpolation = config["params"]["interp"].as<bool>();
+
   
   string filename = findExampleDataFile(input_file);
 
@@ -17,7 +26,11 @@ int main() {
 
   // Defining timing variables
   double dt = 0.1;
-  double dt_meas = 5.0;
+  double dt_meas = config["params"]["dt_meas"].as<double>();
+  double dt_state = dt;
+  if (use_interpolation) {
+    dt_state = dt_meas;
+  }
 
   //Define noise variables
   double Qc = 0.01;
@@ -30,32 +43,50 @@ int main() {
   NonlinearFactorGraph graph;
   Values initialEstimate;
 
+
+  Interpolator<Point1>::TimestampKeyMap mainSolveKeyMap;
+  Interpolator<Point1>::TimestampKeyMap interpolateKeyMap;
+  std::shared_ptr<Interpolator<Point1>::CovarianceMap> covarianceMap = std::make_shared<Interpolator<Point1>::CovarianceMap>();
+
   // Defining shorthand for symbols
   using symbol_shorthand::X; // state
   using symbol_shorthand::V; // velocity
+  using symbol_shorthand::Z; // interpolted state
+  using symbol_shorthand::D; // interpolated velocity
+
 
   // Add initial guess for first state (zero)
   initialEstimate.insert(X(0),Point1(0.0));
   initialEstimate.insert(V(0),Vector1(0.0));
+  mainSolveKeyMap[times(0)] = std::make_pair(X(0), V(0));
 
   // Run through all states and add WNOA prior factors between neighbouring states
-  for(unsigned int i = 0; i < data.rows() - 1; i++)
+  unsigned int num_states = static_cast<unsigned int>(std::round(times.tail<1>()(0) / dt_state)) + 1;
+  for(unsigned int i = 0; i < num_states - 1; i++)
   {
-      graph.add(WNOAMotionFactor<Point1>(X(i),V(i),X(i+1),V(i+1),dt,Qc_mat));
+      graph.add(WNOAMotionFactor<Point1>(X(i),V(i),X(i+1),V(i+1),dt_state,Qc_mat));
 
       // Add initial guess for next state (zero)
       initialEstimate.insert(X(i+1),Point1(0.0));
       initialEstimate.insert(V(i+1),Vector1(0.0));
+      mainSolveKeyMap[(i+1) * dt_state] = std::make_pair(X(i+1), V(i+1));
+  }
+
+  
+  // Add keys for the interpolation
+  for(unsigned int i = 0; i < times.size(); i++) {
+      interpolateKeyMap[times(i)] = std::make_pair(Z(i), D(i));
   }
 
   // Add measurement factors for both position and velocity
   int skip = dt_meas/dt; // Skip factor, depending on the measurement frequency
 
   // times_est, x_est, x_std, v_est, v_std, x_real, times_meas, x_meas, v_meas
-  Matrix result_matrix = Matrix::Zero(times.rows(), 9);
+  Matrix result_matrix = Matrix::Zero(times.size(), 9);
 
-  for(unsigned int i = 0; i < times.rows(); i = i + skip)
-  {  
+
+  for(unsigned int i = 0; i < times.size(); i = i + skip)
+  {
     // Save used measurements for plotting later
     result_matrix(i/skip, 6) = times(i);
     result_matrix(i/skip, 7) = x_meas(i);
@@ -64,36 +95,72 @@ int main() {
     Point1 position_measurement(x_meas(i));
     Vector1 velocity_measurement(v_meas(i));
 
-
-    graph.add(PriorFactor<Point1>(X(i),position_measurement, positionNoise));
-    graph.add(PriorFactor<Vector1>(V(i),velocity_measurement, velocityNoise));
+    if(use_interpolation) {
+      graph.add(PriorFactor<Point1>(X(i/skip),position_measurement, positionNoise));
+      graph.add(PriorFactor<Vector1>(V(i/skip),velocity_measurement, velocityNoise));
+    }
+    else {
+      graph.add(PriorFactor<Point1>(X(i),position_measurement, positionNoise));
+      graph.add(PriorFactor<Vector1>(V(i),velocity_measurement, velocityNoise));
+    }
 
   }
 
   // Optimize
+  std::cout << "Optimizing..." << std::endl;
   LevenbergMarquardtOptimizer optimizer(graph, initialEstimate);
   Values result = optimizer.optimize();
   Marginals marginals(graph, result);
 
-  for(unsigned int i = 0; i < times.rows(); i++)
-  {
-    // Time
-    result_matrix(i, 0) = times(i);
 
-    // X estimate
-    result_matrix(i, 1) = result.at<Point1>(X(i))(0);
-    result_matrix(i, 2) = std::sqrt(marginals.marginalCovariance(X(i))(0,0));
+  if (use_interpolation) {
+    // interpolate states at requested times
+    std::cout << "Querying..." << std::endl;
+    Interpolator<Point1> interpolator(Qc_mat);
+    Values results_interpolated = interpolator.interpolatePosesAndVelocities(graph, result, mainSolveKeyMap, interpolateKeyMap, covarianceMap);
 
-    // V estimate
-    result_matrix(i, 3) = result.at<Vector1>(V(i))(0);
-    result_matrix(i, 4) = std::sqrt(marginals.marginalCovariance(V(i))(0,0));
+    std::cout << "Saving values..." << std::endl;
+    for(unsigned int i = 0; i < times.size(); i++)
+    {
+      // Time
+      result_matrix(i, 0) = times(i);
 
-    // X real
-    result_matrix(i, 5) = x_real(i);   
+      // X estimate
+      result_matrix(i, 1) = results_interpolated.at<Point1>(Z(i))(0);
+      // Get covariance of z from covarianceMap
+      result_matrix(i, 2) = std::sqrt(covarianceMap->at(Z(i))(0,0));
 
+
+
+      // V estimate
+      result_matrix(i, 3) = results_interpolated.at<Vector1>(D(i))(0);
+      result_matrix(i, 4) = std::sqrt(covarianceMap->at(D(i))(0,0));
+
+      // X real
+      result_matrix(i, 5) = x_real(i);
+    }
   }
+  else
+  {
 
+    std::cout << "Saving values..." << std::endl;
+    for(unsigned int i = 0; i < times.size(); i++)
+    {
+      // Time
+      result_matrix(i, 0) = times(i);
 
+      // X estimate
+      result_matrix(i, 1) = result.at<Point1>(X(i))(0);
+      result_matrix(i, 2) = std::sqrt(marginals.marginalCovariance(X(i))(0,0));
+
+      // V estimate
+      result_matrix(i, 3) = result.at<Vector1>(V(i))(0);
+      result_matrix(i, 4) = std::sqrt(marginals.marginalCovariance(V(i))(0,0));
+
+      // X real
+      result_matrix(i, 5) = x_real(i);
+    }
+  }
   std::cout << "Optimizer has finished...saving results..." << std::endl;
   save_csv(output_file, result_matrix);
 

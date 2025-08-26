@@ -45,12 +45,57 @@ Interpolator<PoseType>::interpolatePoseAndVelocity(
 
     // if t_tau is equal to t_k or t_kp1, return the corresponding pose and
     // velocity
-    // NOTE: (CTH) need to make these first cases also provide jacobians and
-    // covariances if necessary
     if (equal(t_tau, t_k)) {
+      if(H)
+      {
+        // dTtau_dTk
+        (*H)[0] = MatrixN::Identity();
+        // dTtau_dvarpik
+        (*H)[1] = MatrixN::Zero();
+        // dTtau_dTkp1
+        (*H)[2] = MatrixN::Zero();
+        // dTtau_dvarpikp1
+        (*H)[3] = MatrixN::Zero();
+        // dvarpitau_dTk
+        (*H)[4] = MatrixN::Zero();
+        // dvarpitau_dvarpik
+        (*H)[5] = MatrixN::Identity();
+        // dvarpitau_dTkp1
+        (*H)[6] = MatrixN::Zero();
+        // dvarpitau_dvarpikp1
+        (*H)[7] = MatrixN::Zero();
+      }
+      if(covarianceOut && mainSolveMarginalMatrix) {
+        // if t_tau == t_k, then the covariance is the same as that of Tvarpi_k
+        *covarianceOut = mainSolveMarginalMatrix->topLeftCorner(dim*2, dim*2);
+      }
       return Tvarpi_k;
+      
 
     } else if (equal(t_tau, t_kp1)) {
+      if(H)
+      {
+        // dTtau_dTk
+        (*H)[0] = MatrixN::Zero();
+        // dTtau_dvarpik
+        (*H)[1] = MatrixN::Zero();
+        // dTtau_dTkp1
+        (*H)[2] = MatrixN::Identity();
+        // dTtau_dvarpikp1
+        (*H)[3] = MatrixN::Zero();
+        // dvarpitau_dTk
+        (*H)[4] = MatrixN::Zero();
+        // dvarpitau_dvarpik
+        (*H)[5] = MatrixN::Zero();
+        // dvarpitau_dTkp1
+        (*H)[6] = MatrixN::Zero();
+        // dvarpitau_dvarpikp1
+        (*H)[7] = MatrixN::Identity();
+      }
+      if(covarianceOut && mainSolveMarginalMatrix) {
+        // if t_tau == t_kp1, then the covariance is the same as that of Tvarpi_kp1
+        *covarianceOut = mainSolveMarginalMatrix->bottomRightCorner(dim*2, dim*2);
+      }
       return Tvarpi_kp1;
 
     } else if (t_tau < t_k || t_tau > t_kp1 || std::isinf(t_k) ||
@@ -239,16 +284,15 @@ Values Interpolator<PoseType>::interpolatePosesAndVelocities(
     std::map<std::pair<double, double>, std::vector<double>> queryBuckets;
 
     for (const auto& [t_tau, keys] : interpolateKeyMap) {
-      if (t_tau < mainSolveKeyMap.begin()->first) {
-        queryBuckets[std::make_pair(-std::numeric_limits<double>::infinity(),
-                                    mainSolveKeyMap.begin()->first)]
-            .push_back(t_tau);
-      } else if (t_tau > mainSolveKeyMap.rbegin()->first) {
-        queryBuckets[std::make_pair(mainSolveKeyMap.rbegin()->first,
-                                    std::numeric_limits<double>::infinity())]
-            .push_back(t_tau);
-      } else {
-        auto it2 = mainSolveKeyMap.upper_bound(t_tau);
+      auto it2 = mainSolveKeyMap.upper_bound(t_tau);
+      if(it2 == mainSolveKeyMap.end()) {
+        auto it1 = std::prev(it2);
+        queryBuckets[std::make_pair(it1->first, std::numeric_limits<double>::infinity())].push_back(t_tau);
+      }
+      else if(it2 == mainSolveKeyMap.begin()) {
+        queryBuckets[std::make_pair(-std::numeric_limits<double>::infinity(), it2->first)].push_back(t_tau);
+      }
+      else {
         auto it1 = std::prev(it2);
         queryBuckets[std::make_pair(it1->first, it2->first)].push_back(t_tau);
       }
@@ -279,7 +323,6 @@ Values Interpolator<PoseType>::interpolatePosesAndVelocities(
                                             mainSolveKeyMap.at(t_kp1).first),
                                         mainSolveSolution.at<VelocityType>(
                                             mainSolveKeyMap.at(t_kp1).second));
-
       // Compute covariances of the interpolated poses and velocities
       std::shared_ptr<Matrix> mainSolveMarginalMatrix;  // (4*dim, 4*dim)
       Matrix covarianceOut;                             // (2*dim, 2*dim)
