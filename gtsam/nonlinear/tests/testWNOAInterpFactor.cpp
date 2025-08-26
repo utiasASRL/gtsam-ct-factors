@@ -63,11 +63,11 @@ static Vector6 v4_se3 = v0_se3;
 
 // Define interpolation parameters
 // Add random border and interpolated states
-static vector<StateData> border = {StateData(P(0), V(0), 0.0),
-                                   StateData(P(2), V(2), 2 * timestep),
-                                   StateData(P(3), V(3), 100 * timestep)};
-static vector<StateData> interp = {StateData(P(1), V(1), timestep),
-                                   StateData(P(4), V(4), timestep)};
+static set<StateData> border = {StateData(P(0), V(0), 0.0),
+                                StateData(P(2), V(2), 2 * timestep),
+                                StateData(P(3), V(3), 100 * timestep)};
+static set<StateData> interp = {StateData(P(1), V(1), timestep),
+                                StateData(P(4), V(4), timestep)};
 
 // STATE DATA TESTS
 
@@ -92,7 +92,6 @@ TEST(StateData, OrderedSet) {
     EXPECT(state.pose == key_order[i]);
     i++;
   }
-
 }
 
 // hash map
@@ -257,11 +256,11 @@ TEST(WNOAInterp, EvalErrorSE3BetweenPose) {
 TEST(WNOAInterp, EvalErrorSE3BtwnInterp) {
   // Same as between above, but using two interpolated states with different
   // boundaries
-  vector<StateData> border = {StateData(P(0), V(0), 0.0),
-                              StateData(P(2), V(2), 2 * timestep),
-                              StateData(P(4), V(4), 4 * timestep)};
-  vector<StateData> interp = {StateData(P(1), V(1), timestep),
-                              StateData(P(3), V(3), 3 * timestep)};
+  set<StateData> border = {StateData(P(0), V(0), 0.0),
+                           StateData(P(2), V(2), 2 * timestep),
+                           StateData(P(4), V(4), 4 * timestep)};
+  set<StateData> interp = {StateData(P(1), V(1), timestep),
+                           StateData(P(3), V(3), 3 * timestep)};
   const Pose3 p3_se3 = p0_se3.expmap(3 * timestep * v0_se3);
   const Pose3 p4_se3 = p0_se3.expmap(4 * timestep * v0_se3);
   Vector6 v2_se3 = v0_se3;
@@ -495,11 +494,11 @@ TEST(WNOAInterp, NoiseModelSE3Unary) {
 TEST(WNOAInterp, NoiseModelSE3Btwn) {
   // Same as between above, but using two interpolated states with different
   // boundaries
-  vector<StateData> border = {StateData(P(0), V(0), 0.0),
-                              StateData(P(2), V(2), 2 * timestep),
-                              StateData(P(4), V(4), 4 * timestep)};
-  vector<StateData> interp = {StateData(P(1), V(1), timestep),
-                              StateData(P(3), V(3), 3 * timestep)};
+  set<StateData> border = {StateData(P(0), V(0), 0.0),
+                           StateData(P(2), V(2), 2 * timestep),
+                           StateData(P(4), V(4), 4 * timestep)};
+  set<StateData> interp = {StateData(P(1), V(1), timestep),
+                           StateData(P(3), V(3), 3 * timestep)};
   const Pose3 p3_se3 = p0_se3.expmap(3 * timestep * v0_se3);
   const Pose3 p4_se3 = p0_se3.expmap(4 * timestep * v0_se3);
   Vector6 v2_se3 = v0_se3;
@@ -536,11 +535,11 @@ TEST(WNOAInterp, NoiseModelSE3Btwn) {
 TEST(WNOAInterp, NoiseModelP3Btwn) {
   // Same as between above, but using two interpolated states with different
   // boundaries
-  vector<StateData> border = {StateData(P(0), V(0), 0.0),
-                              StateData(P(2), V(2), 2 * timestep),
-                              StateData(P(4), V(4), 4 * timestep)};
-  vector<StateData> interp = {StateData(P(1), V(1), timestep),
-                              StateData(P(3), V(3), 3 * timestep)};
+  set<StateData> border = {StateData(P(0), V(0), 0.0),
+                           StateData(P(2), V(2), 2 * timestep),
+                           StateData(P(4), V(4), 4 * timestep)};
+  set<StateData> interp = {StateData(P(1), V(1), timestep),
+                           StateData(P(3), V(3), 3 * timestep)};
   // const Point3 p3_p3 = p0_p3 + 3 * timestep * v0_p3;
   const Point3 p4_p3 = p0_p3 + 4 * timestep * v0_p3;
   Vector3 v2_p3 = v0_p3;
@@ -581,11 +580,11 @@ TEST(WNOAInterp, NoiseModelP3Btwn) {
 TEST(WNOAInterp, LinearizeSE3Btwn) {
   // Same as between above, but using two interpolated states with different
   // boundaries
-  vector<StateData> border = {StateData(P(0), V(0), 0.0),
-                              StateData(P(2), V(2), 2 * timestep),
-                              StateData(P(4), V(4), 4 * timestep)};
-  vector<StateData> interp = {StateData(P(1), V(1), timestep),
-                              StateData(P(3), V(3), 3 * timestep)};
+  set<StateData> border = {StateData(P(0), V(0), 0.0),
+                           StateData(P(2), V(2), 2 * timestep),
+                           StateData(P(4), V(4), 4 * timestep)};
+  set<StateData> interp = {StateData(P(1), V(1), timestep),
+                           StateData(P(3), V(3), 3 * timestep)};
   const Pose3 p3_se3 = p0_se3.expmap(3 * timestep * v0_se3);
   const Pose3 p4_se3 = p0_se3.expmap(4 * timestep * v0_se3);
   Vector6 v2_se3 = v0_se3;
@@ -623,11 +622,11 @@ TEST(WNOAInterp, SE3OptimTest) {
   //  0 ---- 1 ---- 2 ----- 3 ----- 4
   //  e      i      e       i       e
   //          --- between ---
-  vector<StateData> border = {StateData(P(0), V(0), 0.0),
-                              StateData(P(2), V(2), 2 * timestep),
-                              StateData(P(4), V(4), 4 * timestep)};
-  vector<StateData> interp = {StateData(P(1), V(1), timestep),
-                              StateData(P(3), V(3), 3 * timestep)};
+  set<StateData> border = {StateData(P(0), V(0), 0.0),
+                           StateData(P(2), V(2), 2 * timestep),
+                           StateData(P(4), V(4), 4 * timestep)};
+  set<StateData> interp = {StateData(P(1), V(1), timestep),
+                           StateData(P(3), V(3), 3 * timestep)};
   const Pose3 p3_se3 = p0_se3.expmap(3 * timestep * v0_se3);
   const Pose3 p4_se3 = p0_se3.expmap(4 * timestep * v0_se3);
   // Define nominal factors
@@ -720,11 +719,11 @@ TEST(WNOAInterp, SE3InterpGraph) {
   graph.add(prior_vel_factor);
 
   // Interpolate the graph
-  vector<StateData> border_shfl = {StateData(P(0), V(0), 0.0),
-                                   StateData(P(4), V(4), 4 * timestep),
-                                   StateData(P(2), V(2), 2 * timestep)};
-  vector<StateData> interp_shfl = {StateData(P(3), V(3), 3 * timestep),
-                                   StateData(P(1), V(1), timestep)};
+  set<StateData> border_shfl = {StateData(P(0), V(0), 0.0),
+                                StateData(P(4), V(4), 4 * timestep),
+                                StateData(P(2), V(2), 2 * timestep)};
+  set<StateData> interp_shfl = {StateData(P(3), V(3), 3 * timestep),
+                                StateData(P(1), V(1), timestep)};
   auto new_graph =
       interpolateFactorGraph<Pose3>(graph, border_shfl, interp_shfl, Q_se3);
 

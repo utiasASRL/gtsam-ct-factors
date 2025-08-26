@@ -22,14 +22,17 @@ struct StateData {
   bool operator<(const StateData& other) const {
     return this->time < other.time;
   }
+  // Greater than operator to enable sorting
+  bool operator>(const StateData& other) const {
+    return this->time > other.time;
+  }
+
   // less than operator to compare with other times
   bool operator<(double time) const { return this->time < time; }
-  // equality operator for unordered sets
-  //N
+  // equality operator for unordered sets and maps
   bool operator==(const StateData& other) const {
     return this->pose == other.pose && this->vel == other.vel;
   }
-
 };
 }  // namespace gtsam
 
