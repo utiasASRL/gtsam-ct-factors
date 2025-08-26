@@ -11,6 +11,7 @@
 #include <gtsam/inference/Key.h>
 #include <gtsam/nonlinear/Interpolator.h>
 #include <gtsam/nonlinear/NonlinearFactor.h>
+#include <gtsam/nonlinear/StateData.h>
 #include <gtsam/nonlinear/Values.h>
 
 #include <algorithm>
@@ -22,27 +23,6 @@
 using namespace std;
 
 namespace gtsam {
-
-/* @brief State data structure for keeping track of pose and velocity keys as
- * well as associated timestamp. Used in GP interpolation.*/
-struct StateData {
-  Key pose;
-  Key vel;
-  double time;
-  // Default constructor for easy init
-  StateData() = default;
-  // Constructor
-  StateData(Key pose_in, Key vel_in, double time_in)
-      : pose(pose_in), vel(vel_in), time(time_in) {};
-
-  // Less than operator to enable sorting for vectors
-  bool operator<(const StateData& other) const {
-    return this->time < other.time;
-  }
-  // less than operator to compare with other times
-  bool operator<(double time) const { return this->time < time; }
-};
-
 /* Wrapper class that allows a variable of a factor to be replaced by a WNOA
  * interpolation.
  * It is assumed that estimated state entries are sorted by time.

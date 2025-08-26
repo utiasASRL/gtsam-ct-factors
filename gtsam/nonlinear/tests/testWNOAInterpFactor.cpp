@@ -16,7 +16,9 @@
 #include <gtsam/nonlinear/WNOAInterpFactor.h>
 #include <gtsam/slam/BetweenFactor.h>
 
+#include <set>
 #include <unordered_map>
+#include <unordered_set>
 
 using namespace std;
 using namespace gtsam;
@@ -66,6 +68,49 @@ static vector<StateData> border = {StateData(P(0), V(0), 0.0),
                                    StateData(P(3), V(3), 100 * timestep)};
 static vector<StateData> interp = {StateData(P(1), V(1), timestep),
                                    StateData(P(4), V(4), timestep)};
+
+// STATE DATA TESTS
+
+// Constructor
+TEST(StateData, Constructor) { StateData(P(0), V(0), 0.0); }
+
+// Ordered Set
+TEST(StateData, OrderedSet) {
+  // define set
+  set<StateData> sd_set;
+  // add to set in inverse order
+  sd_set.insert(StateData(P(4), V(4), 3.0));
+  sd_set.insert(StateData(P(3), V(3), 2.00001));
+  sd_set.insert(StateData(P(2), V(2), 2.0));
+  sd_set.insert(StateData(P(1), V(1), 1.0));
+  sd_set.insert(StateData(P(0), V(0), 0.0));
+  // verify the order of the set
+  KeyVector key_order = {P(0), P(1), P(2), P(3), P(4)};
+  int i = 0;
+  for (auto state : sd_set) {
+    cout << DefaultKeyFormatter(state.pose) << endl;
+    EXPECT(state.pose == key_order[i]);
+    i++;
+  }
+
+}
+
+// hash map
+TEST(StateData, UnorderedSet) {
+  // define set
+  unordered_set<StateData> sd_set;
+  // add to set in inverse order
+  sd_set.insert(StateData(P(2), V(2), 2.0));
+  sd_set.insert(StateData(P(1), V(1), 1.0));
+  sd_set.insert(StateData(P(0), V(0), 0.0));
+  EXPECT(sd_set.size() == 3);
+  // insert new state with existing pose and vel (but mixed)
+  sd_set.insert(StateData(P(0), V(1), 0.0));
+  EXPECT(sd_set.size() == 4);
+  // insert new state with same pose and vel but diff time (should not add)
+  sd_set.insert(StateData(P(0), V(0), 0.1));
+  EXPECT(sd_set.size() == 4);
+}
 
 // Constructor test
 TEST(WNOAInterp, Constructor) {
@@ -703,7 +748,8 @@ TEST(WNOAInterp, SE3InterpGraph) {
   DOUBLES_EQUAL(0.0, optimizer.error(), 1e-6);
 
   // Test value interpolation
-  Values result_interp = updateInterpValues<Pose3>(new_graph, result, border_shfl, interp_shfl, Q_se3);
+  Values result_interp = updateInterpValues<Pose3>(
+      new_graph, result, border_shfl, interp_shfl, Q_se3);
 
   auto p3_se3_est = result_interp.at<Pose3>(P(3));
   auto p1_se3_est = result_interp.at<Pose3>(P(1));
