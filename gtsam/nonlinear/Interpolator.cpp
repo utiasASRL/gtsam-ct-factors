@@ -276,16 +276,15 @@ Values Interpolator<PoseType>::interpolatePosesAndVelocities(
     std::map<std::pair<double, double>, std::vector<double>> queryBuckets;
 
     for (const auto& [t_tau, keys] : interpolateKeyMap) {
-      if (t_tau < mainSolveKeyMap.begin()->first) {
-        queryBuckets[std::make_pair(-std::numeric_limits<double>::infinity(),
-                                    mainSolveKeyMap.begin()->first)]
-            .push_back(t_tau);
-      } else if (t_tau > mainSolveKeyMap.rbegin()->first) {
-        queryBuckets[std::make_pair(mainSolveKeyMap.rbegin()->first,
-                                    std::numeric_limits<double>::infinity())]
-            .push_back(t_tau);
-      } else {
-        auto it2 = mainSolveKeyMap.upper_bound(t_tau);
+      auto it2 = mainSolveKeyMap.upper_bound(t_tau);
+      if(it2 == mainSolveKeyMap.end()) {
+        auto it1 = std::prev(it2);
+        queryBuckets[std::make_pair(it1->first, std::numeric_limits<double>::infinity())].push_back(t_tau);
+      }
+      else if(it2 == mainSolveKeyMap.begin()) {
+        queryBuckets[std::make_pair(-std::numeric_limits<double>::infinity(), it2->first)].push_back(t_tau);
+      }
+      else {
         auto it1 = std::prev(it2);
         queryBuckets[std::make_pair(it1->first, it2->first)].push_back(t_tau);
       }
@@ -316,7 +315,6 @@ Values Interpolator<PoseType>::interpolatePosesAndVelocities(
                                             mainSolveKeyMap.at(t_kp1).first),
                                         mainSolveSolution.at<VelocityType>(
                                             mainSolveKeyMap.at(t_kp1).second));
-
       // Compute covariances of the interpolated poses and velocities
       std::shared_ptr<Matrix> mainSolveMarginalMatrix;  // (4*dim, 4*dim)
       Matrix covarianceOut;                             // (2*dim, 2*dim)

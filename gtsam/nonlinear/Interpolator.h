@@ -62,6 +62,13 @@ using gtsam::tictoc_print_;
 #include <utility>
 #include <vector>
 
+// Define a custom comparator for double keys to handle floating-point precision issues
+struct DoubleCompare {
+    bool operator()(double a, double b) const {
+        return (a + 1e-9) < b; // define "equal" within a tolerance
+    }
+};
+
 namespace gtsam {
 
 template <typename PoseType>
@@ -90,7 +97,7 @@ class Interpolator {
 
  public:
   // Maps timestamp to a pair of keys (pose, velocity)
-  using TimestampKeyMap = std::map<double, std::pair<Key, Key>>;
+  using TimestampKeyMap = std::map<double, std::pair<Key, Key>, DoubleCompare>;
 
   // Maps a pose or velocity to their covariance matrix
   using CovarianceMap = std::map<Key, Matrix>;
