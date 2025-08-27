@@ -12,8 +12,8 @@ int main(int argc, char* argv[]) {
   string input_file = config["files"]["input"].as<string>();
   string output_file = config["files"]["output"].as<string>();
   string gt_output_file = config["files"]["gt_out"].as<string>();
-  string interp_raw_file = config["files"]["interp_raw_file"].as<string>(); 
-  string interp_out = config["files"]["interp_out"].as<string>(); 
+  string interp_raw_file = config["files"]["interp_raw_file"].as<string>();
+  string interp_out = config["files"]["interp_out"].as<string>();
   // Load dataset
   DatasetLoader data;
   data.loadFromFile(input_file);
@@ -55,6 +55,26 @@ int main(int argc, char* argv[]) {
   auto odoNoise = noiseModel::Diagonal::Sigmas(sigma_odom);     // odometry
   auto measNoise =
       noiseModel::Diagonal::Sigmas(sigma_br);  // range-bearing noise
+
+  // Get ground truth solution
+  Values gt;
+  vector<StateData> all_states;
+  for (int i = start; i <= end; i++) {
+    gt.insert(Symbol('x', i),
+              Pose2(data.x_true[i], data.y_true[i], data.th_true[i]));
+    if (include_wnoa || interp_enable) {
+      gt.insert(Symbol('v', i), Vector3(data.v[i], 0.0, data.om[i]));
+      // create vector of states for interpolation
+      all_states.push_back(
+          StateData(Symbol('x', i), Symbol('v', i), data.t[i]));
+    }
+  }
+  // Ground truth for landmarks
+  for (int j = 0; j < data.n_landmarks; j++) {
+    gt.insert(Symbol('l', j),
+              Point2(data.landmarks(j, 0), data.landmarks(j, 1)));
+  }
+
   // Create a factor graph
   ExpressionFactorGraph graph;
 
@@ -90,9 +110,8 @@ int main(int argc, char* argv[]) {
   if (include_wnoa) {
     cout << "Adding WNOA factors" << endl;
     // Add WNOA Motion Factors between states
-    for (int i = start + 1; i <= end; i++) {
-      graph.add(WNOAMotionFactor<Pose2>(Symbol('x', i - 1), Symbol('v', i - 1),
-                                        Symbol('x', i), Symbol('v', i), del_t,
+    for (uint i = 0; i < all_states.size() - 1; i++) {
+      graph.add(WNOAMotionFactor<Pose2>(all_states[i], all_states[i + 1],
                                         sigma_wnoa));
     }
   }
@@ -124,36 +143,18 @@ int main(int argc, char* argv[]) {
           // Get Bearing Range measurement
           BearingRange2 measurement(Rot2(data.bearing(i, j)), data.range(i, j));
           // Compute the bearing and range Prediction
-          // If we solve slam, use unknown landmark variable, otherwise use ground-truth value
-            auto predict = solve_slam
-              ? BearingRangeLandmarkPredictionSLAM(xi, landmark, T_vs)
-              : BearingRangeLandmarkPrediction(xi, landmarks[j], T_vs);
-            // Define Factor
-            graph.addExpressionFactor(predict, measurement, measNoise);
+          // If we solve slam, use unknown landmark variable, otherwise use
+          // ground-truth value
+          auto predict =
+              solve_slam
+                  ? BearingRangeLandmarkPredictionSLAM(xi, landmark, T_vs)
+                  : BearingRangeLandmarkPrediction(xi, landmarks[j], T_vs);
+          // Define Factor
+          graph.addExpressionFactor(predict, measurement, measNoise);
         }
       }
     }
   }
-  // Get ground truth solution
-  Values gt;
-  vector<StateData> all_states;
-  for (int i = start; i <= end; i++) {
-    gt.insert(Symbol('x', i),
-              Pose2(data.x_true[i], data.y_true[i], data.th_true[i]));
-    if (include_wnoa || interp_enable) {
-      gt.insert(Symbol('v', i), Vector3(data.v[i], 0.0, data.om[i]));
-      // create vector of states for interpolation
-      all_states.push_back(
-          StateData(Symbol('x', i), Symbol('v', i), data.t[i]));
-    }
-  }
-  // Ground truth for landmarks
-  for (int j = 0; j < data.n_landmarks; j++) {
-    
-    gt.insert(Symbol('l', j),
-              Point2(data.landmarks(j, 0), data.landmarks(j, 1)));
-  }
-
 
   // Initialization
   Values initial;
@@ -184,16 +185,12 @@ int main(int argc, char* argv[]) {
   }
 
   // Initialize landmarks if doing full SLAM
-  if(solve_slam)
-  {
+  if (solve_slam) {
     // Initialize landmarks at zero
     for (int j = 0; j < data.n_landmarks; j++) {
-      
       // Only add keys for landmarks that have been observed
-      if(landmark_observed[j])
-      {
-        initial.insert(Symbol('l', j),
-                Point2(0,0));
+      if (landmark_observed[j]) {
+        initial.insert(Symbol('l', j), Point2(0, 0));
       }
     }
   }
@@ -229,7 +226,8 @@ int main(int argc, char* argv[]) {
     // save intermediate result with only estimated states
     saveResultToFile(result_interp, graph_interp, interp_raw_file, solve_slam);
     // Recover interpolated means using interpolator
-    result = updateInterpValues<Pose2>(graph_interp, result_interp, estim, interp, sigma_wnoa);    
+    result = updateInterpValues<Pose2>(graph_interp, result_interp, estim,
+                                       interp, sigma_wnoa);
   } else {
     result = LevenbergMarquardtOptimizer(graph, initial, params).optimize();
   }
