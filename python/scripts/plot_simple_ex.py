@@ -60,7 +60,7 @@ def plot_se2_trajectory(ax, csv_path, title, greyscale=False):
     # Plot covariance ellipses if available and 2D
     for xi, yi, cov in zip(x, y, covariances):
         if greyscale:
-            plot_cov_ellipse(ax, xi, yi, cov, n_std=1, edgecolor=None, facecolor=(0.8, 0.8, 0.8, 0.25), lw=1, alpha=0.25)
+            plot_cov_ellipse(ax, xi, yi, cov, n_std=1, edgecolor=(0.5, 0.5, 0.5, 0.25), facecolor=(0.8, 0.8, 0.8, 0.25), lw=1, alpha=0.25)
         else:
             plot_cov_ellipse(ax, xi, yi, cov, n_std=1, edgecolor=None, facecolor='tab:blue', lw=1, alpha=0.25)
 

@@ -10,16 +10,18 @@ using symbol_shorthand::V;
 
 void runInterpExample() {
   // Define Noise Models
-  Vector sigma_unary = Vector3::Ones();  // diagonal of unary meas
-  Vector sigma_wnoa = Vector3::Ones();  // WNOA Power Spectral Density
+  Vector cov_diag_unary = Vector3::Ones();  // diagonal of unary meas covariance
+  Vector Q_wnoa = Vector3::Ones();  // WNOA Power Spectral Density
 
   // Parameters for trajectory
-  int n_points = 50;       // total number of points
+  int n_points = 100;       // total number of points
   int period_interp = 25;  // number of interpolated points between borders
   double del_t = 0.1;      // timestep
   Vector3 velocity;
   velocity << 1.0, 0.0, 0.1;
   Pose2 pose_init(0.0, 0.0, 0.0);
+  bool include_pose_prior = true;
+  bool include_vel_prior = false;
 
   // Init graphs, values, states
   NonlinearFactorGraph graph;
@@ -38,16 +40,26 @@ void runInterpExample() {
       pose_curr = pose_curr.expmap(del_t * velocity);  // update pose
       // Add WNOA motion model
       auto factor_wnoa = std::make_shared<WNOAMotionFactor<Pose2>>(
-          P(i - 1), V(i - 1), P(i), V(i), del_t, sigma_wnoa);
+          P(i - 1), V(i - 1), P(i), V(i), del_t, Q_wnoa);
       graph.add(factor_wnoa);
     }
     // add to values
     values_init.insert(P(i), pose_curr);
     values_init.insert(V(i), velocity);
     // add prior
-    graph.addPrior(P(i), pose_curr, sigma_unary.asDiagonal());
+    if (include_pose_prior){
+      graph.addPrior(P(i), pose_curr, cov_diag_unary.asDiagonal());
+    }
+    if (include_vel_prior){
+      graph.addPrior(V(i), velocity, cov_diag_unary.asDiagonal());
+    }
     // Track list of states
     states[i] = StateData(P(i), V(i), time);
+  }
+  // prior on first state
+  if (include_vel_prior && !include_pose_prior){
+    graph.addPrior(P(0), pose_init, cov_diag_unary.asDiagonal());
+    graph.addPrior(P(n_points-1), pose_init, cov_diag_unary.asDiagonal());
   }
   // set up optimizer
   LevenbergMarquardtParams params;
@@ -74,7 +86,7 @@ void runInterpExample() {
   }
   // generate interpolated graph
   NonlinearFactorGraph graph_interp = interpolateFactorGraph<Pose2>(
-      graph, estimated_states, interpolated_states, sigma_wnoa);
+      graph, estimated_states, interpolated_states, Q_wnoa);
   // run optimization on interpolated version
   Values result_interp =
       LevenbergMarquardtOptimizer(graph_interp, values_interp_init, params)
@@ -85,7 +97,7 @@ void runInterpExample() {
   // recover interpolated values and covariances
   Values result_recov = updateInterpValues<Pose2>(
       graph_interp, result_interp, estimated_states, interpolated_states,
-      sigma_wnoa, cov_map_interp);
+      Q_wnoa, cov_map_interp);
 
   // Save the results to files
   // Full solve
