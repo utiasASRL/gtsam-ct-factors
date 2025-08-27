@@ -1,0 +1,11 @@
+noise:
+  unary: [1.0, 1.0 , 1.0]
+  wnoa: [1.0, 1.0 , 1.0]
+flags:
+  pose_prior: true
+  vel_prior: false
+params:
+  velocity: [1.0, 0.0, 0.1]
+  del_t: 5.0
+  period_interp: 2
+  n_points: 10

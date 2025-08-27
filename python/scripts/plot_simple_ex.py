@@ -40,10 +40,10 @@ def plot_axes_at_points(ax, x, y, theta, length=0.2, greyscale=False):
     """Plot small 2D frames (axes) at each (x, y, theta) pose."""
     for xi, yi, thetai in zip(x, y, theta):
         # Origin
-        color_o = 'k' if not greyscale else (0.3, 0.3, 0.3, 0.7)
+        # color_o = 'k' if not greyscale else (0.3, 0.3, 0.3, 0.7)
         color_x = 'r' if not greyscale else (0.5, 0.5, 0.5, 0.7)
         color_y = 'g' if not greyscale else (0.7, 0.7, 0.7, 0.7)
-        ax.plot(xi, yi, marker='o', color=color_o, markersize=2)
+        # ax.plot(xi, yi, marker='o', color=color_o, markersize=2)
         ax.arrow(xi, yi, length * np.cos(thetai), length * np.sin(thetai),
                     head_width=0.05, head_length=0.05, fc=color_x, ec=color_x, linewidth=1)
         ax.arrow(xi, yi, -length * np.sin(thetai), length * np.cos(thetai),
@@ -99,6 +99,7 @@ if __name__ == "__main__":
               "interpolated",
               "interp via graph"]
     fig, axs = plt.subplots(2, 2, figsize=(8, 6))
+    
     axs = axs.flatten()
     for i, csv_path in enumerate(paths):
         if i == 0:
@@ -106,6 +107,9 @@ if __name__ == "__main__":
         else:
             plot_se2_trajectory(axs[i], paths[0], titles[i], greyscale=True)
             plot_se2_trajectory(axs[i], csv_path, titles[i])
-            
+    # Link all axes in x and y
+    for ax in axs.flatten()[1:]:
+        ax.sharex(axs.flatten()[0])
+        ax.sharey(axs.flatten()[0])
     plt.tight_layout()
     plt.show()
