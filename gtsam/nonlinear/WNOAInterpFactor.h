@@ -301,27 +301,29 @@ class WNOAInterpFactor : public NoiseModelFactor {
       // unpack border states
       auto& [left, right] = border_states;
       // retrieve estimated state values
-      const auto state_left = make_pair(values.at<PoseType>(left.pose),
-                                        values.at<VelocityType>(left.vel));
-      const auto state_right = make_pair(values.at<PoseType>(right.pose),
-                                         values.at<VelocityType>(right.vel));
+      const auto state_left = typename Interpolator<PoseType>::TimestampedPoseVel(
+          left.time, values.at<PoseType>(left.pose),
+          values.at<VelocityType>(left.vel));
+
+      const auto state_right = typename Interpolator<PoseType>::TimestampedPoseVel(
+          right.time, values.at<PoseType>(right.pose),
+          values.at<VelocityType>(right.vel));
 
       // Get interpolated state velocity pair
-      PoseType pose;
-      VelocityType velocity;
+      typename Interpolator<PoseType>::PoseVel result;
       vector<Matrix> H(8);
       if (InterpJacobians) {
-        tie(pose, velocity) = interpolator_.interpolatePoseAndVelocity(
-            state_left, left.time, state_right, right.time, interp_state.time,
+        result = interpolator_.interpolatePoseAndVelocity(
+            state_left, state_right, interp_state.time,
             &H);
       } else {
-        tie(pose, velocity) = interpolator_.interpolatePoseAndVelocity(
-            state_left, left.time, state_right, right.time, interp_state.time);
+        result = interpolator_.interpolatePoseAndVelocity(
+            state_left, state_right, interp_state.time);
       }
 
       // insert into values structure
-      values_interp.insert(interp_state.pose, pose);
-      values_interp.insert(interp_state.vel, velocity);
+      values_interp.insert(interp_state.pose, result.pose);
+      values_interp.insert(interp_state.vel, result.vel);
 
       // arrange jacobians in unordered map (for easy access later)
       if (InterpJacobians) {
@@ -337,9 +339,10 @@ class WNOAInterpFactor : public NoiseModelFactor {
 
       // Conditional covariance of interpolated states for noise model update
       if (InterpCondCovs) {
+        auto state_tau = typename Interpolator<PoseType>::TimestampedPoseVel(
+            interp_state.time, result);
         Matrix2N Sigma_tau = interpolator_.computeConditionalCov(
-            state_left, state_right, pair(pose, velocity), left.time,
-            right.time, interp_state.time);
+            state_left, state_right, state_tau);
         (*InterpCondCovs)[interp_state] =
             Sigma_tau;  // assumed preallocated vector
       }
@@ -536,19 +539,9 @@ Values updateInterpValues(const NonlinearFactorGraph& interp_graph,
   assert(traits<PoseType>::dimension == Q_psd.size());
   // Define interpolator
   Interpolator<PoseType> interpolator(Q_psd);
-  // generate timestamp maps required by interpolator
-  using TimestampKeyMap = typename Interpolator<PoseType>::TimestampKeyMap;
-  TimestampKeyMap interp_key_map;
-  for (auto& state : interp_states) {
-    interp_key_map[state.time] = pair(state.pose, state.vel);
-  }
-  TimestampKeyMap estim_key_map;
-  for (auto& state : estim_states) {
-    estim_key_map[state.time] = pair(state.pose, state.vel);
-  }
   // get interpolated values
   Values interp_vals = interpolator.interpolatePosesAndVelocities(
-      interp_graph, values, estim_key_map, interp_key_map);
+      interp_graph, values, estim_states, interp_states);
   // update values
   Values values_updated(values);
   values_updated.insert(interp_vals);

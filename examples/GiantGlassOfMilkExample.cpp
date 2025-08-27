@@ -44,8 +44,8 @@ int main() {
   Values initialEstimate;
 
 
-  Interpolator<Point1>::TimestampKeyMap mainSolveKeyMap;
-  Interpolator<Point1>::TimestampKeyMap interpolateKeyMap;
+  Interpolator<Point1>::StateDataSet mainSolveStateSet;
+  Interpolator<Point1>::StateDataSet interpolateStateSet;
   std::shared_ptr<Interpolator<Point1>::CovarianceMap> covarianceMap = std::make_shared<Interpolator<Point1>::CovarianceMap>();
 
   // Defining shorthand for symbols
@@ -58,7 +58,7 @@ int main() {
   // Add initial guess for first state (zero)
   initialEstimate.insert(X(0),Point1(0.0));
   initialEstimate.insert(V(0),Vector1(0.0));
-  mainSolveKeyMap[times(0)] = std::make_pair(X(0), V(0));
+  mainSolveStateSet.insert(StateData(X(0), V(0), times(0)));
 
   // Run through all states and add WNOA prior factors between neighbouring states
   unsigned int num_states = static_cast<unsigned int>(std::round(times.tail<1>()(0) / dt_state)) + 1;
@@ -69,13 +69,13 @@ int main() {
       // Add initial guess for next state (zero)
       initialEstimate.insert(X(i+1),Point1(0.0));
       initialEstimate.insert(V(i+1),Vector1(0.0));
-      mainSolveKeyMap[(i+1) * dt_state] = std::make_pair(X(i+1), V(i+1));
+      mainSolveStateSet.insert(StateData(X(i+1), V(i+1), (i+1)*dt_state));
   }
 
   
   // Add keys for the interpolation
   for(unsigned int i = 0; i < times.size(); i++) {
-      interpolateKeyMap[times(i)] = std::make_pair(Z(i), D(i));
+      interpolateStateSet.insert(StateData(Z(i), D(i), times(i)));
   }
 
   // Add measurement factors for both position and velocity
@@ -117,7 +117,7 @@ int main() {
     // interpolate states at requested times
     std::cout << "Querying..." << std::endl;
     Interpolator<Point1> interpolator(Qc_mat);
-    Values results_interpolated = interpolator.interpolatePosesAndVelocities(graph, result, mainSolveKeyMap, interpolateKeyMap, covarianceMap);
+    Values results_interpolated = interpolator.interpolatePosesAndVelocities(graph, result, mainSolveStateSet, interpolateStateSet, covarianceMap);
 
     std::cout << "Saving values..." << std::endl;
     for(unsigned int i = 0; i < times.size(); i++)
