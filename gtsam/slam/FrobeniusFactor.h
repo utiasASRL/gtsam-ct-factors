@@ -26,21 +26,26 @@
 namespace gtsam {
 
 /**
- * When creating (any) FrobeniusFactor we can convert a Rot/Pose BetweenFactor
- * noise model into a n-dimensional isotropic noise
- * model used to weight the Frobenius norm.
- * If the noise model passed is null we return a n-dimensional isotropic noise
- * model with sigma=1.0.
- * If not, we we check if the d-dimensional noise model on rotations is
- * isotropic. If it is, we extend to 'n' dimensions, otherwise we throw an
- * error. If the noise model is a robust error model, we use the sigmas of the
- * underlying noise model.
+ * @brief Convert a possibly robust noise model to an isotropic model for
+ * Frobenius factors.
  *
- * If defaultToUnit == false throws an exception on unexpected input.
+ * This function is used to convert a noise model, which may be robust, into an
+ * isotropic noise model suitable for Frobenius factors. If the input noise
+ * model is null, it returns an n-dimensional isotropic noise model with
+ * sigma=1.0. If the input noise model is isotropic, it extends it to the
+ * desired dimension. If the noise model is robust, the sigmas of the underlying
+ * noise model are used. If the noise model is not isotropic and `defaultToUnit`
+ * is false, an exception is thrown.
+ *
+ * @param model The input noise model (possibly robust).
+ * @param dimension The desired dimension for the isotropic model.
+ * @param defaultToUnit If true, fallback to unit if conversion is not possible.
+ * @throws std::runtime_error if model not isotropic and defaultToUnit =false.
+ * @return An isotropic (possibly robust) noise model.
  */
-GTSAM_EXPORT SharedNoiseModel
-ConvertNoiseModel(const SharedNoiseModel &model, size_t n,
-                  bool defaultToUnit = true);
+GTSAM_EXPORT SharedNoiseModel ConvertNoiseModel(const SharedNoiseModel& model,
+                                                size_t n,
+                                                bool defaultToUnit = true);
 
 /**
  * FrobeniusPrior calculates the Frobenius norm between a given matrix and an
@@ -55,7 +60,6 @@ class FrobeniusPrior : public NoiseModelFactorN<T> {
   Eigen::Matrix<double, Dim, 1> vecM_;  ///< vectorized matrix to approximate
 
  public:
-
   // Provide access to the Matrix& version of evaluateError:
   using NoiseModelFactor1<T>::evaluateError;
 
@@ -70,7 +74,8 @@ class FrobeniusPrior : public NoiseModelFactorN<T> {
 
   /// Error is just Frobenius norm between T element and vectorized matrix M.
   Vector evaluateError(const T& g, OptionalMatrixType H) const override {
-    return traits<T>::Vec(g, H) - vecM_;  // Jacobian is computed only when needed.
+    return traits<T>::Vec(g, H) -
+           vecM_;  // Jacobian is computed only when needed.
   }
 };
 
@@ -85,7 +90,6 @@ class FrobeniusFactor : public NoiseModelFactorN<T, T> {
   inline constexpr static auto Dim = N * N;
 
  public:
-
   // Provide access to the Matrix& version of evaluateError:
   using NoiseModelFactor2<T, T>::evaluateError;
 
@@ -94,8 +98,8 @@ class FrobeniusFactor : public NoiseModelFactorN<T, T> {
       : NoiseModelFactorN<T, T>(ConvertNoiseModel(model, Dim), j1, j2) {}
 
   /// Error is just Frobenius norm between rotation matrices.
-  Vector evaluateError(const T& T1, const T& T2,
-                       OptionalMatrixType H1, OptionalMatrixType H2) const override {
+  Vector evaluateError(const T& T1, const T& T2, OptionalMatrixType H1,
+                       OptionalMatrixType H2) const override {
     Vector error = traits<T>::Vec(T2, H2) - traits<T>::Vec(T1, H1);
     if (H1) *H1 = -*H1;
     return error;
