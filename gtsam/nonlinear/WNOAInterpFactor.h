@@ -301,16 +301,18 @@ class WNOAInterpFactor : public NoiseModelFactor {
       // unpack border states
       auto& [left, right] = border_states;
       // retrieve estimated state values
-      const auto state_left = typename Interpolator<PoseType>::TimestampedPoseVel(
-          left.time, values.at<PoseType>(left.pose),
-          values.at<VelocityType>(left.vel));
+      const auto state_left = TimestampedPoseVelocity<PoseType>(
+          values.at<PoseType>(left.pose),
+          values.at<VelocityType>(left.vel),
+          left.time);
 
-      const auto state_right = typename Interpolator<PoseType>::TimestampedPoseVel(
-          right.time, values.at<PoseType>(right.pose),
-          values.at<VelocityType>(right.vel));
+      const auto state_right = TimestampedPoseVelocity<PoseType>(
+          values.at<PoseType>(right.pose),
+          values.at<VelocityType>(right.vel),
+          right.time);
 
       // Get interpolated state velocity pair
-      typename Interpolator<PoseType>::PoseVel result;
+      PoseVelocity<PoseType> result;
       vector<Matrix> H(8);
       if (InterpJacobians) {
         result = interpolator_.interpolatePoseAndVelocity(
@@ -339,8 +341,8 @@ class WNOAInterpFactor : public NoiseModelFactor {
 
       // Conditional covariance of interpolated states for noise model update
       if (InterpCondCovs) {
-        auto state_tau = typename Interpolator<PoseType>::TimestampedPoseVel(
-            interp_state.time, result);
+        auto state_tau = TimestampedPoseVelocity<PoseType>(
+            result, interp_state.time);
         Matrix2N Sigma_tau = interpolator_.computeConditionalCov(
             state_left, state_right, state_tau);
         (*InterpCondCovs)[interp_state] =

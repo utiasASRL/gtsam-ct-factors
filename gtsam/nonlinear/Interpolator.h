@@ -63,14 +63,27 @@ using gtsam::tictoc_print_;
 #include <utility>
 #include <vector>
 
-// Define a custom comparator for double keys to handle floating-point precision issues
-struct DoubleCompare {
-    bool operator()(double a, double b) const {
-        return (a + 1e-9) < b; // define "equal" within a tolerance
-    }
+namespace gtsam {
+
+template <typename PoseType>
+struct PoseVelocity {
+PoseType pose;
+typename traits<PoseType>::TangentVector vel;
+
+std::pair<PoseType, typename traits<PoseType>::TangentVector> asPair() const { return std::make_pair(pose, vel); }
 };
 
-namespace gtsam {
+template <typename PoseType>
+struct TimestampedPoseVelocity {
+PoseVelocity<PoseType> poseVel;
+double timestamp;
+
+TimestampedPoseVelocity(PoseType pose, typename traits<PoseType>::TangentVector vel, double time)
+    : poseVel{pose, vel}, timestamp(time) {}
+
+TimestampedPoseVelocity(PoseVelocity<PoseType> pv, double time)
+    : poseVel(pv), timestamp(time) {}
+};
 
 template <typename PoseType>
 class Interpolator {
@@ -97,28 +110,9 @@ class Interpolator {
       computeJacobianNext_;
 
  public:
-  // Maps timestamp to a pair of keys (pose, velocity)
-//   using TimestampKeyMap = std::map<double, std::pair<Key, Key>, DoubleCompare>;
   using StateDataSet = std::set<StateData>;
-
-  struct PoseVel {
-    PoseType pose;
-    VelocityType vel;
-
-    std::pair<PoseType, VelocityType> asPair() const { return std::make_pair(pose, vel); }
-  };
-
-  struct TimestampedPoseVel {
-    double timestamp;
-    PoseVel poseVel;
-
-    TimestampedPoseVel(double time, PoseType pose, VelocityType vel)
-        : timestamp(time), poseVel{pose, vel} {}
-
-    TimestampedPoseVel(double time, PoseVel pv)
-        : timestamp(time), poseVel(pv) {}
-  };
-  
+  using PoseVel = PoseVelocity<PoseType>;
+  using TimestampedPoseVel = TimestampedPoseVelocity<PoseType>;
 
   // Maps a pose or velocity to their covariance matrix
   using CovarianceMap = std::map<Key, Matrix>;

@@ -3,6 +3,7 @@
 #include <gtsam/inference/Key.h>
 
 #include <functional>
+#include <limits>
 
 namespace gtsam {
 
@@ -45,8 +46,13 @@ struct StateData {
     }
     return false;
   }
+
+  bool isInfTime() const {
+    return std::isinf(this->time);
+  }
 };
 
+// dummy states used for identifying states to be extrapolated in the Interpolator
 const StateData StateData::PosInf(0, 0, std::numeric_limits<double>::infinity());
 const StateData StateData::NegInf(0, 0, -std::numeric_limits<double>::infinity());
 

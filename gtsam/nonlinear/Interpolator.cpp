@@ -45,9 +45,9 @@ Interpolator<PoseType>::interpolatePoseAndVelocity(
     Matrix* covarianceOut) const {
 
     // unpack inputs
-    auto [t_k, poseVel_k] = tPoseVel_k;
+    auto [poseVel_k, t_k] = tPoseVel_k;
     auto [T_k, varpi_k] = poseVel_k;
-    auto [t_kp1, poseVel_kp1] = tPoseVel_kp1;
+    auto [poseVel_kp1, t_kp1] = tPoseVel_kp1;
     auto [T_kp1, varpi_kp1] = poseVel_kp1;
 
     // if t_tau is equal to t_k or t_kp1, return the corresponding pose and
@@ -269,7 +269,7 @@ Interpolator<PoseType>::interpolatePoseAndVelocity(
         // LambdaPsi << Lambda_paper, Psi_paper;
 
         // use existing Lambda and Psi computed from (11.41) in the book
-        Matrix2N Sigma = computeConditionalCov(tPoseVel_k, tPoseVel_kp1, TimestampedPoseVel{t_tau, poseVel_tau});
+        Matrix2N Sigma = computeConditionalCov(tPoseVel_k, tPoseVel_kp1, TimestampedPoseVel{poseVel_tau, t_tau});
         LambdaPsi << Lambda, Psi;
 
         *covarianceOut = Sigma + LambdaPsi * *mainSolveMarginalMatrix * LambdaPsi.transpose();
@@ -316,20 +316,20 @@ Values Interpolator<PoseType>::interpolatePosesAndVelocities(
       StateData state2 = stateDataBorders.second;
 
       // Get the poses and velocities at t_k and t_kp1
-      auto pvk = std::isinf(state1.time)
-                     ? TimestampedPoseVel(state1.time, PoseVel())
-                     : TimestampedPoseVel(state1.time,
-                                          mainSolveSolution.at<PoseType>(
+      auto pvk = state1.isInfTime()
+                     ? TimestampedPoseVel(PoseVel(), state1.time)
+                     : TimestampedPoseVel(mainSolveSolution.at<PoseType>(
                                               state1.pose),
                                           mainSolveSolution.at<VelocityType>(
-                                              state1.vel));
-      auto pvkp1 = std::isinf(state2.time)
-                       ? TimestampedPoseVel(state2.time, PoseVel())
-                       : TimestampedPoseVel(state2.time,
-                                            mainSolveSolution.at<PoseType>(
-                                                state2.pose),
+                                              state1.vel),
+                                          state1.time);
+      auto pvkp1 = state2.isInfTime()
+                       ? TimestampedPoseVel(PoseVel(), state2.time)
+                       : TimestampedPoseVel(mainSolveSolution.at<PoseType>(
+                                               state2.pose),
                                             mainSolveSolution.at<VelocityType>(
-                                                state2.vel));
+                                                state2.vel),
+                                            state2.time);
 
       // Compute covariances of the interpolated poses and velocities
       std::shared_ptr<Matrix> mainSolveMarginalMatrix;  // (4*dim, 4*dim)
@@ -337,9 +337,9 @@ Values Interpolator<PoseType>::interpolatePosesAndVelocities(
       if (covarianceMapOut) {
         // following (5.22) in paper
         KeyVector variables;
-        if (std::isinf(state1.time)) {
+        if (state1.isInfTime()) {
           variables = {state2.pose, state2.vel};  // {p2, v2}
-        } else if (std::isinf(state2.time)) {
+        } else if (state2.isInfTime()) {
           variables = {state1.pose, state1.vel};  // {p1, v1}
         } else {
           variables = {
@@ -409,9 +409,9 @@ Interpolator<PoseType>::computeConditionalCov(
     OptionalMatrixType Psi) const {
     
     // unpacking then repacking... maybe this can be written better
-    auto [t_k, poseVel_k] = tPoseVel_k;
-    auto [t_kp1, poseVel_kp1] = tPoseVel_kp1;
-    auto [t_tau, poseVel_tau] = tPoseVel_tau;
+    auto [poseVel_k, t_k] = tPoseVel_k;
+    auto [poseVel_kp1, t_kp1] = tPoseVel_kp1;
+    auto [poseVel_tau, t_tau] = tPoseVel_tau;
 
     // Todo (Daniel): handle the case when t_tau == t_k or t_tau == t_kp1
     assert(t_tau > t_k && t_tau < t_kp1 &&
