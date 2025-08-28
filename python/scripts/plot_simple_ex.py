@@ -58,24 +58,23 @@ def plot_se2_trajectory(ax, csv_path, title, greyscale=False):
     plot_axes_at_points(ax, x, y, theta, length=0.2, greyscale=greyscale)
 
     # Plot covariance ellipses if available and 2D
-    for xi, yi, cov in zip(x, y, covariances):
+    for xi, yi,ti, cov in zip(x, y,theta, covariances):
         if greyscale:
-            plot_cov_ellipse(ax, xi, yi, cov, n_std=1, edgecolor=(0.5, 0.5, 0.5, 0.25), facecolor=(0.8, 0.8, 0.8, 0.25), lw=1, alpha=0.25)
+            plot_cov_ellipse(ax, xi, yi,ti, cov, n_std=1, edgecolor=(0.5, 0.5, 0.5, 0.25), facecolor=(0.8, 0.8, 0.8, 0.25), lw=1, alpha=0.25)
         else:
-            plot_cov_ellipse(ax, xi, yi, cov, n_std=1, edgecolor=None, facecolor='tab:blue', lw=1, alpha=0.25)
+            plot_cov_ellipse(ax, xi, yi,ti, cov, n_std=1, edgecolor=None, facecolor='tab:blue', lw=1, alpha=0.25)
 
     ax.set_aspect('equal')
     ax.set_xlabel('x [m]')
     ax.set_ylabel('y [m]')
     ax.set_title(title)
-    ax.legend()
-    ax.grid(True)
+    # ax.grid(True)
 
-def plot_cov_ellipse(ax, xi, yi, cov, n_std=1.0, **kwargs):
+def plot_cov_ellipse(ax, xi, yi, ti, cov, n_std=1.0, **kwargs):
     """Plot a covariance ellipse centered at mean with covariance cov."""
     cov2d = cov[0:2, 0:2]
     vals, vecs = np.linalg.eigh(cov2d)
-    angle = np.rad2deg(np.arctan2(*vecs[:, 1][::-1]))
+    angle = np.rad2deg(np.arctan2(*vecs[:, 1][::-1]) + ti)
     height, width = n_std * 2 * np.sqrt(vals)
     ellipse = Ellipse(
         (xi, yi),
