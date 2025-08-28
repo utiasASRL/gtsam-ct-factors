@@ -30,3 +30,4 @@ _build
 *.egg-info
 /results/*.csv
 /examples/*.asv
+uv.lock

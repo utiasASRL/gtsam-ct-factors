@@ -1,12 +1,14 @@
 #include <gtsam/base/Lie.h>
-#include <gtsam/base/VectorSpace.h>
 #include <gtsam/base/Testable.h>
+#include <gtsam/base/VectorSpace.h>
 #include <gtsam/geometry/Point1.h>
 #include <gtsam/geometry/Point2.h>
 #include <gtsam/geometry/Point3.h>
 #include <gtsam/geometry/Pose2.h>
 #include <gtsam/geometry/Pose3.h>
 #include <gtsam/nonlinear/NonlinearFactor.h>
+#include <gtsam/nonlinear/StateData.h>
+
 #include <cassert>
 
 #pragma once
@@ -22,10 +24,12 @@ class WNOAMotionFactor
   GTSAM_CONCEPT_ASSERT(IsTestable<Pose>);
   // We currently support vector spaces and Lie groups
   // SL: Can we use GTSAM_CONCEPT_ASSERT here?
-  static_assert(std::is_same_v<typename traits<Pose>::structure_category, lie_group_tag> ||
-                std::is_same_v<typename traits<Pose>::structure_category, vector_space_tag>,
+  static_assert(std::is_same_v<typename traits<Pose>::structure_category,
+                               lie_group_tag> ||
+                    std::is_same_v<typename traits<Pose>::structure_category,
+                                   vector_space_tag>,
                 "Pose type must be either a Lie group or vector space");
-  
+
   GTSAM_CONCEPT_ASSERT(IsLieGroup<Pose>);  // (CH) this could potentially be
                                            // changed to Manifold check
  public:
@@ -36,9 +40,9 @@ class WNOAMotionFactor
   using Velocity = typename gtsam::traits<Pose>::TangentVector;
   using MatrixN = Eigen::Matrix<double, dim, dim>;
   using VectorN = Eigen::Matrix<double, dim, 1>;
-  using Matrix2N = Eigen::Matrix<double, 2*dim, 2*dim>;
-  using Vector2N = Eigen::Matrix<double, 2*dim, 1>;
-  using MatrixNx2N = Eigen::Matrix<double, dim, 2*dim>;
+  using Matrix2N = Eigen::Matrix<double, 2 * dim, 2 * dim>;
+  using Vector2N = Eigen::Matrix<double, 2 * dim, 1>;
+  using MatrixNx2N = Eigen::Matrix<double, dim, 2 * dim>;
   typedef NoiseModelFactorN<Pose, Velocity, Pose, Velocity> Base;
   typedef WNOAMotionFactor This;
   double delta_t_;
@@ -47,12 +51,30 @@ class WNOAMotionFactor
   inline static const MatrixN Zero = MatrixN::Zero();
 
  public:
- 
   // Provide access to the Matrix& version of evaluateError:
   using Base::evaluateError;
   // Dimension variable, used for convenience
-  /**
-  Constructor
+  
+  /**  Constructor 
+  @param state_k StateData struct of state at t_k
+  @param state_kp1 StateData struct of state at t_{k+1}
+  @param Q Input noise matrix, Noise model is constructed from this and delta_t
+  altered noise model based on the provided model.
+  */
+  WNOAMotionFactor(const StateData& state_k, const StateData& state_kp1,
+                   const VectorN& Q)
+      : Base() {
+    // define keys
+    this->keys_ = {state_k.pose, state_k.vel, state_kp1.pose, state_kp1.vel};
+    // define timestep
+    this->delta_t_ = state_kp1.time - state_k.time;
+    assert(this->delta_t_ > 0.0 &&
+           "Time difference between input states must be positive.");
+    // define noise model
+    this->noiseModel_ = This::buildWNOANoiseModel(this->delta_t_, Q);
+  }
+
+  /**  Constructor overload with keys defined directly
   @param key1 key for the pose at t_k
   @param key2 key for the velocity at t_k
   @param key3 key for the pose at t_{k+1}
@@ -65,6 +87,7 @@ class WNOAMotionFactor
                    const VectorN& Q)
       : Base(This::buildWNOANoiseModel(delta_t, Q), key1, key2, key3, key4),
         delta_t_(delta_t) {}
+
 
   ~WNOAMotionFactor() override {}
   /** implement functions needed for Testable */
@@ -99,7 +122,9 @@ class WNOAMotionFactor
     if (Hp1 || Hp2) {
       MatrixN dbetween_p1;
       MatrixN dbetween_p2;
-      xi = traits<Pose>::Logmap(traits<Pose>::Between(p1, p2, &dbetween_p1, &dbetween_p2), &right_jac_inv);
+      xi = traits<Pose>::Logmap(
+          traits<Pose>::Between(p1, p2, &dbetween_p1, &dbetween_p2),
+          &right_jac_inv);
       dxi_dT1 = right_jac_inv * dbetween_p1;
       dxi_dT2 = right_jac_inv * dbetween_p2;
     } else {
@@ -109,20 +134,21 @@ class WNOAMotionFactor
     Vector2N err;
 
     err << xi - delta_t_ * v1, right_jac_inv * v2 - v1;
-    
+
     // Derivative of velocity error wrt xi
     MatrixN dvErr_dxi;
     if (Hp1 || Hp2) {
       // Derivative of velocity error wrt xi
       // Zero for vector spaces, use an approximation for Lie groups
-      if constexpr (std::is_same_v<typename traits<Pose>::structure_category, vector_space_tag>) {
+      if constexpr (std::is_same_v<typename traits<Pose>::structure_category,
+                                   vector_space_tag>) {
         dvErr_dxi.setZero();
       } else {
         // For Lie groups
         dvErr_dxi = -Pose::adjointMap(v2) / 2.0 -
-          (Pose::adjointMap(Pose::adjointMap(xi) * v2) +
-           Pose::adjointMap(xi) * Pose::adjointMap(v2)) /
-              12.0;
+                    (Pose::adjointMap(Pose::adjointMap(xi) * v2) +
+                     Pose::adjointMap(xi) * Pose::adjointMap(v2)) /
+                        12.0;
       }
     }
     // Compute Final Jacobians
@@ -132,7 +158,8 @@ class WNOAMotionFactor
     }
     if (Hv1) {
       // Derivative of error wrt velocity v1
-      *Hv1 = (Matrix(2 * dim, dim) << -delta_t_ * Identity, -Identity).finished();
+      *Hv1 =
+          (Matrix(2 * dim, dim) << -delta_t_ * Identity, -Identity).finished();
     }
     if (Hp2) {
       // Derivative of error wrt pose p2
@@ -152,16 +179,18 @@ class WNOAMotionFactor
     Matrix2N covariance;
     MatrixN Q_diag = Q.asDiagonal();
     covariance << (1.0 / 3.0 * pow(timestep, 3)) * Q_diag,
-        (1.0 / 2.0 * pow(timestep, 2)) * Q_diag, (1.0 / 2.0 * pow(timestep, 2)) * Q_diag,
-        timestep * Q_diag;
+        (1.0 / 2.0 * pow(timestep, 2)) * Q_diag,
+        (1.0 / 2.0 * pow(timestep, 2)) * Q_diag, timestep * Q_diag;
     return covariance;
   }
 
-  static Matrix2N buildInverseWNOACovariance(double timestep, const VectorN& Q) {
+  static Matrix2N buildInverseWNOACovariance(double timestep,
+                                             const VectorN& Q) {
     // construct the inverse covariance matrix for the WNOA factor
     Matrix2N inverse_covariance;
     MatrixN Q_inv_diag = Q.cwiseInverse().asDiagonal();
-    inverse_covariance << (12.0 / (timestep * timestep * timestep)) * Q_inv_diag,
+    inverse_covariance << (12.0 / (timestep * timestep * timestep)) *
+                              Q_inv_diag,
         (-6.0 / (timestep * timestep)) * Q_inv_diag,
         (-6.0 / (timestep * timestep)) * Q_inv_diag,
         (4.0 / timestep) * Q_inv_diag;
@@ -169,32 +198,30 @@ class WNOAMotionFactor
     return inverse_covariance;
   }
 
-
   static inline noiseModel::Gaussian::shared_ptr buildWNOANoiseModel(
       double timestep, const VectorN& Q) {
-    return noiseModel::Gaussian::Covariance(
-        buildWNOACovariance(timestep, Q));
+    return noiseModel::Gaussian::Covariance(buildWNOACovariance(timestep, Q));
   }
-
 
   static Matrix2N transitionFunction(double delta_t) {
     // Construct the transition matrix for the WNOA factor
     Matrix2N F;
-    F << Identity, delta_t * Identity,
-        Zero, Identity;
+    F << Identity, delta_t * Identity, Zero, Identity;
     return F;
   }
 
   static Matrix2N computeJacobianPrev(const std::pair<Pose, Velocity>& pv1,
-                        const std::pair<Pose, Velocity>& pv2, double delta_t) {
+                                      const std::pair<Pose, Velocity>& pv2,
+                                      double delta_t) {
     // corresponds to F in (11.20) in SER
-    auto & [p1, v1] = pv1;
-    auto & [p2, v2] = pv2;
+    auto& [p1, v1] = pv1;
+    auto& [p2, v2] = pv2;
     MatrixN right_jac_inv;
-    (void) traits<Pose>::Logmap(traits<Pose>::Between(p1, p2), &right_jac_inv);
+    (void)traits<Pose>::Logmap(traits<Pose>::Between(p1, p2), &right_jac_inv);
     MatrixN T_k_km1;
     MatrixN adjoint;
-    if constexpr (std::is_same_v<typename traits<Pose>::structure_category, vector_space_tag>) {
+    if constexpr (std::is_same_v<typename traits<Pose>::structure_category,
+                                 vector_space_tag>) {
       T_k_km1 = Identity;
       adjoint = Zero;
     } else {
@@ -203,30 +230,30 @@ class WNOAMotionFactor
     }
     Matrix2N F;
     F << right_jac_inv * T_k_km1, delta_t * Identity,
-    0.5 * adjoint * right_jac_inv * T_k_km1, Identity;
+        0.5 * adjoint * right_jac_inv * T_k_km1, Identity;
     return F;
   }
 
   static Matrix2N computeJacobianNext(const std::pair<Pose, Velocity>& pv1,
-                        const std::pair<Pose, Velocity>& pv2, double delta_t) {
+                                      const std::pair<Pose, Velocity>& pv2,
+                                      double delta_t) {
     // corresponds to E in (11.21) in SER
-    auto & [p1, v1] = pv1;
-    auto & [p2, v2] = pv2;
+    auto& [p1, v1] = pv1;
+    auto& [p2, v2] = pv2;
     MatrixN right_jac_inv;
-    (void) traits<Pose>::Logmap(traits<Pose>::Between(p1, p2), &right_jac_inv);
+    (void)traits<Pose>::Logmap(traits<Pose>::Between(p1, p2), &right_jac_inv);
     MatrixN adjoint;
-    if constexpr (std::is_same_v<typename traits<Pose>::structure_category, vector_space_tag>) {
+    if constexpr (std::is_same_v<typename traits<Pose>::structure_category,
+                                 vector_space_tag>) {
       adjoint = Zero;
     } else {
       adjoint = Pose::adjointMap(v2);
     }
     Matrix2N E;
-    E << right_jac_inv, Zero,
-    0.5 * adjoint * right_jac_inv, right_jac_inv;
+    E << right_jac_inv, Zero, 0.5 * adjoint * right_jac_inv, right_jac_inv;
     return E;
   }
 };
-
 
 // Make factors testable
 template <class Pose>
