@@ -8,48 +8,76 @@ using namespace gtsam;
 using symbol_shorthand::P;
 using symbol_shorthand::V;
 
-void runInterpExample(Vector& cov_diag_unary, Vector& Q_wnoa, int n_points,
-                      int period_interp, double del_t, Vector3& velocity,
-                      bool include_pose_prior, bool include_vel_prior) {
+Vector3 sample_vector(Vector3 cov, std::mt19937& gen) {
+  std::normal_distribution<> dist(0.0, 1.0);  // mean=0, stddev=1
+
+  // Fill Eigen vector with samples
+  Vector3 vec_white;
+  for (int i = 0; i < 3; ++i) {
+    vec_white(i) = dist(gen);
+  }
+  // color the vector
+  Vector3 vec = cov.cwiseSqrt().asDiagonal() * vec_white;
+  return vec;
+}
+
+struct InterpExampleParams {
+  Vector3 cov_diag_unary;
+  Vector3 Q_wnoa;
+  Vector3 vel_mean;
+  int N;
+  int period_interp;
+  double del_t;
+  bool perturb_meas;
+};
+
+void runInterpExample(InterpExampleParams& p) {
   // Init graphs, values, states
   NonlinearFactorGraph graph;
   Values values_init;
-  vector<StateData> states(n_points);
+  vector<StateData> states(p.N);
   Pose2 pose_init(0.0, 0.0, 0.0);
+
+  // Init RNG
+  std::random_device rd;   // Seed
+  std::mt19937 gen(rd());  // Mersenne Twister RNG
+  // Velocity sampled covariance
+  Vector3 cov_vel = pow(p.del_t, 2) * p.Q_wnoa;
 
   // Define trajectory with fixed velocity
   Pose2 pose_curr;
+  Vector3 velocity;
   double time = 0;
-  for (int i = 0; i < n_points; i++) {
-    // get current pose
+  for (int i = 0; i < p.N; i++) {
+    // get current pose and velocity
     if (i == 0) {
       pose_curr = pose_init;
     } else {
-      time += del_t;                                   // update time
-      pose_curr = pose_curr.expmap(del_t * velocity);  // update pose
+      time += p.del_t;  // update time
+      // update pose
+      pose_curr = pose_curr.expmap(p.del_t * p.vel_mean);
       // Add WNOA motion model
       auto factor_wnoa = std::make_shared<WNOAMotionFactor<Pose2>>(
-          P(i - 1), V(i - 1), P(i), V(i), del_t, Q_wnoa);
+          P(i - 1), V(i - 1), P(i), V(i), p.del_t, p.Q_wnoa);
       graph.add(factor_wnoa);
     }
     // add to values
     values_init.insert(P(i), pose_curr);
     values_init.insert(V(i), velocity);
     // add prior
-    if (include_pose_prior) {
-      graph.addPrior(P(i), pose_curr, cov_diag_unary.asDiagonal());
+    Pose2 pose_meas;
+    if (p.perturb_meas) {
+      Vector3 pert = sample_vector(p.cov_diag_unary, gen);
+      pose_meas = pose_curr.expmap(pert);
+    } else {
+      pose_meas = pose_curr;
     }
-    if (include_vel_prior) {
-      graph.addPrior(V(i), velocity, cov_diag_unary.asDiagonal());
-    }
+    graph.addPrior(P(i), pose_meas, p.cov_diag_unary.asDiagonal());
+
     // Track list of states
     states[i] = StateData(P(i), V(i), time);
   }
-  // prior on first and last state when using velocity
-  if (include_vel_prior && !include_pose_prior) {
-    graph.addPrior(P(0), pose_init, cov_diag_unary.asDiagonal());
-    graph.addPrior(P(n_points - 1), pose_init, cov_diag_unary.asDiagonal());
-  }
+
   // set up optimizer
   LevenbergMarquardtParams params;
   params.setVerbosityLM("SUMMARY");
@@ -61,8 +89,8 @@ void runInterpExample(Vector& cov_diag_unary, Vector& Q_wnoa, int n_points,
   set<StateData> interpolated_states;
   set<StateData> estimated_states;
   Values values_interp_init;
-  for (int i = 0; i < n_points; i++) {
-    if (i == 0 || i == n_points - 1 || i % period_interp == 0) {
+  for (int i = 0; i < p.N; i++) {
+    if (i == 0 || i == p.N - 1 || i % p.period_interp == 0) {
       estimated_states.insert(states[i]);
       // fill in initial values
       Key pose_key = states[i].pose;
@@ -75,7 +103,7 @@ void runInterpExample(Vector& cov_diag_unary, Vector& Q_wnoa, int n_points,
   }
   // generate interpolated graph
   NonlinearFactorGraph graph_interp = interpolateFactorGraph<Pose2>(
-      graph, estimated_states, interpolated_states, Q_wnoa);
+      graph, estimated_states, interpolated_states, p.Q_wnoa);
   // run optimization on interpolated version
   Values result_interp =
       LevenbergMarquardtOptimizer(graph_interp, values_interp_init, params)
@@ -86,7 +114,7 @@ void runInterpExample(Vector& cov_diag_unary, Vector& Q_wnoa, int n_points,
   // recover interpolated values and covariances
   Values result_recov =
       updateInterpValues<Pose2>(graph_interp, result_interp, estimated_states,
-                                interpolated_states, Q_wnoa, cov_map_interp);
+                                interpolated_states, p.Q_wnoa, cov_map_interp);
 
   // Save the results to files
   // Full solve
@@ -102,30 +130,29 @@ void runInterpExample(Vector& cov_diag_unary, Vector& Q_wnoa, int n_points,
 
 int main(int argc, char* argv[]) {
   // Get configuration data
-  string config_file = "examples/SimpleInterpExampleDefault.yaml";
+  string config_file = "simple_traj/BubblingParams.yaml";
   if (argc > 1) {
     config_file = argv[1];
   }
   YAML::Node config = YAML::LoadFile(config_file);
 
+  // Set parameters
+  InterpExampleParams p;
+
   // diagonal of unary meas covariance
-  Vector cov_diag_unary =
+  p.cov_diag_unary =
       Vector3(config["noise"]["unary"].as<vector<double>>().data());
   // WNOA Power Spectral Density
-  Vector Q_wnoa = Vector3(config["noise"]["wnoa"].as<vector<double>>().data());
+  p.Q_wnoa = Vector3(config["noise"]["wnoa"].as<vector<double>>().data());
 
-  int n_points =
-      config["params"]["n_points"].as<int>();  // total number of points
-  int period_interp =
+  p.N = config["params"]["n_points"].as<int>();  // total number of points
+  p.period_interp =
       config["params"]["period_interp"]
           .as<int>();  // number of interpolated points between borders
-  double del_t = config["params"]["del_t"].as<double>();  // timestep
-  Vector3 velocity =
-      Vector3(config["params"]["velocity"].as<vector<double>>().data());
-  Pose2 pose_init(0.0, 0.0, 0.0);
-  bool include_pose_prior = config["flags"]["pose_prior"].as<bool>();
-  bool include_vel_prior = config["flags"]["vel_prior"].as<bool>();
+  p.del_t = config["params"]["del_t"].as<double>();  // timestep
+  p.vel_mean =
+      Vector3(config["params"]["vel_mean"].as<vector<double>>().data());
+  p.perturb_meas = config["flags"]["perturb_meas"].as<bool>();
 
-  runInterpExample(cov_diag_unary, Q_wnoa, n_points, period_interp, del_t,
-                   velocity, include_pose_prior, include_vel_prior);
+  runInterpExample(p);
 }

@@ -31,3 +31,7 @@ _build
 /results/*.csv
 /examples/*.asv
 uv.lock
+
+# analyses
+interp_analyses/build
+interp_analyses/results

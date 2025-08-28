@@ -1,11 +1,10 @@
 noise:
-  unary: [0.2 ,0.2, 0.2]
-  wnoa: [0.001, 0.001, 0.00001]
+  unary: [0.1 ,0.1, 0.01]
+  wnoa: [0.01, 0.001, 0.001]
 flags:
-  pose_prior: true
-  vel_prior: false
+  perturb_meas: true
 params:
-  velocity: [0.1, 0.0, 0.005]
-  del_t: 1.0
+  vel_mean: [1.0, 0.0, 0.0]
+  del_t: 0.1
   period_interp: 30
   n_points: 60
