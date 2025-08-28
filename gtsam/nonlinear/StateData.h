@@ -3,6 +3,7 @@
 #include <gtsam/inference/Key.h>
 
 #include <functional>
+#include <limits>
 
 namespace gtsam {
 
@@ -18,6 +19,9 @@ struct StateData {
   StateData(Key pose_in, Key vel_in, double time_in)
       : pose(pose_in), vel(vel_in), time(time_in) {};
 
+  static const StateData PosInf;
+  static const StateData NegInf;
+
   // Less than operator to enable sorting
   bool operator<(const StateData& other) const {
     return this->time < other.time;
@@ -29,11 +33,29 @@ struct StateData {
 
   // less than operator to compare with other times
   bool operator<(double time) const { return this->time < time; }
+  
+  // greater than operator to compare with other times
+  bool operator>(double time) const { return this->time > time; }
+
   // equality operator for unordered sets and maps
   bool operator==(const StateData& other) const {
-    return this->pose == other.pose && this->vel == other.vel;
+    if (this->pose == other.pose && this->vel == other.vel) {
+      // this assert fails for some reason?
+      // assert((this->time + 1e-9) < other.time); // ensure times are equal within tolerance
+      return true;
+    }
+    return false;
+  }
+
+  bool isInfTime() const {
+    return std::isinf(this->time);
   }
 };
+
+// dummy states used for identifying states to be extrapolated in the Interpolator
+const StateData StateData::PosInf(0, 0, std::numeric_limits<double>::infinity());
+const StateData StateData::NegInf(0, 0, -std::numeric_limits<double>::infinity());
+
 }  // namespace gtsam
 
 /* @brief Function to make StateData hashable via the pose key. This allows us

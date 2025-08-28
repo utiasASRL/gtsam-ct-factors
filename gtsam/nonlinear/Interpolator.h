@@ -48,6 +48,7 @@ using gtsam::tictoc_print_;
 
 #include <gtsam/nonlinear/NonlinearEquality.h>
 #include <gtsam/slam/StereoFactor.h>
+#include <gtsam/nonlinear/StateData.h>
 
 // Standard headers, added last, so we know headers above work on their own.
 #include <algorithm>
@@ -62,14 +63,27 @@ using gtsam::tictoc_print_;
 #include <utility>
 #include <vector>
 
-// Define a custom comparator for double keys to handle floating-point precision issues
-struct DoubleCompare {
-    bool operator()(double a, double b) const {
-        return (a + 1e-9) < b; // define "equal" within a tolerance
-    }
+namespace gtsam {
+
+template <typename PoseType>
+struct PoseVelocity {
+PoseType pose;
+typename traits<PoseType>::TangentVector vel;
+
+std::pair<PoseType, typename traits<PoseType>::TangentVector> asPair() const { return std::make_pair(pose, vel); }
 };
 
-namespace gtsam {
+template <typename PoseType>
+struct TimestampedPoseVelocity {
+PoseVelocity<PoseType> poseVel;
+double timestamp;
+
+TimestampedPoseVelocity(PoseType pose, typename traits<PoseType>::TangentVector vel, double time)
+    : poseVel{pose, vel}, timestamp(time) {}
+
+TimestampedPoseVelocity(PoseVelocity<PoseType> pv, double time)
+    : poseVel(pv), timestamp(time) {}
+};
 
 template <typename PoseType>
 class Interpolator {
@@ -96,13 +110,12 @@ class Interpolator {
       computeJacobianNext_;
 
  public:
-  // Maps timestamp to a pair of keys (pose, velocity)
-  using TimestampKeyMap = std::map<double, std::pair<Key, Key>, DoubleCompare>;
+  using StateDataSet = std::set<StateData>;
+  using PoseVel = PoseVelocity<PoseType>;
+  using TimestampedPoseVel = TimestampedPoseVelocity<PoseType>;
 
   // Maps a pose or velocity to their covariance matrix
   using CovarianceMap = std::map<Key, Matrix>;
-  // Note (Daniel): bit iffy about using double for timestamps as
-  // keys, but it should be fine as long as the keys are not modified afterwards
 
   Interpolator() = delete;
 
@@ -120,27 +133,27 @@ class Interpolator {
   // Default to WNOA
   Interpolator(const VectorN& Q_psd);
 
-  std::pair<PoseType, VelocityType> interpolatePoseAndVelocity(
-      std::pair<PoseType, VelocityType> Tvarpi_k, double t_k,
-      std::pair<PoseType, VelocityType> Tvarpi_kp1, double t_kp1, double t_tau,
+  PoseVel interpolatePoseAndVelocity(
+      const TimestampedPoseVel& Tvarpi_k,
+      const TimestampedPoseVel& Tvarpi_kp1,
+      double t_tau,
       OptionalMatrixVecType H = nullptr,
       const std::shared_ptr<Matrix>& mainSolveMarginalMatrix = nullptr,
       Matrix* covarianceOut = nullptr) const;
 
   Values interpolatePosesAndVelocities(
       const NonlinearFactorGraph& mainSolveGraph,
-      const Values& mainSolveSolution, const TimestampKeyMap& mainSolveKeyMap,
-      const TimestampKeyMap& interpolateKeyMap,
+      const Values& mainSolveSolution, const StateDataSet& mainSolveStates,
+      const StateDataSet& interpolatedStates,
       std::shared_ptr<CovarianceMap> covarianceMapOut = nullptr) const;
 
   std::pair<Matrix, Matrix> getLambdaPsi(double t_k, double t_kp1,
                                         double t_tau) const;
   
   // if Lambda and Psi are provided, they will be computed using (5.23)
-  Matrix2N computeConditionalCov(const std::pair<PoseType, VelocityType>& pvk,
-                                 const std::pair<PoseType, VelocityType>& pvkp1,
-                                 const std::pair<PoseType, VelocityType>& pvtau,
-                                 double t_k, double t_kp1, double t_tau,
+  Matrix2N computeConditionalCov(const TimestampedPoseVel& pvk,
+                                 const TimestampedPoseVel& pvkp1,
+                                 const TimestampedPoseVel& pvtau,
                                  OptionalMatrixType Lambda = nullptr,
                                  OptionalMatrixType Psi = nullptr) const;
 

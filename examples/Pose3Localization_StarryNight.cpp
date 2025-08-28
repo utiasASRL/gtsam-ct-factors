@@ -33,10 +33,10 @@ auto WNOAPSD = Vector6(1.0, 1.0, 1.0, 0.1, 0.1, 0.1);  // power spectral density
 
 size_t numPoses, numLandmarks;
 
-using TimestampKeyMap = Interpolator<Pose3>::TimestampKeyMap;
+using StateDataSet = Interpolator<Pose3>::StateDataSet;
 using CovarianceMap = Interpolator<Pose3>::CovarianceMap;
 
-std::tuple<NonlinearFactorGraph, Values, Values, TimestampKeyMap>
+std::tuple<NonlinearFactorGraph, Values, Values, StateDataSet>
 optimize(const std::vector<std::pair<double, Vector6>>& inputs,
          const std::vector<MeasTriple>& measTripleVector,
          const std::vector<Pose3>& gtPoses,
@@ -49,7 +49,7 @@ optimize(const std::vector<std::pair<double, Vector6>>& inputs,
 
   NonlinearFactorGraph graph;
   Values initialEstimate;
-  TimestampKeyMap timestampKeyMap;
+  StateDataSet stateDataSet;
 
   size_t poseInterval = includeIntermediatePoses ? 1 : POSE_INTERVAL_MEAS;
 
@@ -89,7 +89,7 @@ optimize(const std::vector<std::pair<double, Vector6>>& inputs,
         }
       }
 
-      timestampKeyMap[inputs[poseID].first] = std::pair(Symbol('x', poseID), Symbol('v', poseID));
+      stateDataSet.insert(StateData(Symbol('x', poseID), Symbol('v', poseID), inputs[poseID].first));
     }
   }
 
@@ -159,7 +159,7 @@ optimize(const std::vector<std::pair<double, Vector6>>& inputs,
   GaussNewtonOptimizer optimizer(graph, initialEstimate, parameters);
   Values result = optimizer.optimize();
 
-  return std::make_tuple(graph, initialEstimate, result, timestampKeyMap);
+  return std::make_tuple(graph, initialEstimate, result, stateDataSet);
 }
 
 // --------------------------------------------------------------------------
@@ -247,7 +247,7 @@ int main(int argc, char** argv) {
 
   numPoses = std::min(inputs.size(), MAX_POSES);
   numLandmarks = gtLandmarks.size();
-  auto [graph, initialEstimate, result, timestampKeyMap] = optimize(inputs, measTripleVector, gtPoses, gtLandmarks, Cal, T_cv, odomNoise, stereoNoise, true);
+  auto [graph, initialEstimate, result, stateDataSet] = optimize(inputs, measTripleVector, gtPoses, gtLandmarks, Cal, T_cv, odomNoise, stereoNoise, true);
 
   // calculate marginal covariances
   std::cout.precision(3);
@@ -256,23 +256,23 @@ int main(int argc, char** argv) {
   // Test out interpolation after optimization
   if (USE_WNOA_FACTOR && POSE_INTERVAL_MEAS > 1) {
     // Optimize again without adding intermediate poses into the factor graph
-    auto [graph_small, initialEstimate_small, result_small, timestampKeyMap_small] = optimize(inputs, measTripleVector, gtPoses, gtLandmarks, Cal, T_cv, odomNoise, stereoNoise, false);
-    
+    auto [graph_small, initialEstimate_small, result_small, stateDataSet_small] = optimize(inputs, measTripleVector, gtPoses, gtLandmarks, Cal, T_cv, odomNoise, stereoNoise, false);
+
     // We want to interpolate for the in-between states not within the factor graph
     Interpolator<Pose3> interpolator(WNOAPSD);
     std::cout << "Interpolating poses and velocities after optimization..." << std::endl;
 
     // Add all non-main-solve poses into the queryKeyMap
-    TimestampKeyMap queryKeyMap;
+    StateDataSet queryStateDataSet;
     // size_t numPoses_largest_multiple = (numPoses - 1) / POSE_INTERVAL_MEAS * POSE_INTERVAL_MEAS + 1;
     for (size_t poseID = 0; poseID < numPoses; ++poseID) {
       if (poseID % POSE_INTERVAL_MEAS != 0) {  // not a main solve pose
         auto queryTime = inputs[poseID].first;
-        queryKeyMap[queryTime] = std::make_pair(Symbol('x', poseID), Symbol('v', poseID));
+        queryStateDataSet.insert(StateData(Symbol('x', poseID), Symbol('v', poseID), queryTime));
       }
     }
     auto covarianceMap = INTERP_COVARIANCE ? std::make_shared<CovarianceMap>() : nullptr;
-    Values interpolatedValues = interpolator.interpolatePosesAndVelocities(graph_small, result_small, timestampKeyMap_small, queryKeyMap, covarianceMap);
+    Values interpolatedValues = interpolator.interpolatePosesAndVelocities(graph_small, result_small, stateDataSet_small, queryStateDataSet, covarianceMap);
 
     // Add the interpolated poses and velocities to the result
     Values results_all = result_small;

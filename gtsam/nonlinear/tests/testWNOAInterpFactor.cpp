@@ -423,16 +423,16 @@ TEST(WNOAInterp, Interpolator) {
   // Get analytic Jacobians
   vector<Matrix> H(8);
   auto [pose_est, vel_est] = interp.interpolatePoseAndVelocity(
-      pair(p0_se3, v0_se3), 0.0, pair(p2_se3, v2_se3), 2 * timestep, timestep,
-      &H);
+      TimestampedPoseVelocity<Pose3>(p0_se3, v0_se3, 0.0),
+      TimestampedPoseVelocity<Pose3>(p2_se3, v2_se3, 2 * timestep),
+      timestep, &H);
 
   // define lambda function for derivatives
   auto f = [&](auto& p0, auto& v0, auto& p2, auto& v2) {
-    Pose3 pose;
-    Vector6 vel;
-
-    tie(pose, vel) = interp.interpolatePoseAndVelocity(
-        pair(p0, v0), 0.0, pair(p2, v2), 2 * timestep, timestep);
+    auto [pose, vel] = interp.interpolatePoseAndVelocity(
+        TimestampedPoseVelocity<Pose3>(p0, v0, 0.0),
+        TimestampedPoseVelocity<Pose3>(p2, v2, 2 * timestep),
+        timestep);
 
     return p1_se3.logmap(pose);
   };
@@ -569,8 +569,9 @@ TEST(WNOAInterp, NoiseModelP3Btwn) {
   // Note: Jacobians for Point3 are identity
   auto interpolator = Interpolator<Point3>(Q_p3);
   auto Sigma_tau = interpolator.computeConditionalCov(
-      pair(p0_p3, v0_p3), pair(p2_p3, v2_p3), pair(p1_p3, v1_p3), 0.0,
-      2 * timestep, timestep);
+      TimestampedPoseVelocity<Point3>(p0_p3, v0_p3, 0.0),
+      TimestampedPoseVelocity<Point3>(p2_p3, v2_p3, 2 * timestep),
+      TimestampedPoseVelocity<Point3>(p1_p3, v1_p3, timestep));
   EXPECT(assert_equal(cov_diff, 2 * Sigma_tau.block<3, 3>(0, 0)));
 }
 
