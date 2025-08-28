@@ -1,56 +1,118 @@
 #include "LostInTheWoodsExample.h"
 
-int main(int argc, char* argv[]) {
-  // Get configuration data
-  string config_file = "examples/Data/LostInTheWoods.yaml";
-  if (argc > 1) {
-    config_file = argv[1];
-  }
-  YAML::Node config = YAML::LoadFile(config_file);
+#include <yaml-cpp/yaml.h>
+#include <vector>
+#include <string>
 
+using std::string;
+using std::vector;
+
+struct LostInTheWoodsParams {
+  // File paths
+  string input_file;
+  string output_file;
+  string gt_output_file;
+  string interp_raw_file;
+  string interp_out;
+
+  // Flags
+  bool include_prior;
+  bool include_odom;
+  bool include_wnoa;
+  bool include_br_meas;
+  bool gt_init;
+  bool solve_slam;
+
+  // Interpolation
+  bool interp_enable;
+  uint interp_period;
+
+  // Parameters
+  double r_max;
+  double del_t;
+  int start;
+  int end;
+
+  // Noise
+  vector<double> sigma_prior_vec;
+  vector<double> sigma_wnoa_vec;
+  double sigma_y_odom;
+  double mult_bearing;
+  double mult_range;
+
+  // Constructor to load from YAML node
+  LostInTheWoodsParams(const YAML::Node& config) {
+    input_file = config["files"]["input"].as<string>();
+    output_file = config["files"]["output"].as<string>();
+    gt_output_file = config["files"]["gt_out"].as<string>();
+    interp_raw_file = config["files"]["interp_raw_file"].as<string>();
+    interp_out = config["files"]["interp_out"].as<string>();
+
+    include_prior = config["flags"]["prior"].as<bool>();
+    include_odom = config["flags"]["odom"].as<bool>();
+    include_wnoa = config["flags"]["wnoa"].as<bool>();
+    include_br_meas = config["flags"]["br"].as<bool>();
+    gt_init = config["flags"]["gt_init"].as<bool>();
+    solve_slam = config["flags"]["solve_slam"].as<bool>();
+
+    interp_enable = config["interp"]["enable"].as<bool>();
+    interp_period = config["interp"]["interp_period"].as<uint>();
+
+    r_max = config["params"]["r_max"].as<double>();
+    del_t = config["params"]["del_t"].as<double>();
+    start = config["params"]["start"].as<int>();
+    end = config["params"]["end"].as<int>();
+
+    sigma_prior_vec = config["noise"]["prior"].as<vector<double>>();
+    sigma_wnoa_vec = config["noise"]["wnoa"].as<vector<double>>();
+    sigma_y_odom = config["noise"]["odom_y"].as<double>();
+    mult_bearing = config["noise"]["bearing"].as<double>();
+    mult_range = config["noise"]["range"].as<double>();
+  }
+};
+
+int runLostInTheWoods(LostInTheWoodsParams& params){
   // Load Files
-  string input_file = config["files"]["input"].as<string>();
-  string output_file = config["files"]["output"].as<string>();
-  string gt_output_file = config["files"]["gt_out"].as<string>();
-  string interp_raw_file = config["files"]["interp_raw_file"].as<string>(); 
-  string interp_out = config["files"]["interp_out"].as<string>(); 
-  // Load dataset
   DatasetLoader data;
-  data.loadFromFile(input_file);
-  data.checkSizes();
+  data.loadFromFile(params.input_file);
+  // data.checkSizes();
 
   // switches for factors/init
-  bool include_prior = config["flags"]["prior"].as<bool>();
-  bool include_odom = config["flags"]["odom"].as<bool>();
-  bool include_wnoa = config["flags"]["wnoa"].as<bool>();
-  bool include_br_meas = config["flags"]["br"].as<bool>();
-  bool gt_init = config["flags"]["gt_init"].as<bool>();
-  bool solve_slam = config["flags"]["solve_slam"].as<bool>();
+  bool include_prior = params.include_prior;
+  bool include_odom = params.include_odom;
+  bool include_wnoa = params.include_wnoa;
+  bool include_br_meas = params.include_br_meas;
+  bool gt_init = params.gt_init;
+  bool solve_slam = params.solve_slam;
+
   // interpolation
-  bool interp_enable = config["interp"]["enable"].as<bool>();
-  uint interp_period = config["interp"]["interp_period"].as<uint>();
+  bool interp_enable = params.interp_enable;
+  uint interp_period = params.interp_period;
+  string output_file = params.output_file;
   if (interp_enable) {
-    output_file = interp_out;
+    output_file = params.interp_out;
+  } else {
+    output_file = params.output_file;
   }
-  // Get inputs from param file
-  double r_max = config["params"]["r_max"].as<double>();
-  double del_t = config["params"]["del_t"].as<double>();
-  int start = config["params"]["start"].as<int>();
-  int end = config["params"]["end"].as<int>();
+
+  // Get inputs from param struct
+  double r_max = params.r_max;
+  double del_t = params.del_t;
+  int start = params.start;
+  int end = params.end;
+
   // Get noise model parameters
-  Vector sigma_prior =
-      Vector3(config["noise"]["prior"].as<vector<double>>().data());
-  Vector sigma_wnoa =
-      Vector3(config["noise"]["wnoa"].as<vector<double>>().data());
-  double sigma_y_odom = config["noise"]["odom_y"].as<double>();
-  double mult_bearing = config["noise"]["bearing"].as<double>();
-  double mult_range = config["noise"]["range"].as<double>();
+  Vector sigma_prior = Vector3(params.sigma_prior_vec.data());
+  Vector sigma_wnoa = Vector3(params.sigma_wnoa_vec.data());
+  double sigma_y_odom = params.sigma_y_odom;
+  double mult_bearing = params.mult_bearing;
+  double mult_range = params.mult_range;
+
+  // Generate noise models
   Vector sigma_odom =
       Vector3(sqrt(data.v_var), sigma_y_odom, sqrt(data.om_var)) * del_t;
   Vector sigma_br =
       Vector2(sqrt(mult_bearing * data.b_var), sqrt(mult_range * data.r_var));
-
-  // Generate noise models
   auto priorNoise = noiseModel::Diagonal::Sigmas(sigma_prior);  // prior
   auto odoNoise = noiseModel::Diagonal::Sigmas(sigma_odom);     // odometry
   auto measNoise =
@@ -199,8 +261,8 @@ int main(int argc, char* argv[]) {
   }
 
   // set up optimizer
-  LevenbergMarquardtParams params;
-  params.setVerbosityLM("SUMMARY");
+  LevenbergMarquardtParams opt_params;
+  opt_params.setVerbosityLM("SUMMARY");
 
   // Run optimizer
   Values result;
@@ -225,13 +287,13 @@ int main(int argc, char* argv[]) {
         interpolateFactorGraph<Pose2>(graph, estim, interp, sigma_wnoa);
     // Run optimizer
     result_interp =
-        LevenbergMarquardtOptimizer(graph_interp, initial, params).optimize();
+        LevenbergMarquardtOptimizer(graph_interp, initial, opt_params).optimize();
     // save intermediate result with only estimated states
-    saveResultToFile(result_interp, graph_interp, interp_raw_file, solve_slam);
+    saveResultToFile(result_interp, graph_interp, params.interp_raw_file, solve_slam);
     // Recover interpolated means using interpolator
     result = updateInterpValues<Pose2>(graph_interp, result_interp, estim, interp, sigma_wnoa);    
   } else {
-    result = LevenbergMarquardtOptimizer(graph, initial, params).optimize();
+    result = LevenbergMarquardtOptimizer(graph, initial, opt_params).optimize();
   }
   // Save results
   cout << "Optimizer has finished...saving results..." << endl;
@@ -239,4 +301,19 @@ int main(int argc, char* argv[]) {
   saveResultToFile(gt, graph, "results/lost_gt.csv");
 
   return 0;
+}
+
+int main(int argc, char* argv[]) {
+
+  // Get configuration data
+  string config_file = "LostInTheWoods/default_params.yaml";
+  if (argc > 1) {
+    config_file = argv[1];
+  }
+  YAML::Node config = YAML::LoadFile(config_file);
+
+  // Use parameter struct to load all parameters
+  LostInTheWoodsParams params(config);
+
+  
 }

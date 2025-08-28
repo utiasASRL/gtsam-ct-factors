@@ -13,9 +13,11 @@ find_package(GTSAM REQUIRED)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../examples)
 # add execs
 add_executable(SimpleInterpExample simple_traj/SimpleInterpExample.cpp)
+add_executable(LostInTheWoods LostInTheWoods/LostInTheWoodsStudy.cpp)
 
 
 # By using CMake exported targets, a simple "link" dependency introduces the
 # include directories (-I) flags, and add any other
 # required build flags (e.g. C++11, etc.)
 target_link_libraries(SimpleInterpExample PRIVATE gtsam;yaml-cpp)
+target_link_libraries(LostInTheWoods PRIVATE gtsam;yaml-cpp)

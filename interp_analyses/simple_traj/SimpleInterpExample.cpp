@@ -1,6 +1,5 @@
-#include <gtsam/nonlinear/Interpolator.h>
-
 #include "LostInTheWoodsExample.h"
+#include <gtsam/nonlinear/Interpolator.h>
 
 using namespace std;
 using namespace gtsam;
