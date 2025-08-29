@@ -145,19 +145,13 @@ Interpolator<PoseType>::interpolatePoseAndVelocity(
     } else {
 
       Matrix2N Lambda,
-          Psi;  // ensure Lambda and Psi are 2*dim x 2*dim matrices,
-                // rather than using auto in the line below
+          Psi;  // ensure Lambda and Psi are 2Nx2N matrices
       std::tie(Lambda, Psi) = getLambdaPsi(t_k, t_kp1, t_tau);
 
-      MatrixNx2N Lambda_1 = Lambda.topRows(dim);
-      MatrixNx2N Lambda_2 = Lambda.bottomRows(dim);
-      MatrixNx2N Psi_1 = Psi.topRows(dim);
-      MatrixNx2N Psi_2 = Psi.bottomRows(dim);
-
       // form quantities for Eq. (11.45) in the book, (5.13) in the paper
-      Vector2N gamma_k;
-      gamma_k.topRows(dim).setZero();
-      gamma_k.bottomRows(dim) = varpi_k;
+      VectorN xi_k, xi_dot_k;
+      xi_k.setZero();
+      xi_dot_k = varpi_k;
 
       // Note that p1 = T(t_k), p2 = T(t_{k+1})
       //  compute xi = log(T_k^-1 T_{k+1})^check
@@ -178,11 +172,12 @@ Interpolator<PoseType>::interpolatePoseAndVelocity(
                                       &right_jac_inv);
       }
 
-      Vector2N gamma_kp1;
-      gamma_kp1 << xi, right_jac_inv * varpi_kp1;
+      VectorN xi_kp1, xi_dot_kp1;
+      xi_kp1 << xi;
+      xi_dot_kp1 = right_jac_inv * varpi_kp1;
 
-      auto xi_tau = Lambda_1 * gamma_k + Psi_1 * gamma_kp1;
-      auto xidot_tau = Lambda_2 * gamma_k + Psi_2 * gamma_kp1;
+      VectorN xi_tau = Lambda(0,dim) * xi_dot_k + Psi(0,0) * xi_kp1 + Psi(0,dim) * xi_dot_kp1; // Dropping xi_k term here since it's zero
+      VectorN xidot_tau = Lambda(dim,dim) * xi_dot_k + Psi(dim,0) * xi_kp1 + Psi(dim,dim) * xi_dot_kp1; // Dropping xi_k term here since it's zero
       // Eq. (11.45) in Barfoot 2025
       MatrixN right_jac_tau;
       MatrixN dTtau_dTk;
@@ -216,23 +211,22 @@ Interpolator<PoseType>::interpolatePoseAndVelocity(
           dvarpitau_dxitau = PoseType::adjointMap(xidot_tau) / 2.0;
         }
         // dgammakp1
-        Eigen::Matrix<double, 2 * dim, dim> dgammakp1_dTk;
-        dgammakp1_dTk << dxi_dTk, dxidot_dxi * dxi_dTk;
-        Eigen::Matrix<double, 2 * dim, dim> dgammakp1_dTkp1;
-        dgammakp1_dTkp1 << dxi_dTkp1, dxidot_dxi * dxi_dTkp1;
-        Eigen::Matrix<double, 2 * dim, dim> dgammakp1_dvarpikp1;
-        dgammakp1_dvarpikp1 << Eigen::Matrix<double, dim, dim>::Zero(),
-            right_jac_inv;
+        Eigen::Matrix<double, dim, dim> dxidot_dTk;
+        dxidot_dTk << dxidot_dxi * dxi_dTk;
+        Eigen::Matrix<double, dim, dim> dxidot_dTkp1;
+        dxidot_dTkp1 << dxidot_dxi * dxi_dTkp1;
+        Eigen::Matrix<double,dim, dim> dxidotkp1_dvarpikp1;
+        dxidotkp1_dvarpikp1 << right_jac_inv;
         // dxitau
-        MatrixN dxitau_dTk = Psi_1 * dgammakp1_dTk;
-        MatrixN dxitau_dvarpik = Lambda_1.template block<dim, dim>(0, dim);
-        MatrixN dxitau_dTkp1 = Psi_1 * dgammakp1_dTkp1;
-        MatrixN dxitau_dvarpikp1 = Psi_1 * dgammakp1_dvarpikp1;
+        MatrixN dxitau_dTk = Psi(0,0) * dxi_dTk + Psi(0,dim) * dxidot_dTk; 
+        MatrixN dxitau_dvarpik = Lambda(0,dim) * MatrixN::Identity(); // xi does not depend on varpi_k and xi_dot is exactly varpi_k
+        MatrixN dxitau_dTkp1 = Psi(0,0) * dxi_dTkp1 + Psi(0,dim) * dxidot_dTkp1;
+        MatrixN dxitau_dvarpikp1 = Psi(0,dim) * dxidotkp1_dvarpikp1; // dxikp1 does not depend on varpi_kp1
         // dxidottau
-        MatrixN dxidottau_dTk = Psi_2 * dgammakp1_dTk;
-        MatrixN dxidottau_dvarpik = Lambda_2.template block<dim, dim>(0, dim);
-        MatrixN dxidottau_dTkp1 = Psi_2 * dgammakp1_dTkp1;
-        MatrixN dxidottau_dvarpikp1 = Psi_2 * dgammakp1_dvarpikp1;
+        MatrixN dxidottau_dTk = Psi(dim,0) * dxi_dTk + Psi(dim,dim) * dxidot_dTk;
+        MatrixN dxidottau_dvarpik = Lambda(dim,dim) * MatrixN::Identity(); // xi does not depend on varpi_k and xi_dot is exactly varpi_k
+        MatrixN dxidottau_dTkp1 = Psi(dim,0) * dxi_dTkp1 + Psi(dim,dim) * dxidot_dTkp1;
+        MatrixN dxidottau_dvarpikp1 = Psi(dim,dim) * dxidotkp1_dvarpikp1; // dxikp1 does not depend on varpi_kp1
 
         // dTtau_dTk
         (*H)[0] = dTtau_dTk + dTtau_dxitau * dxitau_dTk;
@@ -270,8 +264,7 @@ Interpolator<PoseType>::interpolatePoseAndVelocity(
 
         // use existing Lambda and Psi computed from (11.41) in the book
         Matrix2N Sigma = computeConditionalCov(tPoseVel_k, tPoseVel_kp1, TimestampedPoseVel{poseVel_tau, t_tau});
-        LambdaPsi << Lambda, Psi;
-
+        LambdaPsi <<  Lambda, Psi;
         *covarianceOut = Sigma + LambdaPsi * *mainSolveMarginalMatrix * LambdaPsi.transpose();
       }
       return poseVel_tau;
@@ -379,6 +372,44 @@ Values Interpolator<PoseType>::interpolatePosesAndVelocities(
 template <typename PoseType>
 std::pair<Matrix, Matrix>
 Interpolator<PoseType>::getLambdaPsi(double t_k, double t_kp1,
+                                    double t_tau) const {
+
+
+
+    // TODO (SL): This is currently hardcoded for WNOA.
+    // we might want to move this code into the WNOA-specific factor and call it?
+    double dt = t_kp1 - t_k;
+    double alpha  = (t_tau - t_k) / dt;
+    double alpha2 = alpha * alpha;
+    double alpha3 = alpha2 * alpha;
+
+
+    Matrix2N Lambda, Psi;
+
+    double Psi_00 = 3*alpha2 - 2*alpha3;
+    double Psi_01 = dt*(alpha3 - alpha2);
+    double Psi_10 = (6*alpha/dt) - (6*alpha2/dt);
+    double Psi_11 = 3*alpha2 - 2*alpha;
+
+    double Lambda_00 = 1 - Psi_00;
+    double Lambda_01 = dt*(alpha - 2*alpha2 + alpha3);
+    double Lambda_10 = -Psi_10;
+    double Lambda_11 = 1 - 4*alpha + 3*alpha2;
+
+    Lambda << MatrixN::Identity()*Lambda_00, MatrixN::Identity()*Lambda_01,
+              MatrixN::Identity()*Lambda_10, MatrixN::Identity()*Lambda_11;
+
+    Psi << MatrixN::Identity()*Psi_00, MatrixN::Identity()*Psi_01,
+           MatrixN::Identity()*Psi_10, MatrixN::Identity()*Psi_11;
+
+
+    return std::make_pair(Lambda, Psi);
+}
+
+
+template <typename PoseType>
+std::pair<Matrix, Matrix>
+Interpolator<PoseType>::getLambdaPsiGeneral(double t_k, double t_kp1,
                                     double t_tau) const {
 
     // Build transition matrices for all combinations

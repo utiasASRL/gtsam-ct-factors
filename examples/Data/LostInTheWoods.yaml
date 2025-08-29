@@ -15,7 +15,7 @@ flags:
   wnoa: true
   br: true
   gt_init: false
-  solve_slam: true
+  solve_slam: false
 interp:
   enable: true
   interp_period: 10 

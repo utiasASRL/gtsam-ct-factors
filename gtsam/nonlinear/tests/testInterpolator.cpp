@@ -795,8 +795,8 @@ TEST(Interpolator, LambdaPsiConsistencyP2) {
     // get lambda and psi using Eq. (11.41) in the book
     auto [Lambda_book, Psi_book] = interpolator.getLambdaPsi(
         0.0, timestep, timestep * ratio);
-
-    // get lambda and psi using Eq. (5.23) in the paper
+    
+        // get lambda and psi using Eq. (5.23) in the paper
     auto tpvk = TimestampedPoseVelocity<Point2>(p0_p2, v0_p2, 0.0);
     auto tpvkp1 = TimestampedPoseVelocity<Point2>(p1_p2, v1_p2, timestep);
     auto pvtau = interpolator.interpolatePoseAndVelocity(
@@ -817,6 +817,7 @@ TEST(Interpolator, LambdaPsiConsistencyP3) {
     // get lambda and psi using Eq. (11.41) in the book
     auto [Lambda_book, Psi_book] = interpolator.getLambdaPsi(
         0.0, timestep, timestep * ratio);
+    
     // get lambda and psi using Eq. (5.23) in the paper
     auto tpvk = TimestampedPoseVelocity<Point3>(p0_p3, v0_p3, 0.0);
     auto tpvkp1 = TimestampedPoseVelocity<Point3>(p1_p3, v1_p3, timestep);
