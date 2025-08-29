@@ -1,5 +1,8 @@
-#include "LostInTheWoodsExample.h"
 #include <gtsam/nonlinear/Interpolator.h>
+
+#include <chrono>
+
+#include "LostInTheWoodsExample.h"
 
 using namespace std;
 using namespace gtsam;
@@ -30,7 +33,7 @@ struct InterpExampleParams {
   bool perturb_meas;
 };
 
-void runInterpExample(InterpExampleParams& p) {
+void runInterpExample(InterpExampleParams& p, bool run_full_opt=true) {
   // Init graphs, values, states
   NonlinearFactorGraph graph;
   Values values_init;
@@ -77,13 +80,6 @@ void runInterpExample(InterpExampleParams& p) {
     states[i] = StateData(P(i), V(i), time);
   }
 
-  // set up optimizer
-  LevenbergMarquardtParams params;
-  params.setVerbosityLM("SUMMARY");
-  // Solve full graph
-  Values result_full =
-      LevenbergMarquardtOptimizer(graph, values_init, params).optimize();
-
   // Set up interpolated states
   set<StateData> interpolated_states;
   set<StateData> estimated_states;
@@ -103,36 +99,71 @@ void runInterpExample(InterpExampleParams& p) {
   // generate interpolated graph
   NonlinearFactorGraph graph_interp = interpolateFactorGraph<Pose2>(
       graph, estimated_states, interpolated_states, p.Q_wnoa);
-  // run optimization on interpolated version
-  Values result_interp =
-      LevenbergMarquardtOptimizer(graph_interp, values_interp_init, params)
-          .optimize();
+  
+  if (run_full_opt){
+    // set up optimizer
+    LevenbergMarquardtParams params;
+    params.setVerbosityLM("SUMMARY");
+    // Solve full graph
+    Values result_full =
+      LevenbergMarquardtOptimizer(graph, values_init, params).optimize();
+    // run optimization on interpolated version
+    Values result_interp =
+        LevenbergMarquardtOptimizer(graph_interp, values_interp_init, params)
+            .optimize();
 
-  // define covariance map
-  auto cov_map_interp = std::make_shared<Interpolator<Pose2>::CovarianceMap>();
-  // recover interpolated values and covariances
-  Values result_recov =
-      updateInterpValues<Pose2>(graph_interp, result_interp, estimated_states,
-                                interpolated_states, p.Q_wnoa, cov_map_interp);
+    // define covariance map
+    auto cov_map_interp = std::make_shared<Interpolator<Pose2>::CovarianceMap>();
+    // recover interpolated values and covariances
+    Values result_recov =
+        updateInterpValues<Pose2>(graph_interp, result_interp, estimated_states,
+                                  interpolated_states, p.Q_wnoa, cov_map_interp);
 
-  // Save the results to files
-  // Full solve
-  saveResultToFile(result_full, graph, "results/simple_ex_full.csv");
-  // Just estimated states
-  saveResultToFile(result_interp, graph_interp, "results/simple_ex_estim.csv");
-  // All states, with covariance from graph
-  saveResultToFile(result_recov, graph, "results/simple_ex_interp_graph.csv");
-  // All states, with covariance recovered from interpolation.
-  saveResultToFile(result_recov, graph_interp, "results/simple_ex_interp.csv",
-                   false, cov_map_interp);
+    // Save the results to files
+    // Full solve
+    saveResultToFile(result_full, graph, "results/simple_ex_full.csv");
+    // Just estimated states
+    saveResultToFile(result_interp, graph_interp, "results/simple_ex_estim.csv");
+    // All states, with covariance from graph
+    saveResultToFile(result_recov, graph, "results/simple_ex_interp_graph.csv");
+    // All states, with covariance recovered from interpolation.
+    saveResultToFile(result_recov, graph_interp, "results/simple_ex_interp.csv",
+                    false, cov_map_interp);
+  }
+
+  // compute per-iteration times for each graph
+  // reduced graph
+  auto opt_reduced = GaussNewtonOptimizer(graph_interp, values_interp_init);
+  opt_reduced.iterate(); // run once to clear any overhead
+  auto start = chrono::high_resolution_clock::now();
+  opt_reduced.iterate();
+  auto end = chrono::high_resolution_clock::now();
+  auto duration_interp =
+      chrono::duration_cast<chrono::microseconds>(end - start).count();
+  cout << "Iteration Time for Interpolated Graph: " << duration_interp << " micros"
+       << endl;
+  // full graph
+  auto opt_full = GaussNewtonOptimizer(graph, values_init);
+  opt_full.iterate(); // run once to clear any overhead
+  start = chrono::high_resolution_clock::now();
+  opt_full.iterate();
+  end = chrono::high_resolution_clock::now();
+  auto duration_full =
+      chrono::duration_cast<chrono::microseconds>(end - start).count();
+  cout << "Iteration Time for Full Graph: " << duration_full << " micros" << endl;
 }
 
 int main(int argc, char* argv[]) {
   // Get configuration data
-  string config_file = "simple_traj/BubblingParams.yaml";
+  bool run_full_opt = true;
+  string config_file = "simple_traj/SimpleInterpExampleDefault.yaml";
   if (argc > 1) {
-    config_file = argv[1];
+    run_full_opt = std::stoi(argv[1]) != 0;
   }
+  if (argc > 2) {
+    config_file = argv[2];
+  }
+  
   YAML::Node config = YAML::LoadFile(config_file);
 
   // Set parameters
@@ -153,5 +184,5 @@ int main(int argc, char* argv[]) {
       Vector3(config["params"]["vel_mean"].as<vector<double>>().data());
   p.perturb_meas = config["flags"]["perturb_meas"].as<bool>();
 
-  runInterpExample(p);
+  runInterpExample(p, run_full_opt);
 }

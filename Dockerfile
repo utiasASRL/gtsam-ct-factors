@@ -76,6 +76,9 @@ RUN apt-get update && apt-get install -y \
 # CCMAKE
 RUN apt-get update && apt-get install -y cmake-curses-gui
 
+# kcachegrind
+RUN apt-get update && apt-get install -y kcachegrind
+
 
 # Entrypoint script
 COPY entrypoint.sh /entrypoint.sh
