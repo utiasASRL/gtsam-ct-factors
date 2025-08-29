@@ -793,9 +793,13 @@ TEST(Interpolator, LambdaPsiConsistencyP2) {
   Interpolator<Point2> interpolator(Q_p2);
   for (double ratio = 0.1; ratio <= 0.9; ratio += 0.1) {
     // get lambda and psi using Eq. (11.41) in the book
-    auto [Lambda_book, Psi_book] = interpolator.getLambdaPsi(
+    auto [Lambda_tmp, Psi_tmp] = interpolator.getLambdaPsi(
         0.0, timestep, timestep * ratio);
-
+    Eigen::Matrix<double, 4, 4> Lambda_book, Psi_book;
+    Lambda_book << Eigen::Matrix2d::Identity()*Lambda_tmp(0,0), Eigen::Matrix2d::Identity()*Lambda_tmp(0,1),
+        Eigen::Matrix2d::Identity()*Lambda_tmp(1,0), Eigen::Matrix2d::Identity()*Lambda_tmp(1,1);
+    Psi_book << Eigen::Matrix2d::Identity()*Psi_tmp(0,0), Eigen::Matrix2d::Identity()*Psi_tmp(0,1),
+        Eigen::Matrix2d::Identity()*Psi_tmp(1,0), Eigen::Matrix2d::Identity()*Psi_tmp(1,1);
     // get lambda and psi using Eq. (5.23) in the paper
     auto tpvk = TimestampedPoseVelocity<Point2>(p0_p2, v0_p2, 0.0);
     auto tpvkp1 = TimestampedPoseVelocity<Point2>(p1_p2, v1_p2, timestep);
@@ -815,8 +819,14 @@ TEST(Interpolator, LambdaPsiConsistencyP3) {
   Interpolator<Point3> interpolator(Q_p3);
   for (double ratio = 0.1; ratio <= 0.9; ratio += 0.1) {
     // get lambda and psi using Eq. (11.41) in the book
-    auto [Lambda_book, Psi_book] = interpolator.getLambdaPsi(
+    auto [Lambda_tmp, Psi_tmp] = interpolator.getLambdaPsi(
         0.0, timestep, timestep * ratio);
+    
+    Eigen::Matrix<double, 6, 6> Lambda_book, Psi_book;
+    Lambda_book << Eigen::Matrix3d::Identity()*Lambda_tmp(0,0), Eigen::Matrix3d::Identity()*Lambda_tmp(0,1),
+        Eigen::Matrix3d::Identity()*Lambda_tmp(1,0), Eigen::Matrix3d::Identity()*Lambda_tmp(1,1);
+    Psi_book << Eigen::Matrix3d::Identity()*Psi_tmp(0,0), Eigen::Matrix3d::Identity()*Psi_tmp(0,1),
+        Eigen::Matrix3d::Identity()*Psi_tmp(1,0), Eigen::Matrix3d::Identity()*Psi_tmp(1,1);
     // get lambda and psi using Eq. (5.23) in the paper
     auto tpvk = TimestampedPoseVelocity<Point3>(p0_p3, v0_p3, 0.0);
     auto tpvkp1 = TimestampedPoseVelocity<Point3>(p1_p3, v1_p3, timestep);
