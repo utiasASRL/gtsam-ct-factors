@@ -404,6 +404,30 @@ Interpolator<PoseType>::getLambdaPsi(double t_k, double t_kp1,
     return std::make_pair(Lambda, Psi);
 }
 
+
+template <typename PoseType>
+std::pair<Matrix, Matrix>
+Interpolator<PoseType>::getLambdaPsiGeneral(double t_k, double t_kp1,
+                                    double t_tau) const {
+
+    // Build transition matrices for all combinations
+    double dt = t_kp1 - t_k;
+    auto Phi_12 = transitionFunction_(dt);
+    auto Phi_1tau = transitionFunction_(t_tau - t_k);
+    auto Phi_tau2 = transitionFunction_(t_kp1 - t_tau);
+
+    // Construct Q
+    auto Q_12_inv = inverseCovarianceFunction_(dt, Q_psd_);
+    auto Q_1tau = covarianceFunction_(t_tau - t_k, Q_psd_);
+
+    // Eq. (11.41) in the book
+    auto Lambda =
+        Phi_1tau - Q_1tau * Phi_tau2.transpose() * Q_12_inv * Phi_12;
+    auto Psi = Q_1tau * Phi_tau2.transpose() * Q_12_inv;
+
+    return std::make_pair(Lambda, Psi);
+}
+
 template <typename PoseType>
 typename Interpolator<PoseType>::Matrix2N
 Interpolator<PoseType>::computeConditionalCov(
