@@ -18,21 +18,27 @@
 #pragma once
 
 #include <gtsam/nonlinear/ExpressionFactorGraph.h>
+#include <gtsam/nonlinear/NonlinearFactorGraph.h>
 #include <unordered_map>
 #include <gtsam/nonlinear/StateData.h>
+#include <gtsam/linear/GaussianFactorGraph.h>
+
+using namespace std;
 
 namespace gtsam {
 
 /**
  * Factor graph that supports adding ExpressionFactors directly
  */
-class WNOAFactorGraph: public WNOAFactorGraph {
+class WNOAFactorGraph: public ExpressionFactorGraph {
 
 private:
+  unordered_map<Key, StateData> key_to_interp_graph_;
+  unordered_map<StateData, pair<StateData, StateData>> interp_to_borders_graph_;
   // Caches for interpolated values, Jacobians, and conditional covariances
   Values* InterpValuesCache = nullptr;
-  std::unordered_map<Key, std::unordered_map<Key, Matrix>>* InterpJacobiansCache = nullptr;
-  std::unordered_map<StateData, Matrix>* InterpCondCovsCache = nullptr;
+  unordered_map<Key, unordered_map<Key, Matrix>>* InterpJacobiansCache = nullptr;
+  unordered_map<StateData, Matrix>* InterpCondCovsCache = nullptr;
 
 public:
     /// Linearize a nonlinear factor graph

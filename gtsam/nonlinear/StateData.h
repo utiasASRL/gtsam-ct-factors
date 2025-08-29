@@ -53,8 +53,8 @@ struct StateData {
 };
 
 // dummy states used for identifying states to be extrapolated in the Interpolator
-const StateData StateData::PosInf(0, 0, std::numeric_limits<double>::infinity());
-const StateData StateData::NegInf(0, 0, -std::numeric_limits<double>::infinity());
+inline const StateData StateData::PosInf(0, 0, std::numeric_limits<double>::infinity());
+inline const StateData StateData::NegInf(0, 0, -std::numeric_limits<double>::infinity());
 
 }  // namespace gtsam
 

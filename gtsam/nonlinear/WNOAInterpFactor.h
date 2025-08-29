@@ -214,6 +214,14 @@ class WNOAInterpFactor : public NoiseModelFactor {
     return getInterpolatedNoiseModel(JacInner, InterpCondCovs);
   }
 
+  unordered_map<Key, StateData> getInterpolatedKeys() const {
+    return key_to_interp;
+  }
+
+  unordered_map<StateData, pair<StateData, StateData>> getInterpToBorders() const {
+    return interp_to_borders;
+  }
+
  private:
   /* Computes the unwhitened error, and, optionally, the inner factor jacobians
    * and interpolated conditional covariances.*/
