@@ -54,6 +54,11 @@ class WNOAInterpFactor : public NoiseModelFactor {
   // map outer key to outer key index (for Jacobians)
   unordered_map<Key, int> outer_key_to_index;
 
+  // pointers to cached interpolated values
+  Values* InterpValuesCache = nullptr;
+  unordered_map<Key, unordered_map<Key, Matrix>>* InterpJacobiansCache = nullptr;
+  unordered_map<StateData, Matrix2N>* InterpCondCovsCache = nullptr;
+
  public:
   /* @brief Constructor of WNOA Interpolation Factor. This factor wraps around a
    * factor that has interpolated states and maps measurements to the bordering
@@ -221,7 +226,13 @@ class WNOAInterpFactor : public NoiseModelFactor {
     unordered_map<Key, unordered_map<Key, Matrix>> InterpJacobians;
     // process interpolated states, get Jacobians and covariances
     Values values_interp;
-    if (H) {
+    if( InterpValuesCache && InterpJacobiansCache && InterpCondCovsCache ) { // Use cached values if available
+      // use cached values
+      values_interp = *InterpValuesCache; // TODO (SL): Probably don't wanna dereference and copy here?
+      InterpJacobians = *InterpJacobiansCache; // TODO (SL): Probably don't wanna dereference and copy here?
+      InterpCondCovs = InterpCondCovsCache; // Just passing the pointer
+    }
+    else if (H) { // Do computation yourself if no cache is available
       // Compute interpolation Jacobians
       values_interp =
           getInterpolatedValues(values, &InterpJacobians, InterpCondCovs);
@@ -352,6 +363,13 @@ class WNOAInterpFactor : public NoiseModelFactor {
 
     return values_interp;
   }
+
+  /* Setters for caching of interpolated values, Jacobians and conditional covariances
+  This can be used to compute these values externally and then pass them to this factor.
+  This is useful when multiple factors use the same interpolated values, so we can save computation. */
+  void setInterpValuesCache(Values* cache) { InterpValuesCache = cache; }
+  void setInterpJacobiansCache(unordered_map<Key, unordered_map<Key, Matrix>>* cache) { InterpJacobiansCache = cache; }
+  void setInterpCondCovsCache(unordered_map<StateData, Matrix2N>* cache) { InterpCondCovsCache = cache; }
 
   /* Gets a new noise model for the wrapper factor. This depends on the
    * linearization point and the current estimate of the covariance of the
