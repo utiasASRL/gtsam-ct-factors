@@ -16,6 +16,7 @@ struct LostInTheWoodsParams {
   string gt_output_file;
   string interp_raw_file;
   string interp_out;
+  string interp_graph_out;
 
   // Flags
   bool include_prior;
@@ -50,6 +51,7 @@ struct LostInTheWoodsParams {
     gt_output_file = config["files"]["gt_out"].as<string>();
     interp_raw_file = config["files"]["interp_raw_file"].as<string>();
     interp_out = config["files"]["interp_out"].as<string>();
+    interp_graph_out = config["files"]["interp_graph_out"].as<string>();
 
     include_prior = config["flags"]["prior"].as<bool>();
     include_odom = config["flags"]["odom"].as<bool>();
@@ -217,7 +219,7 @@ int runLostInTheWoods(LostInTheWoodsParams& params) {
     }
   }
   // Ground truth for landmarks
-  if (solve_slam){
+  if (solve_slam) {
     for (int j = 0; j < data.n_landmarks; j++) {
       gt.insert(Symbol('l', j),
                 Point2(data.landmarks(j, 0), data.landmarks(j, 1)));
@@ -253,7 +255,7 @@ int runLostInTheWoods(LostInTheWoodsParams& params) {
   }
 
   // Initialize landmarks if doing full SLAM
-  if (solve_slam) {
+  if (solve_slam && !gt_init) {
     // Initialize landmarks at zero
     for (int j = 0; j < data.n_landmarks; j++) {
       // Only add keys for landmarks that have been observed
@@ -301,12 +303,21 @@ int runLostInTheWoods(LostInTheWoodsParams& params) {
     auto t_runtime =
         chrono::duration_cast<chrono::microseconds>(t_end - t_start).count();
     cout << "Runtime for solve: " << t_runtime << " (micro-s)" << endl;
-    // save intermediate result with only estimated states
+
+    // Recover interpolated means using interpolator
+    std::shared_ptr<typename Interpolator<Pose2>::CovarianceMap> cov_map;
+    result = updateInterpValues<Pose2>(graph_interp, result_interp, estim,
+                                       interp, sigma_wnoa, cov_map);
+    // Save results
+    cout << "Optimizer has finished...saving results..." << endl;
+    // save only estimated states
     saveResultToFile(result_interp, graph_interp, params.interp_raw_file,
                      solve_slam);
-    // Recover interpolated means using interpolator
-    result = updateInterpValues<Pose2>(graph_interp, result_interp, estim,
-                                       interp, sigma_wnoa);
+    // Save results, interpolate covariances using funciton
+    saveResultToFile(result, graph, params.interp_out, solve_slam, cov_map);
+    // Save results, interpolate covariances from graph at interp mean
+    saveResultToFile(result, graph, params.interp_graph_out, solve_slam);
+    saveResultToFile(gt, graph, params.gt_output_file);
   } else {
     t_start = chrono::high_resolution_clock::now();
     result = LevenbergMarquardtOptimizer(graph, initial, opt_params).optimize();
@@ -314,11 +325,11 @@ int runLostInTheWoods(LostInTheWoodsParams& params) {
     auto t_runtime =
         chrono::duration_cast<chrono::microseconds>(t_end - t_start).count();
     cout << "Runtime for solve: " << t_runtime << " (micro-s)" << endl;
+    // Save results
+    cout << "Optimizer has finished...saving results..." << endl;
+    saveResultToFile(result, graph, params.output_file, solve_slam);
+    saveResultToFile(gt, graph, params.gt_output_file);
   }
-  // Save results
-  cout << "Optimizer has finished...saving results..." << endl;
-  saveResultToFile(result, graph, output_file, solve_slam);
-  saveResultToFile(gt, graph, "results/lost_gt.csv");
 
   return 0;
 }

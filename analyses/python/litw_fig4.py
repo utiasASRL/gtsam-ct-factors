@@ -4,9 +4,11 @@ from matplotlib.patches import Ellipse
 import matplotlib.pyplot as plt
 
 """
-Plots figures for Figure 2 of the Lost in the woods section.
-Ground truth trajectory and a localization using odometry 
-and bearing range measurements.
+Plots figures for Figure 3 of the Lost in the woods section.
+Localization with only WNOA and BearingRange Measurements (limited to 1m).
+subplot 1 : full solve + gt traj
+subplot 2 : interp solve est states + full interpolation + gt traj
+
 """
 
 # GT landmark locations
@@ -95,12 +97,12 @@ def load_csv(fname, step=None):
 
     return df, covariances
 
-def plot_axes_at_points(ax, x, y, theta, length=0.2, downsample=1, gt_vals=False):
+def plot_axes_at_points(ax, x, y, theta, length=0.2, interp=False, gt_vals=False):
     """Plot small 2D frames (axes) at each (x, y, theta) pose."""
         
     color  = 'b' if not gt_vals else 'g'
-    alpha = 1.0 if not gt_vals else 0.7
-    length_factor = 1.0
+    alpha = 1.0 if not (gt_vals or interp) else 0.2
+    length_factor = 1.0 if not (gt_vals or interp) else 0.5
     length = length_factor * length
     head_width = 0.05 * length_factor
     head_length = 0.05* length_factor
@@ -112,7 +114,7 @@ def plot_axes_at_points(ax, x, y, theta, length=0.2, downsample=1, gt_vals=False
         ax.arrow(xi, yi, -length * np.sin(thetai), length * np.cos(thetai),
                     head_width=head_width, head_length=head_length, fc=color, ec=color, alpha=alpha, linewidth=1)
 
-def plot_se2_trajectory(ax, csv_path, title, plot_cov=False, gt_vals=False, downsample=5):
+def plot_se2_trajectory(ax, csv_path, title=None, interp=False, plot_cov=False, gt_vals=False, downsample=5):
     df, covariances = load_csv(csv_path)
     x = df['x'].values
     y = df['y'].values
@@ -120,8 +122,9 @@ def plot_se2_trajectory(ax, csv_path, title, plot_cov=False, gt_vals=False, down
     
     # Plot trajectory
     color = 'b' if not gt_vals else 'g'
-    alpha = 0.3
-    ax.plot(x, y, '-', color=color, alpha=alpha, linewidth=0.7)
+    alpha = 0.7
+    if interp or gt_vals:
+        ax.plot(x, y, '-', color=color, alpha=alpha, linewidth=1.0)
     
     # Downsample points 
     x_ds = x[::downsample]
@@ -129,16 +132,15 @@ def plot_se2_trajectory(ax, csv_path, title, plot_cov=False, gt_vals=False, down
     th_ds = theta[::downsample]
     cov_ds = covariances[::downsample]
     # Plot axes
-    plot_axes_at_points(ax, x_ds, y_ds, th_ds, length=0.2,downsample=1, gt_vals=gt_vals)
-    
+    # plot_axes_at_points(ax, x_ds, y_ds, th_ds, length=0.2,interp=interp, gt_vals=gt_vals)
     
     # Plot covariance ellipses if available and 2D
-    if plot_cov:
+    if plot_cov and not gt_vals:
         for xi, yi, ti, cov in zip(x_ds, y_ds, th_ds, cov_ds):
-            if gt_vals:
-                plot_cov_ellipse(ax, xi, yi, ti, cov, n_std=3, edgecolor=None, facecolor='g', lw=1, alpha=0.25)
+            if interp:
+                plot_cov_ellipse(ax, xi, yi, ti, cov, n_std=3, edgecolor=None, facecolor='b', lw=1, alpha=0.1)
             else:
-                plot_cov_ellipse(ax, xi, yi, ti, cov, n_std=3, edgecolor=None, facecolor='b', lw=1, alpha=0.25)
+                plot_cov_ellipse(ax, xi, yi, ti, cov, n_std=3, edgecolor='b', facecolor='b', lw=1, alpha=0.25)
 
     ax.set_aspect('equal')
     ax.set_xlabel('x [m]')
@@ -146,7 +148,7 @@ def plot_se2_trajectory(ax, csv_path, title, plot_cov=False, gt_vals=False, down
     ax.set_title(title)
     # ax.grid(True)
 
-def plot_se2_points(ax, csv_path, title, downsample=5):
+def plot_se2_points(ax, csv_path, title=None, downsample=5):
     df, _ = load_csv(csv_path)
     x = df['x'].values[::downsample]
     y = df['y'].values[::downsample]
@@ -159,7 +161,16 @@ def plot_se2_points(ax, csv_path, title, downsample=5):
     ax.set_title(title)
     
 def plot_landmarks(ax):
-    ax.plot(landmarks[:,0], landmarks[:,1], 'og')
+    ax.plot(landmarks[:,0], landmarks[:,1], '.g')
+    
+def plot_landmark_est(ax, path):
+    df, cov = load_csv(path)
+    lm_x = df["x"].to_numpy()
+    lm_y = df["y"].to_numpy()
+    plt.plot(lm_x, lm_y, ".r", label="Estimated Landmarks")
+    for xi, yi, cov in zip(lm_x, lm_y, cov):
+        plot_cov_ellipse(ax, xi, yi, 0, cov, n_std=3, edgecolor='r', facecolor='r', lw=1, alpha=0.25)
+
 
 def plot_cov_ellipse(ax, xi, yi, ti, cov, n_std=3.0, **kwargs):
     """Plot a covariance ellipse centered at mean with covariance cov."""
@@ -178,28 +189,36 @@ def plot_cov_ellipse(ax, xi, yi, ti, cov, n_std=3.0, **kwargs):
 
 
 if __name__ == "__main__":
-    path_gt_full = "analyses/results/lost_gt_full.csv"
-    path_gt = "analyses/results/litw_fig2_gt.csv"
-    path_solve = "analyses/results/litw_fig2_gtsam.csv"
-    titles = ["Ground Truth Trajectory"
-              "GTSAM Solve"]
-    downsample=40
+    path_gt= "analyses/results/litw_fig4_gt.csv"
+    path_full = "analyses/results/litw_fig4_full.csv"
+    path_est = "analyses/results/litw_fig4_est.csv"
+    path_graph_interp = "analyses/results/litw_fig4_graph_interp.csv"
+    path_interp = "analyses/results/litw_fig4_interp.csv"
+    path_lms_full = "analyses/results/litw_fig4_full_landmarks.csv"
+    path_lms_interp = "analyses/results/litw_fig4_graph_interp_landmarks.csv"
+    
+    ds=20
 
-
-    # Plot Ground Truth
-    fig1,ax =plt.subplots(1,1,figsize=(8,4))
-    plot_landmarks(ax)
-    plot_se2_points(ax, path_gt_full, "Ground Truth Trajectory", downsample=1)
-    # Plot GTSAM Solution
+    # Plot Full Solve
+    # fig1,ax =plt.subplots(1,1,figsize=(8,4))
+    # plot_landmarks(ax)
+    # plot_landmark_est(ax, path_lms_full)
+    # plot_se2_trajectory(ax, path_gt, gt_vals=True, downsample=ds)
+    # plot_se2_trajectory(ax, path_full, "Full Solve", plot_cov=True, downsample=ds)
+    
+    # Plot Interpolated Solve
     fig2,ax =plt.subplots(1,1,figsize=(8,4))
     plot_landmarks(ax)
-    plot_se2_trajectory(ax, path_gt, None, gt_vals=True, downsample=downsample)
-    plot_se2_trajectory(ax, path_solve, "GTSAM Solve", plot_cov=True, downsample=downsample)
+    plot_landmark_est(ax, path_lms_interp)
+    plot_se2_trajectory(ax, path_gt, gt_vals=True, downsample=30)
+    plot_se2_trajectory(ax, path_est, plot_cov=True, downsample=1)
+    plot_se2_trajectory(ax, path_graph_interp, title="Interpolated Solve", interp=True, plot_cov=True, downsample=1)
     
+
     plt.show(block=False)
     dpi=600
     save_figs = input("Save figures? [Y/n]: ").strip().lower()
     if save_figs == "" or save_figs == "y":
-        fig1.savefig("analyses/plots/litw_fig2_gt.png", dpi=dpi, bbox_inches='tight')
-        fig2.savefig("analyses/plots/litw_fig2_solve.png", dpi=dpi, bbox_inches='tight')
+        # fig1.savefig("analyses/plots/litw_fig4_full.png", dpi=dpi, bbox_inches='tight')
+        fig2.savefig("analyses/plots/litw_fig4_interp.png", dpi=dpi, bbox_inches='tight')
     
