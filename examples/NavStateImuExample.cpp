@@ -40,18 +40,12 @@ using namespace gtsam;
 static constexpr double kGravity = 9.81;
 
 int main(int argc, char* argv[]) {
-  // --- Scenario: camera orbiting origin on x-axis, looking at origin ---
+  // --- Scenario: camera orbiting a point ---
   const double radius = 30.0;
-  const Point3 up(0, 0, 1), target(0, 0, 0);
-  const Point3 position(radius, 0, 0);
-  const auto camera = PinholeCamera<Cal3_S2>::Lookat(position, target, up);
-  const Pose3 pose0 = camera.pose();
-
   const double angular_velocity = M_PI;  // rad/sec
-  const double dt = 1.0 / 180.0;         // 1 degree per step
-  const Vector3 w_b(0, -angular_velocity, 0);
+  const Vector3 w_b(0, 0, -angular_velocity);
   const Vector3 v_n(radius * angular_velocity, 0, 0);
-  ConstantTwistScenario scenario(w_b, v_n, pose0);
+  ConstantTwistScenario scenario(w_b, v_n);
 
   // --- Preintegration/IMU parameters ---
   auto params = PreintegrationParams::MakeSharedU(kGravity);
@@ -60,12 +54,13 @@ int main(int argc, char* argv[]) {
   params->setIntegrationCovariance(I_3x3 * 0.1);
   params->setUse2ndOrderCoriolis(false);
   params->setOmegaCoriolis(Vector3::Zero());
-
+  
   // True biases used to corrupt measurements in ScenarioRunner
   imuBias::ConstantBias trueBias(Vector3(0.01, -0.005, 0.02),  // gyro bias
-                                 Vector3(0.05, 0.03, -0.02));  // accel bias
-
+  Vector3(0.05, 0.03, -0.02));  // accel bias
+  
   // --- Measurement generator ---
+  const double dt = 1.0 / 180.0;         // 1 degree per step
   ScenarioRunner runner(scenario, params, dt, trueBias);
 
   // --- Initialize EKF with ground truth
