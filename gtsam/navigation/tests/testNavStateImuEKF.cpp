@@ -36,6 +36,7 @@ Vector3 accel(0.5, -0.3, 0.2);
 auto params = PreintegrationParams::MakeSharedU(9.81);
 }  // namespace nontrivial_navstate_example
 
+/* ************************************************************************* */
 TEST(NavStateImuEKF, DefaultProcessNoiseFromParams) {
   using namespace nontrivial_navstate_example;
 
@@ -58,24 +59,25 @@ TEST(NavStateImuEKF, DefaultProcessNoiseFromParams) {
   EXPECT(assert_equal(Q, ekf.processNoise(), 1e-12));
 }
 
+/* ************************************************************************* */
 TEST(NavStateImuEKF, DynamicsJacobian) {
   using namespace nontrivial_navstate_example;
 
   // Check the Jacobian of navStateImuDynamics
   double dt = 0.01;
   Matrix9 H;
-  NavState U =
-      navStateImuDynamics(X0, gyro, accel, dt, params->getGravity(), H);
+  NavState U = navStateImuDynamics(X0, gyro, accel, dt, params->n_gravity, H);
   (void)U;
   std::function<NavState(const NavState&)> f =
       [&](const NavState& Xq) -> NavState {
-    return navStateImuDynamics(Xq, gyro, accel, dt, params->getGravity());
+    return navStateImuDynamics(Xq, gyro, accel, dt, params->n_gravity);
   };
-  Matrix9 Hnum = numericalDerivative11(f, X0);
+  Matrix9 expected = numericalDerivative11(f, X0);
 
-  EXPECT(assert_equal(Hnum, H, 1e-6));
+  EXPECT(assert_equal(expected, H, 1e-6));
 }
 
+/* ************************************************************************* */
 TEST(NavStateImuEKF, PredictMatchesExplicitIntegration) {
   using namespace nontrivial_navstate_example;
   double dt = 0.02;
@@ -96,6 +98,7 @@ TEST(NavStateImuEKF, PredictMatchesExplicitIntegration) {
   EXPECT(assert_equal(X_explicit, X_inc, 1e-12));
 }
 
+/* ************************************************************************* */
 TEST(NavStateImuEKF, IncrementJacobianNumericalCheck) {
   using namespace nontrivial_navstate_example;
   double dt = 0.05;
@@ -104,15 +107,103 @@ TEST(NavStateImuEKF, IncrementJacobianNumericalCheck) {
   NavStateImuEKF ekf(X0, I_9x9 * 1e-3, params);
 
   Matrix9 J;
-  (void)navStateImuDynamics(X0, gyro, accel, dt, params->getGravity(), J);
+  (void)navStateImuDynamics(X0, gyro, accel, dt, params->n_gravity, J);
 
   // Numerical Jacobian of u_left wrt X
-  std::function<NavState(const NavState&)> ufun = [&](const NavState& X) {
-    return navStateImuDynamics(X, gyro, accel, dt, params->getGravity());
+  std::function<NavState(const NavState&)> f = [&](const NavState& X) {
+    return navStateImuDynamics(X, gyro, accel, dt, params->n_gravity);
   };
-  Matrix9 Jnum = numericalDerivative11(ufun, X0);
+  Matrix9 expected = numericalDerivative11(f, X0);
 
-  EXPECT(assert_equal(Jnum, J, 1e-6));
+  EXPECT(assert_equal(expected, J, 1e-6));
+}
+
+/* ************************************************************************* */
+// Check Jacobian for world-position measurement h(X)=position(X).
+TEST(NavStateImuEKF, PositionMeasurementJacobian) {
+  using namespace nontrivial_navstate_example;
+
+  // GIVEN a nontrivial state X0
+  const NavState& X = X0;
+
+  // Analytic Jacobian H = dh/d local(X) for h(X)=position(X)
+  // With left-invariant chart and NavState compose, dp is in body frame:
+  // p' = p + R * dp  => H = [0, R, 0]
+  Matrix39 H;
+  H.setZero();
+  H.block<3, 3>(0, 3) = X.attitude().matrix();
+
+  // Numerical Jacobian via central differencing
+  std::function<Point3(const NavState&)> h = [](const NavState& Xq) {
+    return Xq.position();
+  };
+  Matrix39 expected = numericalDerivative11<Point3, NavState>(h, X);
+
+  EXPECT(assert_equal(expected, H, 1e-6));
+}
+
+/* ************************************************************************* */
+// Sanity-check a single position update using updateWithVector.
+// Verifies delta_xi = K * innovation and covariance reduction in pos block.
+TEST(NavStateImuEKF, PositionUpdateSanity) {
+  using namespace nontrivial_navstate_example;
+
+  // GIVEN an EKF with diagonal covariance (no cross-terms)
+  Matrix9 P0 = Matrix9::Zero();
+  P0.block<3, 3>(0, 0) = Matrix3::Identity() * 1e-3;  // rot
+  P0.block<3, 3>(3, 3) = Matrix3::Identity() * 1.0;   // pos
+  P0.block<3, 3>(6, 6) = Matrix3::Identity() * 0.5;   // vel
+  auto params = PreintegrationParams::MakeSharedU(9.81);
+  NavStateImuEKF ekf(X0, P0, params);
+
+  // BEFORE update: capture state and covariance
+  const NavState X_before = ekf.state();
+  const Matrix9 P_prior = ekf.covariance();
+
+  // Position measurement: z = p + d
+  const Vector3 d(1.0, -2.0, 0.5);
+  const Point3 p_true =
+      X_before.position() + d;  // pretend ground truth is offset
+  const Vector3 z = Vector3(p_true.x(), p_true.y(), p_true.z());
+
+  // Predicted measurement and Jacobian H = [0 R 0]
+  const Vector3 prediction =
+      Vector3(X_before.position().x(), X_before.position().y(),
+              X_before.position().z());
+  Matrix39 H;
+  H.setZero();
+  const Matrix3 Rworld = X_before.attitude().matrix();
+  H.block<3, 3>(0, 3) = Rworld;
+
+  // Reasonable measurement noise
+  const double sigma = 0.1;  // meters
+  Matrix3 Rmeas = Matrix3::Identity() * (sigma * sigma);
+
+  // Manually compute K and delta_xi expected
+  const Matrix3 S = H * P_prior * H.transpose() + Rmeas;
+  const Matrix93 K = P_prior * H.transpose() * S.inverse();
+  const Vector3 innovation =
+      z - prediction;  // Vector measurement: y = z - prediction
+  const Vector9 delta_expected = K * innovation;
+
+  // WHEN performing the EKF update
+  ekf.updateWithVector(prediction, H, z, Rmeas);
+
+  // THEN: delta_xi applied equals expected (within tolerance)
+  const NavState& X_after = ekf.state();
+  const Vector9 delta_applied = X_before.localCoordinates(X_after);
+  EXPECT(assert_equal(delta_expected, delta_applied, 1e-9));
+
+  // AND: position moved toward z in world frame approximately by R*dp
+  const Vector3 dp_body = delta_expected.segment<3>(3);
+  const Point3 p_expected = X_before.position() + Point3(Rworld * dp_body);
+  EXPECT(assert_equal(p_expected, X_after.position(), 1e-9));
+
+  // AND: covariance position block decreased
+  const Matrix9 P_post = ekf.covariance();
+  const double trace_pos_prior = P_prior.block<3, 3>(3, 3).trace();
+  const double trace_pos_post = P_post.block<3, 3>(3, 3).trace();
+  CHECK(trace_pos_post < trace_pos_prior);
 }
 
 int main() {
