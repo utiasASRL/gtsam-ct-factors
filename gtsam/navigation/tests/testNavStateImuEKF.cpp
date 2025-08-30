@@ -59,58 +59,72 @@ TEST(NavStateImuEKF, DynamicsJacobian) {
   Vector3 accel(0.5, -0.3, 0.2);
   auto params = PreintegrationParams::MakeSharedU(9.81);
 
-  // Analytic Jacobian using free dynamics with explicit gravity
+  // We check the Jacobian of u_left(X) = Log(U(X)) for the custom integrator
+  // with dt
+  double dt = 0.01;
   Matrix9 H;
-  Vector9 xi = navStateImuDynamics(X, gyro, accel, params->getGravity(), H);
-  (void)xi;  // silence unused warning
-
-  // Numerical Jacobian w.r.t. the state using a typed std::function
-  std::function<Vector9(const NavState&)> f =
-      [&](const NavState& Xq) -> Vector9 {
-    return navStateImuDynamics(Xq, gyro, accel, params->getGravity());
+  NavState U = navStateImuDynamics(X, gyro, accel, dt, params->getGravity(), H);
+  (void)U;
+  std::function<NavState(const NavState&)> f =
+      [&](const NavState& Xq) -> NavState {
+    return navStateImuDynamics(Xq, gyro, accel, dt, params->getGravity());
   };
-  Matrix9 Hnum = numericalDerivative11<Vector9, NavState>(f, X);
+  Matrix9 Hnum = numericalDerivative11(f, X);
 
   EXPECT(assert_equal(Hnum, H, 1e-6));
 }
 
-TEST(NavStateImuEKF, PredictMeanJacobian) {
-  // GIVEN initial state and EKF
+TEST(NavStateImuEKF, PredictMatchesExplicitIntegration) {
+  // GIVEN initial state
+  Rot3 R0 = Rot3::RzRyRx(0.3, -0.25, 0.15);
+  Point3 p0(1.0, -0.5, 0.2);
+  Vector3 v0(0.4, -0.2, 0.3);
+  NavState X0(R0, p0, v0);
+  Vector3 n_gravity(0, 0, -9.81);
+
+  // Controls and step
+  Vector3 gyro(0.2, -0.1, 0.05);
+  Vector3 accel(0.6, -0.4, 0.3);
+  double dt = 0.02;
+
+  // Explicit integration as per Derek's code (from raw inputs)
+  Rot3 dR = Rot3::Expmap(gyro * dt);
+  Rot3 R_new = R0.compose(dR);  // R_new = R * dR
+  Vector3 a_world = R0 * accel + n_gravity;
+  Vector3 v_new = v0 + a_world * dt;
+  Point3 p_new = p0 + v0 * dt + a_world * (0.5 * dt * dt);
+  NavState X_explicit(R_new, p_new, v_new);
+
+  // Increment-based integration should match exactly
+  auto params = PreintegrationParams::MakeSharedU(9.81);
+  NavStateImuEKF ekf(X0, I_9x9 * 1e-3, params);
+  NavState U = navStateImuDynamics(X0, gyro, accel, dt, n_gravity);
+  NavState X_inc = X0.compose(U);
+  EXPECT(assert_equal(X_explicit, X_inc, 1e-12));
+}
+
+TEST(NavStateImuEKF, IncrementJacobianNumericalCheck) {
   Rot3 R0 = Rot3::RzRyRx(0.2, -0.1, 0.3);
   Point3 p0(0.1, 0.2, -0.3);
   Vector3 v0(-0.2, 0.4, 0.1);
   NavState X0(R0, p0, v0);
-  Matrix9 P0 = I_9x9 * 0.01;
-  auto params = PreintegrationParams::MakeSharedU(9.81);
-
-  // Controls
   Vector3 gyro(0.1, 0.2, -0.1);
   Vector3 accel(0.3, -0.2, 0.4);
   double dt = 0.05;
 
-  // We compare the analytic state transition Jacobian A from predictMean
-  // to a numerical derivative of the state->state mapping g(X).
-  Matrix9 A;
-  // Single dynamics lambda (state-dependent only), like StateAndControl test
-  auto f = [&](const NavState& X_in, OptionalJacobian<9, 9> H) {
-    return navStateImuDynamics(X_in, gyro, accel, params->getGravity(), H);
-  };
-  // g maps a NavState to its predicted NavState after dt using the same
-  // dynamics
-  std::function<NavState(const NavState&)> g =
-      [&](const NavState& X) -> NavState {
-    NavStateImuEKF ekfForX(X, P0, params);
-    return ekfForX.predictMean(f, dt);
-  };
+  auto params = PreintegrationParams::MakeSharedU(9.81);
+  NavStateImuEKF ekf(X0, I_9x9 * 1e-3, params);
 
-  // Analytic A from predictMean at X0
-  {
-    NavStateImuEKF ekfAtX0(X0, P0, params);
-    ekfAtX0.predictMean(f, dt, A);
-  }
+  Matrix9 J;
+  (void)navStateImuDynamics(X0, gyro, accel, dt, params->getGravity(), J);
 
-  Matrix9 Anum = numericalDerivative11<NavState, NavState>(g, X0);
-  EXPECT(assert_equal(Anum, A, 1e-6));
+  // Numerical Jacobian of u_left wrt X
+  std::function<NavState(const NavState&)> ufun = [&](const NavState& X) {
+    return navStateImuDynamics(X, gyro, accel, dt, params->getGravity());
+  };
+  Matrix9 Jnum = numericalDerivative11(ufun, X0);
+
+  EXPECT(assert_equal(Jnum, J, 1e-6));
 }
 
 int main() {

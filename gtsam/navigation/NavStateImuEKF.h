@@ -26,22 +26,27 @@
 namespace gtsam {
 
 /**
- * Free dynamics function for IMU-driven NavState on SE_2(3).
- * Computes the left-trivialized body-frame tangent xi = [omega, R^T v, a +
- * R^T n_gravity]. H (if provided) is d(xi)/d(local(X)) with local(X) ordered
- * as [dR,dP,dV].
+ * IMU-driven NavState on SE_2(3).
+ * Returns a group increment U(X) that realizes a kinematic, second-order
+ * integration step which cannot be reproduced by the Euler tangent-based
+ * step in LieGroupEKF. Specifically, for X = (R,p,v):
+ *   dR = Exp(gyro * dt)
+ *   dv_body = (accel + R^T n_gravity) * dt
+ *   dp_body = (R^T v) * dt + 0.5 * (accel + R^T n_gravity) * dt^2
+ * and U = (dR, dp_body, dv_body). Composition X+ = X * U then yields exactly:
+ *   R+ = R dR,
+ *   v+ = v + (R accel + n_gravity) dt,
+ *   p+ = p + v dt + (R accel + n_gravity) 0.5 dt^2.
  *
- * @param X Current NavState.
- * @param gyro Body angular velocity measurement (rad/s).
- * @param accel Body specific force measurement (m/s^2).
- * @param n_gravity Gravity vector expressed in the navigation frame.
- * @param H Optional Jacobian d(xi)/d(local(X)).
- * @return Tangent vector xi in order [dR,dP,dV].
+ * Note that this implements a custom integration and is intentionally
+ * different from the Euler update used by LieGroupEKF::predict with a tangent
+ * dynamics functor.
  */
-Vector9 GTSAM_EXPORT navStateImuDynamics(const NavState& X, const Vector3& gyro,
-                                         const Vector3& accel,
-                                         const Vector3& n_gravity,
-                                         OptionalJacobian<9, 9> H = {});
+GTSAM_EXPORT NavState navStateImuDynamics(const NavState& X,
+                                          const Vector3& gyro,
+                                          const Vector3& accel, double dt,
+                                          const Vector3& n_gravity,
+                                          OptionalJacobian<9, 9> H = {});
 
 /// Specialized EKF for IMU-driven NavState on SE_2(3)
 class GTSAM_EXPORT NavStateImuEKF : public LieGroupEKF<NavState> {
@@ -59,8 +64,7 @@ class GTSAM_EXPORT NavStateImuEKF : public LieGroupEKF<NavState> {
   NavStateImuEKF(const NavState& X0, const Covariance& P0,
                  const std::shared_ptr<PreintegrationParams>& params);
 
-  /// Predict with gyro and accel controls; uses Base::predict with
-  /// state-dependent dynamics.
+  /// Predict with gyro and accel using the custom increment integrator above.
   /// @param gyro Body angular velocity measurement (rad/s).
   /// @param accel Body specific force measurement (m/s^2).
   /// @param dt Time step in seconds.

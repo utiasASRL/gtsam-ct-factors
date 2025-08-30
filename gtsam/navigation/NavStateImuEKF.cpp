@@ -18,41 +18,45 @@
  */
 
 #include <gtsam/base/Matrix.h>
+#include <gtsam/base/numericalDerivative.h>
 #include <gtsam/navigation/NavStateImuEKF.h>
 
 namespace gtsam {
 
-Vector9 navStateImuDynamics(const NavState& X, const Vector3& gyro,
-                            const Vector3& accel, const Vector3& n_gravity,
-                            OptionalJacobian<9, 9> H) {
-  Vector9 xi;
-  xi.setZero();
-  // Rotation, position, velocity in NavState
+NavState navStateImuDynamics(const NavState& X, const Vector3& gyro,
+                             const Vector3& accel, double dt,
+                             const Vector3& n_gravity,
+                             OptionalJacobian<9, 9> H) {
+  // Rotation and velocity
   const Rot3& R = X.attitude();
-  const Vector3& v = X.velocity();
+  Matrix3 D_vb_R, D_vb_v, D_gb_R;
+  const Vector3& v_n = X.velocity();  // Has D_v_v = R !
+  const Vector3 v_body =
+      R.unrotate(v_n, H ? &D_vb_R : nullptr, H ? &D_vb_v : nullptr);
+  const Vector3 g_body = R.unrotate(n_gravity, H ? &D_gb_R : nullptr);
+  const Vector3 a_b_total = accel + g_body;
 
-  // Body-frame quantities needed for left-trivialized tangent
-  const Vector3 v_body = R.unrotate(v);          // R^T v
-  const Vector3 g_body = R.unrotate(n_gravity);  // R^T g
-
-  // Tangent vector components (dR,dP,dV)
-  NavState::dR(xi) = gyro;            // omega (body)
-  NavState::dP(xi) = v_body;          // p_dot in body frame
-  NavState::dV(xi) = accel + g_body;  // v_dot in body frame
+  // Construct increment directly as group element with body-frame p/v
+  // increments
+  const Rot3 dR = Rot3::Expmap(gyro * dt);
+  const double dt2 = 0.5 * dt * dt;
+  const Vector3 dp_body = v_body * dt + a_b_total * dt2;
+  const Vector3 dv_body = a_b_total * dt;
+  NavState U(dR, dp_body, dv_body);
 
   if (H) {
+    Matrix3 dRt = dR.transpose();  // Jacobian of NavState::Create
+    const Matrix3 D_gb_R = skewSymmetric(g_body);
     H->setZero();
-    // xi_rot = gyro -> no dependence on state
-    // xi_trans = R^T v
-    // d(xi_trans)/d(dR) = +skew(R^T v) ; d(xi_trans)/d(dV) = I ; d/d(dP) = 0
-    H->template block<3, 3>(3, 0) = skewSymmetric(v_body);
-    H->template block<3, 3>(3, 6) = I_3x3;
-    // xi_vel = a + R^T g
-    // d(xi_vel)/d(dR) = +skew(R^T g)
-    H->template block<3, 3>(6, 0) = skewSymmetric(g_body);
+    // position:
+    H->template block<3, 3>(3, 0) = dRt * (D_vb_R * dt + D_gb_R * dt2);
+    const Matrix3 D_v_v = R.matrix();  // Jacobian of velocity()
+    H->template block<3, 3>(3, 6) = dRt * D_vb_v * D_v_v * dt;
+    // velocity:
+    H->template block<3, 3>(6, 0) = dRt * D_gb_R * dt;
   }
 
-  return xi;
+  return U;
 }
 
 // ===== NavStateImuEKF methods =====
@@ -73,10 +77,11 @@ NavStateImuEKF::NavStateImuEKF(
 
 void NavStateImuEKF::predict(const Vector3& gyro, const Vector3& accel,
                              double dt) {
-  auto dyn = [&](const NavState& X, OptionalJacobian<Dim, Dim> H) {
-    return navStateImuDynamics(X, gyro, accel, params_->n_gravity, H);
-  };
-  Base::predict(dyn, dt, Q_);
+  // Use the custom increment integrator; compute U and J at current state
+  Jacobian J_UX;
+  const NavState U = navStateImuDynamics(this->state(), gyro, accel, dt,
+                                         params_->n_gravity, J_UX);
+  Base::predictIncrement(U, J_UX, Q_);
 }
 
 const std::shared_ptr<PreintegrationParams>& NavStateImuEKF::params() const {
