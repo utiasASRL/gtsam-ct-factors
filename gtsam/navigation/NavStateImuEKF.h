@@ -57,36 +57,19 @@ class GTSAM_EXPORT NavStateImuEKF : public LieGroupEKF<NavState> {
   /// @param P0 Initial covariance in tangent space at X0.
   /// @param params Preintegration parameters providing gravity and options.
   NavStateImuEKF(const NavState& X0, const Covariance& P0,
-                 const std::shared_ptr<PreintegrationParams>& params)
-      : Base(X0, P0), params_(params) {
-    // Build process noise Q_ = block_diag(Cg, 0_3x3, Ca)
-    const Matrix3& Cg = params_->gyroscopeCovariance;
-    const Matrix3& Ci = params_->integrationCovariance;
-    const Matrix3& Ca = params_->accelerometerCovariance;
-    Q_.setZero();
-    Q_.template block<3, 3>(0, 0) = Cg;
-    Q_.template block<3, 3>(3, 3) = Ci;
-    Q_.template block<3, 3>(6, 6) = Ca;
-  }
+                 const std::shared_ptr<PreintegrationParams>& params);
 
   /// Predict with gyro and accel controls; uses Base::predict with
   /// state-dependent dynamics.
   /// @param gyro Body angular velocity measurement (rad/s).
   /// @param accel Body specific force measurement (m/s^2).
   /// @param dt Time step in seconds.
-  void predict(const Vector3& gyro, const Vector3& accel, double dt) {
-    auto dyn = [&](const NavState& X, OptionalJacobian<Dim, Dim> H) {
-      return navStateImuDynamics(X, gyro, accel, params_->n_gravity, H);
-    };
-    Base::predict(dyn, dt, Q_);
-  }
+  void predict(const Vector3& gyro, const Vector3& accel, double dt);
 
   /// Accessors
-  const std::shared_ptr<PreintegrationParams>& params() const {
-    return params_;
-  }
-  const Vector3& gravity() const { return params_->n_gravity; }
-  const Covariance& processNoise() const { return Q_; }
+  const std::shared_ptr<PreintegrationParams>& params() const;
+  const Vector3& gravity() const;
+  const Covariance& processNoise() const;
 
  private:
   std::shared_ptr<PreintegrationParams> params_;
