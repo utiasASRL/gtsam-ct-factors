@@ -1,8 +1,10 @@
-#include "LostInTheWoodsExample.h"
-
 #include <yaml-cpp/yaml.h>
-#include <vector>
+
+#include <chrono>
 #include <string>
+#include <vector>
+
+#include "LostInTheWoodsExample.h"
 
 using std::string;
 using std::vector;
@@ -26,6 +28,7 @@ struct LostInTheWoodsParams {
   // Interpolation
   bool interp_enable;
   uint interp_period;
+  bool fixed_noise;
 
   // Parameters
   double r_max;
@@ -57,6 +60,7 @@ struct LostInTheWoodsParams {
 
     interp_enable = config["interp"]["enable"].as<bool>();
     interp_period = config["interp"]["interp_period"].as<uint>();
+    fixed_noise = config["interp"]["fixed_noise"].as<bool>();
 
     r_max = config["params"]["r_max"].as<double>();
     del_t = config["params"]["del_t"].as<double>();
@@ -71,7 +75,7 @@ struct LostInTheWoodsParams {
   }
 };
 
-int runLostInTheWoods(LostInTheWoodsParams& params){
+int runLostInTheWoods(LostInTheWoodsParams& params) {
   // Load Files
   DatasetLoader data;
   data.loadFromFile(params.input_file);
@@ -165,6 +169,7 @@ int runLostInTheWoods(LostInTheWoodsParams& params){
   vector<bool> landmark_observed(data.n_landmarks, false);
   if (include_br_meas) {
     cout << "Adding bearing range measurement factors" << endl;
+    cout << "Max Range:  " << r_max << " (m)" << endl;
 
     // Define landmarks
     vector<Point2> landmarks(data.n_landmarks);
@@ -186,12 +191,14 @@ int runLostInTheWoods(LostInTheWoodsParams& params){
           // Get Bearing Range measurement
           BearingRange2 measurement(Rot2(data.bearing(i, j)), data.range(i, j));
           // Compute the bearing and range Prediction
-          // If we solve slam, use unknown landmark variable, otherwise use ground-truth value
-            auto predict = solve_slam
-              ? BearingRangeLandmarkPredictionSLAM(xi, landmark, T_vs)
-              : BearingRangeLandmarkPrediction(xi, landmarks[j], T_vs);
-            // Define Factor
-            graph.addExpressionFactor(predict, measurement, measNoise);
+          // If we solve slam, use unknown landmark variable, otherwise use
+          // ground-truth value
+          auto predict =
+              solve_slam
+                  ? BearingRangeLandmarkPredictionSLAM(xi, landmark, T_vs)
+                  : BearingRangeLandmarkPrediction(xi, landmarks[j], T_vs);
+          // Define Factor
+          graph.addExpressionFactor(predict, measurement, measNoise);
         }
       }
     }
@@ -210,12 +217,12 @@ int runLostInTheWoods(LostInTheWoodsParams& params){
     }
   }
   // Ground truth for landmarks
-  for (int j = 0; j < data.n_landmarks; j++) {
-    
-    gt.insert(Symbol('l', j),
-              Point2(data.landmarks(j, 0), data.landmarks(j, 1)));
+  if (solve_slam){
+    for (int j = 0; j < data.n_landmarks; j++) {
+      gt.insert(Symbol('l', j),
+                Point2(data.landmarks(j, 0), data.landmarks(j, 1)));
+    }
   }
-
 
   // Initialization
   Values initial;
@@ -246,16 +253,12 @@ int runLostInTheWoods(LostInTheWoodsParams& params){
   }
 
   // Initialize landmarks if doing full SLAM
-  if(solve_slam)
-  {
+  if (solve_slam) {
     // Initialize landmarks at zero
     for (int j = 0; j < data.n_landmarks; j++) {
-      
       // Only add keys for landmarks that have been observed
-      if(landmark_observed[j])
-      {
-        initial.insert(Symbol('l', j),
-                Point2(0,0));
+      if (landmark_observed[j]) {
+        initial.insert(Symbol('l', j), Point2(0, 0));
       }
     }
   }
@@ -263,6 +266,10 @@ int runLostInTheWoods(LostInTheWoodsParams& params){
   // set up optimizer
   LevenbergMarquardtParams opt_params;
   opt_params.setVerbosityLM("SUMMARY");
+
+  // set up stopwatch
+  auto t_start = chrono::high_resolution_clock::now();
+  auto t_end = chrono::high_resolution_clock::now();
 
   // Run optimizer
   Values result;
@@ -283,17 +290,30 @@ int runLostInTheWoods(LostInTheWoodsParams& params){
       }
     }
     // Generate interpolated version of graph
-    NonlinearFactorGraph graph_interp =
-        interpolateFactorGraph<Pose2>(graph, estim, interp, sigma_wnoa);
+    NonlinearFactorGraph graph_interp = interpolateFactorGraph<Pose2>(
+        graph, estim, interp, sigma_wnoa, params.fixed_noise);
     // Run optimizer
+    t_start = chrono::high_resolution_clock::now();
     result_interp =
-        LevenbergMarquardtOptimizer(graph_interp, initial, opt_params).optimize();
+        LevenbergMarquardtOptimizer(graph_interp, initial, opt_params)
+            .optimize();
+    t_end = chrono::high_resolution_clock::now();
+    auto t_runtime =
+        chrono::duration_cast<chrono::microseconds>(t_end - t_start).count();
+    cout << "Runtime for solve: " << t_runtime << " (micro-s)" << endl;
     // save intermediate result with only estimated states
-    saveResultToFile(result_interp, graph_interp, params.interp_raw_file, solve_slam);
+    saveResultToFile(result_interp, graph_interp, params.interp_raw_file,
+                     solve_slam);
     // Recover interpolated means using interpolator
-    result = updateInterpValues<Pose2>(graph_interp, result_interp, estim, interp, sigma_wnoa);    
+    result = updateInterpValues<Pose2>(graph_interp, result_interp, estim,
+                                       interp, sigma_wnoa);
   } else {
+    t_start = chrono::high_resolution_clock::now();
     result = LevenbergMarquardtOptimizer(graph, initial, opt_params).optimize();
+    t_end = chrono::high_resolution_clock::now();
+    auto t_runtime =
+        chrono::duration_cast<chrono::microseconds>(t_end - t_start).count();
+    cout << "Runtime for solve: " << t_runtime << " (micro-s)" << endl;
   }
   // Save results
   cout << "Optimizer has finished...saving results..." << endl;
@@ -304,7 +324,6 @@ int runLostInTheWoods(LostInTheWoodsParams& params){
 }
 
 int main(int argc, char* argv[]) {
-
   // Get configuration data
   string config_file = "LostInTheWoods/default_params.yaml";
   if (argc > 1) {
@@ -315,5 +334,5 @@ int main(int argc, char* argv[]) {
   // Use parameter struct to load all parameters
   LostInTheWoodsParams params(config);
 
-  
+  runLostInTheWoods(params);
 }

@@ -33,6 +33,7 @@ _build
 uv.lock
 
 # analyses
-interp_analyses/build
-interp_analyses/results
+analyses/build
+analyses/results
+analyses/plots
 *callgrind.out*
