@@ -76,11 +76,19 @@ NavStateImuEKF::NavStateImuEKF(
 
 void NavStateImuEKF::predict(const Vector3& gyro, const Vector3& accel,
                              double dt) {
+  if (dt <= 0.0) {
+    throw std::invalid_argument("NavStateImuEKF::predict: dt must be positive");
+  }
   // Use the custom increment integrator; compute U and J at current state
   Jacobian J_UX;
   const NavState U = navStateImuDynamics(this->state(), gyro, accel, dt,
                                          params_->n_gravity, J_UX);
-  Base::predictWithCompose(U, J_UX, Q_);
+  // Scale continuous-time process noise to the discrete interval [t, t+dt]
+  Covariance Qdt = Q_ * dt;  // simple dt scaling per block (gyro, integ, accel)
+  // More sophisticated discretization can be done here:
+  // With Qc = diag(Cg, Ca), take G = [[dt·I, 0], [ 0, 0.5·dt^2·I], [ 0, dt·I]]
+  // and Qd = G Qc G^T. This yields correct dt, dt^2, dt^3 and p–v cross terms.
+  Base::predictWithCompose(U, J_UX, Qdt);
 }
 
 const std::shared_ptr<PreintegrationParams>& NavStateImuEKF::params() const {
