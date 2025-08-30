@@ -23,7 +23,22 @@
 
 using namespace gtsam;
 
+namespace nontrivial_navstate_example {
+// A nontrivial NavState
+Rot3 R0 = Rot3::RzRyRx(0.1, -0.2, 0.3);
+Point3 p0(0.5, -0.4, 0.3);
+Vector3 v0(0.2, -0.1, 0.05);
+NavState X0(R0, p0, v0);
+
+// Controls and parameters
+Vector3 gyro(0.3, -0.2, 0.1);
+Vector3 accel(0.5, -0.3, 0.2);
+auto params = PreintegrationParams::MakeSharedU(9.81);
+}  // namespace nontrivial_navstate_example
+
 TEST(NavStateImuEKF, DefaultProcessNoiseFromParams) {
+  using namespace nontrivial_navstate_example;
+
   // GIVEN params with specific covariances
   auto params = PreintegrationParams::MakeSharedU(9.81);
   Matrix3 Cg = (Matrix3() << 0.01, 0, 0, 0, 0.02, 0, 0, 0, 0.03).finished();
@@ -33,10 +48,6 @@ TEST(NavStateImuEKF, DefaultProcessNoiseFromParams) {
   params->setIntegrationCovariance(Ci);
   params->setAccelerometerCovariance(Ca);
 
-  Rot3 R0 = Rot3::RzRyRx(0.0, 0.0, 0.0);
-  Point3 p0(0, 0, 0);
-  Vector3 v0(0, 0, 0);
-  NavState X0(R0, p0, v0);
   Matrix9 P0 = I_9x9 * 0.01;
   NavStateImuEKF ekf(X0, P0, params);
 
@@ -48,49 +59,31 @@ TEST(NavStateImuEKF, DefaultProcessNoiseFromParams) {
 }
 
 TEST(NavStateImuEKF, DynamicsJacobian) {
-  // GIVEN a nontrivial NavState
-  Rot3 R = Rot3::RzRyRx(0.1, -0.2, 0.3);
-  Point3 p(0.5, -0.4, 0.3);
-  Vector3 v(0.2, -0.1, 0.05);
-  NavState X(R, p, v);
+  using namespace nontrivial_navstate_example;
 
-  // Controls and gravity
-  Vector3 gyro(0.3, -0.2, 0.1);
-  Vector3 accel(0.5, -0.3, 0.2);
-  auto params = PreintegrationParams::MakeSharedU(9.81);
-
-  // We check the Jacobian of u_left(X) = Log(U(X)) for the custom integrator
-  // with dt
+  // Check the Jacobian of navStateImuDynamics
   double dt = 0.01;
   Matrix9 H;
-  NavState U = navStateImuDynamics(X, gyro, accel, dt, params->getGravity(), H);
+  NavState U =
+      navStateImuDynamics(X0, gyro, accel, dt, params->getGravity(), H);
   (void)U;
   std::function<NavState(const NavState&)> f =
       [&](const NavState& Xq) -> NavState {
     return navStateImuDynamics(Xq, gyro, accel, dt, params->getGravity());
   };
-  Matrix9 Hnum = numericalDerivative11(f, X);
+  Matrix9 Hnum = numericalDerivative11(f, X0);
 
   EXPECT(assert_equal(Hnum, H, 1e-6));
 }
 
 TEST(NavStateImuEKF, PredictMatchesExplicitIntegration) {
-  // GIVEN initial state
-  Rot3 R0 = Rot3::RzRyRx(0.3, -0.25, 0.15);
-  Point3 p0(1.0, -0.5, 0.2);
-  Vector3 v0(0.4, -0.2, 0.3);
-  NavState X0(R0, p0, v0);
-  Vector3 n_gravity(0, 0, -9.81);
-
-  // Controls and step
-  Vector3 gyro(0.2, -0.1, 0.05);
-  Vector3 accel(0.6, -0.4, 0.3);
+  using namespace nontrivial_navstate_example;
   double dt = 0.02;
 
   // Explicit integration as per Derek's code (from raw inputs)
   Rot3 dR = Rot3::Expmap(gyro * dt);
   Rot3 R_new = R0.compose(dR);  // R_new = R * dR
-  Vector3 a_world = R0 * accel + n_gravity;
+  Vector3 a_world = R0 * accel + params->n_gravity;
   Vector3 v_new = v0 + a_world * dt;
   Point3 p_new = p0 + v0 * dt + a_world * (0.5 * dt * dt);
   NavState X_explicit(R_new, p_new, v_new);
@@ -98,18 +91,13 @@ TEST(NavStateImuEKF, PredictMatchesExplicitIntegration) {
   // Increment-based integration should match exactly
   auto params = PreintegrationParams::MakeSharedU(9.81);
   NavStateImuEKF ekf(X0, I_9x9 * 1e-3, params);
-  NavState U = navStateImuDynamics(X0, gyro, accel, dt, n_gravity);
+  NavState U = navStateImuDynamics(X0, gyro, accel, dt, params->n_gravity);
   NavState X_inc = X0.compose(U);
   EXPECT(assert_equal(X_explicit, X_inc, 1e-12));
 }
 
 TEST(NavStateImuEKF, IncrementJacobianNumericalCheck) {
-  Rot3 R0 = Rot3::RzRyRx(0.2, -0.1, 0.3);
-  Point3 p0(0.1, 0.2, -0.3);
-  Vector3 v0(-0.2, 0.4, 0.1);
-  NavState X0(R0, p0, v0);
-  Vector3 gyro(0.1, 0.2, -0.1);
-  Vector3 accel(0.3, -0.2, 0.4);
+  using namespace nontrivial_navstate_example;
   double dt = 0.05;
 
   auto params = PreintegrationParams::MakeSharedU(9.81);

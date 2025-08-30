@@ -200,8 +200,8 @@ namespace gtsam {
      * (e.g., second-order kinematics), which may not be expressible as an Euler
      * step on the tangent used by predict/predictMean.
      */
-    void predictIncrement(const G& U, const Jacobian& J_UX,
-                          const Covariance& Q) {
+    void predictWithCompose(const G& U, const Jacobian& J_UX,
+                            const Covariance& Q) {
       Jacobian A_local;
       if constexpr (std::is_same_v<G, Matrix>) {
         const Matrix I_n = Matrix::Identity(this->n_, this->n_);

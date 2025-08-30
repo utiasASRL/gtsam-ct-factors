@@ -46,7 +46,6 @@ NavState navStateImuDynamics(const NavState& X, const Vector3& gyro,
 
   if (H) {
     Matrix3 dRt = dR.transpose();  // Jacobian of NavState::Create
-    const Matrix3 D_gb_R = skewSymmetric(g_body);
     H->setZero();
     // position:
     H->template block<3, 3>(3, 0) = dRt * (D_vb_R * dt + D_gb_R * dt2);
@@ -81,7 +80,7 @@ void NavStateImuEKF::predict(const Vector3& gyro, const Vector3& accel,
   Jacobian J_UX;
   const NavState U = navStateImuDynamics(this->state(), gyro, accel, dt,
                                          params_->n_gravity, J_UX);
-  Base::predictIncrement(U, J_UX, Q_);
+  Base::predictWithCompose(U, J_UX, Q_);
 }
 
 const std::shared_ptr<PreintegrationParams>& NavStateImuEKF::params() const {
