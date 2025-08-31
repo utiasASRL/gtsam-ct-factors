@@ -777,6 +777,26 @@ TEST(NavState, AdjointMap_GenericVsSpecialized) {
 }
 
 /* ************************************************************************* */
+TEST(NavState, AutonomousFlow) {
+  const double dt = 0.1;
+  NavState::AutonomousFlow psi{dt};
+
+  // Check action on identity
+  CHECK(assert_equal(psi(NavState::Identity()), NavState::Identity()));
+
+  // Check action on static const NavState T(R, P2, V2);
+  CHECK(assert_equal(psi(T), {R, P2 + V2 * dt, V2}));
+
+  // Numerical derivative of psi at identity
+  auto numericalPhi = numericalDerivative11<NavState, NavState>(
+      [&](const NavState& X) { return psi(X); }, NavState());
+
+  // Check analytical derivative against numerical derivative
+  auto analyticalPhi = psi.dIdentity();
+  CHECK(assert_equal(numericalPhi, analyticalPhi, 1e-9));
+}
+
+/* ************************************************************************* */
 int main() {
   TestResult tr;
   return TestRegistry::runAllTests(tr);

@@ -23,42 +23,6 @@
 #include <iostream>
 
 using namespace gtsam;
-namespace {
-// Ψ: autonomous flow where velocity acts on position for
-//   dt (R, p, v) -> p += v·dt.
-struct VelocityActsOnPosition {
-  double dt;
-  // Differential at identity (right-trivialized): Φ = I with ∂p/∂v = dt·I.
-  NavState::Jacobian dIdentity() const {
-    NavState::Jacobian Phi = NavState::Jacobian::Identity();
-    Phi.template block<3, 3>(3, 6) = I_3x3 * dt;
-    return Phi;
-  }
-
-  // Apply ψ(x) by composing a body-frame position increment of Rᵀ v · dt
-  NavState operator()(const NavState& X) const {
-    const Rot3& R = X.attitude();
-    const Vector3& v = X.velocity();
-    const Vector3 dp_body = R.unrotate(v) * dt;  // Rᵀ v dt so that p ← p + v dt
-    const NavState U_id(Rot3(), dp_body, Vector3::Zero());
-    return traits<NavState>::Compose(X, U_id);
-  }
-};
-}  // namespace
-
-/// Test dIdentity using numerical derivatives
-TEST(VelocityActsOnPosition, dIdentity) {
-  const double dt = 0.01;
-  VelocityActsOnPosition psi{dt};
-
-  // Numerical derivative of psi at identity
-  auto numericalPhi = numericalDerivative11<NavState, NavState>(
-      [&](const NavState& X) { return psi(X); }, NavState());
-
-  // Check analytical derivative against numerical derivative
-  auto analyticalPhi = psi.dIdentity();
-  CHECK(assert_equal(numericalPhi, analyticalPhi, 1e-9));
-}
 
 TEST(LeftLinearEKF, WPsiU_matches_IMU_dynamics_with_gravity) {
   const double dt = 1e-2;  // 10 ms
@@ -78,7 +42,7 @@ TEST(LeftLinearEKF, WPsiU_matches_IMU_dynamics_with_gravity) {
   const NavState W(Rot3(), pW, vW);
 
   // Ψ functor: velocity acts on position
-  VelocityActsOnPosition psi{dt};
+  NavState::AutonomousFlow psi{dt};
 
   // Build U from raw IMU (no gravity): body-frame increments
   const Rot3 dR = Rot3::Expmap(gyro * dt);
