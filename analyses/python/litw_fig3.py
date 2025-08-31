@@ -202,7 +202,7 @@ if __name__ == "__main__":
     
     
     plt.show(block=False)
-    dpi=600
+    dpi=800
     save_figs = input("Save figures? [Y/n]: ").strip().lower()
     if save_figs == "" or save_figs == "y":
         fig1.savefig("analyses/plots/litw_fig3_full.png", dpi=dpi, bbox_inches='tight')

@@ -161,13 +161,13 @@ def plot_se2_points(ax, csv_path, title=None, downsample=5):
     ax.set_title(title)
     
 def plot_landmarks(ax):
-    ax.plot(landmarks[:,0], landmarks[:,1], '.g')
+    ax.plot(landmarks[:,0], landmarks[:,1], '.g', alpha=0.5)
     
 def plot_landmark_est(ax, path):
     df, cov = load_csv(path)
     lm_x = df["x"].to_numpy()
     lm_y = df["y"].to_numpy()
-    plt.plot(lm_x, lm_y, ".r", label="Estimated Landmarks")
+    plt.plot(lm_x, lm_y, ".r", label="Estimated Landmarks", alpha=0.5)
     for xi, yi, cov in zip(lm_x, lm_y, cov):
         plot_cov_ellipse(ax, xi, yi, 0, cov, n_std=3, edgecolor='r', facecolor='r', lw=1, alpha=0.25)
 
@@ -208,15 +208,15 @@ if __name__ == "__main__":
     
     # Plot Interpolated Solve
     fig2,ax =plt.subplots(1,1,figsize=(8,4))
-    plot_landmarks(ax)
     plot_landmark_est(ax, path_lms_interp)
+    plot_landmarks(ax)
     plot_se2_trajectory(ax, path_gt, gt_vals=True, downsample=30)
     plot_se2_trajectory(ax, path_est, plot_cov=True, downsample=1)
-    plot_se2_trajectory(ax, path_graph_interp, title="Interpolated Solve", interp=True, plot_cov=True, downsample=1)
+    plot_se2_trajectory(ax, path_graph_interp, title="SLAM Solution (Interpolated)", interp=True, plot_cov=True, downsample=1)
     
 
     plt.show(block=False)
-    dpi=600
+    dpi=800
     save_figs = input("Save figures? [Y/n]: ").strip().lower()
     if save_figs == "" or save_figs == "y":
         # fig1.savefig("analyses/plots/litw_fig4_full.png", dpi=dpi, bbox_inches='tight')

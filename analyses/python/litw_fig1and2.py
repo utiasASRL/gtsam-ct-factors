@@ -157,6 +157,15 @@ def plot_se2_points(ax, csv_path, title, downsample=5):
     ax.set_xlabel('x [m]')
     ax.set_ylabel('y [m]')
     ax.set_title(title)
+
+
+def plot_start_end(ax, csv_path):
+    df, _ = load_csv(csv_path)
+    x = df['x'].values
+    y = df['y'].values
+
+    ax.plot(x[-1],y[-1],'*r')
+    ax.plot(x[0],y[0],'*g')
     
 def plot_landmarks(ax):
     ax.plot(landmarks[:,0], landmarks[:,1], 'og')
@@ -190,6 +199,7 @@ if __name__ == "__main__":
     fig1,ax =plt.subplots(1,1,figsize=(8,4))
     plot_landmarks(ax)
     plot_se2_points(ax, path_gt_full, "Ground Truth Trajectory", downsample=1)
+    plot_start_end(ax, path_gt_full)
     # Plot GTSAM Solution
     fig2,ax =plt.subplots(1,1,figsize=(8,4))
     plot_landmarks(ax)
@@ -197,9 +207,9 @@ if __name__ == "__main__":
     plot_se2_trajectory(ax, path_solve, "GTSAM Solve", plot_cov=True, downsample=downsample)
     
     plt.show(block=False)
-    dpi=600
+    dpi=800
     save_figs = input("Save figures? [Y/n]: ").strip().lower()
     if save_figs == "" or save_figs == "y":
-        fig1.savefig("analyses/plots/litw_fig2_gt.png", dpi=dpi, bbox_inches='tight')
+        fig1.savefig("analyses/plots/litw_fig1_gt.png", dpi=dpi, bbox_inches='tight')
         fig2.savefig("analyses/plots/litw_fig2_solve.png", dpi=dpi, bbox_inches='tight')
     

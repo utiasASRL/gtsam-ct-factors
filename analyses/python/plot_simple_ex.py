@@ -89,10 +89,10 @@ def plot_cov_ellipse(ax, xi, yi, ti, cov, n_std=1.0, **kwargs):
 
 
 if __name__ == "__main__":
-    paths = ["results/simple_ex_full.csv",
-             "results/simple_ex_estim.csv",
-             "results/simple_ex_interp.csv",
-             "results/simple_ex_interp_graph.csv"]
+    paths = ["analyses/results/simple_ex_full.csv",
+             "analyses/results/simple_ex_estim.csv",
+             "analyses/results/simple_ex_interp.csv",
+             "analyses/results/simple_ex_interp_graph.csv"]
     titles = ["full solve", 
               "just estimated",
               "interpolated",
