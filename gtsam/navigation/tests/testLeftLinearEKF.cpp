@@ -24,7 +24,7 @@
 
 using namespace gtsam;
 
-TEST(LeftLinearEKF, WPsiU_matches_IMU_dynamics_with_gravity) {
+TEST(LeftLinearEKF, WPhiU_matches_IMU_dynamics_with_gravity) {
   const double dt = 1e-2;  // 10 ms
   const Vector3 n_gravity(0, 0, -9.81);
   const Vector3 gyro(0.01, -0.02, 0.03);   // rad/s (body)
@@ -67,7 +67,7 @@ TEST(LeftLinearEKF, WPsiU_matches_IMU_dynamics_with_gravity) {
   // Check A against numerical derivative
 
   auto numericalA = numericalDerivative11<NavState, NavState>(
-      [&](const NavState& X) { return EKF::Dynamics(W, phi, X, U); }, X0);
+      [&](const NavState& X) { return EKF::Dynamics(W, phi, X, U, {}); }, X0);
   CHECK(assert_equal(numericalA, A, 1e-9));
 
   // Initialize filter

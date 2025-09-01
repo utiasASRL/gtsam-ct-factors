@@ -23,18 +23,14 @@
 
 namespace gtsam {
 
-NavStateImuEKF::NavStateImuEKF(
-    const NavState& X0, const Covariance& P0,
-    const std::shared_ptr<PreintegrationParams>& params)
-    : Base(X0, P0), params_(params) {
+NavStateImuEKF::NavStateImuEKF(const NavState& X0, const Covariance& P0,
+                               const std::shared_ptr<PreintegrationParams>& p)
+    : Base(X0, P0), params_(p) {
   // Build process noise Q_ = block_diag(Cg, Ci, Ca)
-  const Matrix3& Cg = params_->gyroscopeCovariance;
-  const Matrix3& Ci = params_->integrationCovariance;
-  const Matrix3& Ca = params_->accelerometerCovariance;
   Q_.setZero();
-  Q_.template block<3, 3>(0, 0) = Cg;
-  Q_.template block<3, 3>(3, 3) = Ci;
-  Q_.template block<3, 3>(6, 6) = Ca;
+  Q_.template block<3, 3>(0, 0) = p->gyroscopeCovariance;
+  Q_.template block<3, 3>(3, 3) = p->integrationCovariance;
+  Q_.template block<3, 3>(6, 6) = p->accelerometerCovariance;
 }
 
 NavState NavStateImuEKF::Dynamics(const Vector3& n_gravity, const NavState& X,
@@ -59,11 +55,8 @@ void NavStateImuEKF::predict(const Vector3& omega_b, const Vector3& f_b,
     throw std::invalid_argument("NavStateImuEKF::predict: dt must be positive");
   }
 
-  // Get gravity from params
-  const Vector3 n_gravity = params_->n_gravity;
-
   // Calculate W, phi, and U
-  const NavState W = Gravity(n_gravity, dt);
+  const NavState W = Gravity(params_->n_gravity, dt);
   NavState::AutonomousFlow phi{dt};  // Φ: velocity acts on position
   const NavState U = IMU(omega_b, f_b, dt);
 

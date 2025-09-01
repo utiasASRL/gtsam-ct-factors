@@ -634,7 +634,7 @@ virtual class LeftLinearEKF : gtsam::LieGroupEKF<G> {
 
 #include <gtsam/navigation/InvariantEKF.h>
 template <G = {gtsam::Rot3, gtsam::Pose2, gtsam::Pose3, gtsam::NavState, gtsam::Gal3}>
-virtual class InvariantEKF : gtsam::LieGroupEKF<G> {
+virtual class InvariantEKF : gtsam::LeftLinearEKF<G> {
   // Constructors
   InvariantEKF(const G& X0, gtsam::Matrix P0);
 

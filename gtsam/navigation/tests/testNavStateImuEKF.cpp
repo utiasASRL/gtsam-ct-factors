@@ -250,7 +250,7 @@ NavState oldNavStateImuDynamics(const NavState& X, const Vector3& omega_b,
   return U;
 }
 
-TEST(NavStateImuEKF, WPsiU_matches_navStateImuDynamics) {
+TEST(NavStateImuEKF, WPhiU_matches_navStateImuDynamics) {
   using namespace nontrivial_navstate_example;
 
   const double dt = 1e-2;  // 10 ms

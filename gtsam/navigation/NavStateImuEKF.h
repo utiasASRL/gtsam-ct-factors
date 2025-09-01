@@ -43,12 +43,12 @@ class GTSAM_EXPORT NavStateImuEKF : public LeftLinearEKF<NavState> {
   NavStateImuEKF(const NavState& X0, const Covariance& P0,
                  const std::shared_ptr<PreintegrationParams>& params);
 
-  // Calculate W (gravity-only left composition, world-frame increments)
+  /// Calculate W (gravity-only left composition, world-frame increments)
   static NavState Gravity(const Vector3& n_gravity, double dt) {
     return {Rot3(), n_gravity * (0.5 * dt * dt), n_gravity * dt};
   }
 
-  // Calculate U from raw IMU (no gravity): body-frame increments
+  /// Calculate U from raw IMU (no gravity): body-frame increments
   static NavState IMU(const Vector3& omega_b, const Vector3& f_b, double dt) {
     return {Rot3::Expmap(omega_b * dt), f_b * (0.5 * dt * dt), f_b * dt};
   }

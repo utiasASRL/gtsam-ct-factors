@@ -266,7 +266,7 @@ public:
   /// @name Dynamics
   /// @{
 
-  // Ψ: autonomous flow where velocity acts on position for
+  // φ: autonomous flow where velocity acts on position for
   //   dt (R, p, v) -> p += v·dt.
   struct AutonomousFlow {
     double dt;
@@ -278,7 +278,7 @@ public:
       return Phi;
     }
 
-    // Apply ψ(x) by p += v·dt
+    // Apply φ(x) by p += v·dt
     NavState operator()(const NavState& X) const {
       return {X.attitude(), X.position() + X.velocity() * dt, X.velocity()};
     }

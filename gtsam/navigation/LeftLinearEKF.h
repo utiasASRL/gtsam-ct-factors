@@ -34,9 +34,9 @@ namespace gtsam {
  * @class LeftLinearEKF
  * @brief EKF on a Lie group with a general left–linear prediction model.
  *
- * Discrete step: x⁺ = W · ψ(x) · U, with W,U ∈ G and ψ ∈ Aut(G).
+ * Discrete step: x⁺ = W · φ(x) · U, with W,U ∈ G and φ ∈ Aut(G).
  * For left-invariant error, the state-independent linearization is
- * A = Ad_{U^{-1}} · Φ where Φ := dψ|_e (right-trivialized). The left factor
+ * A = Ad_{U^{-1}} · Φ where Φ := dφ|_e (right-trivialized). The left factor
  * W cancels in A and does not appear there.
  */
 template <typename G>
@@ -64,28 +64,50 @@ class LeftLinearEKF : public LieGroupEKF<G> {
   };
 
   /**
-   * General left–linear dynamics using a φ functor and its differential at e.
+   * General left–linear dynamics.
    * Returns W · φ(X) · U, and optional Jacobian A = Ad_{U^{-1}} Φ,  Φ := dφ|_e.
    */
   template <class Phi, typename = std::enable_if_t<is_automorphism<Phi>::value>>
   static G Dynamics(const G& W, const Phi& phi, const G& X, const G& U,
                     OptionalJacobian<Dim, Dim> A = {}) {
+    return W * Dynamics<Phi>(phi, X, U, A); // A is independent of W
+  }
+
+  /**
+   * Left–linear dynamics with W=I.
+   * Returns φ(X) · U, and optional Jacobian A = Ad_{U^{-1}} Φ,  Φ := dφ|_e.
+   */
+  template <class Phi, typename = std::enable_if_t<is_automorphism<Phi>::value>>
+  static G Dynamics(const Phi& phi, const G& X, const G& U,
+                    OptionalJacobian<Dim, Dim> A = {}) {
     if (A) {
       const G U_inv = traits<G>::Inverse(U);
       *A = traits<G>::AdjointMap(U_inv) * phi.dIdentity();
     }
-    return W * phi(X) * U;
+    return phi(X) * U;
   }
 
   /**
-   * General left–linear predict using a φ functor and its differential at e.
-   *   Update: X⁺ = W · φ(X) · U
-   *   Covariance: P⁺ = A P Aᵀ + Q with A = Ad_{U^{-1}} Φ,  Φ := dφ|_e.
+   * General left–linear prediction, updates filter state as follows:
+   *   X⁺ = W · φ(X) · U
+   *   P⁺ = A P Aᵀ + Q with A = Ad_{U^{-1}} Φ,  Φ := dφ|_e.
    */
   template <class Phi, typename = std::enable_if_t<is_automorphism<Phi>::value>>
   void predict(const G& W, const Phi& phi, const G& U, const Covariance& Q) {
     Jacobian A;
     this->X_ = this->Dynamics(W, phi, this->X_, U, A);
+    this->P_ = A * this->P_ * A.transpose() + Q;
+  }
+
+  /**
+   * Special case of predict with W=I, updates filter state as follows:
+   *   Update: X⁺ = φ(X) · U
+   *   Covariance: P⁺ = A P Aᵀ + Q with A = Ad_{U^{-1}} Φ,  Φ := dφ|_e.
+   */
+  template <class Phi, typename = std::enable_if_t<is_automorphism<Phi>::value>>
+  void predict(const Phi& phi, const G& U, const Covariance& Q) {
+    Jacobian A;
+    this->X_ = this->Dynamics(phi, this->X_, U, A);
     this->P_ = A * this->P_ * A.transpose() + Q;
   }
 };
