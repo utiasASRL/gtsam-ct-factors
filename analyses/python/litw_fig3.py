@@ -123,7 +123,8 @@ def plot_se2_trajectory(ax, csv_path, title=None, interp=False, plot_cov=False, 
     # Plot trajectory
     color = 'b' if not gt_vals else 'g'
     alpha = 0.3
-    ax.plot(x, y, '-', color=color, alpha=alpha, linewidth=0.7)
+    if interp or gt_vals:
+        ax.plot(x, y, '-', color=color, alpha=alpha, linewidth=0.7)
     
     # Downsample points 
     x_ds = x[::downsample]
