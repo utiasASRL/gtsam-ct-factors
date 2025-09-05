@@ -29,6 +29,7 @@ int main(int argc, char* argv[]) {
   // interpolation
   bool interp_enable = config["interp"]["enable"].as<bool>();
   uint interp_period = config["interp"]["interp_period"].as<uint>();
+  bool fixed_noise = config["interp"]["fixed_noise"].as<bool>();
   if (interp_enable) {
     output_file = interp_out;
   }
@@ -219,7 +220,7 @@ int main(int argc, char* argv[]) {
     }
     // Generate interpolated version of graph
     NonlinearFactorGraph graph_interp =
-        interpolateFactorGraph<Pose2>(graph, estim, interp, sigma_wnoa);
+        interpolateFactorGraph<Pose2>(graph, estim, interp, sigma_wnoa, fixed_noise);
     // Run optimizer
     result_interp =
         LevenbergMarquardtOptimizer(graph_interp, initial, params).optimize();

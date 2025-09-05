@@ -31,3 +31,9 @@ _build
 /results/*.csv
 /examples/*.asv
 uv.lock
+
+# analyses
+analyses/build
+analyses/results
+analyses/plots
+*callgrind.out*

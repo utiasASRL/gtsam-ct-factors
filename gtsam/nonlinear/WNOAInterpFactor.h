@@ -294,13 +294,22 @@ class WNOAInterpFactor : public NoiseModelFactor {
             // get position of outer key
             int k = outer_key_to_index.at(outer_key);
             // add to the outer jacobian
-            safeMatrixAdd(
-                (*H)[k], (*H_inner)[i] * InterpJacobians[inner_key][outer_key]);
+            const Matrix& J = (*H_inner)[i] * InterpJacobians[inner_key][outer_key];
+            if ((*H)[k].size() == 0){
+              (*H)[k] = J;
+            }else{
+              (*H)[k] += J;
+            }
           }
         } else {
           // not an interpolated key, directly map to outer jacobian
           int k = outer_key_to_index.at(inner_key);
-          safeMatrixAdd((*H)[k], (*H_inner)[i]);
+          const Matrix& J = (*H_inner)[i];
+          if ((*H)[k].size() == 0){
+            (*H)[k] = J;
+          }else{
+            (*H)[k] += J;
+          }
         }
       }
     }
@@ -431,23 +440,6 @@ class WNOAInterpFactor : public NoiseModelFactor {
     // Return interpolated noise model
     return noiseModel::Gaussian::Covariance(noise_cov);
   }
-
-  /* @brief A helper function for safely adding to a Matrix with possibly
-   * unknown dimension. If the matrix is undefined, it adopts the dimensions of
-   * the matrix that is added .*/
-  template <typename DerivedA, typename DerivedB>
-  static inline void safeMatrixAdd(Eigen::MatrixBase<DerivedA>& dst,
-                                   const Eigen::MatrixBase<DerivedB>& src) {
-    if (dst.rows() == 0 && dst.cols() == 0) {
-      // First assignment, adopt dimensions
-      dst.derived().resize(src.rows(), src.cols());
-      dst = src;
-    } else {
-      assert(dst.rows() == src.rows() && dst.cols() == src.cols() &&
-             "Dimension mismatch");
-      dst += src;
-    }
-  }
 };
 
 /* Helper function that converts a given graph to another graph with the
@@ -460,7 +452,8 @@ class WNOAInterpFactor : public NoiseModelFactor {
 template <class PoseType>
 NonlinearFactorGraph interpolateFactorGraph(
     const NonlinearFactorGraph& graph, const set<StateData>& estimated_states,
-    const set<StateData>& interp_states, Vector Q_psd) {
+    const set<StateData>& interp_states, Vector Q_psd,
+    bool fixed_noise = false) {
   // assert that the pose is the right kind of variable
   static_assert(
       std::is_same_v<typename traits<PoseType>::structure_category,
@@ -542,7 +535,8 @@ NonlinearFactorGraph interpolateFactorGraph(
 
       // Define and add factor to new graph
       const auto wrapped_factor = std::make_shared<WNOAInterpFactor<PoseType>>(
-          nmfactor, factor_estimated_states, factor_interp_states, Q_psd);
+          nmfactor, factor_estimated_states, factor_interp_states, Q_psd,
+          fixed_noise);
       new_graph.add(wrapped_factor);
     }
   }
@@ -551,11 +545,12 @@ NonlinearFactorGraph interpolateFactorGraph(
 }
 
 template <class PoseType>
-Values updateInterpValues(const NonlinearFactorGraph& interp_graph,
-                          const Values& values,
-                          const set<StateData>& estim_states,
-                          const set<StateData>& interp_states,
-                          const Vector Q_psd) {
+Values updateInterpValues(
+    const NonlinearFactorGraph& interp_graph, const Values& values,
+    const set<StateData>& estim_states, const set<StateData>& interp_states,
+    const Vector Q_psd,
+    std::shared_ptr<typename Interpolator<PoseType>::CovarianceMap>
+        covarianceMapOut = nullptr) {
   // assert that the pose is the right kind of variable
   static_assert(
       std::is_same_v<typename traits<PoseType>::structure_category,
@@ -569,7 +564,7 @@ Values updateInterpValues(const NonlinearFactorGraph& interp_graph,
   Interpolator<PoseType> interpolator(Q_psd);
   // get interpolated values
   Values interp_vals = interpolator.interpolatePosesAndVelocities(
-      interp_graph, values, estim_states, interp_states);
+      interp_graph, values, estim_states, interp_states, covarianceMapOut);
   // update values
   Values values_updated(values);
   values_updated.insert(interp_vals);
