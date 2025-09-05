@@ -55,11 +55,13 @@ parseCommandLine(int argc, char** argv) {
     {"--help",                [&](int&) {
       std::cout << "Usage: " << argv[0] << " [options]\n"
                 << "Options:\n"
-                << "  --config-file <file>            Specify configuration YAML file (default: starryNight.yaml).\n"
-                << "  --output-file <file>            Specify output filename suffix (default: derived from config file).\n"
-                << "  --help, -h                      Show this help message.\n";
+                << "  --config-file <file>, -c <file>      Specify configuration YAML file (default: starryNight.yaml).\n"
+                << "  --output-file <file>, -o <file>      Specify output filename suffix (default: derived from config file).\n"
+                << "  --help, -h                           Show this help message.\n";
       exit(0);
     }},
+    {"-c", [&](int& i) { handlers["--config-file"](i); }},
+    {"-o", [&](int& i) { handlers["--output-file"](i); }},
     {"-h", [&](int& i) { handlers["--help"](i); }}
   };
 

@@ -122,7 +122,7 @@ public:
 
   FileUtils() = delete;
   FileUtils(std::string config_filename, std::string output_filename) {
-    std::string config_filepath = findExampleDataFile(config_filename);
+    std::string config_filepath = findExampleDataFile(config_filename + ".yaml");
     YAML::Node config = YAML::LoadFile(config_filepath);
 
     if (output_filename == "") {
