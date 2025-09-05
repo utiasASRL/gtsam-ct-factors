@@ -186,7 +186,7 @@ struct TrajStateVar {
 
 /** \brief Function to save data to CSV */
 int saveResultToFileSteam(vector<TrajStateVar>& states, Covariance& cov_post,
-                     const string& filename) {
+                          const string& filename) {
   // open file, print header
   ofstream poses_file(filename);
   if (poses_file.is_open()) {
@@ -254,6 +254,8 @@ int main(int argc, char* argv[]) {
   double mult_range = config["noise"]["range"].as<double>();
   auto sigma_br = Eigen::Vector2d(sqrt(mult_bearing * data.b_var),
                                   sqrt(mult_range * data.r_var));
+  auto sigma_prior =
+      Eigen::Vector3d(config["noise"]["prior"].as<vector<double>>().data());
 
   ///
   /// Setup States
@@ -261,7 +263,7 @@ int main(int argc, char* argv[]) {
 
   // States
   vector<TrajStateVar> states;
-  // Initialization
+  // INITIALIZATION
   if (gt_init) {
     cout << "Initializing with Ground Truth" << endl;
   } else {
@@ -299,7 +301,7 @@ int main(int argc, char* argv[]) {
     }
   }
 
-  // define optimization
+  // OPTIM PROBLEM
   OptimizationProblem problem;
   // Add state variables
   for (const auto& state : states) {
@@ -309,16 +311,54 @@ int main(int argc, char* argv[]) {
     }
   }
 
-  // Setup WNOA Prior
+  // Add states to WNOA Trajectory
   if (include_wnoa) {
     cout << "Adding WNOA prior" << endl;
+    // Define PSD matrix
     Eigen::Matrix<double, 6, 1> Qc_diag;
     Qc_diag << sigma_wnoa[0], sigma_wnoa[1], sigma_small, sigma_small,
         sigma_small, sigma_wnoa[2];
+    // Define trajectory
     traj::const_vel::Interface traj(Qc_diag);
     for (const auto& state : states)
       traj.add(state.time, state.pose, state.velocity);
+    // Add cost terms to trajectory
     traj.addPriorCostTerms(problem);
+  }
+
+  // Lock first pose, equivalent to prior on first pose
+  if (include_prior) {
+    // Define error Noise model and loss function
+    Eigen::Matrix<double, 6, 1> cov_prior;
+    cov_prior << sigma_prior[0], sigma_prior[1], sigma_small, sigma_small,
+        sigma_small, sigma_prior[2];
+    const auto noise_model =
+        steam::StaticNoiseModel<6>::MakeShared(cov_prior.asDiagonal());
+    const auto loss_function = steam::L2LossFunc::MakeShared();
+
+    // POSE PRIOR
+    const auto pose_init = se3::SE3StateVar::MakeShared(
+        se3::SE3StateVar::T(states[0].pose->value()));
+    pose_init->locked() = true;  // lock this pose
+    // define error
+    const auto err_pose_prior =
+        se3::tran2vec(se3::compose(pose_init, se3::inverse(states[0].pose)));
+    // define and add cost
+    const auto cost_term_pose = WeightedLeastSqCostTerm<6>::MakeShared(
+        err_pose_prior, noise_model, loss_function);
+    problem.addCostTerm(cost_term_pose);
+
+    // VELOCITY PRIOR
+    // const auto vel_init =
+    //     vspace::VSpaceStateVar<6>::MakeShared(states[0].velocity->value());
+    // vel_init->locked() = true;  // lock this pose
+    // // define error
+    // const auto err_vel_prior = vel_init - states[0].velocity;
+    // // define and add cost
+    // const auto cost_term_vel = WeightedLeastSqCostTerm<6>::MakeShared(
+    //     err_vel_prior, noise_model, loss_function);
+    // problem.addCostTerm(cost_term_vel);
+    states[0].velocity->locked()=true;
   }
 
   // Add odometry measurements
@@ -404,25 +444,24 @@ int main(int argc, char* argv[]) {
     }
   }
 
-  // Lock first pose, equivalent to prior on first pose
-  if (include_prior) {
-    cout << "Locking First Pose" << endl;
-    states[0].pose->locked() = true;
-    states[0].velocity->locked() = true;
-  }
-
   ///
   /// Setup Solver and Optimize
   ///
   unique_ptr<GaussNewtonSolver> solver;
   string solver_select = config["params"]["solver"].as<string>();
+
   if (solver_select == "GN") {
     steam::GaussNewtonSolver::Params params;
     params.verbose = true;
+    params.relative_cost_change_threshold = 1e-6;
+    params.absolute_cost_change_threshold = 1e-6;
     solver = make_unique<GaussNewtonSolver>(problem, params);
 
   } else if (solver_select == "LM") {
     steam::LevMarqGaussNewtonSolver::Params params;
+    params.relative_cost_change_threshold = 1e-6;
+    params.absolute_cost_change_threshold = 1e-6;
+    params.max_iterations = 500;
     params.verbose = true;
     solver = make_unique<LevMarqGaussNewtonSolver>(problem, params);
   } else if (solver_select == "DL") {

@@ -190,7 +190,7 @@ class DatasetLoader {
 
 // --- Save Poses to CSV ---
 int saveResultToFile(Values& result, NonlinearFactorGraph& graph,
-                     const string& filename, bool save_landmarks = false) {
+                     const string& filename, bool save_landmarks = false, std::shared_ptr<typename Interpolator<Pose2>::CovarianceMap> cov_map = nullptr) {
   
   cout << "Writing solve output to " << filename << endl;
   // Get marginals
@@ -202,7 +202,13 @@ int saveResultToFile(Values& result, NonlinearFactorGraph& graph,
         << "key,x,y,theta,C11,C12,C13,C22,C23,C33\n";  // Header for Pose2
     // filter results for pose2
     for (const auto& [key, pose] : result.extract<Pose2>()) {
-      Matrix cov = marginals.marginalCovariance(key);
+      // check if key is defined in covariance map before using the marginals
+      Matrix cov;
+      if (cov_map && cov_map->count(key)){
+        cov = (*cov_map)[key];
+      }else{
+        cov = marginals.marginalCovariance(key);
+      }
       poses_file << key << "," << pose.x() << "," << pose.y() << ","
                  << pose.theta() << "," << cov(0, 0) << "," << cov(0, 1) << ","
                  << cov(0, 2) << "," << cov(1, 1) << "," << cov(1, 2) << ","

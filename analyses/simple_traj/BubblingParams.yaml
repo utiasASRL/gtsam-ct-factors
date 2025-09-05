@@ -1,0 +1,11 @@
+noise:
+  unary: [0.01 ,0.001, 0.001]
+  wnoa: [0.01, 0.001, 0.001]
+flags:
+  perturb_meas: false
+  fixed_noise: false
+params:
+  vel_mean: [0.25, 0.0, 0.05]
+  del_t: 0.1
+  period_interp: 30
+  n_points: 60
