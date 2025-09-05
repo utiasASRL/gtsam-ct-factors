@@ -19,6 +19,7 @@ flags:
 interp:
   enable: true
   interp_period: 10 
+  fixed_noise: false
 noise:
   prior: [1e-2, 1e-2, 1e-3]
   odom_y: 1.0e-2

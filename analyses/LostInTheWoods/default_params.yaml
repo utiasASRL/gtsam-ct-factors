@@ -4,11 +4,13 @@ files:
   gt_out : "results/lost_gt.csv"
   interp_raw_file: "results/lost_interp_raw.csv"
   interp_out : "results/lost_interp.csv" 
+  interp_graph_out : "results/default_graph.csv"
 params:
   r_max: 10.0
   del_t: 0.1
   start: 1000
   end: 6000
+  n_runs: 1000
 flags:
   prior: true
   odom: true

@@ -10,6 +10,7 @@ params:
   del_t: 0.1
   start: 2000
   end: 5000
+  n_runs: 1
 flags:
   prior: true
   odom: false
