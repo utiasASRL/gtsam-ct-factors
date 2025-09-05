@@ -30,15 +30,24 @@ namespace gtsam {
 /**
  * Factor graph that supports adding ExpressionFactors directly
  */
+template <typename PoseType>
 class WNOAFactorGraph: public ExpressionFactorGraph {
 
 private:
-  unordered_map<Key, StateData> key_to_interp_graph_;
-  unordered_map<StateData, pair<StateData, StateData>> interp_to_borders_graph_;
-  // Caches for interpolated values, Jacobians, and conditional covariances
-  Values* InterpValuesCache = nullptr;
-  unordered_map<Key, unordered_map<Key, Matrix>>* InterpJacobiansCache = nullptr;
-  unordered_map<StateData, Matrix>* InterpCondCovsCache = nullptr;
+
+  using This = WNOAFactorGraph<PoseType>;
+  using Base = ExpressionFactorGraph;
+  using VelocityType = typename gtsam::traits<PoseType>::TangentVector;
+  static constexpr int dim = traits<PoseType>::dimension;
+
+  unordered_map<StateData, pair<StateData, StateData>> interp_to_borders_map_;
+  unordered_map<size_t, set<StateData>> factor_to_interp_map_;
+
+  void initializeMaps(unordered_map<StateData, pair<StateData, StateData>> interp_map,
+                      unordered_map<size_t, set<StateData>> factor_map) {
+    interp_to_borders_map_ = std::move(interp_map);
+    factor_to_interp_map_ = std::move(factor_map);
+  }
 
 public:
     /// Linearize a nonlinear factor graph
