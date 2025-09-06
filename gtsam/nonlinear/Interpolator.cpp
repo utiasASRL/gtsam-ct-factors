@@ -62,18 +62,19 @@ Interpolator<PoseType>::interpolatePoseAndVelocity(
   } else if (t_tau < t_k || std::isinf(t_kp1)) {
     // Extrapolation from left boundary
     double t_diff = t_tau - t_k;
-    extrapolatePoseAndVelocity(poseVel_k, t_diff, H, mainSolveMarginalMatrix,
-                               covarianceOut);
+    return extrapolatePoseAndVelocity(poseVel_k, t_diff, H,
+                                      mainSolveMarginalMatrix, covarianceOut);
   } else if (t_tau > t_kp1 || std::isinf(t_k)) {
     // Extrapolation from right boundary
     double t_diff = t_tau - t_kp1;
-    extrapolatePoseAndVelocity(poseVel_kp1, t_diff, H, mainSolveMarginalMatrix,
-                               covarianceOut);
+    return extrapolatePoseAndVelocity(poseVel_kp1, t_diff, H,
+                                      mainSolveMarginalMatrix, covarianceOut);
+  } else {
+    // only remaining case is that t_tau is within border states
+    // call protected overload of interpolate function
+    return interpolatePoseAndVelocity_(tPoseVel_k, tPoseVel_kp1, t_tau, H,
+                                       mainSolveMarginalMatrix, covarianceOut);
   }
-  // only remaining case is that t_tau is within border states
-  // call protected overload of interpolate function
-  return interpolatePoseAndVelocity_(tPoseVel_k, tPoseVel_kp1, t_tau, H,
-                                    mainSolveMarginalMatrix, covarianceOut);
 }
 
 template <typename PoseType>
