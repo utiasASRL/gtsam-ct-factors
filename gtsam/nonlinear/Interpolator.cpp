@@ -12,6 +12,7 @@ Interpolator<PoseType>::Interpolator(
     const VectorN& Q_psd, std::function<Matrix(double dt)> transitionFunction,
     std::function<Matrix(double dt, const VectorN& Q_psd)> covarianceFunction,
     std::function<Matrix(double dt, const VectorN& Q_psd)>
+       
         inverseCovarianceFunction,
     std::function<Matrix(const std::pair<PoseType, VelocityType>&,
                          const std::pair<PoseType, VelocityType>&, double)>

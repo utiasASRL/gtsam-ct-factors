@@ -171,6 +171,14 @@ class Interpolator {
   std::pair<Matrix, Matrix> getLambdaPsiGeneral(double t_k, double t_kp1,
                                                 double t_tau) const;
 
+  // Retrieve interpolation matrices. Fast implementation specialized for WNOA.
+  std::pair<Matrix, Matrix> getLambdaPsi(double t_k, double t_kp1,
+                                         double t_tau) const;
+
+  // Retrieve interpolation matrices. General implementation.
+  std::pair<Matrix, Matrix> getLambdaPsiGeneral(double t_k, double t_kp1,
+                                                double t_tau) const;
+
  protected:
   // Interpoate pose and velocity at left boundary
   PoseVel interpolateBoundaryLeft(
