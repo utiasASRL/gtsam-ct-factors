@@ -334,7 +334,7 @@ Interpolator<PoseType>::computeJointMarginals(
   // faster if there are many intervals with shared boundary keys
   // ----------------------------------
   JointMarginal allBoundaryMarginal =
-      marginals->jointMarginalCovariance(
+      marginals->jointMarginalCovarianceSparse(
           KeyVector(allBoundaryKeys.begin(), allBoundaryKeys.end()));
   
   for (const auto& [stateDataBorders, stateDataInterpVec] : queryBuckets) {

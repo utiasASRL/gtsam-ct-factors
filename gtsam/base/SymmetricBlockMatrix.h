@@ -27,6 +27,8 @@
 #include <cassert>
 #include <stdexcept>
 #include <array>
+#include <vector>
+#include <unordered_map>
 
 namespace boost {
 namespace serialization {
@@ -271,6 +273,9 @@ namespace gtsam {
 
     /// Invert the entire active matrix in place.
     void invertInPlace();
+
+    /// Invert sparse
+    void invertInPlaceSparse();
 
     /// @}
 

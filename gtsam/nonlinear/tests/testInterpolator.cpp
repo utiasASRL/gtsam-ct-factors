@@ -13,6 +13,8 @@
 #include <gtsam/nonlinear/NonlinearFactorGraph.h>
 #include <gtsam/nonlinear/Values.h>
 #include <gtsam/nonlinear/WNOAFactor.h>
+#include <gtsam/nonlinear/GaussNewtonOptimizer.h>
+#include <gtsam/slam/BetweenFactor.h>
 
 using namespace std;
 using namespace gtsam;
@@ -881,6 +883,72 @@ TEST(Interpolator, LambdaPsiConsistencyP3) {
 
 /* ************************************************************************* */
 /* Todo: write better tests for covariance interpolation */
+
+/* BLOCK TAKAHASHI TEST
+ * Compare selected blocks from blockTakahashi with the same blocks from the
+ * full joint marginal covariance.
+ */
+TEST(Interpolator, TakahashiWithKeys) {
+  using namespace gtsam;
+
+  // Define symbols
+  Symbol x1('x', 1), x2('x', 2);
+  Symbol x3('x', 3), x4('x', 4);
+
+  // Define ordering (must match how JointMarginal was constructed)
+  KeyVector keys = {x1, x2, x3, x4};
+
+  // Build a simple factor graph
+  NonlinearFactorGraph graph;
+  Values values;
+
+  // Example: small prior and between factors
+  noiseModel::Diagonal::shared_ptr priorNoise =
+      noiseModel::Isotropic::Sigma(2, 0.1);  // 2D prior
+  noiseModel::Diagonal::shared_ptr dynNoise =
+      noiseModel::Isotropic::Sigma(2, 0.1);
+
+  // Priors on x1, x3
+  graph.addPrior(x1, Point2(0.0, 0.0), priorNoise);
+  graph.addPrior(x3, Point2(0.0, 0.0), priorNoise);
+  graph.emplace_shared<BetweenFactor<Point2>>(x1, x2, Point2(1.0, 1.0), dynNoise);
+  graph.emplace_shared<BetweenFactor<Point2>>(x3, x4, Point2(0.5, 0.5), dynNoise);
+
+  // Dummy initial values
+  values.insert(x1, Point2(0.1, 0.2));
+  values.insert(x3, Point2(0.3, 0.4));
+  values.insert(x2, Point2(0.5, 0.6));
+  values.insert(x4, Point2(0.7, 0.8));
+
+  // Optimize
+  GaussNewtonOptimizer optimizer(graph, values);
+  Values result = optimizer.optimize();
+
+  // Compute joint marginals
+  Marginals marginals(graph, result);
+  JointMarginal jointCovSparse = marginals.jointMarginalCovarianceSparse(keys);
+  JointMarginal jointCov = marginals.jointMarginalCovariance(keys);
+
+  EXPECT(assert_equal(jointCovSparse.fullMatrix(), jointCov.fullMatrix(), 1e-9));
+
+  // // Blocks we want
+  // std::vector<std::pair<Key,Key>> requested = {
+  //     {x1,x1}//, {x1,x3}, {x1,x4}, {x2,x4}
+  // };
+
+  // // Run Takahashi via Keys
+  // std::cout << "Before Takahashi" << std::endl;
+  // auto jointCovTakahashi = blockTakahashiKeys(jointInfo.blockMatrix(), keys, requested);
+  // std::cout << "After Takahashi" << std::endl;
+
+  // // Compare each block with GTSAM’s joint marginal covariance
+  // for (auto& pr : requested) {
+  //   Matrix ref = jointCov(pr.first, pr.second);
+  //   Matrix test = jointCovTakahashi.at(pr);
+  //   EXPECT(assert_equal(ref, test, 1e-9));
+  // }
+}
+/* ************************************************************************* */
 
 int main() {
   TestResult tr;

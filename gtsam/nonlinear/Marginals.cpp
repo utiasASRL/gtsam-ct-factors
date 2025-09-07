@@ -142,6 +142,13 @@ JointMarginal Marginals::jointMarginalCovariance(const KeyVector& variables) con
 }
 
 /* ************************************************************************* */
+JointMarginal Marginals::jointMarginalCovarianceSparse(const KeyVector& variables) const {
+  JointMarginal info = jointMarginalInformation(variables);
+  info.blockMatrix_.invertInPlaceSparse();
+  return info;
+}
+
+/* ************************************************************************* */
 JointMarginal Marginals::jointMarginalInformation(const KeyVector& variables) const {
 
   // If 2 variables, we can use the BayesTree::joint function, otherwise we

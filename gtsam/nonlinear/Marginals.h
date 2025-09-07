@@ -116,6 +116,9 @@ public:
   /** Compute the joint marginal covariance of several variables */
   JointMarginal jointMarginalCovariance(const KeyVector& variables) const;
 
+  /** Compute the joint marginal covariance of several variables, using Takahashi */
+  JointMarginal jointMarginalCovarianceSparse(const KeyVector& variables) const;
+
   /** Compute the joint marginal information of several variables */
   JointMarginal jointMarginalInformation(const KeyVector& variables) const;
 
