@@ -293,13 +293,13 @@ std::map<StateDataInterval, std::shared_ptr<Matrix>>
 Interpolator<PoseType>::computeJointMarginals(
     const std::map<StateDataInterval, std::vector<StateData>>& queryBuckets,
     const std::unique_ptr<Marginals>& marginals) {
+  std::cout << "Computing joint marginals for " << queryBuckets.size() << " intervals." << std::endl;
   std::map<StateDataInterval, std::shared_ptr<Matrix>>
     intervalJointMarginals;  // JointMarginal matrices for each interval
   std::unordered_set<Key> allBoundaryKeys;
-  for (const auto& [stateDataBorders, stateDataInterpVec] : queryBuckets) {
-    
-    // Compute covariances of the interpolated poses and velocities
-    // following (5.22) in paper
+
+  // Lambda function for forming the boundary key vector
+  auto formBoundaryKeyVector = [](const StateDataInterval& stateDataBorders) {
     KeyVector boundaryKeyVector;
     if (stateDataBorders.lower.has_value()) {
       boundaryKeyVector.push_back(stateDataBorders.lower->pose); // p1
@@ -309,19 +309,44 @@ Interpolator<PoseType>::computeJointMarginals(
       boundaryKeyVector.push_back(stateDataBorders.upper->pose); // p2
       boundaryKeyVector.push_back(stateDataBorders.upper->vel); // v2
     }
+    return boundaryKeyVector;
+  };
+
+  for (const auto& [stateDataBorders, stateDataInterpVec] : queryBuckets) {
+    KeyVector boundaryKeyVector = formBoundaryKeyVector(stateDataBorders);
     allBoundaryKeys.insert(boundaryKeyVector.begin(), boundaryKeyVector.end());
 
     // Method 1: compute JointMarginal for each interval separately
-    JointMarginal mainSolveMarginal =
-    marginals->jointMarginalCovariance(boundaryKeyVector);
-    // avoid using JointMarginal.fullMatrix() as it returns covariance
-    // in alphabetical order of the keys...
-    auto mainSolveMarginalMatrix =
-      std::make_shared<Matrix>(constructMatrixFromJointMarginal(
-      mainSolveMarginal, boundaryKeyVector, dim));
-    intervalJointMarginals[stateDataBorders] = mainSolveMarginalMatrix;
+    // faster if there are not too many intervals
+    // ----------------------------------
+    // JointMarginal mainSolveMarginal =
+    // marginals->jointMarginalCovariance(boundaryKeyVector);
+    // // avoid using JointMarginal.fullMatrix() as it returns covariance
+    // // in alphabetical order of the keys...
+    // auto mainSolveMarginalMatrix =
+    //   std::make_shared<Matrix>(constructMatrixFromJointMarginal(
+    //   mainSolveMarginal, boundaryKeyVector, dim));
+    // intervalJointMarginals[stateDataBorders] = mainSolveMarginalMatrix;
+    // ----------------------------------
   }
 
+  // Method 2: compute JointMarginal for all boundary keys at once
+  // faster if there are many intervals with shared boundary keys
+  // ----------------------------------
+  JointMarginal allBoundaryMarginal =
+      marginals->jointMarginalCovariance(
+          KeyVector(allBoundaryKeys.begin(), allBoundaryKeys.end()));
+  
+  for (const auto& [stateDataBorders, stateDataInterpVec] : queryBuckets) {
+    KeyVector boundaryKeyVector = formBoundaryKeyVector(stateDataBorders);
+    auto mainSolveMarginalMatrix =
+      std::make_shared<Matrix>(constructMatrixFromJointMarginal(
+      allBoundaryMarginal, boundaryKeyVector, dim));
+    intervalJointMarginals[stateDataBorders] = mainSolveMarginalMatrix;
+  }
+  // ----------------------------------
+
+  std::cout << "Computed joint marginals for " << intervalJointMarginals.size() << " intervals." << std::endl;
   return intervalJointMarginals;
 }
 
