@@ -335,6 +335,7 @@ Values Interpolator<PoseType>::interpolatePosesAndVelocities(
     // Map from intervals [t1, t2) to query times inside that interval (bucket)
     std::map<StateDataInterval, std::vector<StateData>> queryBuckets;
 
+    // Find all intervals [t_k, t_kp1) that contain at least one query time
     for (const auto& stateDataInterp : interpolatedStates) {
       auto it2 = mainSolveStates.upper_bound(stateDataInterp);
       StateDataInterval interval;
@@ -345,14 +346,16 @@ Values Interpolator<PoseType>::interpolatePosesAndVelocities(
 
     Values interpolatedSolution;
 
-    std::unique_ptr<Marginals> marginals;  // Only construct a Marginals if requested
-    auto intervalJointMarginals = std::map<StateDataInterval, std::shared_ptr<Matrix>>(); // JointMarginal matrices for each interval
-    // Get the marginals for the boundary states
+    std::unique_ptr<Marginals> fullMarginal;  // Only construct a Marginals if requested
+    // JointMarginal matrices for each interval (every pair of boundary states involved)
+    auto intervalJointMarginals = std::map<StateDataInterval, std::shared_ptr<Matrix>>();
     if (covarianceMapOut) {
-      marginals = std::make_unique<Marginals>(mainSolveGraph, mainSolveSolution);
-      intervalJointMarginals = computeJointMarginals(queryBuckets, marginals);
+      // Compute all required joint marginals
+      fullMarginal = std::make_unique<Marginals>(mainSolveGraph, mainSolveSolution);
+      intervalJointMarginals = computeJointMarginals(queryBuckets, fullMarginal);
     }
 
+    // Perform interpolation for each bucket
     for (const auto& [stateDataBorder, stateDataInterpVec] : queryBuckets) {
 
       auto makeTimestampedPV = [&](const std::optional<StateData>& s)
