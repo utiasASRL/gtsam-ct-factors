@@ -14,7 +14,7 @@ main_solve:
 # Todo: add option to interpolate by time
 interp_during_solve:
   enable: true
-  interp_skip_states: 2
+  interp_skip_states: 5
 
 # Interpolation after the main solve
 # All the steps skipped from interp_during_solve are filled in afterwards.

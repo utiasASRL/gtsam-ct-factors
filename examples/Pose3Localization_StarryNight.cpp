@@ -28,7 +28,7 @@ using CovarianceMap = Interpolator<Pose3>::CovarianceMap;
 std::tuple<std::string, std::string>
 parseCommandLine(int argc, char** argv) {
   // Get configuration data
-  std::string config_filename = "starryNight.yaml";  // default config file
+  std::string config_filename = "starryNight";  // default config file
   std::string output_filename = "";
 
   // Parse command line arguments
@@ -55,7 +55,7 @@ parseCommandLine(int argc, char** argv) {
     {"--help",                [&](int&) {
       std::cout << "Usage: " << argv[0] << " [options]\n"
                 << "Options:\n"
-                << "  --config-file <file>, -c <file>      Specify configuration YAML file (default: starryNight.yaml).\n"
+                << "  --config-file <file>, -c <file>      Specify configuration YAML file (default: starryNight).\n"
                 << "  --output-file <file>, -o <file>      Specify output filename suffix (default: derived from config file).\n"
                 << "  --help, -h                           Show this help message.\n";
       exit(0);

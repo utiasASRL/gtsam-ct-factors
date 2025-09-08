@@ -67,7 +67,7 @@ using gtsam::tictoc_print_;
 namespace gtsam {
 
 // Intervals of boundary states
-// empty optional = unbounded
+// empty optional means the interval is unbounded in that direction
 using StateDataInterval = std::pair<std::optional<StateData>, std::optional<StateData>>;
 
 template <typename PoseType>

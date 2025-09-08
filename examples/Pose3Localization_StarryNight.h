@@ -373,7 +373,6 @@ static void saveMarginalsToFile(
     std::cerr << "Error opening file for writing marginals" << std::endl;
     return;
   }
-  // marginalsFile << "PoseID\tCovariance\n";
   for (size_t poseID = 0; poseID < numPoses; poseID += poseInterval) {
     Symbol poseSymbol('x', poseID);
     Matrix covariance;
@@ -409,6 +408,7 @@ void saveAllResultsToFile(size_t numPoses,
                        std::shared_ptr<Interpolator<Pose3>::CovarianceMap> covarianceMap,
                        Values& groundtruth,
                        size_t poseInterval) {
+  // todo (Daniel): clean up the poseInterval logic...
   // Write to a .dot file - note: not currently used
   graph.saveGraph("graph.dot", result);
   writeG2o(graph, initialEstimate, "starry_night_initial.g2o");
@@ -416,11 +416,11 @@ void saveAllResultsToFile(size_t numPoses,
 
   // Save results to text files
   std::cout << "Saving results to text files..." << std::endl;
-  savePosesToFile(result, numPoses, output_file_poses_, poseInterval);
+  savePosesToFile(result, numPoses, output_file_poses_, 1);
   savePosesToFile(initialEstimate, numPoses, output_file_poses_dr_, poseInterval);
   saveLandmarksToFile(result, numLandmarks, output_file_landmarks_);
-  saveMarginalsToFile(marginals, numPoses, output_file_marginals_, poseInterval, covarianceMap);
-  savePosesToFile(groundtruth, numPoses, output_file_groundtruth_, poseInterval);
+  saveMarginalsToFile(marginals, numPoses, output_file_marginals_, 1, covarianceMap);
+  savePosesToFile(groundtruth, numPoses, output_file_groundtruth_, 1);
 }
 
 };
