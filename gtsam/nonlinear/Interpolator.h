@@ -66,16 +66,9 @@ using gtsam::tictoc_print_;
 
 namespace gtsam {
 
-// Struct for intervals of boundary states
-struct StateDataInterval {  // maybe move this to StateData.h
-  std::optional<StateData> lower;  // empty = -inf
-  std::optional<StateData> upper;  // empty = +inf
-
-  bool operator<(const StateDataInterval& other) const {
-    if (!(lower == other.lower)) return lower < other.lower;
-    return upper < other.upper;
-  }
-};
+// Intervals of boundary states
+// empty optional = unbounded
+using StateDataInterval = std::pair<std::optional<StateData>, std::optional<StateData>>;
 
 template <typename PoseType>
 struct PoseVelocity {

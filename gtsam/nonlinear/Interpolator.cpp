@@ -301,13 +301,13 @@ Interpolator<PoseType>::computeJointMarginals(
   // Lambda function for forming the boundary key vector
   auto formBoundaryKeyVector = [](const StateDataInterval& stateDataBorders) {
     KeyVector boundaryKeyVector;
-    if (stateDataBorders.lower.has_value()) {
-      boundaryKeyVector.push_back(stateDataBorders.lower->pose); // p1
-      boundaryKeyVector.push_back(stateDataBorders.lower->vel); // v1
+    if (stateDataBorders.first.has_value()) {
+      boundaryKeyVector.push_back(stateDataBorders.first->pose); // p1
+      boundaryKeyVector.push_back(stateDataBorders.first->vel); // v1
     }
-    if (stateDataBorders.upper.has_value()) {
-      boundaryKeyVector.push_back(stateDataBorders.upper->pose); // p2
-      boundaryKeyVector.push_back(stateDataBorders.upper->vel); // v2
+    if (stateDataBorders.second.has_value()) {
+      boundaryKeyVector.push_back(stateDataBorders.second->pose); // p2
+      boundaryKeyVector.push_back(stateDataBorders.second->vel); // v2
     }
     return boundaryKeyVector;
   };
@@ -364,8 +364,8 @@ Values Interpolator<PoseType>::interpolatePosesAndVelocities(
     for (const auto& stateDataInterp : interpolatedStates) {
       auto it2 = mainSolveStates.upper_bound(stateDataInterp);
       StateDataInterval interval;
-      interval.lower = it2 == mainSolveStates.begin() ? std::nullopt : std::optional<StateData>(*std::prev(it2));
-      interval.upper = it2 == mainSolveStates.end() ? std::nullopt : std::optional<StateData>(*it2);
+      interval.first = it2 == mainSolveStates.begin() ? std::nullopt : std::optional<StateData>(*std::prev(it2));
+      interval.second = it2 == mainSolveStates.end() ? std::nullopt : std::optional<StateData>(*it2);
       queryBuckets[interval].push_back(stateDataInterp);
     }
 
@@ -394,8 +394,8 @@ Values Interpolator<PoseType>::interpolatePosesAndVelocities(
       };
       
       // Get the poses and velocities at t_k and t_kp1
-      std::optional<TimestampedPoseVel> pvk  = makeTimestampedPV(stateDataBorder.lower);
-      std::optional<TimestampedPoseVel> pvkp1 = makeTimestampedPV(stateDataBorder.upper);
+      std::optional<TimestampedPoseVel> pvk  = makeTimestampedPV(stateDataBorder.first);
+      std::optional<TimestampedPoseVel> pvkp1 = makeTimestampedPV(stateDataBorder.second);
       Matrix covarianceOut;                             // (2*dim, 2*dim)
 
       // Interpolate for all query times within this query interval (bucket)
