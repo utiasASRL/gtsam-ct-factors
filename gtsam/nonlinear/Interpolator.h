@@ -62,8 +62,13 @@ using gtsam::tictoc_print_;
 #include <string>
 #include <utility>
 #include <vector>
+#include <unordered_set>
 
 namespace gtsam {
+
+// Intervals of boundary states
+// empty optional = unbounded
+using StateDataInterval = std::pair<std::optional<StateData>, std::optional<StateData>>;
 
 template <typename PoseType>
 struct PoseVelocity {
@@ -133,9 +138,17 @@ class Interpolator {
   // Default to WNOA
   Interpolator(const VectorN& Q_psd);
 
+  PoseVel extrapolatePoseAndVelocity(
+      const std::optional<TimestampedPoseVel>& Tvarpi_k,
+      const std::optional<TimestampedPoseVel>& Tvarpi_kp1,
+      double t_tau,
+      OptionalMatrixVecType H = nullptr,
+      const std::shared_ptr<Matrix>& mainSolveMarginalMatrix = nullptr,
+      Matrix* covarianceOut = nullptr) const;
+
   PoseVel interpolatePoseAndVelocity(
-      const TimestampedPoseVel& Tvarpi_k,
-      const TimestampedPoseVel& Tvarpi_kp1,
+      const std::optional<TimestampedPoseVel>& Tvarpi_k,
+      const std::optional<TimestampedPoseVel>& Tvarpi_kp1,
       double t_tau,
       OptionalMatrixVecType H = nullptr,
       const std::shared_ptr<Matrix>& mainSolveMarginalMatrix = nullptr,
@@ -161,6 +174,11 @@ class Interpolator {
                                  OptionalMatrixType Psi = nullptr) const;
 
  protected:
+  static std::map<StateDataInterval, std::shared_ptr<Matrix>>
+  computeJointMarginals(
+    const std::map<StateDataInterval, std::vector<StateData>>& queryBuckets,
+    const std::unique_ptr<Marginals>& marginals);
+
   // construct the full covariance matrix using the order given by keyVector
   static Matrix constructMatrixFromJointMarginal(const JointMarginal& blockMatrix,
                                                  const KeyVector& keyVector,
