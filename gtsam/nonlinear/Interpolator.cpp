@@ -37,6 +37,53 @@ Interpolator<PoseType>::Interpolator(const VectorN& Q_psd)
 // ---- Member Functions ----
 template <typename PoseType>
 typename Interpolator<PoseType>::PoseVel
+Interpolator<PoseType>::extrapolatePoseAndVelocity(
+    const std::optional<TimestampedPoseVel>& tPoseVel_k,
+    const std::optional<TimestampedPoseVel>& tPoseVel_kp1,
+    double t_tau,
+    OptionalMatrixVecType H,
+    const std::shared_ptr<Matrix>& mainSolveMarginalMatrix,
+    Matrix* covarianceOut) const {
+  
+  auto poseVel_ex =
+      (!tPoseVel_kp1.has_value() || t_tau < tPoseVel_k.value().timestamp)
+      ? tPoseVel_k.value().poseVel : tPoseVel_kp1.value().poseVel;
+  double t_diff;
+  if (!tPoseVel_kp1.has_value() || t_tau < tPoseVel_k.value().timestamp) { // lower than the earliest time
+    t_diff = t_tau - tPoseVel_k.value().timestamp;
+  } else if (!tPoseVel_k.has_value() || t_tau > tPoseVel_kp1.value().timestamp) { // greater than the latest time
+    t_diff = t_tau - tPoseVel_kp1.value().timestamp;
+  } else {  // shouldn't happen if this function is called
+    throw std::runtime_error(
+        "Unexpected case in extrapolatePoseAndVelocity");
+  }
+  // follow (11.5) in the book
+  auto [T_ex, varpi_ex] = poseVel_ex;
+  Vector2N gamma_k;
+  gamma_k.topRows(dim).setZero();
+  gamma_k.bottomRows(dim) = varpi_ex;
+  auto Psi = transitionFunction_(t_diff);
+  auto gamma_ex = Psi * gamma_k;
+  auto T_tau = traits<PoseType>::Compose(
+      T_ex, traits<PoseType>::Expmap(gamma_ex.topRows(dim), nullptr));
+  auto varpi_tau = gamma_ex.bottomRows(dim);
+
+  if (mainSolveMarginalMatrix) {
+    // compute covariance of the extrapolated pose and velocity
+    // assume that mainSolveMarginalMatrix corresponds to the covariance of
+    // Tvarpi_extrapolate_point
+    assert(mainSolveMarginalMatrix->rows() == 2 * dim &&
+            mainSolveMarginalMatrix->cols() == 2 * dim);
+    Matrix2N Sigma = covarianceFunction_(t_diff, Q_psd_);
+    // (11.5) in the book
+    *covarianceOut =
+        Sigma + Psi * *mainSolveMarginalMatrix * Psi.transpose();
+  }
+  return PoseVel{T_tau, varpi_tau};
+}
+
+template <typename PoseType>
+typename Interpolator<PoseType>::PoseVel
 Interpolator<PoseType>::interpolatePoseAndVelocity(
     const TimestampedPoseVel& tPoseVel_k,
     const TimestampedPoseVel& tPoseVel_kp1, double t_tau,
@@ -327,91 +374,135 @@ Interpolator<PoseType>::interpolatePoseAndVelocity_(
 }
 
 template <typename PoseType>
+std::map<StateDataInterval, std::shared_ptr<Matrix>>
+Interpolator<PoseType>::computeJointMarginals(
+    const std::map<StateDataInterval, std::vector<StateData>>& queryBuckets,
+    const std::unique_ptr<Marginals>& marginals) {
+  std::cout << "Computing joint marginals for " << queryBuckets.size() << " intervals." << std::endl;
+  std::map<StateDataInterval, std::shared_ptr<Matrix>>
+    intervalJointMarginals;  // JointMarginal matrices for each interval
+  std::unordered_set<Key> allBoundaryKeys;
+
+  // Lambda function for forming the boundary key vector
+  auto formBoundaryKeyVector = [](const StateDataInterval& stateDataBorders) {
+    KeyVector boundaryKeyVector;
+    if (stateDataBorders.first.has_value()) {
+      boundaryKeyVector.push_back(stateDataBorders.first->pose); // p1
+      boundaryKeyVector.push_back(stateDataBorders.first->vel); // v1
+    }
+    if (stateDataBorders.second.has_value()) {
+      boundaryKeyVector.push_back(stateDataBorders.second->pose); // p2
+      boundaryKeyVector.push_back(stateDataBorders.second->vel); // v2
+    }
+    return boundaryKeyVector;
+  };
+
+  for (const auto& [stateDataBorders, stateDataInterpVec] : queryBuckets) {
+    KeyVector boundaryKeyVector = formBoundaryKeyVector(stateDataBorders);
+    allBoundaryKeys.insert(boundaryKeyVector.begin(), boundaryKeyVector.end());
+
+    // Method 1: compute JointMarginal for each interval separately
+    // faster if there are not too many intervals
+    // ----------------------------------
+    // JointMarginal mainSolveMarginal =
+    // marginals->jointMarginalCovariance(boundaryKeyVector);
+    // // avoid using JointMarginal.fullMatrix() as it returns covariance
+    // // in alphabetical order of the keys...
+    // auto mainSolveMarginalMatrix =
+    //   std::make_shared<Matrix>(constructMatrixFromJointMarginal(
+    //   mainSolveMarginal, boundaryKeyVector, dim));
+    // intervalJointMarginals[stateDataBorders] = mainSolveMarginalMatrix;
+    // ----------------------------------
+  }
+
+  // Method 2: compute JointMarginal for all boundary keys at once
+  // faster if there are many intervals with shared boundary keys
+  // ----------------------------------
+  JointMarginal allBoundaryMarginal =
+      marginals->jointMarginalCovariance(
+          KeyVector(allBoundaryKeys.begin(), allBoundaryKeys.end()));
+  
+  for (const auto& [stateDataBorders, stateDataInterpVec] : queryBuckets) {
+    KeyVector boundaryKeyVector = formBoundaryKeyVector(stateDataBorders);
+    auto mainSolveMarginalMatrix =
+      std::make_shared<Matrix>(constructMatrixFromJointMarginal(
+      allBoundaryMarginal, boundaryKeyVector, dim));
+    intervalJointMarginals[stateDataBorders] = mainSolveMarginalMatrix;
+  }
+  // ----------------------------------
+
+  std::cout << "Computed joint marginals for " << intervalJointMarginals.size() << " intervals." << std::endl;
+  return intervalJointMarginals;
+}
+
+template <typename PoseType>
 Values Interpolator<PoseType>::interpolatePosesAndVelocities(
     const NonlinearFactorGraph& mainSolveGraph, const Values& mainSolveSolution,
     const StateDataSet& mainSolveStates, const StateDataSet& interpolatedStates,
     std::shared_ptr<CovarianceMap> covarianceMapOut) const {
-  // Map from intervals [t1, t2) to query times inside that interval (bucket)
-  std::map<std::pair<StateData, StateData>, std::vector<StateData>>
-      queryBuckets;
 
-  for (const auto& stateDataInterp : interpolatedStates) {
-    auto it2 = mainSolveStates.upper_bound(stateDataInterp);
-    if (it2 == mainSolveStates.end()) {
-      auto it1 = std::prev(it2);
-      queryBuckets[std::make_pair(*it1, StateData::PosInf)].push_back(
-          stateDataInterp);
-    } else if (it2 == mainSolveStates.begin()) {
-      queryBuckets[std::make_pair(StateData::NegInf, *it2)].push_back(
-          stateDataInterp);
-    } else {
-      auto it1 = std::prev(it2);
-      queryBuckets[std::make_pair(*it1, *it2)].push_back(stateDataInterp);
+    // Map from intervals [t1, t2) to query times inside that interval (bucket)
+    std::map<StateDataInterval, std::vector<StateData>> queryBuckets;
+
+    // Find all intervals [t_k, t_kp1) that contain at least one query time
+    for (const auto& stateDataInterp : interpolatedStates) {
+      auto it2 = mainSolveStates.upper_bound(stateDataInterp);
+      StateDataInterval interval;
+      interval.first = it2 == mainSolveStates.begin() ? std::nullopt : std::optional<StateData>(*std::prev(it2));
+      interval.second = it2 == mainSolveStates.end() ? std::nullopt : std::optional<StateData>(*it2);
+      queryBuckets[interval].push_back(stateDataInterp);
     }
-  }
 
-  Values interpolatedSolution;
+    Values interpolatedSolution;
 
-  std::unique_ptr<Marginals>
-      marginals;  // Only construct a Marginals if requested
-  if (covarianceMapOut) {
-    marginals = std::make_unique<Marginals>(mainSolveGraph, mainSolveSolution);
-  }
-  for (const auto& [stateDataBorders, stateDataInterpVec] : queryBuckets) {
-    StateData state1 = stateDataBorders.first;
-    StateData state2 = stateDataBorders.second;
-
-    // Get the poses and velocities at t_k and t_kp1
-    auto pvk =
-        state1.isInfTime()
-            ? TimestampedPoseVel(PoseVel(), state1.time)
-            : TimestampedPoseVel(mainSolveSolution.at<PoseType>(state1.pose),
-                                 mainSolveSolution.at<VelocityType>(state1.vel),
-                                 state1.time);
-    auto pvkp1 =
-        state2.isInfTime()
-            ? TimestampedPoseVel(PoseVel(), state2.time)
-            : TimestampedPoseVel(mainSolveSolution.at<PoseType>(state2.pose),
-                                 mainSolveSolution.at<VelocityType>(state2.vel),
-                                 state2.time);
-
-    // Compute covariances of the interpolated poses and velocities
-    std::shared_ptr<Matrix> mainSolveMarginalMatrix;  // (4*dim, 4*dim)
-    Matrix covarianceOut;                             // (2*dim, 2*dim)
+    std::unique_ptr<Marginals> fullMarginal;  // Only construct a Marginals if requested
+    // JointMarginal matrices for each interval (every pair of boundary states involved)
+    auto intervalJointMarginals = std::map<StateDataInterval, std::shared_ptr<Matrix>>();
     if (covarianceMapOut) {
-      // following (5.22) in paper
-      KeyVector variables;
-      if (state1.isInfTime()) {
-        variables = {state2.pose, state2.vel};  // {p2, v2}
-      } else if (state2.isInfTime()) {
-        variables = {state1.pose, state1.vel};  // {p1, v1}
-      } else {
-        variables = {// {p1, v1, p2, v2}
-                     state1.pose, state1.vel, state2.pose, state2.vel};
-      }
-      JointMarginal mainSolveMarginal =
-          marginals->jointMarginalCovariance(variables);
-      // avoid using JointMarginal.fullMatrix() as it returns covariance
-      // in alphabetical order of the keys...
-      mainSolveMarginalMatrix = std::make_shared<Matrix>(
-          constructMatrixFromJointMarginal(mainSolveMarginal, variables, dim));
+      // Compute all required joint marginals
+      fullMarginal = std::make_unique<Marginals>(mainSolveGraph, mainSolveSolution);
+      intervalJointMarginals = computeJointMarginals(queryBuckets, fullMarginal);
     }
 
-    // Interpolate for all query times within this query interval (bucket)
-    for (auto stateDataInterp : stateDataInterpVec) {
-      auto pvtau =
-          interpolatePoseAndVelocity(pvk, pvkp1, stateDataInterp.time, nullptr,
-                                     mainSolveMarginalMatrix, &covarianceOut);
-      auto [T_tau, varpi_tau] = pvtau;
-      interpolatedSolution.insert(stateDataInterp.pose, T_tau);
-      interpolatedSolution.insert(stateDataInterp.vel, varpi_tau);
-      if (covarianceMapOut) {
-        // upper left covariance block corresponds to pose, lower right block
-        // corresponds to velocity
-        (*covarianceMapOut)[stateDataInterp.pose] =
-            covarianceOut.topLeftCorner(dim, dim);
-        (*covarianceMapOut)[stateDataInterp.vel] =
-            covarianceOut.bottomRightCorner(dim, dim);
+    // Perform interpolation for each bucket
+    for (const auto& [stateDataBorder, stateDataInterpVec] : queryBuckets) {
+
+      auto makeTimestampedPV = [&](const std::optional<StateData>& s)
+          -> std::optional<TimestampedPoseVel> {
+        if (!s) return std::nullopt;
+        return TimestampedPoseVel(
+            mainSolveSolution.at<PoseType>(s->pose),
+            mainSolveSolution.at<VelocityType>(s->vel),
+            s->time
+        );
+      };
+      
+      // Get the poses and velocities at t_k and t_kp1
+      std::optional<TimestampedPoseVel> pvk  = makeTimestampedPV(stateDataBorder.first);
+      std::optional<TimestampedPoseVel> pvkp1 = makeTimestampedPV(stateDataBorder.second);
+      Matrix covarianceOut;                             // (2*dim, 2*dim)
+
+      // Interpolate for all query times within this query interval (bucket)
+      for (const auto& stateDataInterp : stateDataInterpVec) {
+        std::shared_ptr<Matrix> mainSolveMarginalMatrix;  // (4*dim, 4*dim)
+        if (covarianceMapOut) {
+          mainSolveMarginalMatrix =
+              intervalJointMarginals[stateDataBorder];
+        }
+        auto pvtau =
+            interpolatePoseAndVelocity(pvk, pvkp1, stateDataInterp.time, nullptr,
+                                       mainSolveMarginalMatrix, &covarianceOut);
+        auto [T_tau, varpi_tau] = pvtau;
+        interpolatedSolution.insert(stateDataInterp.pose, T_tau);
+        interpolatedSolution.insert(stateDataInterp.vel, varpi_tau);
+        if (covarianceMapOut) {
+          // upper left covariance block corresponds to pose, lower right block
+          // corresponds to velocity
+          (*covarianceMapOut)[stateDataInterp.pose] =
+              covarianceOut.topLeftCorner(dim, dim);
+          (*covarianceMapOut)[stateDataInterp.vel] =
+              covarianceOut.bottomRightCorner(dim, dim);
+        }
       }
     }
   }
@@ -476,38 +567,34 @@ Interpolator<PoseType>::computeConditionalCov(
     const TimestampedPoseVel& tPoseVel_kp1,
     const TimestampedPoseVel& tPoseVel_tau, OptionalMatrixType Lambda,
     OptionalMatrixType Psi) const {
-  // unpacking then repacking... maybe this can be written better
-  auto [poseVel_k, t_k] = tPoseVel_k;
-  auto [poseVel_kp1, t_kp1] = tPoseVel_kp1;
-  auto [poseVel_tau, t_tau] = tPoseVel_tau;
+    
+    auto [poseVel_k, t_k] = tPoseVel_k;
+    auto [poseVel_kp1, t_kp1] = tPoseVel_kp1;
+    auto [poseVel_tau, t_tau] = tPoseVel_tau;
 
-  // Todo (Daniel): handle the case when t_tau == t_k or t_tau == t_kp1
-  assert(t_tau > t_k && t_tau < t_kp1 &&
-         "t_tau must be in the interval (t_k, t_kp1)");
+    // Todo (Daniel): handle the case when t_tau == t_k or t_tau == t_kp1
+    assert(t_tau > t_k && t_tau < t_kp1 &&
+           "t_tau must be in the interval (t_k, t_kp1)");
 
-  // see Figure 5.4 in the paper
-  Matrix2N Q_tau_prev_inv = inverseCovarianceFunction_(t_tau - t_k, Q_psd_);
-  Matrix2N Q_tau_next_inv = inverseCovarianceFunction_(t_kp1 - t_tau, Q_psd_);
-  Matrix2N E_tau = computeJacobianNext_(poseVel_k.asPair(),
-                                        poseVel_tau.asPair(), t_tau - t_k);
-  Matrix2N F_k_tau = computeJacobianPrev_(poseVel_tau.asPair(),
-                                          poseVel_kp1.asPair(), t_kp1 - t_tau);
-  Matrix2N Sigma_inv = E_tau.transpose() * Q_tau_prev_inv * E_tau +
-                       F_k_tau.transpose() * Q_tau_next_inv * F_k_tau;
-  Matrix2N Sigma = Sigma_inv.inverse();
-
-  // (5.23) in the paper
-  if (Lambda) {
-    Matrix2N F_tau_km1 = computeJacobianPrev_(
-        poseVel_k.asPair(), poseVel_tau.asPair(), t_tau - t_k);
-    *Lambda = Sigma * E_tau.transpose() * Q_tau_prev_inv * F_tau_km1;
-  }
-  if (Psi) {
-    Matrix2N E_k = computeJacobianNext_(poseVel_k.asPair(),
-                                        poseVel_kp1.asPair(), t_kp1 - t_k);
-    *Psi = Sigma * F_k_tau.transpose() * Q_tau_next_inv * E_k;
-  }
-  return Sigma;
+    // see Figure 5.4 in the paper
+    Matrix2N Q_tau_prev_inv = inverseCovarianceFunction_(t_tau - t_k, Q_psd_);
+    Matrix2N Q_tau_next_inv = inverseCovarianceFunction_(t_kp1 - t_tau, Q_psd_);
+    Matrix2N E_tau = computeJacobianNext_(poseVel_k.asPair(), poseVel_tau.asPair(), t_tau - t_k);
+    Matrix2N F_k_tau = computeJacobianPrev_(poseVel_tau.asPair(), poseVel_kp1.asPair(), t_kp1 - t_tau);
+    Matrix2N Sigma_inv = E_tau.transpose() * Q_tau_prev_inv * E_tau +
+                         F_k_tau.transpose() * Q_tau_next_inv * F_k_tau;
+    Matrix2N Sigma = Sigma_inv.inverse();
+    
+    // (5.23) in the paper
+    if (Lambda) {
+        Matrix2N F_tau_km1 = computeJacobianPrev_(poseVel_k.asPair(), poseVel_tau.asPair(), t_tau - t_k);
+        *Lambda = Sigma * E_tau.transpose() * Q_tau_prev_inv * F_tau_km1;
+    }
+    if (Psi) {
+        Matrix2N E_k = computeJacobianNext_(poseVel_k.asPair(), poseVel_kp1.asPair(), t_kp1 - t_k);
+        *Psi = Sigma * F_k_tau.transpose() * Q_tau_next_inv * E_k;
+    }
+    return Sigma;
 }
 
 template <typename PoseType>
