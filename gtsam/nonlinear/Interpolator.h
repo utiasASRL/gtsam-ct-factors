@@ -47,8 +47,8 @@ using gtsam::Symbol;
 using gtsam::tictoc_print_;
 
 #include <gtsam/nonlinear/NonlinearEquality.h>
-#include <gtsam/slam/StereoFactor.h>
 #include <gtsam/nonlinear/StateData.h>
+#include <gtsam/slam/StereoFactor.h>
 
 // Standard headers, added last, so we know headers above work on their own.
 #include <algorithm>
@@ -72,22 +72,26 @@ using StateDataInterval = std::pair<std::optional<StateData>, std::optional<Stat
 
 template <typename PoseType>
 struct PoseVelocity {
-PoseType pose;
-typename traits<PoseType>::TangentVector vel;
+  PoseType pose;
+  typename traits<PoseType>::TangentVector vel;
 
-std::pair<PoseType, typename traits<PoseType>::TangentVector> asPair() const { return std::make_pair(pose, vel); }
+  std::pair<PoseType, typename traits<PoseType>::TangentVector> asPair() const {
+    return std::make_pair(pose, vel);
+  }
 };
 
 template <typename PoseType>
 struct TimestampedPoseVelocity {
-PoseVelocity<PoseType> poseVel;
-double timestamp;
+  PoseVelocity<PoseType> poseVel;
+  double timestamp;
 
-TimestampedPoseVelocity(PoseType pose, typename traits<PoseType>::TangentVector vel, double time)
-    : poseVel{pose, vel}, timestamp(time) {}
+  TimestampedPoseVelocity(PoseType pose,
+                          typename traits<PoseType>::TangentVector vel,
+                          double time)
+      : poseVel{pose, vel}, timestamp(time) {}
 
-TimestampedPoseVelocity(PoseVelocity<PoseType> pv, double time)
-    : poseVel(pv), timestamp(time) {}
+  TimestampedPoseVelocity(PoseVelocity<PoseType> pv, double time)
+      : poseVel(pv), timestamp(time) {}
 };
 
 template <typename PoseType>
@@ -104,7 +108,8 @@ class Interpolator {
   VectorN Q_psd_;  // Diagonal power Spectral Density for WNOA
   std::function<Matrix(double dt)> transitionFunction_;
   std::function<Matrix(double dt, const VectorN& Q_psd)> covarianceFunction_;
-  std::function<Matrix(double dt, const VectorN& Q_psd)> inverseCovarianceFunction_;
+  std::function<Matrix(double dt, const VectorN& Q_psd)>
+      inverseCovarianceFunction_;
   // Todo: need to make the below two functions generalize to cases with no
   // velocities, e.g. WNOV
   std::function<Matrix(const std::pair<PoseType, VelocityType>&,
@@ -127,7 +132,8 @@ class Interpolator {
   Interpolator(
       const VectorN& Q_psd, std::function<Matrix(double dt)> transitionFunction,
       std::function<Matrix(double dt, const VectorN& Q_psd)> covarianceFunction,
-      std::function<Matrix(double dt, const VectorN& Q_psd)> inverseCovarianceFunction,
+      std::function<Matrix(double dt, const VectorN& Q_psd)>
+          inverseCovarianceFunction,
       std::function<Matrix(const std::pair<PoseType, VelocityType>&,
                            const std::pair<PoseType, VelocityType>&, double)>
           computeJacobianPrev,
@@ -138,19 +144,9 @@ class Interpolator {
   // Default to WNOA
   Interpolator(const VectorN& Q_psd);
 
-  PoseVel extrapolatePoseAndVelocity(
-      const std::optional<TimestampedPoseVel>& Tvarpi_k,
-      const std::optional<TimestampedPoseVel>& Tvarpi_kp1,
-      double t_tau,
-      OptionalMatrixVecType H = nullptr,
-      const std::shared_ptr<Matrix>& mainSolveMarginalMatrix = nullptr,
-      Matrix* covarianceOut = nullptr) const;
-
   PoseVel interpolatePoseAndVelocity(
-      const std::optional<TimestampedPoseVel>& Tvarpi_k,
-      const std::optional<TimestampedPoseVel>& Tvarpi_kp1,
-      double t_tau,
-      OptionalMatrixVecType H = nullptr,
+      const std::optional<TimestampedPoseVel>& Tvarpi_k, const std::optional<TimestampedPoseVel>& Tvarpi_kp1,
+      double t_tau, OptionalMatrixVecType H = nullptr,
       const std::shared_ptr<Matrix>& mainSolveMarginalMatrix = nullptr,
       Matrix* covarianceOut = nullptr) const;
 
@@ -160,12 +156,6 @@ class Interpolator {
       const StateDataSet& interpolatedStates,
       std::shared_ptr<CovarianceMap> covarianceMapOut = nullptr) const;
 
-  std::pair<Matrix, Matrix> getLambdaPsi(double t_k, double t_kp1,
-                                        double t_tau) const;
-
-  std::pair<Matrix, Matrix> getLambdaPsiGeneral(double t_k, double t_kp1,
-                                        double t_tau) const;
-  
   // if Lambda and Psi are provided, they will be computed using (5.23)
   Matrix2N computeConditionalCov(const TimestampedPoseVel& pvk,
                                  const TimestampedPoseVel& pvkp1,
@@ -173,20 +163,57 @@ class Interpolator {
                                  OptionalMatrixType Lambda = nullptr,
                                  OptionalMatrixType Psi = nullptr) const;
 
+  // Retrieve interpolation matrices. Fast implementation specialized for WNOA.
+  std::pair<Matrix, Matrix> getLambdaPsi(double t_k, double t_kp1,
+                                         double t_tau) const;
+
+  // Retrieve interpolation matrices. General implementation.
+  std::pair<Matrix, Matrix> getLambdaPsiGeneral(double t_k, double t_kp1,
+                                                double t_tau) const;
+
  protected:
+  // Interpoate pose and velocity at left boundary
+  PoseVel interpolateBoundaryLeft(
+      const PoseVelocity<PoseType>& poseVel_k,
+      OptionalMatrixVecType H = nullptr,
+      const std::shared_ptr<Matrix>& mainSolveMarginalMatrix = nullptr,
+      Matrix* covarianceOut = nullptr) const;
+
+  // Interpoate pose and velocity at right boundary
+  PoseVel interpolateBoundaryRight(
+      const PoseVelocity<PoseType>& poseVel_kp1,
+      OptionalMatrixVecType H = nullptr,
+      const std::shared_ptr<Matrix>& mainSolveMarginalMatrix = nullptr,
+      Matrix* covarianceOut = nullptr) const;
+
+  // Extrapolation case for pose and velocity
+  PoseVel extrapolatePoseAndVelocity(
+      const PoseVelocity<PoseType>& poseVel, double t_diff,
+      OptionalMatrixVecType H = nullptr,
+      const std::shared_ptr<Matrix>& mainSolveMarginalMatrix = nullptr,
+      Matrix* covarianceOut = nullptr) const;
+
+  // Interpolate pose and velocity, Internal overload that actually does the
+  // work
+  PoseVel interpolatePoseAndVelocity_(
+      const TimestampedPoseVel& tPoseVel_k,
+      const TimestampedPoseVel& tPoseVel_kp1, double t_tau,
+      OptionalMatrixVecType H = nullptr,
+      const std::shared_ptr<Matrix>& mainSolveMarginalMatrix = nullptr,
+      Matrix* covarianceOut = nullptr) const;
   static std::map<StateDataInterval, std::shared_ptr<Matrix>>
   computeJointMarginals(
     const std::map<StateDataInterval, std::vector<StateData>>& queryBuckets,
     const std::unique_ptr<Marginals>& marginals);
 
   // construct the full covariance matrix using the order given by keyVector
-  static Matrix constructMatrixFromJointMarginal(const JointMarginal& blockMatrix,
-                                                 const KeyVector& keyVector,
-                                                 size_t blockSize);
+  static Matrix constructMatrixFromJointMarginal(
+      const JointMarginal& blockMatrix, const KeyVector& keyVector,
+      size_t blockSize);
 
   // Not used anymore, but may be useful in future
   static Matrix reorderSymmetricMatrix(const Matrix& mat, size_t block_size,
                                        const std::vector<size_t>& block_order);
 };
 
-} // namespace gtsam
+}  // namespace gtsam
