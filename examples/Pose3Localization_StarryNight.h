@@ -379,7 +379,6 @@ static void saveMarginalsToFile(
     try {
       covariance = marginals.marginalCovariance(poseSymbol);
     } catch (const std::out_of_range& e) {
-      // std::cerr << "Error retrieving covariance for pose " << poseID << ": " << e.what() << std::endl;
       // get from interpCovarianceMap if available
       if (interpCovarianceMap) {
         auto it = interpCovarianceMap->find(poseSymbol);

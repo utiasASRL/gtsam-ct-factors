@@ -122,8 +122,9 @@ optimize(const std::vector<std::pair<double, Vector6>>& inputs,
           graph.emplace_shared<BetweenFactor<Pose3>>(Symbol('x', poseID), Symbol('x', poseID + 1), odometryPose, odomNoiseDiscrete);
         }
 
-        // add WNOA motion factors
-        if (params.useWNOAFactor) {
+        // add WNOA motion factors if not interpolating, since interpolateFactorGraph
+        // removes all WNOA factors and adds new ones between the estimated states
+        if (params.useWNOAFactor && !params.interpDuringSolve) {
           graph.emplace_shared<WNOAMotionFactor<Pose3>>(Symbol('x', poseID), Symbol('v', poseID), Symbol('x', poseID + 1), Symbol('v', poseID + 1), dt, WNOAPSD);
         }
       }
@@ -168,7 +169,7 @@ optimize(const std::vector<std::pair<double, Vector6>>& inputs,
   // 2. ADD LANDMARKS
 
   // add all groundtruth landmark positions
-  // for SLAM, maybe add a prior on the landmarks if unstable
+  // if doing SLAM, can add a prior on the landmarks if system is unobservable
   std::cout << "Adding landmarks..." << std::endl;
   for (size_t landmarkID = 0; landmarkID < numLandmarks; ++landmarkID) {
     if (params.fixLandmarks) {
@@ -231,13 +232,13 @@ optimize(const std::vector<std::pair<double, Vector6>>& inputs,
   parameters.setVerbosity("ERROR");
   Values result = LevenbergMarquardtOptimizer(graph, initialEstimate, parameters).optimize();
 
-  // Calculate marginal covariances for the main solve
+  // Create a Marginals object for the main solve (no computations of marginals yet)
   Marginals marginals(graph, result);
 
   return std::make_tuple(graph, initialEstimate, result, stateDataSet, marginals);
 }
 
-// Interpolate for the in-between states not within the factor graph
+// Interpolate for in-between states not within the factor graph
 std::tuple<Values, std::shared_ptr<CovarianceMap>>
 interpolateAfterSolve(
   const NonlinearFactorGraph& graphMainSolve,
@@ -246,7 +247,6 @@ interpolateAfterSolve(
   const std::vector<std::pair<double, Vector6>>& inputs,
   const FileUtils::ConfigParams& params) {
 
-  Interpolator<Pose3> interpolator(WNOAPSD);
   std::cout << "Interpolating poses and velocities after optimization..." << std::endl;
 
   // Add all non-main-solve poses into the queryStateDataSet
@@ -259,17 +259,12 @@ interpolateAfterSolve(
     }
   }
   auto covarianceMap = params.interpCovariance ? std::make_shared<CovarianceMap>() : nullptr;
+
   // Interpolate
-  Values interpolatedValues = interpolator.interpolatePosesAndVelocities(
-    graphMainSolve, resultsMainSolve, mainSolveStateDataSet, queryStateDataSet, covarianceMap);
+  Values resultsAll = updateInterpValues<Pose3>(graphMainSolve, resultsMainSolve, mainSolveStateDataSet,
+                                       queryStateDataSet, WNOAPSD, covarianceMap);
 
-  // Add the interpolated poses and velocities to the result
-  Values resultsAll = resultsMainSolve;
-  for (const auto& [key, value] : interpolatedValues) {
-    resultsAll.insert(key, value);
-  }
-
-  std::cout << "Interpolated " << interpolatedValues.size() << " poses and velocities." << std::endl;
+  std::cout << "Interpolated " << resultsAll.size() << " poses and velocities." << std::endl;
   return std::make_tuple(resultsAll, covarianceMap);
 }
 

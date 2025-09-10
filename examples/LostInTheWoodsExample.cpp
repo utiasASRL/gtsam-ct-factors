@@ -107,7 +107,7 @@ int main(int argc, char* argv[]) {
   }
 
   // White-Noise-On-Acceleration Prior
-  // Only add if not adding later for interpolated factors - Daniel: this is always added?
+  // Only add if not adding later for interpolated factors - Daniel: this seems to be always added?
   if (include_wnoa) {
     cout << "Adding WNOA factors" << endl;
     // Add WNOA Motion Factors between states
