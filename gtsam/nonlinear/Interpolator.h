@@ -144,16 +144,8 @@ class Interpolator {
   // Default to WNOA
   Interpolator(const VectorN& Q_psd);
 
-  PoseVel extrapolatePoseAndVelocity(
-      const std::optional<TimestampedPoseVel>& Tvarpi_k,
-      const std::optional<TimestampedPoseVel>& Tvarpi_kp1,
-      double t_tau,
-      OptionalMatrixVecType H = nullptr,
-      const std::shared_ptr<Matrix>& mainSolveMarginalMatrix = nullptr,
-      Matrix* covarianceOut = nullptr) const;
-
   PoseVel interpolatePoseAndVelocity(
-      const TimestampedPoseVel& Tvarpi_k, const TimestampedPoseVel& Tvarpi_kp1,
+      const std::optional<TimestampedPoseVel>& Tvarpi_k, const std::optional<TimestampedPoseVel>& Tvarpi_kp1,
       double t_tau, OptionalMatrixVecType H = nullptr,
       const std::shared_ptr<Matrix>& mainSolveMarginalMatrix = nullptr,
       Matrix* covarianceOut = nullptr) const;
