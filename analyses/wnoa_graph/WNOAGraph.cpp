@@ -5,6 +5,8 @@
 #include <valgrind/callgrind.h>
 #include "LostInTheWoodsExample.h"
 #include <gtsam/nonlinear/WNOAFactorGraph.h>
+#include <gtsam/nonlinear/LevenbergMarquardtOptimizer.h>
+#include <gtsam/nonlinear/WNOALevenbergMarquardtOptimizer.h>
 
 using namespace std;
 using namespace gtsam;
@@ -35,6 +37,7 @@ struct InterpExampleParams {
   bool perturb_meas;
   bool fixed_noise;
   int n_runs;
+  int n_unary;
 };
 
 void runInterpExample(InterpExampleParams& p) {
@@ -78,7 +81,10 @@ void runInterpExample(InterpExampleParams& p) {
     } else {
       pose_meas = pose_curr;
     }
-    graph.addPrior(P(i), pose_meas, p.cov_diag_unary.asDiagonal());
+    for(unsigned int m = 0; m < p.n_unary; m++)  // Add multiple priors to increase density for testing purposes
+    {
+      graph.addPrior(P(i), pose_meas, p.cov_diag_unary.asDiagonal());
+    }
 
     // Track list of states
     states[i] = StateData(P(i), V(i), time);
@@ -124,7 +130,7 @@ void runInterpExample(InterpExampleParams& p) {
       chrono::duration_cast<chrono::microseconds>(end - start).count();
   cout << "Graph Conversion Time WNOA FG: " << T_interp_graph_wnoa << " (micro-s)" << endl;
 
-  // time linearization of both graphs
+  // Timing test for linearization of both graphs
   start = chrono::high_resolution_clock::now();
   for(unsigned int i = 0; i < p.n_runs; i++)
   {
@@ -145,51 +151,49 @@ void runInterpExample(InterpExampleParams& p) {
       chrono::duration_cast<chrono::microseconds>(end - start).count()/p.n_runs;
   cout << "WNOA FG Linearization Time: " << T_linearize_wnoa << " (micro-s)" << endl;
 
+  auto linear_graph_interp = graph_interp.linearize(values_interp_init);
+  auto linear_graph_wnoa = graph_wnoa.linearize(values_interp_init);
+
+  // check if both graphs are identical
+  std::cout << "Checking if both linearized graphs are identical..." << std::endl;
+  if(linear_graph_interp->equals(*linear_graph_wnoa, 1e-9))
+  {
+    std::cout << "Both linearized graphs are identical!" << std::endl;
+  }
+  else
+  {
+    std::cout << "Graphs are NOT identical!" << std::endl;
+  }
+
   // set up optimizer
-  GaussNewtonParams params;
-  params.verbosity = NonlinearOptimizerParams::Verbosity::SILENT;
+  LevenbergMarquardtParams params;
+  params.setVerbosityLM("SUMMARY");
 
   // run optimization on interpolated version
   start = chrono::high_resolution_clock::now();
   Values result_interp;
   for(unsigned int i = 0; i < p.n_runs; i++)
   {
-    result_interp = GaussNewtonOptimizer(graph_interp, values_interp_init, params).optimize();
+    auto lm_opt_interp = LevenbergMarquardtOptimizer(graph_interp, values_interp_init, params);
+    result_interp = lm_opt_interp.optimize();
   }
   end = chrono::high_resolution_clock::now();
   auto T_solve_interp =
     chrono::duration_cast<chrono::microseconds>(end - start).count()/p.n_runs;
   cout << "Interp Solve Time: " << T_solve_interp << " micros" << endl;
-  // print number of iterations and resulting error
-  auto gn_opt_interp = GaussNewtonOptimizer(graph_interp, values_interp_init, params);
-  Values result_check = gn_opt_interp.optimize();
-  cout << "Number of iterations: " << gn_opt_interp.iterations() << endl;
-  cout << "Final error: " << gn_opt_interp.error() << endl;
   
   // Solve WNOA graph
   start = chrono::high_resolution_clock::now();
-  Values result_full;
+  Values result_wnoa;
   for(unsigned int i = 0; i < p.n_runs; i++)
   {
-    result_full = GaussNewtonOptimizer(graph_wnoa, values_interp_init, params).optimize();
+    auto lm_opt_wnoa = WNOALevenbergMarquardtOptimizer<Pose2>(graph_wnoa, values_interp_init, params);
+    result_wnoa = lm_opt_wnoa.optimize();
   }
   end = chrono::high_resolution_clock::now();
   auto T_solve_WNOA =
     chrono::duration_cast<chrono::microseconds>(end - start).count()/p.n_runs;
   cout << "WNOA Graph Solve Time: " << T_solve_WNOA << " micros" << endl;
-  // print number of iterations and resulting error
-  auto gn_opt_wnoa = GaussNewtonOptimizer(graph_wnoa, values_init, params);
-  Values result_check_wnoa = gn_opt_wnoa.optimize();
-  cout << "Number of iterations: " << gn_opt_wnoa.iterations() << endl;
-  cout << "Final error: " << gn_opt_wnoa.error() << endl;
-
-  // define covariance map
-  auto cov_map_interp =
-      std::make_shared<Interpolator<Pose2>::CovarianceMap>();
-  // recover interpolated values and covariances
-  Values result_recov = updateInterpValues<Pose2>(
-      graph_interp, result_interp, estimated_states, interpolated_states,
-      p.Q_wnoa, cov_map_interp);
 
 }
 
@@ -221,6 +225,7 @@ int main(int argc, char* argv[]) {
   p.perturb_meas = config["flags"]["perturb_meas"].as<bool>();
   p.fixed_noise = config["flags"]["fixed_noise"].as<bool>();
   p.n_runs = config["params"]["n_runs"].as<int>();
+  p.n_unary = config["params"]["n_unary"].as<int>();
 
   runInterpExample(p);
 }

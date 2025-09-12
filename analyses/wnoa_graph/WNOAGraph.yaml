@@ -7,6 +7,7 @@ flags:
 params:
   vel_mean: [0.1, 0.0, 0.01]
   del_t: 0.1
-  period_interp: 5
-  n_points: 6
-  n_runs: 1000
+  period_interp: 300
+  n_points: 600
+  n_runs: 1
+  n_unary: 10

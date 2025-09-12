@@ -13,7 +13,7 @@
 #include <gtsam/nonlinear/NonlinearFactor.h>
 #include <gtsam/nonlinear/StateData.h>
 #include <gtsam/nonlinear/Values.h>
-#include <gtsam/nonlinear/WNOAFactorGraph.h>
+#include <gtsam/nonlinear/WNOAFactorGraph.h> // Ensure this header defines WNOAFactorGraph
 
 #include <algorithm>
 #include <stdexcept>
@@ -209,7 +209,7 @@ class WNOAInterpFactor : public NoiseModelFactor {
   /* @brief Custom version of linearize function that follows the logic of the
   linearize function of WNOAInterpFactor, while allowing using passed interpolation data,
   rather than computing this data in-place.*/
-  std::shared_ptr<GaussianFactor> linearizePassedInterpData(const Values& x,
+  std::shared_ptr<GaussianFactor> linearize(const Values& x,
         PassedInterpData* passedInterpData) const {
     
 
@@ -219,15 +219,16 @@ class WNOAInterpFactor : public NoiseModelFactor {
     // Call evaluate error to get Jacobians and RHS vector b
     std::vector<Matrix> A(size());
     std::vector<Matrix> JacInner(inner_factor_->size());
-    std::unordered_map<StateData, Matrix2N> InterpCondCovs; // TODO SL: We probably don't want to copy here
+    std::unordered_map<StateData, Matrix2N>* InterpCondCovs = nullptr; // Store a pointer so we don't copy the passed data
     Vector b;
     noiseModel::Gaussian::shared_ptr noise_model;
     if (fixed_noise_model_) {
       b = -computeInterpolatedError(x, &A, nullptr, nullptr, passedInterpData);
       noise_model = dynamic_pointer_cast<noiseModel::Gaussian>(Base::noiseModel());
     } else {
-      b = -computeInterpolatedError(x, &A, &JacInner, &InterpCondCovs, passedInterpData);
-      noise_model = getInterpolatedNoiseModel(JacInner, InterpCondCovs);
+      b = -computeInterpolatedError(x, &A, &JacInner, nullptr, passedInterpData);
+      InterpCondCovs = &passedInterpData->condCovs; // set directly from passed data
+      noise_model = getInterpolatedNoiseModel(JacInner, *InterpCondCovs);
     }
     // Whiten the corresponding system now
     noise_model->WhitenSystem(A, b);
@@ -247,6 +248,56 @@ class WNOAInterpFactor : public NoiseModelFactor {
           std::static_pointer_cast<Constrained>(noiseModel_)->unit()));
     else {
       return GaussianFactor::shared_ptr(new JacobianFactor(terms, b));
+    }
+  }
+
+  /* @brief Custom version of error function, allowing using passed interpolation data,
+  rather than computing this data in-place.*/
+  double error(const Values& c) const override{
+    if (active(c)) {
+      Vector b;
+      noiseModel::Gaussian::shared_ptr noise_model;
+      std::vector<Matrix> JacInner(inner_factor_->size());
+      if (fixed_noise_model_) {
+        b = -computeInterpolatedError(c, nullptr, nullptr, nullptr);
+        noise_model = dynamic_pointer_cast<noiseModel::Gaussian>(Base::noiseModel());
+      } else {
+        std::unordered_map<StateData, Matrix2N> InterpCondCovs;
+        b = -computeInterpolatedError(c, nullptr, &JacInner, &InterpCondCovs);
+        noise_model = getInterpolatedNoiseModel(JacInner, InterpCondCovs);
+      }
+      if (noise_model)
+        return noise_model->loss(noise_model->squaredMahalanobisDistance(b));
+      else
+        return 0.5 * b.squaredNorm();
+    } else {
+      return 0.0;
+    }
+  }
+
+  /* @brief Custom version of error function, allowing using passed interpolation data,
+  rather than computing this data in-place.*/
+  double error(const Values& c,
+        PassedInterpData* passedInterpData) const {
+    if (active(c)) {
+      Vector b;
+      noiseModel::Gaussian::shared_ptr noise_model;
+      std::vector<Matrix> JacInner(inner_factor_->size());
+      if (fixed_noise_model_) {
+        b = -computeInterpolatedError(c, nullptr, nullptr, nullptr, passedInterpData);
+        noise_model = dynamic_pointer_cast<noiseModel::Gaussian>(Base::noiseModel());
+      } else {
+        std::unordered_map<StateData, Matrix2N>* InterpCondCovs = nullptr; // Store a pointer so we don't copy the passed data
+        b = -computeInterpolatedError(c, nullptr, &JacInner, nullptr, passedInterpData);
+        InterpCondCovs = &passedInterpData->condCovs; // set directly from passed data
+        noise_model = getInterpolatedNoiseModel(JacInner, *InterpCondCovs);
+      }
+      if (noise_model)
+        return noise_model->loss(noise_model->squaredMahalanobisDistance(b));
+      else
+        return 0.5 * b.squaredNorm();
+    } else {
+      return 0.0;
     }
   }
 
@@ -296,7 +347,7 @@ class WNOAInterpFactor : public NoiseModelFactor {
       InterpJacobians = &passedInterpData->jacobians;
       if (InterpCondCovs)
       {
-        *InterpCondCovs = passedInterpData->condCovs;
+        *InterpCondCovs = passedInterpData->condCovs; // This copies the map
       }
     } else {
       if (H) {
@@ -664,6 +715,7 @@ WNOAFactorGraph<PoseType> interpolateWNOAFactorGraph(
     iter_state++;
   }
   // loop through factors and wrap factors on interpolated states
+  unordered_set<size_t> wnoa_factor_indices; // Store indices of WNOA factors
   for (auto& factor : graph) {
     // handle null factor
     if (!factor) continue;
@@ -698,8 +750,10 @@ WNOAFactorGraph<PoseType> interpolateWNOAFactorGraph(
           nmfactor, factor_estimated_states, factor_interp_states, Q_psd,
           fixed_noise);
       new_graph.add(wrapped_factor);
+      wnoa_factor_indices.insert(new_graph.size() - 1); // Store index of added factor
     }
   }
+  new_graph.setWNOAInterpFactorIndices(wnoa_factor_indices);
 
   return new_graph;
 }
