@@ -165,6 +165,20 @@ void runInterpExample(InterpExampleParams& p) {
     std::cout << "Graphs are NOT identical!" << std::endl;
   }
 
+  // Check if the returned error is the same
+  double error_interp = graph_interp.error(values_interp_init);
+  double error_wnoa = graph_wnoa.error(values_interp_init);
+  std::cout << "Checking if both errors are identical..." << std::endl;
+  if(fabs(error_interp - error_wnoa) < 1e-9)
+  {
+    std::cout << "Both errors are identical!" << std::endl;
+  }
+  else
+  {
+    std::cout << "Errors are NOT identical!" << std::endl;
+    std::cout << "Error Interp: " << error_interp << " Error WNOA: " << error_wnoa << std::endl;
+  }
+
   // set up optimizer
   LevenbergMarquardtParams params;
   params.setVerbosityLM("SUMMARY");

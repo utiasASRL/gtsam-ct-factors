@@ -3,11 +3,11 @@ noise:
   wnoa: [1.0, 1.0, 1.0]
 flags:
   perturb_meas: false
-  fixed_noise: false
+  fixed_noise: true
 params:
   vel_mean: [0.1, 0.0, 0.01]
   del_t: 0.1
   period_interp: 300
   n_points: 600
   n_runs: 1
-  n_unary: 10
+  n_unary: 1

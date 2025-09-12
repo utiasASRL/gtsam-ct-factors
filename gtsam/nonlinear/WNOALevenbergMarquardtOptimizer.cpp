@@ -40,7 +40,7 @@ WNOALevenbergMarquardtOptimizer<PoseType>::WNOALevenbergMarquardtOptimizer(
     const WNOAFactorGraph<PoseType>& graph, 
     const Values& initialValues,
     const LevenbergMarquardtParams& params)
-  : LevenbergMarquardtOptimizer(graph, initialValues, params), // Pass the graph normally for now
+  : LevenbergMarquardtOptimizer(graph, initialValues, params), // TODO: Passing the graph normally for now
     wnoa_graph_(const_cast<WNOAFactorGraph<PoseType>&>(graph)),
     params_(LevenbergMarquardtParams::EnsureHasOrdering(params, graph)) {
 }
@@ -51,7 +51,7 @@ WNOALevenbergMarquardtOptimizer<PoseType>::WNOALevenbergMarquardtOptimizer(
     const Values& initialValues,
     const Ordering& ordering,
     const LevenbergMarquardtParams& params)
-  : LevenbergMarquardtOptimizer(graph, initialValues, ordering, params), // Pass the graph normally for now  
+  : LevenbergMarquardtOptimizer(graph, initialValues, ordering, params), // TODO: Passing the graph normally for now  
     wnoa_graph_(const_cast<WNOAFactorGraph<PoseType>&>(graph)),
     params_(LevenbergMarquardtParams::ReplaceOrdering(params, ordering)) {
 }
