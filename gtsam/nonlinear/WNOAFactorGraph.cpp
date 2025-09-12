@@ -191,26 +191,19 @@ Values WNOAFactorGraph<PoseType>::getInterpolatedValues(
     unordered_map<StateData, Matrix2N>* InterpCondCovs) const {
 
 #ifdef GTSAM_USE_TBB
-  // Step 1: Pre-cache all Values lookups (eliminates hash table contention)
-  std::unordered_map<Key, PoseType> pose_cache;
-  std::unordered_map<Key, VelocityType> vel_cache;
-  
-  std::unordered_set<Key> needed_poses, needed_vels;
-  for (const auto& [interp_state, border_states] : interp_to_borders_map_) {
-    const auto& [left, right] = border_states;
-    needed_poses.insert(left.pose);
-    needed_poses.insert(right.pose);
-    needed_vels.insert(left.vel);
-    needed_vels.insert(right.vel);
-  }
-  
-  // Sequential cache population (faster than parallel for small sets)
-  for (Key key : needed_poses) {
-    pose_cache[key] = values.at<PoseType>(key);
-  }
-  for (Key key : needed_vels) {
-    vel_cache[key] = values.at<VelocityType>(key);
-  }
+  Values values_interp; // result container
+
+  // 1. Cache the actual pose/velocity objects (copy once, reuse many).
+  //    (If PoseType or VelocityType are lightweight this still saves map/hashing cost.)
+  // Preallocate space for border_pose_cache and border_vel_cache
+
+  unordered_map<Key, PoseType>    border_pose_cache;
+  unordered_map<Key, VelocityType> border_vel_cache;
+  border_pose_cache.reserve(border_pose_keys_.size());
+  border_vel_cache.reserve(border_vel_keys_.size());
+  for (Key k : border_pose_keys_) border_pose_cache.emplace(k, values.at<PoseType>(k));
+  for (Key k : border_vel_keys_)  border_vel_cache.emplace(k, values.at<VelocityType>(k));
+
 
   // Step 2: Convert to vector for optimal parallel access patterns  
   std::vector<std::pair<StateData, std::pair<StateData, StateData>>> interp_vec(
