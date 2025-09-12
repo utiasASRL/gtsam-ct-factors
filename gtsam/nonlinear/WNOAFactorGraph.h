@@ -78,6 +78,10 @@ public:
       wnoa_interp_factor_indices_ = indices;
     }
 
+    bool isWNOAInterpFactorIndex(size_t index) const {
+      return wnoa_interp_factor_indices_.count(index) > 0;
+    }
+
 
     // Constructor that initializes the interpolator and interp_to_borders_map_
     WNOAFactorGraph(unordered_map<StateData, pair<StateData, StateData>> interp_map, const Eigen::Vector<double, dim> Q_psd, bool fixed_noise_model = false)

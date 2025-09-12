@@ -39,14 +39,14 @@ namespace {
 #ifdef GTSAM_USE_TBB
 template <typename PoseType>
 class _LinearizeOneFactor {
-  const NonlinearFactorGraph& nonlinearGraph_;
+  const WNOAFactorGraph<PoseType>& nonlinearGraph_;
   const Values& linearizationPoint_;
   GaussianFactorGraph& result_;
   typename WNOAInterpFactor<PoseType>::PassedInterpData& passedInterpData_;
 
 public:
   // Create functor with constant parameters
-  _LinearizeOneFactor(const NonlinearFactorGraph& graph,
+  _LinearizeOneFactor(const WNOAFactorGraph<PoseType>& graph,
       const Values& linearizationPoint, GaussianFactorGraph& result,
       typename WNOAInterpFactor<PoseType>::PassedInterpData& passedInterpData) :
       nonlinearGraph_(graph), linearizationPoint_(linearizationPoint), result_(result),
@@ -56,13 +56,20 @@ public:
   void operator()(const tbb::blocked_range<size_t>& blocked_range) const {
     for (size_t i = blocked_range.begin(); i != blocked_range.end(); ++i) {
       if (nonlinearGraph_[i] && nonlinearGraph_[i]->sendable())
-        if (auto wnoa_factor = dynamic_pointer_cast<WNOAInterpFactor<PoseType>>(nonlinearGraph_[i])) {
+      {
+        // Check if i is in wnoa_interp_factor_indices_
+        if(nonlinearGraph_.isWNOAInterpFactorIndex(i)) {
+          // This is a WNOAInterpFactor, cast down statically to avoid dynamic cast
+          auto wnoa_factor = static_pointer_cast<WNOAInterpFactor<PoseType>>(nonlinearGraph_[i]);
           result_[i] = wnoa_factor->linearize(linearizationPoint_, &passedInterpData_);
         } else {
           result_[i] = nonlinearGraph_[i]->linearize(linearizationPoint_);
         }
+      }
       else
+      {
         result_[i] = GaussianFactor::shared_ptr();
+      }
     }
   }
 };
@@ -106,9 +113,13 @@ std::shared_ptr<GaussianFactorGraph>  WNOAFactorGraph<PoseType>::linearize(const
   for(size_t i = 0; i < size(); i++) {
     auto& factor = (*this)[i];
     if(factor && !(factor->sendable())) {
-      if (auto wnoa_factor = dynamic_pointer_cast<WNOAInterpFactor<PoseType>>(factor)) {
+      // Check if i is in wnoa_interp_factor_indices_
+      size_t i = &factor - &factors_[0];
+      if (isWNOAInterpFactorIndex(i)) {
+        // This is a WNOAInterpFactor, cast down statically to avoid dynamic cast
+        auto wnoa_factor = static_pointer_cast<WNOAInterpFactor<PoseType>>(factor);
         (*linearFG)[i] = wnoa_factor->linearize(linearizationPoint, passedInterpData.get());
-      } else {
+      } else{
         (*linearFG)[i] = factor->linearize(linearizationPoint);
       }
     }
@@ -123,7 +134,7 @@ std::shared_ptr<GaussianFactorGraph>  WNOAFactorGraph<PoseType>::linearize(const
     // Get index of factor
     size_t i = &factor - &factors_[0];
     // Check if i is in wnoa_interp_factor_indices_
-    if (wnoa_interp_factor_indices_.find(i) != wnoa_interp_factor_indices_.end()) {
+    if (isWNOAInterpFactorIndex(i)) {
       // This is a WNOAInterpFactor, cast down statically to avoid dynamic cast
       auto wnoa_factor = static_pointer_cast<WNOAInterpFactor<PoseType>>(factor);
       linearFG->push_back(wnoa_factor->linearize(linearizationPoint, passedInterpData.get()));
@@ -160,7 +171,7 @@ double WNOAFactorGraph<PoseType>::error(const Values& values) const {
 
      size_t i = &factor - &factors_[0];
     // Check if i is in wnoa_interp_factor_indices_
-    if (wnoa_interp_factor_indices_.find(i) != wnoa_interp_factor_indices_.end()) {
+    if (isWNOAInterpFactorIndex(i)) {
       // This is a WNOAInterpFactor, cast down statically to avoid dynamic cast
       auto wnoa_factor = static_pointer_cast<WNOAInterpFactor<PoseType>>(factor);
       total_error += wnoa_factor->error(values, passedInterpData.get());
