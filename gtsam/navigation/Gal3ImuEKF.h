@@ -29,9 +29,9 @@ namespace gtsam {
 class GTSAM_EXPORT Gal3ImuEKF : public LeftLinearEKF<Gal3> {
  public:
   using Base = LeftLinearEKF<Gal3>;
-  using TangentVector = typename Base::TangentVector;  // Vector9
-  using Jacobian = typename Base::Jacobian;            // 9x9
-  using Covariance = typename Base::Covariance;        // 9x9
+  using TangentVector = typename Base::TangentVector;  // Vector10
+  using Jacobian = typename Base::Jacobian;            // 10x10
+  using Covariance = typename Base::Covariance;        // 10x10
 
   /**
    * Construct with initial state/covariance and preintegration params (for
@@ -55,7 +55,7 @@ class GTSAM_EXPORT Gal3ImuEKF : public LeftLinearEKF<Gal3> {
 
   /// Calculate U from raw IMU (no gravity): body-frame increments
   static Gal3 IMU(const Vector3& omega_b, const Vector3& f_b, double dt) {
-    return {Rot3::Expmap(omega_b * dt), f_b * (0.5 * dt * dt), f_b * dt, dt};
+    return {Rot3::Expmap(omega_b * dt), f_b * (0.5 * dt * dt), f_b * dt, 0.0};
   }
 
   /**
