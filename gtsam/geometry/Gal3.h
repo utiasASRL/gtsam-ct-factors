@@ -19,6 +19,8 @@
 #include <gtsam/base/MatrixLieGroup.h>
 #include <gtsam/geometry/Event.h>
 #include <gtsam/geometry/Pose3.h>
+#include <Eigen/Dense>
+
 
 #include <cmath>       // For std::sqrt, std::cos, std::sin
 #include <functional>  // For std::function used in numerical derivatives
@@ -217,6 +219,34 @@ class GTSAM_EXPORT Gal3 : public MatrixLieGroup<Gal3, 10, 5> {
   static TangentVector Vee(const LieAlgebra& X);
 
   /// @}
+  /// @name Dynamics
+  /// @{
+
+  // φ: autonomous flow where velocity acts on position for
+  //    (R, p, v) -> p += v·dt.
+  // TODO: Check if Gal3 Jacobian is this on the left
+  struct AutonomousFlow {
+    double dt;
+    // We don't have I_10x10 defined anywhere like I_9x9 in NavState, so ->
+    using Jacobian = Eigen::Matrix<double, 10, 10>;
+
+    // Differential at identity (right-trivialized): Φ = I with ∂p/∂v = dt·I.
+    Jacobian dIdentity() const {
+      Jacobian Phi = Jacobian::Identity();
+      Phi.template block<3, 3>(6, 3) = I_3x3 * dt;
+      return Phi;
+    }
+
+    // Apply φ(x) by p += v·dt //
+    // TODO: Check if t = 0 or t = X.time. I don't think it matters, as long as we do not add a +dt
+    // dt shouldn't be added - because in gravity
+    Gal3 operator()(const Gal3& X) const {
+      return {X.rotation(), X.translation() + X.velocity() * dt, X.velocity(), X.time()};
+    }
+  };
+
+  /// @}
+  ///
 
  private:
   /// @name Serialization
