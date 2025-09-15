@@ -60,28 +60,21 @@ add_subdirectory(ceres)
 #   GeoidEval Gravity MagneticField Planimeter TransverseMercatorProj)
 # add_subdirectory (tools)
 
-# Find GeographicLib using the find script distributed with it
-unset(GEOGRAPHICLIB_FOUND CACHE)
-unset(GeographicLib_INCLUDE_DIRS CACHE)
-unset(GeographicLib_LIBRARIES CACHE)
-unset(GeographicLib_LIBRARY_DIRS CACHE)
-include(GeographicLib/cmake/FindGeographicLib.cmake)
+list(PREPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake/modules")
 
-# Set up the option to install GeographicLib
-if(GEOGRAPHICLIB-NOTFOUND)
-  set(install_geographiclib_default ON)
+# Try to find an already-installed GeographicLib.
+find_package(GeographicLib QUIET)
+
+if(GeographicLib_FOUND AND NOT TARGET GeographicLib::GeographicLib)
+  add_library(GeographicLib::GeographicLib UNKNOWN IMPORTED)
+  set_target_properties(GeographicLib::GeographicLib PROPERTIES
+    IMPORTED_LOCATION             "${GeographicLib_LIBRARIES}"
+    INTERFACE_INCLUDE_DIRECTORIES "${GeographicLib_INCLUDE_DIRS}"
+  )
+endif()
+
+if(TARGET GeographicLib::GeographicLib)
+  message(STATUS "Using system GeographicLib: ${GeographicLib_LIBRARIES}")
 else()
-  set(install_geographiclib_default OFF)
+  message(STATUS "GeographicLib not found; GeographicLib-dependent tests will be disabled.")
 endif()
-option(GTSAM_INSTALL_GEOGRAPHICLIB "Build and install the 3rd-party library GeographicLib" ${install_geographiclib_default})
-
-# Print warning if we'll overwrite GeographicLib
-if(GEOGRAPHICLIB_FOUND AND GTSAM_INSTALL_GEOGRAPHICLIB)
-  message(WARNING "GeographicLib is installed on your system and GTSAM_INSTALL_GEOGRAPHICLIB is enabled.  Installing gtsam will either overwrite the installed GeographicLib or install a second version that may conflict.  You may want to disable GTSAM_INSTALL_GEOGRAPHICLIB if the installed version was not installed by GTSAM.")
-endif()
-
-if(GTSAM_INSTALL_GEOGRAPHICLIB)
-  add_subdirectory(GeographicLib)
-endif()
-
-set(GTSAM_EXPORTED_TARGETS "${GTSAM_EXPORTED_TARGETS}" PARENT_SCOPE)
