@@ -165,6 +165,27 @@ void runInterpExample(InterpExampleParams& p) {
     std::cout << "Graphs are NOT identical!" << std::endl;
   }
 
+  // Timing test for error of both graphs
+  start = chrono::high_resolution_clock::now();
+  for(unsigned int i = 0; i < p.n_runs; i++)
+  {
+    graph_interp.error(values_interp_init);
+  }
+  end = chrono::high_resolution_clock::now();
+  auto T_error_interp =
+      chrono::duration_cast<chrono::microseconds>(end - start).count()/p.n_runs;
+  cout << "Interp FG Error Time: " << T_error_interp << " (micro-s)" << endl;   
+
+  start = chrono::high_resolution_clock::now();
+  for(unsigned int i = 0; i < p.n_runs; i++)
+  {
+    graph_wnoa.error(values_interp_init);
+  }
+  end = chrono::high_resolution_clock::now();
+  auto T_error_wnoa =
+      chrono::duration_cast<chrono::microseconds>(end - start).count()/p.n_runs;
+  cout << "WNOA FG Error Time: " << T_error_wnoa << " (micro-s)" << endl;
+
   // Check if the returned error is the same
   double error_interp = graph_interp.error(values_interp_init);
   double error_wnoa = graph_wnoa.error(values_interp_init);

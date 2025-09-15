@@ -59,13 +59,30 @@ class WNOAInterpFactor : public NoiseModelFactor {
   // map outer key to outer key index (for Jacobians)
   unordered_map<Key, int> outer_key_to_index;
 
+
+  struct OuterKeyIndices {
+    int left_pose;
+    int left_vel;
+    int right_pose;
+    int right_vel;
+  };
+
+  std::unordered_map<StateData, OuterKeyIndices> precomputed_outer_indices_;
+
  public:
 
  struct PassedInterpData {
     Values values;
-    unordered_map<Key, unordered_map<Key, Matrix>> jacobians;
-    unordered_map<StateData, Matrix2N> condCovs;
+
+    // Flat vector of Jacobians, pre-allocated once
+    std::vector<Matrix> jacobians;
+
+    // Precomputed mapping: (inner_index, outer_index) -> jacobians vector index
+    std::vector<std::array<size_t, 4>> inner_to_outer_indices;
+
+    std::unordered_map<StateData, Matrix2N> condCovs;
   };
+
 
   /* @brief Constructor of WNOA Interpolation Factor. This factor wraps around a
    * factor that has interpolated states and maps measurements to the bordering
@@ -130,6 +147,16 @@ class WNOAInterpFactor : public NoiseModelFactor {
     // later)
     for (size_t i = 0; i < this->keys_.size(); i++) {
       outer_key_to_index[this->keys_[i]] = i;
+    }
+
+    // Preompute outer key indices for each interpolated state
+    for (const auto& [interp_key, interp] : key_to_interp) {
+    const auto& [left, right] = interp_to_borders.at(interp);
+    precomputed_outer_indices_[interp] = {
+        outer_key_to_index.at(left.pose),
+        outer_key_to_index.at(left.vel),
+        outer_key_to_index.at(right.pose),
+        outer_key_to_index.at(right.vel)};
     }
   };
 
@@ -344,10 +371,10 @@ class WNOAInterpFactor : public NoiseModelFactor {
 
     if (passedInterpData) {
       values_interp = &passedInterpData->values;
-      InterpJacobians = &passedInterpData->jacobians;
+      if(H) InterpJacobians = &passedInterpData->jacobians;
       if (InterpCondCovs)
       {
-        *InterpCondCovs = passedInterpData->condCovs; // This copies the map
+        InterpCondCovs = &passedInterpData->condCovs;
       }
     } else {
       if (H) {
@@ -363,17 +390,19 @@ class WNOAInterpFactor : public NoiseModelFactor {
     // construct values for inner factor
     Values values_inner;
     for (const auto& key : inner_factor_->keys()) {
-      if (values_interp->exists(key)) {
-        // found key in interpolated values
-        values_inner.insert(key, values_interp->at(key));
-      } else if (values.exists(key)) {
-        // found key in values passed to outer factor
-        values_inner.insert(key, values.at(key));
-      } else {
-        // if key is not found then there is a problem
-        throw runtime_error("Key " + DefaultKeyFormatter(key) +
-                            " not in interpolated states or outer keys");
-      }
+        auto it_interp = values_interp->find(key);
+        if (it_interp != values_interp->end()) {
+            values_inner.insert(key, it_interp->value);
+        } else {
+            auto it_outer = values.find(key);
+            if (it_outer != values.end()) {
+                values_inner.insert(key, it_outer->value);
+            } else {
+                throw std::runtime_error(
+                    "Key " + DefaultKeyFormatter(key) +
+                    " not in interpolated states or outer keys");
+            }
+        }
     }
 
     // Call inner factor error function with interpolated values.
@@ -395,31 +424,33 @@ class WNOAInterpFactor : public NoiseModelFactor {
       // NOTE: it is possible for two inner keys to affect the same outer key
       for (size_t i = 0; i < inner_factor_->keys().size(); i++) {
         Key inner_key = inner_factor_->keys()[i];
-        if (values_interp->exists(inner_key)) {
-          // Get interpolated state and border states
+        auto it_interp = values_interp->find(inner_key);
+        if (it_interp != values_interp->end()) {
           const StateData& interp = key_to_interp.at(inner_key);
           const auto& [left, right] = interp_to_borders.at(interp);
-          // Create vector of outer keys
-          KeyVector outer_keys = {left.pose, left.vel, right.pose, right.vel};
-          // Loop over keys and update Jacobian
-          for (Key& outer_key : outer_keys) {
-            // get position of outer key
-            int k = outer_key_to_index.at(outer_key);
-            // add to the outer jacobian
-            const Matrix& J = (*H_inner)[i] * InterpJacobians->at(inner_key).at(outer_key);
+
+          auto& inner_map = InterpJacobians->at(inner_key); // cache inner map
+          
+          // Use cached outer indices
+          const OuterKeyIndices& idx = precomputed_outer_indices_.at(interp);  
+          std::array<Key,4> outer_keys = {left.pose, left.vel, right.pose, right.vel};
+          int ks[4] = {idx.left_pose, idx.left_vel, idx.right_pose, idx.right_vel};
+          for (size_t j = 0; j < 4; j++) {
+            int k = ks[j];
+            const Key& outer_key = outer_keys[j];
+            const Matrix& J = (*H_inner)[i] * inner_map.at(outer_key);
             if ((*H)[k].size() == 0){
               (*H)[k] = J;
-            }else{
+            } else {
               (*H)[k] += J;
             }
           }
         } else {
-          // not an interpolated key, directly map to outer jacobian
           int k = outer_key_to_index.at(inner_key);
           const Matrix& J = (*H_inner)[i];
           if ((*H)[k].size() == 0){
             (*H)[k] = J;
-          }else{
+          } else {
             (*H)[k] += J;
           }
         }

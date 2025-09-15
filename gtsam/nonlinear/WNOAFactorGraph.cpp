@@ -191,114 +191,112 @@ Values WNOAFactorGraph<PoseType>::getInterpolatedValues(
     unordered_map<StateData, Matrix2N>* InterpCondCovs) const {
 
 #ifdef GTSAM_USE_TBB
-  Values values_interp; // result container
 
-  // 1. Cache the actual pose/velocity objects (copy once, reuse many).
-  //    (If PoseType or VelocityType are lightweight this still saves map/hashing cost.)
-  // Preallocate space for border_pose_cache and border_vel_cache
+  // --- Step 1: Cache boundary poses/velocities ---
+    unordered_map<Key, PoseType>    border_pose_cache;
+    unordered_map<Key, VelocityType> border_vel_cache;
+    border_pose_cache.reserve(border_pose_keys_.size());
+    border_vel_cache.reserve(border_vel_keys_.size());
+    for (Key k : border_pose_keys_) border_pose_cache.emplace(k, values.at<PoseType>(k));
+    for (Key k : border_vel_keys_)  border_vel_cache.emplace(k, values.at<VelocityType>(k));
 
-  unordered_map<Key, PoseType>    border_pose_cache;
-  unordered_map<Key, VelocityType> border_vel_cache;
-  border_pose_cache.reserve(border_pose_keys_.size());
-  border_vel_cache.reserve(border_vel_keys_.size());
-  for (Key k : border_pose_keys_) border_pose_cache.emplace(k, values.at<PoseType>(k));
-  for (Key k : border_vel_keys_)  border_vel_cache.emplace(k, values.at<VelocityType>(k));
+    // --- Step 2: Define thread-local storage ---
+    struct ThreadLocalData {
+        std::vector<std::pair<Key, PoseType>> poses;
+        std::vector<std::pair<Key, VelocityType>> vels;
+        std::vector<std::tuple<Key, Key, Matrix>> jacobians;
+        std::vector<std::pair<StateData, Matrix2N>> condcovs;
+        vector<Matrix> H; // Reuse matrices per thread
+    };
 
+    tbb::enumerable_thread_specific<ThreadLocalData> thread_data;
 
-  // Step 2: Convert to vector for optimal parallel access patterns  
-  std::vector<std::pair<StateData, std::pair<StateData, StateData>>> interp_vec(
-      interp_to_borders_map_.begin(), interp_to_borders_map_.end());
-  
-  // Step 3: Thread-local storage to eliminate all mutex contention
-  struct ThreadLocalData {
-    std::vector<std::pair<Key, PoseType>> poses;
-    std::vector<std::pair<Key, VelocityType>> vels;
-    std::vector<std::tuple<Key, Key, Matrix>> jacobians; // flattened
-    std::vector<std::pair<StateData, Matrix2N>> condcovs;
-  };
-  
-  // TBB enumerable thread local storage
-  tbb::enumerable_thread_specific<ThreadLocalData> thread_data;
-  
-  // Step 4: Completely lock-free parallel computation
-  tbb::parallel_for(tbb::blocked_range<size_t>(0, interp_vec.size(), 100), // chunk size 100
-    [&](const tbb::blocked_range<size_t>& range) {
-      auto& local_data = thread_data.local();
-      
-      // Pre-allocate vectors for this chunk
-      local_data.poses.reserve(range.size() * 2);
-      local_data.vels.reserve(range.size() * 2);
-      if (InterpJacobians) local_data.jacobians.reserve(range.size() * 8);
-      if (InterpCondCovs) local_data.condcovs.reserve(range.size());
-      
-      // Reuse jacobian storage across iterations
-      vector<Matrix> H(8);
-      
-      for (size_t i = range.begin(); i != range.end(); ++i) {
-        const auto& [interp_state, border_states] = interp_vec[i];
-        const auto& [left, right] = border_states;
-        
-        // Use cached values (no hash lookups)
-        const auto state_left = TimestampedPoseVelocity<PoseType>(
-            pose_cache[left.pose], vel_cache[left.vel], left.time);
-        const auto state_right = TimestampedPoseVelocity<PoseType>(
-            pose_cache[right.pose], vel_cache[right.vel], right.time);
+    // Get number of physical cores (approximate if hyperthreaded)
+    unsigned int num_logical = std::thread::hardware_concurrency();
+    unsigned int num_physical_cores = num_logical > 0 ? std::max(1u, num_logical / 2) : 1;
+    size_t grain = std::max(size_t(1), interp_to_borders_vec_.size() / (8 * num_physical_cores));
+    // --- Step 3: Parallel interpolation ---
+    tbb::parallel_for(tbb::blocked_range<size_t>(0, interp_to_borders_vec_.size(), grain),
+        [&](const tbb::blocked_range<size_t>& range) {
+            auto& local_data = thread_data.local();
 
-        PoseVelocity<PoseType> result;
+            // Preallocate vectors based on chunk size
+            size_t chunk_size = range.size();
+            local_data.poses.reserve(chunk_size * 2);
+            local_data.vels.reserve(chunk_size * 2);
+            if (InterpJacobians) local_data.jacobians.reserve(chunk_size * 8);
+            if (InterpCondCovs) local_data.condcovs.reserve(chunk_size);
+
+            // Preallocate reusable H matrices
+            if (local_data.H.empty()) local_data.H.resize(8);
+
+            for (size_t i = range.begin(); i != range.end(); ++i) {
+                const auto& [interp_state, border_states] = interp_to_borders_vec_[i];
+                const auto& [left, right] = border_states;
+
+                // Use cached poses/velocities
+                const auto state_left = TimestampedPoseVelocity<PoseType>(
+                    border_pose_cache[left.pose], border_vel_cache[left.vel], left.time);
+                const auto state_right = TimestampedPoseVelocity<PoseType>(
+                    border_pose_cache[right.pose], border_vel_cache[right.vel], right.time);
+
+                PoseVelocity<PoseType> result;
+                if (InterpJacobians) {
+                    result = interpolator_.interpolatePoseAndVelocity(
+                        state_left, state_right, interp_state.time, &local_data.H);
+
+                    // Store jacobians
+                    local_data.jacobians.emplace_back(interp_state.pose, left.pose, std::move(local_data.H[0]));
+                    local_data.jacobians.emplace_back(interp_state.pose, left.vel, std::move(local_data.H[1]));
+                    local_data.jacobians.emplace_back(interp_state.pose, right.pose, std::move(local_data.H[2]));
+                    local_data.jacobians.emplace_back(interp_state.pose, right.vel, std::move(local_data.H[3]));
+                    local_data.jacobians.emplace_back(interp_state.vel, left.pose, std::move(local_data.H[4]));
+                    local_data.jacobians.emplace_back(interp_state.vel, left.vel, std::move(local_data.H[5]));
+                    local_data.jacobians.emplace_back(interp_state.vel, right.pose, std::move(local_data.H[6]));
+                    local_data.jacobians.emplace_back(interp_state.vel, right.vel, std::move(local_data.H[7]));
+                } else {
+                    result = interpolator_.interpolatePoseAndVelocity(
+                        state_left, state_right, interp_state.time);
+                }
+
+                // Store results in thread-local vectors
+                local_data.poses.emplace_back(interp_state.pose, std::move(result.pose));
+                local_data.vels.emplace_back(interp_state.vel, std::move(result.vel));
+
+                // Conditional covariance
+                if (InterpCondCovs) {
+                    auto state_tau = TimestampedPoseVelocity<PoseType>(result, interp_state.time);
+                    Matrix2N Sigma_tau = interpolator_.computeConditionalCov(state_left, state_right, state_tau);
+                    local_data.condcovs.emplace_back(interp_state, std::move(Sigma_tau));
+                }
+            }
+        });
+
+    // --- Step 4: Sequential merge ---
+    Values values_interp;
+
+    if (InterpJacobians) InterpJacobians->reserve(interp_to_borders_vec_.size());
+    if (InterpCondCovs) InterpCondCovs->reserve(interp_to_borders_vec_.size());
+
+    for (const auto& local_data : thread_data) {
+        for (const auto& [key, pose] : local_data.poses) values_interp.insert(key, pose);
+        for (const auto& [key, vel] : local_data.vels) values_interp.insert(key, vel);
+
         if (InterpJacobians) {
-          result = interpolator_.interpolatePoseAndVelocity(
-              state_left, state_right, interp_state.time, &H);
-          // Store jacobians in flattened format
-          local_data.jacobians.emplace_back(interp_state.pose, left.pose, std::move(H[0]));
-          local_data.jacobians.emplace_back(interp_state.pose, left.vel, std::move(H[1]));
-          local_data.jacobians.emplace_back(interp_state.pose, right.pose, std::move(H[2]));
-          local_data.jacobians.emplace_back(interp_state.pose, right.vel, std::move(H[3]));
-          local_data.jacobians.emplace_back(interp_state.vel, left.pose, std::move(H[4]));
-          local_data.jacobians.emplace_back(interp_state.vel, left.vel, std::move(H[5]));
-          local_data.jacobians.emplace_back(interp_state.vel, right.pose, std::move(H[6]));
-          local_data.jacobians.emplace_back(interp_state.vel, right.vel, std::move(H[7]));
-        } else {
-          result = interpolator_.interpolatePoseAndVelocity(
-              state_left, state_right, interp_state.time);
+            for (const auto& [outer_key, inner_key, matrix] : local_data.jacobians) {
+                auto& inner_map = (*InterpJacobians)[outer_key];
+                if (inner_map.empty()) inner_map.reserve(8);
+                inner_map[inner_key] = matrix;
+            }
         }
-
-        // Store results in thread-local vectors
-        local_data.poses.emplace_back(interp_state.pose, std::move(result.pose));
-        local_data.vels.emplace_back(interp_state.vel, std::move(result.vel));
 
         if (InterpCondCovs) {
-          auto state_tau = TimestampedPoseVelocity<PoseType>(result, interp_state.time);
-          Matrix2N Sigma_tau = interpolator_.computeConditionalCov(
-              state_left, state_right, state_tau);
-          local_data.condcovs.emplace_back(interp_state, std::move(Sigma_tau));
+            for (const auto& [state, cov] : local_data.condcovs)
+                (*InterpCondCovs)[state] = cov;
         }
-      }
-    });
+    }
 
-  // Step 5: Efficient sequential merge of thread-local results
-  Values values_interp;
-  for (const auto& local_data : thread_data) {
-    for (const auto& [key, pose] : local_data.poses) {
-      values_interp.insert(key, pose);
-    }
-    for (const auto& [key, vel] : local_data.vels) {
-      values_interp.insert(key, vel);
-    }
-    
-    if (InterpJacobians) {
-      for (const auto& [outer_key, inner_key, matrix] : local_data.jacobians) {
-        (*InterpJacobians)[outer_key][inner_key] = matrix;
-      }
-    }
-    
-    if (InterpCondCovs) {
-      for (const auto& [state, cov] : local_data.condcovs) {
-        (*InterpCondCovs)[state] = cov;
-      }
-    }
-  }
-
-  return values_interp;
+    return values_interp;
 
 #else
   // -------- Sequential optimized version (no TBB) --------

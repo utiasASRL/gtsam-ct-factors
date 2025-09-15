@@ -52,6 +52,8 @@ private:
 
   // map interpolated state to border states
   unordered_map<StateData, pair<StateData, StateData>> interp_to_borders_map_;
+  std::vector<std::pair<StateData, std::pair<StateData, StateData>>> interp_to_borders_vec_;
+
   bool fixed_noise_model_ = false;
 
   unordered_set<Key> border_pose_keys_;
@@ -98,6 +100,10 @@ public:
               border_pose_keys_.insert(left.pose);  border_pose_keys_.insert(right.pose);
               border_vel_keys_.insert(left.vel);    border_vel_keys_.insert(right.vel);
             }
+
+            // Convert map to vector for optimal parallel access patterns
+            interp_to_borders_vec_ = std::vector<std::pair<StateData, std::pair<StateData, StateData>>>(
+                interp_to_borders_map_.begin(), interp_to_borders_map_.end());
 
           }
 
