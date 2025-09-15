@@ -11,6 +11,7 @@ DOCKER_REPOSITORY="gtsam-ci"
 declare -a build_configs=( 
   "ubuntu 22.04 gcc 9"
   "ubuntu 22.04 clang 11"
+  "ubuntu 22.04 clang 14"
   "ubuntu 24.04 gcc 14"
   "ubuntu 24.04 clang 16"
 )

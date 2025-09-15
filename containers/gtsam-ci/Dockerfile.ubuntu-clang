@@ -24,7 +24,12 @@ libboost-all-dev
 ARG LLVM_KEY=15CF4D18AF4F7421
 RUN gpg --keyserver keyserver.ubuntu.com --recv-key ${LLVM_KEY} || gpg --keyserver hkp://keyserver.ubuntu.com:80 --recv-key ${LLVM_KEY}
 RUN gpg -a --export ${LLVM_KEY} | apt-key add -
-RUN add-apt-repository "deb http://apt.llvm.org/bionic/ llvm-toolchain-bionic-${COMPILER_VERSION} main"
+# LLVM (clang) 9/14 is not in Bionic's repositories so we add the official LLVM repository.
+RUN add-apt-repository "deb http://apt.llvm.org/bionic/ llvm-toolchain-bionic main"
+# LLVM (clang) 9/14 is not in 22.04 (jammy)'s repositories so we add the official LLVM repository.
+RUN add-apt-repository "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy main"
+
+RUN apt-get update
 RUN apt-get install -y clang-${COMPILER_VERSION} \
 g++-multilib \
 mold \
@@ -35,6 +40,9 @@ ENV CXX="clang++-${COMPILER_VERSION}"
 ENV LDFLAGS="-fuse-ld=mold"
 ENV CMAKE_EXE_LINKER_FLAGS="-fuse-ld=mold"
 ENV CMAKE_SHARED_LINKER_FLAGS="-fuse-ld=mold"
+
+# Install Eigen and Metis (needed for some tests)
+RUN apt-get update && apt-get install -y libeigen3-dev libmetis-dev
 
 WORKDIR /gtsam
 
