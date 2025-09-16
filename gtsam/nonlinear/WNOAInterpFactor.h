@@ -78,7 +78,7 @@ class WNOAInterpFactor : public NoiseModelFactor {
     std::vector<Matrix> jacobians;
 
     // Precomputed mapping: (inner_index, outer_index) -> jacobians vector index
-    std::vector<std::array<size_t, 4>> jacobianIndices;
+    std::vector<std::array<size_t, 4>> inner_to_outer_indices;
 
     std::unordered_map<StateData, Matrix2N> condCovs;
   };
@@ -362,21 +362,16 @@ class WNOAInterpFactor : public NoiseModelFactor {
       PassedInterpData* passedInterpData = nullptr) const {
 
     // Define mapping from interpolated keys to interpolation jacobians
-    std::vector<Matrix> interpJacobiansLocal;
-    std::vector<std::array<size_t,4>> jacobianIndicesLocal;
+    // Nested Key: map[interp key][estimated key] = Jac
+    unordered_map<Key, unordered_map<Key, Matrix>> interpJacobiansLocal;
     Values valuesInterpLocal;
 
+    unordered_map<Key, unordered_map<Key, Matrix>>* InterpJacobians = nullptr;
     Values* values_interp = nullptr;
-    std::vector<Matrix>* InterpJacobians = nullptr;
-    std::vector<std::array<size_t,4>>* jacobianIndices = nullptr;
 
     if (passedInterpData) {
       values_interp = &passedInterpData->values;
-      if(H)
-      {
-        InterpJacobians = &passedInterpData->jacobians;
-        jacobianIndices = &passedInterpData->jacobianIndices;
-      }
+      if(H) InterpJacobians = &passedInterpData->jacobians;
       if (InterpCondCovs)
       {
         InterpCondCovs = &passedInterpData->condCovs;
@@ -384,11 +379,10 @@ class WNOAInterpFactor : public NoiseModelFactor {
     } else {
       if (H) {
         InterpJacobians = &interpJacobiansLocal;
-        jacobianIndices = &jacobianIndicesLocal;
-        valuesInterpLocal = getInterpolatedValues(values, InterpJacobians, jacobianIndices, InterpCondCovs);
+        valuesInterpLocal = getInterpolatedValues(values, InterpJacobians, InterpCondCovs);
         values_interp = &valuesInterpLocal;
       } else {
-        valuesInterpLocal = getInterpolatedValues(values, nullptr, nullptr, InterpCondCovs);
+        valuesInterpLocal = getInterpolatedValues(values, nullptr, InterpCondCovs);
         values_interp = &valuesInterpLocal;
       }
     }
@@ -424,41 +418,40 @@ class WNOAInterpFactor : public NoiseModelFactor {
       error = inner_factor_->unwhitenedError(values_inner);
     }
 
-    // --- Backpropagate Jacobians to outer keys ---
-    if (H && InterpJacobians && jacobianIndices) {
-      size_t jac_idx_counter = 0; // tracks entry in jacobianIndices
+    // compute Jacobians for outer keys
+    if (H) {
+      // loop through inner keys and update outer keys via backpropagation
+      // NOTE: it is possible for two inner keys to affect the same outer key
       for (size_t i = 0; i < inner_factor_->keys().size(); i++) {
         Key inner_key = inner_factor_->keys()[i];
         auto it_interp = values_interp->find(inner_key);
-
         if (it_interp != values_interp->end()) {
-          // Interpolated key → fetch its 4 Jacobian indices
-          const std::array<size_t,4>& idx = (*jacobianIndices)[jac_idx_counter++];
-
-          // Build outer key set
           const StateData& interp = key_to_interp.at(inner_key);
           const auto& [left, right] = interp_to_borders.at(interp);
-          std::array<Key,4> outer_keys = {left.pose, left.vel, right.pose, right.vel};
 
-          // Scatter-add Jacobians for the 4 outer dependencies
+          auto& inner_map = InterpJacobians->at(inner_key); // cache inner map
+          
+          // Use cached outer indices
+          const OuterKeyIndices& idx = precomputed_outer_indices_.at(interp);  
+          std::array<Key,4> outer_keys = {left.pose, left.vel, right.pose, right.vel};
+          int ks[4] = {idx.left_pose, idx.left_vel, idx.right_pose, idx.right_vel};
           for (size_t j = 0; j < 4; j++) {
-            const Matrix& J_inner = (*InterpJacobians)[idx[j]];
-            const Matrix J = (*H_inner)[i] * J_inner;
-            int k_outer = outer_key_to_index.at(outer_keys[j]);
-            if ((*H)[k_outer].size() == 0) {
-              (*H)[k_outer] = J;
+            int k = ks[j];
+            const Key& outer_key = outer_keys[j];
+            const Matrix& J = (*H_inner)[i] * inner_map.at(outer_key);
+            if ((*H)[k].size() == 0){
+              (*H)[k] = J;
             } else {
-              (*H)[k_outer] += J;
+              (*H)[k] += J;
             }
           }
         } else {
-          // Non-interpolated key → direct copy
-          int k_outer = outer_key_to_index.at(inner_key);
+          int k = outer_key_to_index.at(inner_key);
           const Matrix& J = (*H_inner)[i];
-          if ((*H)[k_outer].size() == 0) {
-            (*H)[k_outer] = J;
+          if ((*H)[k].size() == 0){
+            (*H)[k] = J;
           } else {
-            (*H)[k_outer] += J;
+            (*H)[k] += J;
           }
         }
       }
@@ -468,76 +461,67 @@ class WNOAInterpFactor : public NoiseModelFactor {
   }
 
   /* @brief Interpolate all interpolated states based on estimated states.
- * Put their values in a Values structure and compute their Jacobians.*/
-Values getInterpolatedValues(
-    const Values& values,
-    std::vector<Matrix>* InterpJacobians = nullptr,
-    std::vector<std::array<size_t, 4>>* jacobianIndices = nullptr,
-    unordered_map<StateData, Matrix2N>* InterpCondCovs = nullptr) const {
+   * Put their values in a Values structure and compute their Jacobians.*/
+  Values getInterpolatedValues(
+      const Values& values,
+      unordered_map<Key, unordered_map<Key, Matrix>>* InterpJacobians = nullptr,
+      unordered_map<StateData, Matrix2N>* InterpCondCovs = nullptr) const {
+    Values values_interp;  // interpolated values
+    // loop through interpolated state map and compute values
+    for (const auto& [interp_state, border_states] : interp_to_borders) {
+      // unpack border states
+      auto& [left, right] = border_states;
+      // retrieve estimated state values
+      const auto state_left = TimestampedPoseVelocity<PoseType>(
+          values.at<PoseType>(left.pose),
+          values.at<VelocityType>(left.vel),
+          left.time);
 
-  Values values_interp;  // interpolated values
+      const auto state_right = TimestampedPoseVelocity<PoseType>(
+          values.at<PoseType>(right.pose),
+          values.at<VelocityType>(right.vel),
+          right.time);
 
-  // loop through interpolated state map and compute values
-  for (const auto& [interp_state, border_states] : interp_to_borders) {
-    // unpack border states
-    const auto& [left, right] = border_states;
+      // Get interpolated state velocity pair
+      PoseVelocity<PoseType> result;
+      vector<Matrix> H(8);
+      if (InterpJacobians) {
+        result = interpolator_.interpolatePoseAndVelocity(
+            state_left, state_right, interp_state.time,
+            &H);
+      } else {
+        result = interpolator_.interpolatePoseAndVelocity(
+            state_left, state_right, interp_state.time);
+      }
 
-    // retrieve estimated state values
-    const auto state_left = TimestampedPoseVelocity<PoseType>(
-        values.at<PoseType>(left.pose),
-        values.at<VelocityType>(left.vel),
-        left.time);
+      // insert into values structure
+      values_interp.insert(interp_state.pose, result.pose);
+      values_interp.insert(interp_state.vel, result.vel);
 
-    const auto state_right = TimestampedPoseVelocity<PoseType>(
-        values.at<PoseType>(right.pose),
-        values.at<VelocityType>(right.vel),
-        right.time);
+      // arrange jacobians in unordered map (for easy access later)
+      if (InterpJacobians) {
+        (*InterpJacobians)[interp_state.pose][left.pose] = H[0];
+        (*InterpJacobians)[interp_state.pose][left.vel] = H[1];
+        (*InterpJacobians)[interp_state.pose][right.pose] = H[2];
+        (*InterpJacobians)[interp_state.pose][right.vel] = H[3];
+        (*InterpJacobians)[interp_state.vel][left.pose] = H[4];
+        (*InterpJacobians)[interp_state.vel][left.vel] = H[5];
+        (*InterpJacobians)[interp_state.vel][right.pose] = H[6];
+        (*InterpJacobians)[interp_state.vel][right.vel] = H[7];
+      }
 
-    // Get interpolated state velocity pair
-    PoseVelocity<PoseType> result;
-    std::vector<Matrix> H(8);
-    if (InterpJacobians && jacobianIndices) {
-      result = interpolator_.interpolatePoseAndVelocity(
-          state_left, state_right, interp_state.time, &H);
-    } else {
-      result = interpolator_.interpolatePoseAndVelocity(
-          state_left, state_right, interp_state.time);
+      // Conditional covariance of interpolated states for noise model update
+      if (InterpCondCovs) {
+        auto state_tau = TimestampedPoseVelocity<PoseType>(
+            result, interp_state.time);
+        Matrix2N Sigma_tau = interpolator_.computeConditionalCov(
+            state_left, state_right, state_tau);
+        (*InterpCondCovs)[interp_state] = Sigma_tau;  // assumed preallocated vector
+      }
     }
 
-    // insert into values structure
-    values_interp.insert(interp_state.pose, result.pose);
-    values_interp.insert(interp_state.vel, result.vel);
-
-    // Flatten Jacobians
-    if (InterpJacobians && jacobianIndices) {
-      size_t baseIdx = InterpJacobians->size();
-
-      // Push back the 8 Jacobians
-      InterpJacobians->push_back(H[0]); // pose wrt left.pose
-      InterpJacobians->push_back(H[1]); // pose wrt left.vel
-      InterpJacobians->push_back(H[2]); // pose wrt right.pose
-      InterpJacobians->push_back(H[3]); // pose wrt right.vel
-      InterpJacobians->push_back(H[4]); // vel wrt left.pose
-      InterpJacobians->push_back(H[5]); // vel wrt left.vel
-      InterpJacobians->push_back(H[6]); // vel wrt right.pose
-      InterpJacobians->push_back(H[7]); // vel wrt right.vel
-
-      // Record indices (pose block, vel block)
-      jacobianIndices->push_back({baseIdx + 0, baseIdx + 1, baseIdx + 2, baseIdx + 3});
-      jacobianIndices->push_back({baseIdx + 4, baseIdx + 5, baseIdx + 6, baseIdx + 7});
-    }
-
-    // Conditional covariance of interpolated states for noise model update
-    if (InterpCondCovs) {
-      auto state_tau = TimestampedPoseVelocity<PoseType>(result, interp_state.time);
-      Matrix2N Sigma_tau = interpolator_.computeConditionalCov(
-          state_left, state_right, state_tau);
-      (*InterpCondCovs)[interp_state] = std::move(Sigma_tau);
-    }
+    return values_interp;
   }
-
-  return values_interp;
-}
 
   /* Gets a new noise model for the wrapper factor. This depends on the
    * linearization point and the current estimate of the covariance of the
