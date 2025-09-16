@@ -19,9 +19,6 @@ struct StateData {
   StateData(Key pose_in, Key vel_in, double time_in)
       : pose(pose_in), vel(vel_in), time(time_in) {};
 
-  static const StateData PosInf;
-  static const StateData NegInf;
-
   // Less than operator to enable sorting
   bool operator<(const StateData& other) const {
     return this->time < other.time;
@@ -46,15 +43,7 @@ struct StateData {
     }
     return false;
   }
-
-  bool isInfTime() const {
-    return std::isinf(this->time);
-  }
 };
-
-// dummy states used for identifying states to be extrapolated in the Interpolator
-inline const StateData StateData::PosInf(0, 0, std::numeric_limits<double>::infinity());
-inline const StateData StateData::NegInf(0, 0, -std::numeric_limits<double>::infinity());
 
 }  // namespace gtsam
 
