@@ -40,8 +40,9 @@ def plotGiantGlassofMilkResults(filename, start_time=None, end_time=None):
 
     # Plot for position
     fig1, ax1 = plt.subplots()
-    ax1.plot(times, x_est, label="Main Solve", color="blue")
+    ax1.plot(times, x_est, label="Estimated Position", color="blue")
     ax1.fill_between(times, x_est - 3*x_std, x_est + 3*x_std, alpha=0.2, color="blue")
+    ax1.scatter(times_meas, x_meas, label="Measured Position", color="red", marker='x')
     ax1.plot(times, x_real, label="True Position", linestyle='--', color="green")
 
     ax1.set_xlabel("Time [s]")
@@ -51,8 +52,9 @@ def plotGiantGlassofMilkResults(filename, start_time=None, end_time=None):
 
     # Plot for velocity
     fig2, ax2 = plt.subplots()
-    ax2.plot(times, v_est, label="Main Solve", color="blue")
+    ax2.plot(times, v_est, label="Estimated Velocity", color="blue")
     ax2.fill_between(times, v_est - 3*v_std, v_est + 3*v_std, alpha=0.2, color="blue")
+    ax2.scatter(times_meas, v_meas, label="Measured Velocity", color="red", marker='x')
     ax2.plot(times, v_real, label="True Velocity", linestyle='--', color="green")
 
     ax2.set_xlabel("Time [s]")
