@@ -65,7 +65,8 @@ private:
 
   Values getInterpolatedValues(
       const Values& values,
-      unordered_map<Key, unordered_map<Key, Matrix>>* InterpJacobians,
+      std::vector<Matrix>* InterpJacobians,
+      std::vector<std::array<size_t, 4>>* jacobianIndices,
       unordered_map<StateData, Matrix2N>* InterpCondCovs = nullptr) const;
 
 public:

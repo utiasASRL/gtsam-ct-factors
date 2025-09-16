@@ -202,7 +202,7 @@ void runInterpExample(InterpExampleParams& p) {
 
   // set up optimizer
   LevenbergMarquardtParams params;
-  params.setVerbosityLM("SILENT");
+  params.setVerbosityLM("SUMMARY");
 
   // run optimization on interpolated version
   start = chrono::high_resolution_clock::now();

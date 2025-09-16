@@ -9,5 +9,5 @@ params:
   del_t: 0.1
   period_interp: 300
   n_points: 600
-  n_runs: 1000
-  n_unary: 1
+  n_runs: 1
+  n_unary: 10
