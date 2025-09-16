@@ -59,16 +59,6 @@ class WNOAInterpFactor : public NoiseModelFactor {
   // map outer key to outer key index (for Jacobians)
   unordered_map<Key, int> outer_key_to_index;
 
-
-  struct OuterKeyIndices {
-    int left_pose;
-    int left_vel;
-    int right_pose;
-    int right_vel;
-  };
-
-  std::unordered_map<StateData, OuterKeyIndices> precomputed_outer_indices_;
-
  public:
 
  struct PassedInterpData {
@@ -143,15 +133,6 @@ class WNOAInterpFactor : public NoiseModelFactor {
       outer_key_to_index[this->keys_[i]] = i;
     }
 
-    // Preompute outer key indices for each interpolated state
-    for (const auto& [interp_key, interp] : key_to_interp) {
-    const auto& [left, right] = interp_to_borders.at(interp);
-    precomputed_outer_indices_[interp] = {
-        outer_key_to_index.at(left.pose),
-        outer_key_to_index.at(left.vel),
-        outer_key_to_index.at(right.pose),
-        outer_key_to_index.at(right.vel)};
-    }
   };
 
   ~WNOAInterpFactor() override {};
@@ -423,15 +404,16 @@ class WNOAInterpFactor : public NoiseModelFactor {
           const StateData& interp = key_to_interp.at(inner_key);
           const auto& [left, right] = interp_to_borders.at(interp);
 
+
           auto& inner_map = InterpJacobians->at(inner_key); // cache inner map
-          
-          // Use cached outer indices
-          const OuterKeyIndices& idx = precomputed_outer_indices_.at(interp);  
-          std::array<Key,4> outer_keys = {left.pose, left.vel, right.pose, right.vel};
-          int ks[4] = {idx.left_pose, idx.left_vel, idx.right_pose, idx.right_vel};
-          for (size_t j = 0; j < 4; j++) {
-            int k = ks[j];
-            const Key& outer_key = outer_keys[j];
+
+          // Create vector of outer keys
+          KeyVector outer_keys = {left.pose, left.vel, right.pose, right.vel};
+          // Loop over keys and update Jacobian
+          for (Key& outer_key : outer_keys) {
+            // get position of outer key
+            int k = outer_key_to_index.at(outer_key);
+            // add to the outer jacobian
             const Matrix& J = (*H_inner)[i] * inner_map.at(outer_key);
             if ((*H)[k].size() == 0){
               (*H)[k] = J;
