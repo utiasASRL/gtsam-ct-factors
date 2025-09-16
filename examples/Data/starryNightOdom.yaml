@@ -1,0 +1,25 @@
+# Starry Night run configuration
+# See examples/Pose3Localization_StarryNight.cpp for details
+main_solve:
+  odom: true
+  wnoa: true
+  include_meas: true
+  gt_init: false
+  fix_landmarks: true # True: localization, False: SLAM
+  max_poses: 1000
+
+# Interpolation during the main solve
+# This means a few states are skipped in the main solve for efficiency.
+# WNOA must be enabled
+# Todo: add option to interpolate by time
+interp_during_solve:
+  enable: false
+  interp_skip_states: 2
+
+# Interpolation after the main solve
+# All the steps skipped from interp_during_solve are filled in afterwards.
+# WNOA and interp_during_solve must be enabled
+# Todo: add option to interpolate by time
+interp_after_solve:
+  enable: false
+  interp_covariance: true  # compute covariance for interpolated states (slow)

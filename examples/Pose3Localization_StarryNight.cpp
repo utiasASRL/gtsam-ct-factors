@@ -10,33 +10,75 @@
  * -------------------------------------------------------------------------- */
 
 /**
- * @file RangeISAMExample_plaza2.cpp
- * @brief A 2D Range SLAM example
- * @date June 20, 2013
- * @author Frank Dellaert
+ * @file Pose3Localization_StarryNight.cpp
+ * @brief A 3D Stereo localization example, using during-solve and post-solve interpolation
+ * @date September 2, 2025
+ * @author Zi Cong Guo
  */
 
-#include <unordered_map>
-#include <functional>
-#include <cstdlib>
 #include "Pose3Localization_StarryNight.h"
-
-bool USE_MEASUREMENTS = true;
-bool USE_WNOA_FACTOR = true;  // use WNOA factor for motion prior
-bool USE_ODOM_FACTOR = false;  // use BetweenFactor for motion prior
-bool INIT_AT_GT = false;  // initialize at ground truth
-size_t POSE_INTERVAL_MEAS = 1;  // measurements for every nth pose is added to the factor graph
-size_t MAX_POSES = 1000;  // maximum number of poses to process
-bool INTERP_COVARIANCE = false;  // compute covariance of interpolated poses and velocities
 
 auto WNOAPSD = Vector6(1.0, 1.0, 1.0, 0.1, 0.1, 0.1);  // power spectral density for WNOA
 
-size_t numPoses, numLandmarks;
+size_t numPoses, numLandmarks, poseInterval;
 
 using StateDataSet = Interpolator<Pose3>::StateDataSet;
 using CovarianceMap = Interpolator<Pose3>::CovarianceMap;
 
-std::tuple<NonlinearFactorGraph, Values, Values, StateDataSet>
+std::tuple<std::string, std::string>
+parseCommandLine(int argc, char** argv) {
+  // Get configuration data
+  std::string config_filename = "starryNight";  // default config file
+  std::string output_filename = "";
+
+  // Parse command line arguments
+
+  // uncomment if there are bool arguments to parse
+  // auto parseBool = [](const std::string& s) {
+  //   if (s == "true" || s == "1") return true;
+  //   if (s == "false" || s == "0") return false;
+  //   std::cerr << "Invalid boolean value: '" << s << "'. Use true/false or 1/0." << std::endl;
+  //   std::abort();
+  // };
+
+  auto getArg = [&](int& i) -> std::string {
+    if (++i >= argc) {
+      std::cerr << argv[i - 1] << " requires an argument." << std::endl;
+      exit(1);
+    }
+    return argv[i];
+  };
+
+  std::unordered_map<std::string, std::function<void(int&)>> handlers = {
+    {"--config-file",         [&](int& i) { config_filename = getArg(i); }},
+    {"--output-file",       [&](int& i) { output_filename = getArg(i); }},
+    {"--help",                [&](int&) {
+      std::cout << "Usage: " << argv[0] << " [options]\n"
+                << "Options:\n"
+                << "  --config-file <file>, -c <file>      Specify configuration YAML file (default: starryNight).\n"
+                << "  --output-file <file>, -o <file>      Specify output filename suffix (default: derived from config file).\n"
+                << "  --help, -h                           Show this help message.\n";
+      exit(0);
+    }},
+    {"-c", [&](int& i) { handlers["--config-file"](i); }},
+    {"-o", [&](int& i) { handlers["--output-file"](i); }},
+    {"-h", [&](int& i) { handlers["--help"](i); }}
+  };
+
+  for (int i = 1; i < argc; ++i) {
+    std::string arg(argv[i]);
+    if (handlers.count(arg)) {
+      handlers[arg](i);  // handler modifies `i` if it consumes an extra argument
+    } else {
+      std::cerr << "Unknown argument: " << arg << "\nUse --help for usage information." << std::endl;
+      exit(1);
+    }
+  }
+
+  return std::make_tuple(config_filename, output_filename);
+}
+
+std::tuple<NonlinearFactorGraph, Values, Values, StateDataSet, Marginals>
 optimize(const std::vector<std::pair<double, Vector6>>& inputs,
          const std::vector<MeasTriple>& measTripleVector,
          const std::vector<Pose3>& gtPoses,
@@ -45,47 +87,45 @@ optimize(const std::vector<std::pair<double, Vector6>>& inputs,
          const Pose3& T_cv,
          const NM::Diagonal::shared_ptr& odomNoise,
          const NM::Diagonal::shared_ptr& stereoNoise,
-         bool includeIntermediatePoses) {
+         const FileUtils::ConfigParams& params) {
 
   NonlinearFactorGraph graph;
   Values initialEstimate;
   StateDataSet stateDataSet;
 
-  size_t poseInterval = includeIntermediatePoses ? 1 : POSE_INTERVAL_MEAS;
+  // if interp_during_solve is enabled, only add every nth state to the factor graph
+  poseInterval = params.interpDuringSolve ? params.interpSkipStates : 1;
+  size_t numPoses_largest_multiple = (numPoses - 1) / poseInterval * poseInterval + 1;
+
+  // 1. ADD MOTION PRIOR
 
   // Add a prior on the first pose
   auto priorNoise = NM::Diagonal::Sigmas((Vector(6)<<0.003,0.003,0.003,0.001,0.001,0.001).finished());
-  // // get a prior noise model for the first pose, using the first dt
-  // double dt_1 = inputs[1].first - inputs[0].first;
-  // auto odomNoiseDiscrete = NM::Diagonal::Sigmas(odomNoise->sigmas() * dt_1);
   graph.addPrior(Symbol('x', 0), gtPoses[0], priorNoise);
 
-  // add factors to the graph
-  if (USE_ODOM_FACTOR) {
-    for (size_t poseID = 0; poseID < numPoses - poseInterval; poseID += poseInterval) {
-      double dt = inputs[poseID + poseInterval].first - inputs[poseID].first;
-      Vector6 odometry = inputs[poseID].second; // omega, v
-      Pose3 odometryPose = Pose3::Expmap(odometry*dt);
-      auto odomNoiseDiscrete = NM::Diagonal::Sigmas(odomNoise->sigmas() * dt);
-      graph.emplace_shared<BetweenFactor<Pose3> >(Symbol('x', poseID), Symbol('x', poseID + poseInterval), odometryPose, odomNoiseDiscrete);
-    }
-  }
+  // Add odometry and/or WNOA between poses
+  // WNOA is auto added later if interp_during_solve is enabled, and odometry is not
+  // compatible with interp during solve (for now)
+  std::cout << "Adding motion priors..." << std::endl;
+  if (params.useWNOAFactor || params.useOdomFactor) {
 
-  if (USE_WNOA_FACTOR || USE_ODOM_FACTOR) {
+    for (size_t poseID = 0; poseID < numPoses; ++poseID) {
 
-    for (size_t poseID = 0; poseID < numPoses; poseID += poseInterval) {
-      if (poseID < numPoses - poseInterval) {
+      if (poseID < numPoses - 1) {
+        double dt = inputs[poseID + 1].first - inputs[poseID].first;
 
-        double dt = inputs[poseID + poseInterval].first - inputs[poseID].first;
-        if (USE_ODOM_FACTOR) {
+        // add odometry factors
+        if (params.useOdomFactor) {
           Vector6 odometry = inputs[poseID].second; // omega, v
           Pose3 odometryPose = Pose3::Expmap(odometry*dt);
           auto odomNoiseDiscrete = NM::Diagonal::Sigmas(odomNoise->sigmas() * dt);
-          graph.emplace_shared<BetweenFactor<Pose3> >(Symbol('x', poseID), Symbol('x', poseID + poseInterval), odometryPose, odomNoiseDiscrete);
+          graph.emplace_shared<BetweenFactor<Pose3>>(Symbol('x', poseID), Symbol('x', poseID + 1), odometryPose, odomNoiseDiscrete);
         }
 
-        if (USE_WNOA_FACTOR) {
-          graph.emplace_shared<WNOAMotionFactor<Pose3> >(Symbol('x', poseID), Symbol('v', poseID), Symbol('x', poseID + poseInterval), Symbol('v', poseID + poseInterval), dt, WNOAPSD);
+        // add WNOA motion factors if not interpolating, since interpolateFactorGraph
+        // removes all WNOA factors and adds new ones between the estimated states
+        if (params.useWNOAFactor && !params.interpDuringSolve) {
+          graph.emplace_shared<WNOAMotionFactor<Pose3>>(Symbol('x', poseID), Symbol('v', poseID), Symbol('x', poseID + 1), Symbol('v', poseID + 1), dt, WNOAPSD);
         }
       }
 
@@ -93,54 +133,60 @@ optimize(const std::vector<std::pair<double, Vector6>>& inputs,
     }
   }
 
-  // initialize poses and velocities
-  if (INIT_AT_GT) {
-    for (size_t poseID = 0; poseID < numPoses; poseID += poseInterval) {
+  // set an initial point for poses and velocities for the optimizer
+  std::cout << "Setting initial estimate..." << std::endl;
+  if (params.initAtGT) {
+    // Initialize poses to groundtruth
+    for (size_t poseID = 0; poseID < numPoses; ++poseID) {
       initialEstimate.insert(Symbol('x', poseID), gtPoses[poseID]);
     }
-    if (USE_WNOA_FACTOR) {
-      // Initialize velocities to groundtruth
-      for (size_t poseID = 0; poseID < numPoses; poseID += poseInterval) {
+    if (params.useWNOAFactor) {
+      // Initialize velocities to groundtruth, if velocities exist (i.e., only if WNOA is used)
+      for (size_t poseID = 0; poseID < numPoses; ++poseID) {
         initialEstimate.insert(Symbol('v', poseID), inputs[poseID].second);
       }
     }
+
   } else {
     // rollout odometry to initialize the poses
     auto currPredictedPose = gtPoses[0];
     initialEstimate.insert(Symbol('x', 0), currPredictedPose);
-    for (size_t poseID = 0; poseID < numPoses - poseInterval; poseID += poseInterval) {
-      double dt = inputs[poseID + poseInterval].first - inputs[poseID].first;
+    for (size_t poseID = 0; poseID < numPoses - 1; ++poseID) {
+      double dt = inputs[poseID + 1].first - inputs[poseID].first;
       Vector6 odometry = inputs[poseID].second; // v, omega
       Pose3 odometryPose = Pose3::Expmap(odometry*dt);
       currPredictedPose = currPredictedPose.compose(odometryPose);
-      initialEstimate.insert(Symbol('x', poseID + poseInterval), currPredictedPose);
+      initialEstimate.insert(Symbol('x', poseID + 1), currPredictedPose);
     }
-    if (USE_WNOA_FACTOR) {
+    if (params.useWNOAFactor) {
       // Initialize velocities to zero
-      for (size_t poseID = 0; poseID < numPoses; poseID += poseInterval) {
+      for (size_t poseID = 0; poseID < numPoses; ++poseID) {
         initialEstimate.insert(Symbol('v', poseID), Vector6(Vector6::Zero()));
       }
     }
   }
 
-  // tried to use Expression<StereoPoint2> but it does not work
-  // auto prediction = StereoPoint2_(&project2_static, T_cv_, Point3_(landmark), Cal_);
+  // 2. ADD LANDMARKS
 
-  // since we're doing localization, add all groundtruth landmark positions
-  // for SLAM, simply comment this section out. Maybe add a prior on the landmarks if unstable
+  // add all groundtruth landmark positions
+  // if doing SLAM, can add a prior on the landmarks if system is unobservable
+  std::cout << "Adding landmarks..." << std::endl;
   for (size_t landmarkID = 0; landmarkID < numLandmarks; ++landmarkID) {
-    graph.add(NonlinearEquality<Point3>(Symbol('l', landmarkID), gtLandmarks[landmarkID]));
+    if (params.fixLandmarks) {
+      // use a hard constraint to fix the landmark if doing localization
+      graph.add(NonlinearEquality<Point3>(Symbol('l', landmarkID), gtLandmarks[landmarkID]));
+    }
     initialEstimate.insert(Symbol('l', landmarkID), gtLandmarks[landmarkID]);
   }
 
-  if (USE_MEASUREMENTS) {    
+  // 3. ADD MEASUREMENTS
+  std::cout << "Adding measurements..." << std::endl;
+  if (params.useMeasurements) {    
     // Add stereo measurement factors
     for (const auto& measTriple : measTripleVector) {
       auto [poseID, landmarkID, measurement] = measTriple;
-      if (poseID < MAX_POSES && landmarkID < numLandmarks && poseID % POSE_INTERVAL_MEAS == 0) {
-        // Add a stereo factor for the measurement
-        // std::cout << "Measurement for pose " << poseID << " and landmark " << landmarkID << ": " << measurement << std::endl;
-        // test out using StereoCamera
+      // replace numPoses_largest_multiple with params.maxPoses once we can do extrapolation
+      if (poseID < numPoses_largest_multiple && landmarkID < numLandmarks) {
         auto T_iv = initialEstimate.at<Pose3>(Symbol('x', poseID));
         auto T_ic = T_iv.compose(T_cv);
         auto cam = StereoCamera(T_ic, Cal);
@@ -152,161 +198,111 @@ optimize(const std::vector<std::pair<double, Vector6>>& inputs,
     }
   }
 
-  GaussNewtonParams parameters;
+  // 4. SET UP INTERPOLATION DURING SOLVE
+  if (params.interpDuringSolve) {
+
+    // split data into estimated and interpolated states
+    StateDataSet interpDataSet;
+    StateDataSet estimDataSet;
+    for (size_t poseID = 0; poseID < numPoses; poseID++) {
+      if (poseID % poseInterval == 0) {
+        estimDataSet.insert(StateData(Symbol('x', poseID), Symbol('v', poseID), inputs[poseID].first));
+      } else {
+        // Remove the below condition after interpolation can also extrapolate
+        if (poseID < numPoses_largest_multiple)
+          interpDataSet.insert(StateData(Symbol('x', poseID), Symbol('v', poseID), inputs[poseID].first));
+        // remove interpolated states from initial values - required for LevenbergMarquardt
+        initialEstimate.erase(Symbol('x', poseID));
+        initialEstimate.erase(Symbol('v', poseID));
+      }
+    }
+    std::cout << "interpDataSet size: " << interpDataSet.size() << std::endl;
+    std::cout << "estimDataSet size: " << estimDataSet.size() << std::endl;
+    stateDataSet = estimDataSet;  // only the estimated states are part of the stateDataSet for the main solve
+
+    // Generate interpolated version of graph
+    graph = interpolateFactorGraph<Pose3>(graph, estimDataSet, interpDataSet, WNOAPSD);
+  } 
+
+  // 5. OPTIMIZE
+  std::cout << "Optimizing..." << std::endl;
+  LevenbergMarquardtParams parameters;
   parameters.relativeErrorTol = 1e-5;
   parameters.maxIterations = 100;
   parameters.setVerbosity("ERROR");
-  GaussNewtonOptimizer optimizer(graph, initialEstimate, parameters);
-  Values result = optimizer.optimize();
+  Values result = LevenbergMarquardtOptimizer(graph, initialEstimate, parameters).optimize();
 
-  return std::make_tuple(graph, initialEstimate, result, stateDataSet);
+  // Create a Marginals object for the main solve (no computations of marginals yet)
+  Marginals marginals(graph, result);
+
+  return std::make_tuple(graph, initialEstimate, result, stateDataSet, marginals);
+}
+
+// Interpolate for in-between states not within the factor graph
+std::tuple<Values, std::shared_ptr<CovarianceMap>>
+interpolateAfterSolve(
+  const NonlinearFactorGraph& graphMainSolve,
+  const Values& resultsMainSolve,
+  const StateDataSet& mainSolveStateDataSet,
+  const std::vector<std::pair<double, Vector6>>& inputs,
+  const FileUtils::ConfigParams& params) {
+
+  std::cout << "Interpolating poses and velocities after optimization..." << std::endl;
+
+  // Add all non-main-solve poses into the queryStateDataSet
+  StateDataSet queryStateDataSet;
+  // size_t numPoses_largest_multiple = (numPoses - 1) / poseInterval * poseInterval + 1;
+  for (size_t poseID = 0; poseID < numPoses; ++poseID) {
+    if (poseID % poseInterval != 0) {  // not a main solve pose
+      auto queryTime = inputs[poseID].first;
+      queryStateDataSet.insert(StateData(Symbol('x', poseID), Symbol('v', poseID), queryTime));
+    }
+  }
+  auto covarianceMap = params.interpCovariance ? std::make_shared<CovarianceMap>() : nullptr;
+
+  // Interpolate
+  Values resultsAll = updateInterpValues<Pose3>(graphMainSolve, resultsMainSolve, mainSolveStateDataSet,
+                                       queryStateDataSet, WNOAPSD, covarianceMap);
+
+  std::cout << "Interpolated " << resultsAll.size() << " poses and velocities." << std::endl;
+  return std::make_tuple(resultsAll, covarianceMap);
 }
 
 // --------------------------------------------------------------------------
 int main(int argc, char** argv) {
-
-  // Parse command line arguments
-  auto parseBool = [](const std::string& s) {
-    if (s == "true" || s == "1") return true;
-    if (s == "false" || s == "0") return false;
-    std::cerr << "Invalid boolean value: '" << s << "'. Use true/false or 1/0." << std::endl;
-    std::abort();
-  };
-
-  auto getArg = [&](int& i) -> std::string {
-    if (++i >= argc) {
-      std::cerr << argv[i - 1] << " requires an argument." << std::endl;
-      exit(1);
-    }
-    return argv[i];
-  };
-
-  std::unordered_map<std::string, std::function<void(int&)>> handlers = {
-    {"--use-wnoa-factor",     [&](int& i) { USE_WNOA_FACTOR      = parseBool(getArg(i)); }},
-    {"--use-odom-factor",     [&](int& i) { USE_ODOM_FACTOR      = parseBool(getArg(i)); }},
-    {"--use-measurements",    [&](int& i) { USE_MEASUREMENTS     = parseBool(getArg(i)); }},
-    {"--pose-interval",       [&](int& i) { POSE_INTERVAL_MEAS   = std::stoul(getArg(i)); }},
-    {"--interp-covariance",   [&](int& i) { INTERP_COVARIANCE    = parseBool(getArg(i)); }},
-    {"--init-at-gt",          [&](int& i) { INIT_AT_GT           = parseBool(getArg(i)); }},
-    {"--max-poses",           [&](int& i) { MAX_POSES            = std::stoul(getArg(i));}},
-    {"--help",                [&](int&) {
-      std::cout << "Usage: " << argv[0] << " [options]\n"
-                << "Options:\n"
-                << "  --use-wnoa-factor <true|false>     Use WNOA factor for motion prior (default: true).\n"
-                << "  --use-odom-factor <true|false>     Use odometry factor (default: false).\n"
-                << "  --use-measurements <true|false>    Use measurements (default: true).\n"
-                << "  --pose-interval <N>                Measurements for every Nth pose is added to the factor graph (default: 1).\n"
-                << "  --interp-covariance <true|false>   Compute covariance of interpolated poses and velocities (default: false).\n"
-                << "  --max-poses <number>               Max number of poses to process (default: 1000).\n"
-                << "  --init-at-gt <true|false>          True: initialize at groundtruth. False (default): initialize at odom rollout.\n"
-                << "  --help, -h                         Show this help message.\n";
-      exit(0);
-    }},
-    {"-h", [&](int& i) { handlers["--help"](i); }}
-  };
-
-  for (int i = 1; i < argc; ++i) {
-    std::string arg(argv[i]);
-    if (handlers.count(arg)) {
-      handlers[arg](i);  // handler modifies `i` if it consumes an extra argument
-    } else {
-      std::cerr << "Unknown argument: " << arg << "\nUse --help for usage information." << std::endl;
-      return 1;
-    }
-  }
-
-    std::string filename_suffix = std::string("") +
-      (USE_WNOA_FACTOR ? "_with_wnoa" : "_no_wnoa") +
-      (USE_ODOM_FACTOR ? "_with_odom" : "_no_odom") +
-      (USE_MEASUREMENTS ? "_with_meas" : "_no_meas") +
-      (INIT_AT_GT ? "_gt_init" : "_odom_init") +
-      "_pose_interval_" + std::to_string(POSE_INTERVAL_MEAS) + "_max_pose_" + std::to_string(MAX_POSES);
-  std::string output_file_poses = "../results/starry_night_results_poses" + filename_suffix;
-  std::string output_file_poses_dr = "../results/starry_night_results_poses_dr" + filename_suffix;
-  std::string output_file_landmarks = "../results/starry_night_results_landmarks" + filename_suffix;
-  std::string output_file_marginals = "../results/starry_night_results_marginals" + filename_suffix;
-  std::string output_file_groundtruth = "../results/starry_night_groundtruth" + filename_suffix;
+  
+  // Load configuration file and output filename from command line
+  auto [config_filename, output_filename] = parseCommandLine(argc, argv);
+  FileUtils fileUtils(config_filename, output_filename);
+  auto params = fileUtils.getParams();
 
   // Load inputs, metadata, ground truth poses and landmarks, and measurements
-  std::vector<TimedInput> inputs;
-  FileUtils::readInputs(inputs);
-  std::cout << "Loaded " << inputs.size() << " inputs." << std::endl;
-  const auto [Cal, T_cv, odomNoise, stereoNoise] = FileUtils::getMetadata();
-  std::cout << "Transform from camera to vehicle frame: " << T_cv << std::endl;
-  std::cout << "Camera calibration: " << *Cal << std::endl;
-  std::cout << "Odometry noise: " << odomNoise->sigmas() << std::endl;
-  std::cout << "Stereo noise: " << stereoNoise->sigmas() << std::endl;
-  std::cout << "Loaded stereo camera calibration and noise params." << std::endl;
-  std::vector<Pose3> gtPoses;
-  std::vector<Point3> gtLandmarks;
-  FileUtils::readGroundTruth(gtPoses, gtLandmarks);
-  std::cout << "Loaded " << gtPoses.size() << " ground truth poses and " << gtLandmarks.size() << " landmarks." << std::endl;
-  std::vector<MeasTriple> measTripleVector;
-  FileUtils::readMeasurements(measTripleVector, gtLandmarks.size());
-  std::cout << "Loaded " << measTripleVector.size() << " range measurements." << std::endl;
+  auto [inputs, gtPoses, gtLandmarks, Cal, T_cv, odomNoise, stereoNoise, measTripleVector] = fileUtils.loadAllData();
 
-  numPoses = std::min(inputs.size(), MAX_POSES);
+  numPoses = std::min(inputs.size(), params.maxPoses);
   numLandmarks = gtLandmarks.size();
-  auto [graph, initialEstimate, result, stateDataSet] = optimize(inputs, measTripleVector, gtPoses, gtLandmarks, Cal, T_cv, odomNoise, stereoNoise, true);
 
-  // calculate marginal covariances
   std::cout.precision(3);
-  Marginals marginals(graph, result);
 
-  // Test out interpolation after optimization
-  if (USE_WNOA_FACTOR && POSE_INTERVAL_MEAS > 1) {
-    // Optimize again without adding intermediate poses into the factor graph
-    auto [graph_small, initialEstimate_small, result_small, stateDataSet_small] = optimize(inputs, measTripleVector, gtPoses, gtLandmarks, Cal, T_cv, odomNoise, stereoNoise, false);
-
-    // We want to interpolate for the in-between states not within the factor graph
-    Interpolator<Pose3> interpolator(WNOAPSD);
-    std::cout << "Interpolating poses and velocities after optimization..." << std::endl;
-
-    // Add all non-main-solve poses into the queryKeyMap
-    StateDataSet queryStateDataSet;
-    // size_t numPoses_largest_multiple = (numPoses - 1) / POSE_INTERVAL_MEAS * POSE_INTERVAL_MEAS + 1;
-    for (size_t poseID = 0; poseID < numPoses; ++poseID) {
-      if (poseID % POSE_INTERVAL_MEAS != 0) {  // not a main solve pose
-        auto queryTime = inputs[poseID].first;
-        queryStateDataSet.insert(StateData(Symbol('x', poseID), Symbol('v', poseID), queryTime));
-      }
-    }
-    auto covarianceMap = INTERP_COVARIANCE ? std::make_shared<CovarianceMap>() : nullptr;
-    Values interpolatedValues = interpolator.interpolatePosesAndVelocities(graph_small, result_small, stateDataSet_small, queryStateDataSet, covarianceMap);
-
-    // Add the interpolated poses and velocities to the result
-    Values results_all = result_small;
-    for (const auto& [key, value] : interpolatedValues) {
-      results_all.insert(key, value);
-    }
-
-    std::cout << "Interpolated " << interpolatedValues.size() << " poses and velocities." << std::endl;
-
-    FileUtils::savePosesToFile(results_all, numPoses, output_file_poses + "_interpolated", 1);
-    if (INTERP_COVARIANCE) {
-      Marginals marginals_small(graph_small, results_all);
-      std::cout << "Constructed marginals for main-solve component of interpolation." << std::endl;
-      FileUtils::saveMarginalsToFile(marginals_small, numPoses, output_file_marginals + "_interpolated", 1, covarianceMap);
-    }
+  // Optimize the main-solve factor graph
+  auto [graph, initialEstimate, result, stateDataSet, marginals] =
+   optimize(inputs, measTripleVector, gtPoses, gtLandmarks, Cal, T_cv, odomNoise, stereoNoise, params);
+  
+  // Interpolate after the main solve if enabled
+  std::shared_ptr<CovarianceMap> covarianceMap;
+  if (params.interpAfterSolve) {
+    std::tie(result, covarianceMap) = interpolateAfterSolve(graph, result, stateDataSet, inputs, params);
   }
 
-  // Write to a .dot file
-  graph.saveGraph("graph.dot", result);
-  writeG2o(graph, initialEstimate, "starry_night_initial.g2o");
-  writeG2o(graph, result, "starry_night_optimized.g2o");
-
-  // Save results to files
-  std::cout << "Saving results to files..." << std::endl;
-  FileUtils::savePosesToFile(result, numPoses, output_file_poses);
-  FileUtils::savePosesToFile(initialEstimate, numPoses, output_file_poses_dr);
-  FileUtils::saveLandmarksToFile(result, numLandmarks, output_file_landmarks);
-  FileUtils::saveMarginalsToFile(marginals, numPoses, output_file_marginals);
-  // Save the ground truth poses to a file
+  // Also package groundtruth poses and velocities for saving to file
   Values groundtruth;
   for (size_t poseID = 0; poseID < numPoses; ++poseID) {
     groundtruth.insert(Symbol('x', poseID), gtPoses[poseID]);
+    groundtruth.insert(Symbol('v', poseID), inputs[poseID].second);
   }
-  FileUtils::savePosesToFile(groundtruth, numPoses, output_file_groundtruth);
+  // Save results to files
+  fileUtils.saveAllResultsToFile(
+    numPoses, numLandmarks, graph, initialEstimate, result, marginals, covarianceMap, groundtruth, poseInterval);
 
   exit(0);
 }

@@ -538,30 +538,31 @@ Interpolator<PoseType>::computeJointMarginals(
     // Method 1: compute JointMarginal for each interval separately
     // faster if there are not too many intervals
     // ----------------------------------
-    // JointMarginal mainSolveMarginal =
-    // marginals->jointMarginalCovariance(boundaryKeyVector);
-    // // avoid using JointMarginal.fullMatrix() as it returns covariance
-    // // in alphabetical order of the keys...
-    // auto mainSolveMarginalMatrix =
-    //   std::make_shared<Matrix>(constructMatrixFromJointMarginal(
-    //   mainSolveMarginal, boundaryKeyVector, dim));
-    // intervalJointMarginals[stateDataBorders] = mainSolveMarginalMatrix;
+    JointMarginal mainSolveMarginal =
+    marginals->jointMarginalCovariance(boundaryKeyVector);
+    // avoid using JointMarginal.fullMatrix() as it returns covariance
+    // in alphabetical order of the keys...
+    auto mainSolveMarginalMatrix =
+      std::make_shared<Matrix>(constructMatrixFromJointMarginal(
+      mainSolveMarginal, boundaryKeyVector, dim));
+    intervalJointMarginals[stateDataBorders] = mainSolveMarginalMatrix;
     // ----------------------------------
   }
 
   // Method 2: compute JointMarginal for all boundary keys at once
   // faster if there are many intervals with shared boundary keys
+  // but inverting the batch info not be well-conditioned for large graphs
   // ----------------------------------
-  JointMarginal allBoundaryMarginal = marginals->jointMarginalCovariance(
-      KeyVector(allBoundaryKeys.begin(), allBoundaryKeys.end()));
+  // JointMarginal allBoundaryMarginal = marginals->jointMarginalCovariance(
+  //     KeyVector(allBoundaryKeys.begin(), allBoundaryKeys.end()));
 
-  for (const auto& [stateDataBorders, stateDataInterpVec] : queryBuckets) {
-    KeyVector boundaryKeyVector = formBoundaryKeyVector(stateDataBorders);
-    auto mainSolveMarginalMatrix =
-        std::make_shared<Matrix>(constructMatrixFromJointMarginal(
-            allBoundaryMarginal, boundaryKeyVector, dim));
-    intervalJointMarginals[stateDataBorders] = mainSolveMarginalMatrix;
-  }
+  // for (const auto& [stateDataBorders, stateDataInterpVec] : queryBuckets) {
+  //   KeyVector boundaryKeyVector = formBoundaryKeyVector(stateDataBorders);
+  //   auto mainSolveMarginalMatrix =
+  //       std::make_shared<Matrix>(constructMatrixFromJointMarginal(
+  //           allBoundaryMarginal, boundaryKeyVector, dim));
+  //   intervalJointMarginals[stateDataBorders] = mainSolveMarginalMatrix;
+  // }
   // ----------------------------------
 
   return intervalJointMarginals;
