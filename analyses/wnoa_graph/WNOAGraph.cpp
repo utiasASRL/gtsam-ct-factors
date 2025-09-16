@@ -130,6 +130,14 @@ void runInterpExample(InterpExampleParams& p) {
       chrono::duration_cast<chrono::microseconds>(end - start).count();
   cout << "Graph Conversion Time Cached: " << T_interp_graph_wnoa << " (micro-s)" << endl;
 
+  // Print size of each graph
+  cout << "Number of factors in original graph: " << graph.size() << endl;
+  cout << "Number of factors in wrapper graph: " << graph_interp.size() << endl;
+  cout << "Number of factors in cached graph: " << graph_wnoa.size() << endl;
+  cout << "Number of variables in original graph: " << values_init.size() << endl;
+  cout << "Number of variables in wrapper graph: " << values_interp_init.size() << endl;
+  cout << "Number of variables in cached graph: " << values_interp_init.size() << endl;
+
   // Timing test for linearization of both graphs
   start = chrono::high_resolution_clock::now();
   for(unsigned int i = 0; i < p.n_runs; i++)
@@ -227,7 +235,7 @@ void runInterpExample(InterpExampleParams& p) {
 
   // set up optimizer
   LevenbergMarquardtParams params;
-  params.setVerbosityLM("SILENT");
+  params.setVerbosityLM("SUMMARY");
 
   // run optimization on original graph
   start = chrono::high_resolution_clock::now();
