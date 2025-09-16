@@ -73,14 +73,8 @@ class WNOAInterpFactor : public NoiseModelFactor {
 
  struct PassedInterpData {
     Values values;
-
-    // Flat vector of Jacobians, pre-allocated once
-    std::vector<Matrix> jacobians;
-
-    // Precomputed mapping: (inner_index, outer_index) -> jacobians vector index
-    std::vector<std::array<size_t, 4>> inner_to_outer_indices;
-
-    std::unordered_map<StateData, Matrix2N> condCovs;
+    unordered_map<Key, unordered_map<Key, Matrix>> jacobians;
+    unordered_map<StateData, Matrix2N> condCovs;
   };
 
 
