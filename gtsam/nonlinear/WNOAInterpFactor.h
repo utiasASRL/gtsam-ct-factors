@@ -13,7 +13,8 @@
 #include <gtsam/nonlinear/NonlinearFactor.h>
 #include <gtsam/nonlinear/StateData.h>
 #include <gtsam/nonlinear/Values.h>
-#include <gtsam/nonlinear/WNOAFactorGraph.h> // Ensure this header defines WNOAFactorGraph
+#include <gtsam/nonlinear/WNOAFactorGraph.h>
+#include <gtsam/base/timing.h>
 
 #include <algorithm>
 #include <stdexcept>
@@ -335,14 +336,20 @@ class WNOAInterpFactor : public NoiseModelFactor {
       OptionalMatrixVecType H_inner = nullptr,
       unordered_map<StateData, Matrix2N>* InterpCondCovs = nullptr,
       PassedInterpData* passedInterpData = nullptr) const {
+    // Top-level timing for entire function
+    gttic(WNOAInterpFactor_computeInterpolatedError);
 
     // Define mapping from interpolated keys to interpolation jacobians
     // Nested Key: map[interp key][estimated key] = Jac
+    gttic(WNOAInterpFactor_computeInterpolatedError_set_up_vars);
     unordered_map<Key, unordered_map<Key, Matrix>> interpJacobiansLocal;
     Values valuesInterpLocal;
 
     unordered_map<Key, unordered_map<Key, Matrix>>* InterpJacobians = nullptr;
     Values* values_interp = nullptr;
+    gttoc(WNOAInterpFactor_computeInterpolatedError_set_up_vars);
+
+    gttic(WNOAInterpFactor_computeInterpolatedError_interpolate_values);
 
     if (passedInterpData) {
       values_interp = &passedInterpData->values;
@@ -361,6 +368,10 @@ class WNOAInterpFactor : public NoiseModelFactor {
         values_interp = &valuesInterpLocal;
       }
     }
+
+    gttoc(WNOAInterpFactor_computeInterpolatedError_interpolate_values);
+
+    gttic(WNOAInterpFactor_computeInterpolatedError_compute_error);
 
     // construct values for inner factor
     Values values_inner;
@@ -392,6 +403,9 @@ class WNOAInterpFactor : public NoiseModelFactor {
     } else {
       error = inner_factor_->unwhitenedError(values_inner);
     }
+
+    gttoc(WNOAInterpFactor_computeInterpolatedError_compute_error);
+    gttic(WNOAInterpFactor_computeInterpolatedError_compute_jacobians);
 
     // compute Jacobians for outer keys
     if (H) {
@@ -432,6 +446,8 @@ class WNOAInterpFactor : public NoiseModelFactor {
         }
       }
     }
+
+    gttoc(WNOAInterpFactor_computeInterpolatedError_compute_jacobians);
 
     return error;
   }

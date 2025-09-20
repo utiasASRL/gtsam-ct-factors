@@ -1,3 +1,8 @@
+// Enable GTSAM timing instrumentation for this translation unit (must precede including timing.h)
+#ifndef ENABLE_TIMING
+#define ENABLE_TIMING
+#endif
+
 #include <gtsam/nonlinear/Interpolator.h>
 
 #include <chrono>
@@ -7,6 +12,7 @@
 #include <gtsam/nonlinear/WNOAFactorGraph.h>
 #include <gtsam/nonlinear/LevenbergMarquardtOptimizer.h>
 #include <gtsam/nonlinear/WNOALevenbergMarquardtOptimizer.h>
+#include <gtsam/base/timing.h>
 
 using namespace std;
 using namespace gtsam;
@@ -113,169 +119,162 @@ void runInterpExample(InterpExampleParams& p) {
 
 
   // generate interpolated graph
-  start = chrono::high_resolution_clock::now();
-  NonlinearFactorGraph graph_interp;
-  graph_interp = interpolateFactorGraph<Pose2>(
-    graph, estimated_states, interpolated_states, p.Q_wnoa, p.fixed_noise);
-  end = chrono::high_resolution_clock::now();
-  auto T_interp_graph =
-      chrono::duration_cast<chrono::microseconds>(end - start).count();
-  cout << "Graph Conversion Time Wrapper: " << T_interp_graph << " (micro-s)" << endl;
+  // start = chrono::high_resolution_clock::now();
+  // NonlinearFactorGraph graph_interp;
+  // graph_interp = interpolateFactorGraph<Pose2>(
+  //   graph, estimated_states, interpolated_states, p.Q_wnoa, p.fixed_noise);
+  // end = chrono::high_resolution_clock::now();
+   //auto T_interp_graph =
+   //    chrono::duration_cast<chrono::microseconds>(end - start).count();
+   //cout << "Graph Conversion Time Wrapper: " << T_interp_graph << " (micro-s)" << endl;
 
-  start = chrono::high_resolution_clock::now();
+  // generate WNOA graph
+  // start = chrono::high_resolution_clock::now();
   WNOAFactorGraph<Pose2> graph_wnoa = interpolateWNOAFactorGraph<Pose2>(
     graph, estimated_states, interpolated_states, p.Q_wnoa, p.fixed_noise);
-  end = chrono::high_resolution_clock::now();
-  auto T_interp_graph_wnoa =
-      chrono::duration_cast<chrono::microseconds>(end - start).count();
-  cout << "Graph Conversion Time Cached: " << T_interp_graph_wnoa << " (micro-s)" << endl;
-
-  // Print size of each graph
-  cout << "Number of factors in original graph: " << graph.size() << endl;
-  cout << "Number of factors in wrapper graph: " << graph_interp.size() << endl;
-  cout << "Number of factors in cached graph: " << graph_wnoa.size() << endl;
-  cout << "Number of variables in original graph: " << values_init.size() << endl;
-  cout << "Number of variables in wrapper graph: " << values_interp_init.size() << endl;
-  cout << "Number of variables in cached graph: " << values_interp_init.size() << endl;
+  // end = chrono::high_resolution_clock::now();
+  // auto T_interp_graph_wnoa =
+  //     chrono::duration_cast<chrono::microseconds>(end - start).count();
+  // cout << "Graph Conversion Time Cached: " << T_interp_graph_wnoa << " (micro-s)" << endl;
 
   // Timing test for linearization of both graphs
-  start = chrono::high_resolution_clock::now();
-  for(unsigned int i = 0; i < p.n_runs; i++)
-  {
-    graph.linearize(values_init);
-  }
-  end = chrono::high_resolution_clock::now();
-  auto T_linearize_original =
-      chrono::duration_cast<chrono::microseconds>(end - start).count()/p.n_runs;
-  cout << "Original FG Linearization Time: " << T_linearize_original << " (micro-s)" << endl;
-
-
-  start = chrono::high_resolution_clock::now();
-  for(unsigned int i = 0; i < p.n_runs; i++)
-  {
-    graph_interp.linearize(values_interp_init);
-  }
-  end = chrono::high_resolution_clock::now();
-  auto T_linearize_interp =
-      chrono::duration_cast<chrono::microseconds>(end - start).count()/p.n_runs;
-  cout << "Wrapper FG Linearization Time: " << T_linearize_interp << " (micro-s)" << endl;
-
-  start = chrono::high_resolution_clock::now();
-  for(unsigned int i = 0; i < p.n_runs; i++)
-  {
-    graph_wnoa.linearize(values_interp_init);
-  }
-  end = chrono::high_resolution_clock::now();
-  auto T_linearize_wnoa =
-      chrono::duration_cast<chrono::microseconds>(end - start).count()/p.n_runs;
-  cout << "Cached FG Linearization Time: " << T_linearize_wnoa << " (micro-s)" << endl;
-
-
-
-  auto linear_graph_interp = graph_interp.linearize(values_interp_init);
-  auto linear_graph_wnoa = graph_wnoa.linearize(values_interp_init);
-
-  // check if both graphs are identical
-  std::cout << "Checking if both linearized graphs are identical..." << std::endl;
-  if(linear_graph_interp->equals(*linear_graph_wnoa, 1e-9))
-  {
-    std::cout << "Both linearized graphs are identical!" << std::endl;
-  }
-  else
-  {
-    std::cout << "Graphs are NOT identical!" << std::endl;
-  }
-
-  // Timing test for error of both graphs
-
-
-  start = chrono::high_resolution_clock::now();
-  for(unsigned int i = 0; i < p.n_runs; i++)
-  {
-    graph.error(values_init);
-  }
-  end = chrono::high_resolution_clock::now();
-  auto T_error_original =
-      chrono::duration_cast<chrono::microseconds>(end - start).count()/p.n_runs;
-  cout << "Original FG Error Time: " << T_error_original << " (micro-s)" << endl;
-
-  start = chrono::high_resolution_clock::now();
-  for(unsigned int i = 0; i < p.n_runs; i++)
-  {
-    graph_interp.error(values_interp_init);
-  }
-  end = chrono::high_resolution_clock::now();
-  auto T_error_interp =
-      chrono::duration_cast<chrono::microseconds>(end - start).count()/p.n_runs;
-  cout << "Wrapper FG Error Time: " << T_error_interp << " (micro-s)" << endl;   
-
-  start = chrono::high_resolution_clock::now();
-  for(unsigned int i = 0; i < p.n_runs; i++)
-  {
-    graph_wnoa.error(values_interp_init);
-  }
-  end = chrono::high_resolution_clock::now();
-  auto T_error_wnoa =
-      chrono::duration_cast<chrono::microseconds>(end - start).count()/p.n_runs;
-  cout << "Cached FG Error Time: " << T_error_wnoa << " (micro-s)" << endl;
-
-  // Check if the returned error is the same
-  double error_interp = graph_interp.error(values_interp_init);
-  double error_wnoa = graph_wnoa.error(values_interp_init);
-  std::cout << "Checking if both errors are identical..." << std::endl;
-  if(fabs(error_interp - error_wnoa) < 1e-9)
-  {
-    std::cout << "Both errors are identical!" << std::endl;
-  }
-  else
-  {
-    std::cout << "Errors are NOT identical!" << std::endl;
-    std::cout << "Error Interp: " << error_interp << " Error WNOA: " << error_wnoa << std::endl;
-  }
+  // start = chrono::high_resolution_clock::now();
+  // for(unsigned int i = 0; i < p.n_runs; i++)
+  // {
+  //   graph.linearize(values_init);
+  // }
+  // end = chrono::high_resolution_clock::now();
+  // auto T_linearize_original =
+  //     chrono::duration_cast<chrono::microseconds>(end - start).count()/p.n_runs;
+  // cout << "Original FG Linearization Time: " << T_linearize_original << " (micro-s)" << endl;
+// 
+// 
+  // start = chrono::high_resolution_clock::now();
+  // for(unsigned int i = 0; i < p.n_runs; i++)
+  // {
+  //   graph_interp.linearize(values_interp_init);
+  // }
+  // end = chrono::high_resolution_clock::now();
+  // auto T_linearize_interp =
+  //     chrono::duration_cast<chrono::microseconds>(end - start).count()/p.n_runs;
+  // cout << "Wrapper FG Linearization Time: " << T_linearize_interp << " (micro-s)" << endl;
+// 
+  // start = chrono::high_resolution_clock::now();
+  // for(unsigned int i = 0; i < p.n_runs; i++)
+  // {
+  //   graph_wnoa.linearize(values_interp_init);
+  // }
+  // end = chrono::high_resolution_clock::now();
+  // auto T_linearize_wnoa =
+  //     chrono::duration_cast<chrono::microseconds>(end - start).count()/p.n_runs;
+  // cout << "Cached FG Linearization Time: " << T_linearize_wnoa << " (micro-s)" << endl;
+// 
+// 
+// 
+  // auto linear_graph_interp = graph_interp.linearize(values_interp_init);
+  // auto linear_graph_wnoa = graph_wnoa.linearize(values_interp_init);
+// 
+  // // check if both graphs are identical
+  // std::cout << "Checking if both linearized graphs are identical..." << std::endl;
+  // if(linear_graph_interp->equals(*linear_graph_wnoa, 1e-9))
+  // {
+  //   std::cout << "Both linearized graphs are identical!" << std::endl;
+  // }
+  // else
+  // {
+  //   std::cout << "Graphs are NOT identical!" << std::endl;
+  // }
+// 
+  // // Timing test for error of both graphs
+// 
+// 
+  // start = chrono::high_resolution_clock::now();
+  // for(unsigned int i = 0; i < p.n_runs; i++)
+  // {
+  //   graph.error(values_init);
+  // }
+  // end = chrono::high_resolution_clock::now();
+  // auto T_error_original =
+  //     chrono::duration_cast<chrono::microseconds>(end - start).count()/p.n_runs;
+  // cout << "Original FG Error Time: " << T_error_original << " (micro-s)" << endl;
+// 
+  // start = chrono::high_resolution_clock::now();
+  // for(unsigned int i = 0; i < p.n_runs; i++)
+  // {
+  //   graph_interp.error(values_interp_init);
+  // }
+  // end = chrono::high_resolution_clock::now();
+  // auto T_error_interp =
+  //     chrono::duration_cast<chrono::microseconds>(end - start).count()/p.n_runs;
+  // cout << "Wrapper FG Error Time: " << T_error_interp << " (micro-s)" << endl;   
+// 
+  // start = chrono::high_resolution_clock::now();
+  // for(unsigned int i = 0; i < p.n_runs; i++)
+  // {
+  //   graph_wnoa.error(values_interp_init);
+  // }
+  // end = chrono::high_resolution_clock::now();
+  // auto T_error_wnoa =
+  //     chrono::duration_cast<chrono::microseconds>(end - start).count()/p.n_runs;
+  // cout << "Cached FG Error Time: " << T_error_wnoa << " (micro-s)" << endl;
+// 
+  // // Check if the returned error is the same
+  // double error_interp = graph_interp.error(values_interp_init);
+  // double error_wnoa = graph_wnoa.error(values_interp_init);
+  // std::cout << "Checking if both errors are identical..." << std::endl;
+  // if(fabs(error_interp - error_wnoa) < 1e-9)
+  // {
+  //   std::cout << "Both errors are identical!" << std::endl;
+  // }
+  // else
+  // {
+  //   std::cout << "Errors are NOT identical!" << std::endl;
+  //   std::cout << "Error Interp: " << error_interp << " Error WNOA: " << error_wnoa << std::endl;
+  // }
 
   // set up optimizer
   LevenbergMarquardtParams params;
-  params.setVerbosityLM("SUMMARY");
+  params.setVerbosityLM("SILENT");
 
   // run optimization on original graph
-  start = chrono::high_resolution_clock::now();
-  Values result_original;
-  for(unsigned int i = 0; i < p.n_runs; i++)
-  {
-    auto lm_opt_original = LevenbergMarquardtOptimizer(graph, values_init, params);
-    result_original = lm_opt_original.optimize();
-  }
-  end = chrono::high_resolution_clock::now();
-  auto T_solve_original =
-    chrono::duration_cast<chrono::microseconds>(end - start).count()/p.n_runs;
-  cout << "Original Graph Solve Time: " << T_solve_original << " micros" << endl;
+  // start = chrono::high_resolution_clock::now();
+   // Values result_original;
+   // for(unsigned int i = 0; i < p.n_runs; i++)
+   // {
+   //   auto lm_opt_original = LevenbergMarquardtOptimizer(graph, values_init, params);
+   //   result_original = lm_opt_original.optimize();
+   // }
+  // end = chrono::high_resolution_clock::now();
+  // auto T_solve_original =
+  //   chrono::duration_cast<chrono::microseconds>(end - start).count()/p.n_runs;
+  // cout << "Original Graph Solve Time: " << T_solve_original << " micros" << endl;
 
   // run optimization on interpolated version
-  start = chrono::high_resolution_clock::now();
-  Values result_interp;
-  for(unsigned int i = 0; i < p.n_runs; i++)
-  {
-    auto lm_opt_interp = LevenbergMarquardtOptimizer(graph_interp, values_interp_init, params);
-    result_interp = lm_opt_interp.optimize();
-  }
-  end = chrono::high_resolution_clock::now();
-  auto T_solve_interp =
-    chrono::duration_cast<chrono::microseconds>(end - start).count()/p.n_runs;
-  cout << "Wrapper Graph Solve Time: " << T_solve_interp << " micros" << endl;
+  // start = chrono::high_resolution_clock::now();
+  // Values result_interp;
+  // for(unsigned int i = 0; i < p.n_runs; i++)
+  // {
+  //   auto lm_opt_interp = LevenbergMarquardtOptimizer(graph_interp, values_interp_init, params);
+  //   result_interp = lm_opt_interp.optimize();
+  // }
+  // end = chrono::high_resolution_clock::now();
+  // auto T_solve_interp =
+  //   chrono::duration_cast<chrono::microseconds>(end - start).count()/p.n_runs;
+  // cout << "Wrapper Graph Solve Time: " << T_solve_interp << " micros" << endl;
   
   // Solve WNOA graph
-  start = chrono::high_resolution_clock::now();
-  Values result_wnoa;
-  for(unsigned int i = 0; i < p.n_runs; i++)
-  {
-    auto lm_opt_wnoa = WNOALevenbergMarquardtOptimizer<Pose2>(graph_wnoa, values_interp_init, params);
-    result_wnoa = lm_opt_wnoa.optimize();
-  }
-  end = chrono::high_resolution_clock::now();
-  auto T_solve_WNOA =
-    chrono::duration_cast<chrono::microseconds>(end - start).count()/p.n_runs;
-  cout << "Cached Graph Solve Time: " << T_solve_WNOA << " micros" << endl;
-
+  // start = chrono::high_resolution_clock::now();
+   Values result_wnoa;
+   for(unsigned int i = 0; i < p.n_runs; i++)
+   {
+     auto lm_opt_wnoa = WNOALevenbergMarquardtOptimizer<Pose2>(graph_wnoa, values_interp_init, params);
+     result_wnoa = lm_opt_wnoa.optimize();
+   }
+  // end = chrono::high_resolution_clock::now();
+  // auto T_solve_WNOA =
+  //   chrono::duration_cast<chrono::microseconds>(end - start).count()/p.n_runs;
+  // cout << "Cached Graph Solve Time: " << T_solve_WNOA << " micros" << endl;
+  tictoc_print();
 }
 
 int main(int argc, char* argv[]) {
