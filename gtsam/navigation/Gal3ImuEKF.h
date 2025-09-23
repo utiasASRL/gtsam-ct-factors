@@ -12,7 +12,22 @@
 /**
  * @file  Gal3ImuEKF.h
  * @brief Extended Kalman Filter for IMU-driven Gal3
+ * We use an Extended Kalman Filter on the Gal3 Lie group to propagate from one state to another.
+ * X_(k+1) = W*X*U
+ * where X(k) ∈ Gal3 follows format of
+ * [R, v, p;
+ * 0, 1, dt;
+ * 0, 0, 1]
  *
+ * W is the gravity matrix that transforms body to world frame where
+ * W ∈ Gal3= [I_3, g * dt, -0.5*g*dt^2
+ * 0, 1, -dt
+ * 0, 0, 1]
+ *
+ * U ∈ Gal3 is the control matrix where
+ * U = [dR, f_b*dt, f_b*0.5*dt^2
+ * 0, 1, dt
+ * 0, 0, 1]
  * @date  September 2025
  * @authors Scott Baker
  */
@@ -50,12 +65,12 @@ class GTSAM_EXPORT Gal3ImuEKF : public LeftLinearEKF<Gal3> {
   /// 0, 0, 1]        0, 1, dt
   ///                 0, 0, 1]
   static Gal3 Gravity(const Vector3& n_gravity, double dt) {
-    return {Rot3(), 0.5*n_gravity*dt*dt, n_gravity*dt, dt};
+    return {Rot3(), -0.5*n_gravity*dt*dt, n_gravity*dt, -dt};
   }
 
   /// Calculate U from raw IMU (no gravity): body-frame increments
   static Gal3 IMU(const Vector3& omega_b, const Vector3& f_b, double dt) {
-    return {Rot3::Expmap(omega_b * dt), f_b * (0.5 * dt * dt), f_b * dt, 0.0};
+    return {Rot3::Expmap(omega_b * dt), f_b * (0.5 * dt * dt), f_b * dt, dt};
   }
 
   /**
