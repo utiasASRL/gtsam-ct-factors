@@ -50,6 +50,7 @@ namespace gtsam {
   class InvariantEKF : public LeftLinearEKF<G> {
   public:
     using Base = LeftLinearEKF<G>; ///< Base class type
+    static constexpr int Dim = Base::Dim;  ///< Compile-time dimension of G.
     using TangentVector = typename Base::TangentVector; ///< Tangent vector type
     /// Jacobian for group-specific operations like AdjointMap. Eigen::Matrix<double, Dim, Dim>.
     using Jacobian = typename Base::Jacobian;
@@ -63,6 +64,19 @@ namespace gtsam {
      * @param P0 Initial covariance in the tangent space at X0.
      */
     InvariantEKF(const G& X0, const Covariance& P0) : Base(X0, P0) {}
+
+    /**
+     * Dynamics with W=I.
+     * Returns φ(X) · U, and optional Jacobian A = Ad_{U^{-1}} Φ,  Φ := dφ|_e.
+     */
+    static G Dynamics(const G& X, const G& U,
+                      OptionalJacobian<Dim, Dim> A = {}) {
+      if (A) {
+        const G U_inv = traits<G>::Inverse(U);
+        *A = traits<G>::AdjointMap(U_inv);
+      }
+      return traits<G>::Compose(X, U);
+    }
 
     // We hide state-dependent predict methods from LeftLinearEKF by only providing the
     // invariant predict methods below.
@@ -108,6 +122,31 @@ namespace gtsam {
       predict(U, Q); // Call the group composition predict
     }
 
+    /**
+     * General dynamics.
+     * Returns W · X · U, and optional Jacobian A = Ad_{U^{-1}}
+     */
+    static G Dynamics(const G& W, const G& X, const G& U,
+                      OptionalJacobian<Dim, Dim> A = {}) {
+      return traits<G>::Compose(W, Dynamics(X, U, A)); // A is independent of W
+    }
+
+    /**
+     * Predict step via left and right group composition (Left-Invariant):
+     *   X_{k+1} = W * X_k * U
+     *   P_{k+1} = Ad_{U^{-1}} P_k Ad_{U^{-1}}^T + Q
+     * where Ad_{U^{-1}} is the Adjoint map of U^{-1}.
+     *
+     * @param W Lie group element representing the motion increment in world frame.
+     * @param U Lie group element representing the motion increment in body frame.
+     * @param Q Process noise covariance.
+     */
+    void predict(const G& W, const G& U, const Covariance& Q) {
+      predict(U, Q); // First apply U
+      // Then apply W on the left
+      this->X_ = traits<G>::Compose(W, this->X_);
+    }
+        
   }; // InvariantEKF
 
 } // namespace gtsam
