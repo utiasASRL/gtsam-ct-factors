@@ -17,13 +17,14 @@
  * @author Ivan Dario Jimenez
  */
 
+#include <gtsam/config.h>
 #if GTSAM_USE_BOOST_FEATURES
 #include <gtsam_unstable/linear/QPSParser.h>
 #endif
-#include <gtsam_unstable/linear/QPSolver.h>
 
 #include <gtsam/base/Testable.h>
 #include <gtsam/inference/Symbol.h>
+#include <gtsam_unstable/linear/QPSolver.h>
 
 #include <CppUnitLite/TestHarness.h>
 
@@ -40,19 +41,21 @@ QP createTestCase() {
 
   // Objective functions x1^2 - x1*x2 + x2^2 - 3*x1 + 5
   // Note the Hessian encodes:
-  //        0.5*x1'*G11*x1 + x1'*G12*x2 + 0.5*x2'*G22*x2 - x1'*g1 - x2'*g2 + 0.5*f
+  //        0.5*x1'*G11*x1 + x1'*G12*x2 + 0.5*x2'*G22*x2 - x1'*g1 - x2'*g2 +
+  //        0.5*f
   // Hence, we have G11=2, G12 = -1, g1 = +3, G22 = 2, g2 = 0, f = 10
-  //TODO:  THIS TEST MIGHT BE WRONG : the last parameter  might be 5 instead of 10 because the form of the equation
+  // TODO:  THIS TEST MIGHT BE WRONG : the last parameter  might be 5 instead of
+  // 10 because the form of the equation
   // Should be 0.5x'Gx + gx + f : Nocedal 449
   qp.cost.push_back(HessianFactor(X(1), X(2), 2.0 * I_1x1, -I_1x1, 3.0 * I_1x1,
                                   2.0 * I_1x1, Z_1x1, 10.0));
 
   // Inequality constraints
   qp.inequalities.add(X(1), I_1x1, X(2), I_1x1, 2,
-                      0); // x1 + x2 <= 2 --> x1 + x2 -2 <= 0, --> b=2
-  qp.inequalities.add(X(1), -I_1x1, 0, 1);  // -x1     <= 0
-  qp.inequalities.add(X(2), -I_1x1, 0, 2);  //    -x2  <= 0
-  qp.inequalities.add(X(1), I_1x1, 1.5, 3); // x1      <= 3/2
+                      0);  // x1 + x2 <= 2 --> x1 + x2 -2 <= 0, --> b=2
+  qp.inequalities.add(X(1), -I_1x1, 0, 1);   // -x1     <= 0
+  qp.inequalities.add(X(2), -I_1x1, 0, 2);   //    -x2  <= 0
+  qp.inequalities.add(X(1), I_1x1, 1.5, 3);  // x1      <= 3/2
 
   return qp;
 }
@@ -96,7 +99,8 @@ QP createEqualityConstrainedTest() {
 
   // Objective functions x1^2 + x2^2
   // Note the Hessian encodes:
-  //        0.5*x1'*G11*x1 + x1'*G12*x2 + 0.5*x2'*G22*x2 - x1'*g1 - x2'*g2 + 0.5*f
+  //        0.5*x1'*G11*x1 + x1'*G12*x2 + 0.5*x2'*G22*x2 - x1'*g1 - x2'*g2 +
+  //        0.5*f
   // Hence, we have G11=2, G12 = 0, g1 = 0, G22 = 2, g2 = 0, f = 0
   qp.cost.push_back(HessianFactor(X(1), X(2), 2.0 * I_1x1, Z_1x1, Z_1x1,
                                   2.0 * I_1x1, Z_1x1, 0.0));
@@ -140,10 +144,10 @@ TEST(QPSolver, indentifyActiveConstraints) {
   auto workingSet =
       solver.identifyActiveConstraints(qp.inequalities, currentSolution);
 
-  CHECK(!workingSet.at(0)->active()); // inactive
-  CHECK(workingSet.at(1)->active());  // active
-  CHECK(workingSet.at(2)->active());  // active
-  CHECK(!workingSet.at(3)->active()); // inactive
+  CHECK(!workingSet.at(0)->active());  // inactive
+  CHECK(workingSet.at(1)->active());   // active
+  CHECK(workingSet.at(2)->active());   // active
+  CHECK(!workingSet.at(3)->active());  // inactive
 
   VectorValues solution = solver.buildWorkingGraph(workingSet).optimize();
   VectorValues expected;
@@ -223,11 +227,12 @@ pair<QP, QP> testParser(QPSParser parser) {
                                         -1.5 * kOne, 10.0 * I_1x1, 2.0 * kOne,
                                         8.0));
 
-  expected.inequalities.add(X1, -2.0 * I_1x1, X2, -I_1x1, -2, 0); // 2x + y >= 2
-  expected.inequalities.add(X1, -I_1x1, X2, 2.0 * I_1x1, 6, 1); // -x + 2y <= 6
-  expected.inequalities.add(X1, I_1x1, 20, 4);                  // x<= 20
-  expected.inequalities.add(X1, -I_1x1, 0, 2);                  // x >= 0
-  expected.inequalities.add(X2, -I_1x1, 0, 3);                  // y > = 0
+  expected.inequalities.add(X1, -2.0 * I_1x1, X2, -I_1x1, -2,
+                            0);                                  // 2x + y >= 2
+  expected.inequalities.add(X1, -I_1x1, X2, 2.0 * I_1x1, 6, 1);  // -x + 2y <= 6
+  expected.inequalities.add(X1, I_1x1, 20, 4);                   // x<= 20
+  expected.inequalities.add(X1, -I_1x1, 0, 2);                   // x >= 0
+  expected.inequalities.add(X2, -I_1x1, 0, 3);                   // y > = 0
   return {expected, exampleqp};
 }
 
@@ -298,15 +303,15 @@ TEST(QPSolver, HS52) {
   CHECK(assert_equal(5.32664756, error_actual, 1e-7))
 }
 
-TEST(QPSolver, HS268) { // This test needs an extra order of magnitude of
-                        // tolerance than the rest
+TEST(QPSolver, HS268) {  // This test needs an extra order of magnitude of
+                         // tolerance than the rest
   QP problem = QPSParser("HS268.QPS").Parse();
   VectorValues actual = QPSolver(problem).optimize().first;
   double error_actual = problem.cost.error(actual);
   CHECK(assert_equal(5.73107049e-07, error_actual, 1e-6))
 }
 
-TEST(QPSolver, QPTEST) { // REQUIRES Jacobian Fix
+TEST(QPSolver, QPTEST) {  // REQUIRES Jacobian Fix
   QP problem = QPSParser("QPTEST.QPS").Parse();
   VectorValues actual = QPSolver(problem).optimize().first;
   double error_actual = problem.cost.error(actual);
@@ -329,11 +334,11 @@ QP createTestMatlabQPEx() {
                                   2.0 * I_1x1, 6 * I_1x1, 1000.0));
 
   // Inequality constraints
-  qp.inequalities.add(X(1), I_1x1, X(2), I_1x1, 2, 0);      // x1 + x2 <= 2
-  qp.inequalities.add(X(1), -I_1x1, X(2), 2 * I_1x1, 2, 1); //-x1 + 2*x2 <=2
-  qp.inequalities.add(X(1), 2 * I_1x1, X(2), I_1x1, 3, 2);  // 2*x1 + x2 <=3
-  qp.inequalities.add(X(1), -I_1x1, 0, 3);                  // -x1      <= 0
-  qp.inequalities.add(X(2), -I_1x1, 0, 4);                  //      -x2 <= 0
+  qp.inequalities.add(X(1), I_1x1, X(2), I_1x1, 2, 0);       // x1 + x2 <= 2
+  qp.inequalities.add(X(1), -I_1x1, X(2), 2 * I_1x1, 2, 1);  //-x1 + 2*x2 <=2
+  qp.inequalities.add(X(1), 2 * I_1x1, X(2), I_1x1, 3, 2);   // 2*x1 + x2 <=3
+  qp.inequalities.add(X(1), -I_1x1, 0, 3);                   // -x1      <= 0
+  qp.inequalities.add(X(2), -I_1x1, 0, 4);                   //      -x2 <= 0
 
   return qp;
 }
