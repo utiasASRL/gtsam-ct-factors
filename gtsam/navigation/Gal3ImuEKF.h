@@ -55,14 +55,15 @@ class GTSAM_EXPORT Gal3ImuEKF : public InvariantEKF<Gal3> {
   Gal3ImuEKF(const Gal3& X0, const Covariance& P0,
              const std::shared_ptr<PreintegrationParams>& params);
 
-  /// Calculate W (gravity-only left composition, world-frame increments)
+  /// Calculate W (gravity left composition, world-frame increments)
   /// Gal3:
-  /// [R, v, p
-  /// 0, 1, t -> W = [I, g*dt, 1/2 * g * dt^2
-  /// 0, 0, 1]        0, 1, dt
-  ///                 0, 0, 1]
+  /// [R, v, p       [I, g*dt, 1/2 * g * dt^2
+  /// 0, 1, t -> W =  0, 1, 0
+  /// 0, 0, 1]        0, 0, 1]
+  /// This is the exact integration of gravity over a time dt
+  /// followed by undoing the shift in time by dt. We do that in U.
   static Gal3 Gravity(const Vector3& n_gravity, double dt) {
-    return {Rot3(), -0.5 * n_gravity * dt * dt, n_gravity * dt, -dt};
+    return {Rot3(), -0.5 * n_gravity * dt * dt, n_gravity * dt, 0.0};
   }
 
   /// Calculate U from raw IMU (no gravity): body-frame increments

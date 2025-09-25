@@ -42,7 +42,7 @@ static const Matrix10 I_10x10 = Matrix10::Identity();
 Rot3 R0 = Rot3::RzRyRx(0.1, -0.2, 0.3);
 Point3 p0(0.5, -0.4, 0.3);
 Vector3 v0(0.2, -0.1, 0.05);
-double t0 = 0.0;
+double t0 = 10.0;
 Gal3 X0(R0, p0, v0, t0);
 
 // Controls and parameters
@@ -231,11 +231,11 @@ TEST(Gal3ImuEKF, PositionUpdateSanity) {
 }
 
 /* ************************************************************************* */
-// Verify dynamics with a "null" automorphism to isolate W and U.
+// Verify dynamics W and U.
 TEST(Gal3ImuEKF, PredictWithWandU) {
   using namespace nontrivial_gal3_example;
 
-  double dt = 0.01;
+  double dt = 0.1;
 
   const Gal3 W = Gal3ImuEKF::Gravity(params->n_gravity, dt);
   const Gal3 U = Gal3ImuEKF::IMU(omega_b, f_b, dt);
@@ -247,6 +247,10 @@ TEST(Gal3ImuEKF, PredictWithWandU) {
   // New state: W*X0*U
   Gal3 X_expected = W * X0 * U;
   EXPECT(assert_equal(X_expected, X_predicted, 1e-12));
+
+  // Check times
+  EXPECT_DOUBLES_EQUAL(t0, X0.time(), 1e-12);
+  EXPECT_DOUBLES_EQUAL(t0 + dt, X_predicted.time(), 1e-12);
 
   // Expected: J = Ad_U^(-1)
   Matrix10 A_expected = U.inverse().AdjointMap();
@@ -268,19 +272,19 @@ TEST(Gal3ImuEKF, ComponentsMatchGamma) {
   const Gal3 U = Gal3ImuEKF::IMU(omega_b, f_b, dt);
 
   // 1. Check state time
-  EXPECT_DOUBLES_EQUAL(0.0, X.time(), 1e-12);
+  EXPECT_DOUBLES_EQUAL(t0, X.time(), 1e-12);
 
   // 2. Check W
   EXPECT(assert_equal(Rot3(), W.attitude(), 1e-9));
   EXPECT(assert_equal(Point3(-0.5 * g * dt * dt), W.position(), 1e-9));
   EXPECT(assert_equal(Vector3(g * dt), W.velocity(), 1e-9));
-  EXPECT_DOUBLES_EQUAL(-dt, W.time(), 1e-12);
+  EXPECT_DOUBLES_EQUAL(0.0, W.time(), 1e-12);
 
   // 3. Check U
   EXPECT(assert_equal(Rot3::Expmap(omega_b * dt), U.attitude(), 1e-9));
-  // Frank: Commenting out these two tests, as they are not expected to hold exactly
-  // EXPECT(assert_equal(Point3(0.5 * f_b * dt * dt), U.position(), 1e-9));
-  // EXPECT(assert_equal(Vector3(f_b * dt), U.velocity(), 1e-9));
+  // Frank: Commenting out these two tests, as they are not expected to hold
+  // exactly EXPECT(assert_equal(Point3(0.5 * f_b * dt * dt), U.position(),
+  // 1e-9)); EXPECT(assert_equal(Vector3(f_b * dt), U.velocity(), 1e-9));
   EXPECT_DOUBLES_EQUAL(dt, U.time(), 1e-12);
 }
 
@@ -303,8 +307,8 @@ TEST(Gal3ImuEKF, FormulationsMatchMatrixExponential) {
   xiN(9) = 1.0;
 
   // Compare W
-  // W is given by exp((G-N)*dt) = Expmap((xiG - xiN)*dt);
-  Gal3 W_expected = Gal3::Expmap((xiG - xiN) * dt);
+  // W is given by exp((G-N)*dt) exp(N*dt) 
+  Gal3 W_expected = Gal3::Expmap((xiG + xiN) * dt) * Gal3::Expmap(- xiN * dt);
   Gal3 W_actual = Gal3ImuEKF::Gravity(g, dt);
   EXPECT(assert_equal(W_expected, W_actual, 1e-9));
 
