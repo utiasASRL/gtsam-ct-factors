@@ -141,7 +141,7 @@ TEST(Gal3ImuEKF, PositionMeasurementJacobian) {
 // /* *************************************************************************
 // */ Sanity-check a single position update using updateWithVector. Verifies
 // delta_xi = K * innovation and covariance reduction in pos block.
-TEST(NavStateImuEKF, PositionUpdateSanity) {
+TEST(Gal3ImuEKF, PositionUpdateSanity) {
   using namespace nontrivial_gal3_example;
 
   // GIVEN an EKF with diagonal covariance (no cross-terms)
