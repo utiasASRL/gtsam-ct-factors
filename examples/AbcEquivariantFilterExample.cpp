@@ -255,7 +255,7 @@ void processDataWithEqF(EqFilter& filter, const std::vector<Data>& data_list,
     const Data& data = data_list[i];
 
     // Propagate filter with current input and time step
-    filter.propagation(data.u, data.dt);
+    filter.predict(data.u, data.dt);
 
     // Process all measurements
     for (const auto& y : data.y) {

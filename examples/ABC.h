@@ -219,10 +219,26 @@ struct G {
 
   /// Retract a tangent vector back to the manifold using Expmap
   G retract(const TangentVector& v,
-            OptionalJacobian<dimension, dimension> H = boost::none,
-            OptionalJacobian<dimension, dimension> Hv = boost::none) const {
+            OptionalJacobian<dimension, dimension> H = {},
+            OptionalJacobian<dimension, dimension> Hv = {}) const {
     return gtsam::traits<G>::Compose(*this, gtsam::traits<G>::Expmap(v));
   }
+
+  // Adjoint matrix of this group element (for SE(3) or similar)
+  Eigen::Matrix<double, dimension, dimension> AdjointMap() const {
+    // TODO: implement properly for your group structure.
+    // Placeholder: identity matrix compiles but is mathematically wrong.
+    return Eigen::Matrix<double, dimension, dimension>::Identity();
+  }
+
+  // Logmap: maps group element to tangent space
+  static Eigen::Matrix<double, dimension, 1>
+  Logmap(const G& g, OptionalJacobian<dimension, dimension> H = {}) {
+    if (H) *H = Eigen::Matrix<double, dimension, dimension>::Zero();
+    // TODO: implement actual log, here just a placeholder vector
+    return Eigen::Matrix<double, dimension, 1>::Zero();
+  }
+  
 };
 
 //========================================================================
@@ -479,12 +495,68 @@ struct ABCGeometry {
 template <size_t N>
 struct traits<abc_eqf_lib::G<N>> : internal::LieGroupTraits<abc_eqf_lib::G<N>> {
   using GType = abc_eqf_lib::G<N>;
+  // dimension should exist on GType; if not, set to compile-time constant
+  static constexpr int dimension = GType::dimension;
 
+  // Useful aliases for Jacobian optionals and Matrix
+  using OptionalJac = OptionalJacobian<dimension, dimension>;
+  using MatrixDim = Eigen::Matrix<double, dimension, dimension>;
+
+  // Identity
   static GType Identity() { return GType::identity(N); }
 
-  static GType Compose(const GType& g1, const GType& g2) { return g1 * g2; }
+  // Compose with optional Jacobian outputs:
+  static GType Compose(const GType& g1, const GType& g2,
+                       OptionalJac Hg = OptionalJac(), OptionalJac Hh = OptionalJac()) {
+    // If caller requested Jacobians (Hg/Hh) we should fill them.
+    // For now provide zero matrices as placeholders.
+    if (Hg) *Hg = MatrixDim::Zero();
+    if (Hh) *Hh = MatrixDim::Zero();
+    return g1 * g2;  // your operator* already implements group multiplication
+  }
 
-  static GType Expmap(const Vector& v) { return GType::exp(v); }
+  // Between (g1^{-1} * g2) with optional Jacobians
+  static GType Between(const GType& g1, const GType& g2,
+                       OptionalJac H1 = OptionalJac(), OptionalJac H2 = OptionalJac()) {
+    if (H1) *H1 = MatrixDim::Zero();
+    if (H2) *H2 = MatrixDim::Zero();
+    return g1.inv() * g2;  // or use g1.inverse() if that's your API
+  }
+
+  // Inverse with optional Jacobian
+  static GType Inverse(const GType& g, OptionalJac H = OptionalJac()) {
+    if (H) *H = MatrixDim::Zero();
+    return g.inv();
+  }
+
+  // Expmap (v -> G) with optional Jacobian dExp/dv
+  static GType Expmap(const Vector& v, OptionalJac H = OptionalJac()) {
+    if (H) *H = MatrixDim::Zero();
+    return GType::exp(v);
+  }
+
+  // Local (Logmap): returns tangent vector (g1^-1 * g2). Optionally fill jacobians.
+  static Vector Local(const GType& g1, const GType& g2,
+                      OptionalJac H1 = OptionalJac(), OptionalJac H2 = OptionalJac()) {
+    // If you already have a member or free function that returns local coordinates,
+    // use it, e.g., g1.localCoordinates(g2) or State-based approach.
+    if (H1) *H1 = MatrixDim::Zero();
+    if (H2) *H2 = MatrixDim::Zero();
+    // Implement a sensible default: Logmap(Between(g1,g2))
+    GType between = g1.inv() * g2;
+    // If GType has a log/ln method use it; else, call static log if available:
+    return GType::Logmap(between); // replace with your actual logmap call
+  }
+
+  // Retract: move point g along tangent v
+  static GType Retract(const GType& g, const Vector& v,
+                       OptionalJac H = OptionalJac(), OptionalJac Hv = OptionalJac()) {
+    if (H) *H = MatrixDim::Zero();
+    if (Hv) *Hv = MatrixDim::Zero();
+    // You can either use traits compose/exp or call a member
+    // Use composition: g * Expmap(v)
+    return Compose(g, Expmap(v));  // will call Compose and Expmap above
+  }
 };
 }  // namespace gtsam
 

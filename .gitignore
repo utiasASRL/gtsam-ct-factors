@@ -25,3 +25,4 @@ xcode/
 _build
 GEMINI.md
 doc/#*.lyx#
+/cmake-build-debug/

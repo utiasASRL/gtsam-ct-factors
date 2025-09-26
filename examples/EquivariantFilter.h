@@ -30,6 +30,8 @@
 #include <string>
 #include <vector>
 
+#include <gtsam/navigation/LieGroupEKF.h>
+
 // All implementations are wrapped in this namespace to avoid conflicts
 namespace gtsam {
 
@@ -186,7 +188,7 @@ class has_outputMatrixDt {
 
 /// Equivariant Filter (EqF) implementation
 template <typename G, typename M, typename Geometry>
-class EqF {
+class EqF : public LieGroupEKF<G> {
  private:
   G X_hat;                // Filter state
   Matrix Sigma;           // Error covariance
@@ -208,12 +210,12 @@ class EqF {
    */
   M stateEstimate() const;
 
-  /**
+   /**
    * Propagate the filter state
    * @param u Angular velocity measurement
    * @param dt Time step
    */
-  void propagation(const typename Geometry::Input& u, double dt);
+  void predict(const typename Geometry::Input& u, double dt);
 
   /**
    * Update the filter state with a measurement
@@ -237,8 +239,8 @@ class EqF {
  * Uses SelfAdjointSolver, completeOrthoganalDecomposition().pseudoInverse()
  */
 template <typename G, typename M, typename Geometry>
-EqF<G, M, Geometry>::EqF(const G& X0, const M& x0, const Matrix& Sigma, int m)
-    : X_hat(X0), Sigma(Sigma), xi_0(x0) {
+EqF<G, M, Geometry>::EqF(const G& X0, const M& x0, const Matrix& Sigma, int m) : LieGroupEKF<G>(X0, Sigma),
+    X_hat(X0), Sigma(Sigma), xi_0(x0) {
   if (Sigma.rows() != DOF || Sigma.cols() != DOF) {
     throw std::invalid_argument(
         "Initial covariance dimensions must match the degrees of freedom");
@@ -298,7 +300,7 @@ M EqF<G, M, Geometry>::stateEstimate() const {
  * Updated internal state and covariance
  */
 template <typename G, typename M, typename Geometry>
-void EqF<G, M, Geometry>::propagation(const typename Geometry::Input& u,
+void EqF<G, M, Geometry>::predict(const typename Geometry::Input& u,
                                       double dt) {
   M state_est = stateEstimate();            // General manifold
   Vector L = Geometry::lift(state_est, u);  // Lifted vector in tangent space
