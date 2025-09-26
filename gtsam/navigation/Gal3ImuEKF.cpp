@@ -43,10 +43,21 @@ Gal3 Gal3ImuEKF::Dynamics(const Vector3& n_gravity, const Gal3& X,
   }
 
   // Calculate W, phi, and U
-  const Gal3 W = Gravity(n_gravity, dt);
+  const Gal3 W = Gravity(n_gravity, dt, X.time());
   const Gal3 U = IMU(omega_b, f_b, dt);
 
-  return Base::Dynamics(W, X, U, A);
+  const Gal3 X_next = Base::Dynamics(W, X, U, A);
+  if (A) {
+    // Extra column from state-dependent left factor W(t_k):
+    // right-trivialized increment at W due to δt is e_t := [0; 0; -g dt; 0] in
+    Vector e_t(10);
+    e_t.setZero();
+    e_t.segment<3>(6) = -n_gravity * dt;  // p-block (indices 6..8)
+
+    // Bring to the right-side through the adjoint of X_next and add on to A:
+    A->col(9) += X_next.inverse().Adjoint(e_t);
+  }
+  return X_next;
 }
 
 void Gal3ImuEKF::predict(const Vector3& omega_b, const Vector3& f_b,
@@ -56,7 +67,7 @@ void Gal3ImuEKF::predict(const Vector3& omega_b, const Vector3& f_b,
   }
 
   // Calculate W, phi, and U
-  const Gal3 W = Gravity(params_->n_gravity, dt);
+  const Gal3 W = Gravity(params_->n_gravity, dt, X_.time());
   const Gal3 U = IMU(omega_b, f_b, dt);
 
   // Scale continuous-time process noise to the discrete interval [t, t+dt]

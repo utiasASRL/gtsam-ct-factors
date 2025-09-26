@@ -124,9 +124,7 @@ TEST(Gal3ImuEKF, PredictMatchesScenario) {
     ekf.predict(omega_b, f_b, dt);
     // Check that predicted state matches ground truth
     double t = dt * (i + 1);
-    const Gal3 expected =
-        Gal3::FromPoseVelocityTime(scenario.pose(t), scenario.velocity_n(t), 0);
-    EXPECT(assert_equal(expected, ekf.state(), 1e-9));
+    EXPECT(assert_equal(scenario.gal3(t), ekf.state(), 1e-9));
   }
 }
 

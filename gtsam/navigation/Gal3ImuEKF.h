@@ -62,8 +62,18 @@ class GTSAM_EXPORT Gal3ImuEKF : public InvariantEKF<Gal3> {
   /// 0, 0, 1]        0, 0, 1]
   /// This is exp((G-N)*dt) needed to anticipate IMU update on the right.
   static Gal3 Gravity(const Vector3& n_gravity, double dt) {
-    return Gal3::FromPoseVelocityTime({Rot3(), -0.5 * n_gravity * dt * dt},
-                                      n_gravity * dt, -dt);
+    const Point3 pW(-0.5 * n_gravity * dt * dt);
+    const Vector3 vW = n_gravity * dt;
+    return {Rot3(), pW, vW, -dt};
+  }
+
+  /// Time-compensated gravity (left composition) that supports absolute time
+  /// in-state. Using this W(t_k) together with IMU() yields the exact blockwise
+  /// updates with t_{k+1} = t_k + dt and no drift.
+  static Gal3 Gravity(const Vector3& n_gravity, double dt, double t_current) {
+    const Point3 pW(-t_current * n_gravity * dt - 0.5 * n_gravity * dt * dt);
+    const Vector3 vW = n_gravity * dt;
+    return {Rot3(), pW, vW, 0.0};
   }
 
   /// Calculate U from raw IMU (no gravity): body-frame increments
