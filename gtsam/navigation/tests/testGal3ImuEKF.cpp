@@ -27,6 +27,8 @@
 #include <gtsam/navigation/Gal3ImuEKF.h>
 #include <gtsam/navigation/LeftLinearEKF.h>
 #include <gtsam/navigation/PreintegrationParams.h>
+#include <gtsam/navigation/Scenario.h>
+#include <gtsam/navigation/ScenarioRunner.h>
 
 #include <iostream>
 
@@ -91,27 +93,42 @@ TEST(Gal3ImuEKF, DynamicsJacobian) {
 }
 
 /* ************************************************************************* */
-// Frank: this code should be replaced with scenario example, which does exact.
-// TEST(Gal3ImuEKF, PredictMatchesExplicitIntegration) {
-//   using namespace nontrivial_gal3_example;
-//   double dt = 0.02;
+// Test predict with a scenario that can be integrated exactly.
+TEST(Gal3ImuEKF, PredictMatchesScenario) {
+  // --- Scenario: camera orbiting a fixed point ---
+  // measurements in the body/sensor frame, assumed FRD
+  double radius = 30.0;
+  double angular_velocity = M_PI;       // rad/sec (half-turn per second)
+  Vector3 w_b(0, 0, angular_velocity);  // body yaw rate
+  Vector3 v_n(radius * angular_velocity, 0, 0);  // world-frame velocity
+  ConstantTwistScenario scenario(w_b, v_n);
 
-//   // Explicit integration as per Derek's code (from raw inputs)
-//   Rot3 dR = Rot3::Expmap(omega_b * dt);
-//   Rot3 R_new = R0.compose(dR);  // R_new = R * dR
-//   Vector3 a_world = R0 * f_b + params->n_gravity;
-//   Vector3 v_new = v0 + a_world * dt;
-//   Point3 p_new = p0 + v0 * dt + a_world * (0.5 * dt * dt);
-//   // double t_new = t0 + dt;
-//   double t_new = t0;
-//   Gal3 X_explicit(R_new, p_new, v_new, t_new);
+  // using NED coordinates as the navigation frame
+  auto params = PreintegrationParams::MakeSharedD(10);  // use 10 m/s^2 gravity
 
-//   // Increment-based integration should match exactly
-//   auto params = PreintegrationParams::MakeSharedU(9.81);
-//   Gal3ImuEKF ekf(X0, I_10x10 * 1e-3, params);
-//   Gal3 X_inc = Gal3ImuEKF::Dynamics(params->n_gravity, X0, omega_b, f_b, dt);
-//   EXPECT(assert_equal(X_explicit, X_inc, 1e-12));
-// }
+  // EKF setup with initial state and covariance, FRD frame aligned with NED
+  // (i.e., looking north)
+  const Gal3 X0 = scenario.gal3(0.0);          // Get state at t=0
+  Matrix P0 = Matrix::Identity(10, 10) * 0.1;  // std ~ 0.316 on each component
+  P0(9, 9) = 1e-6;                             // small variance for time
+
+  ScenarioRunner runner(scenario, params, 1.0);
+  Gal3ImuEKF ekf(X0, P0, params);
+
+  // Predict every 0.5 second for 2 seconds
+  double T = 2.0, dt = 0.5;
+  size_t N = T / dt;
+  Vector3 omega_b = runner.actualAngularVelocity(0.0);
+  Vector3 f_b = runner.actualSpecificForce(0.0);
+  for (size_t i = 0; i < N; i++) {
+    ekf.predict(omega_b, f_b, dt);
+    // Check that predicted state matches ground truth
+    double t = dt * (i + 1);
+    const Gal3 expected =
+        Gal3::FromPoseVelocityTime(scenario.pose(t), scenario.velocity_n(t), 0);
+    EXPECT(assert_equal(expected, ekf.state(), 1e-9));
+  }
+}
 
 // /* *************************************************************************
 // Check Jacobian for world-position measurement h(X)=position(X).
@@ -250,7 +267,7 @@ TEST(Gal3ImuEKF, PredictWithWandU) {
 
   // Check times
   EXPECT_DOUBLES_EQUAL(t0, X0.time(), 1e-12);
-  EXPECT_DOUBLES_EQUAL(t0 + dt, X_predicted.time(), 1e-12);
+  EXPECT_DOUBLES_EQUAL(t0, X_predicted.time(), 1e-12);
 
   // Expected: J = Ad_U^(-1)
   Matrix10 A_expected = U.inverse().AdjointMap();
@@ -278,7 +295,7 @@ TEST(Gal3ImuEKF, ComponentsMatchGamma) {
   EXPECT(assert_equal(Rot3(), W.attitude(), 1e-9));
   EXPECT(assert_equal(Point3(-0.5 * g * dt * dt), W.position(), 1e-9));
   EXPECT(assert_equal(Vector3(g * dt), W.velocity(), 1e-9));
-  EXPECT_DOUBLES_EQUAL(0.0, W.time(), 1e-12);
+  EXPECT_DOUBLES_EQUAL(-dt, W.time(), 1e-12);
 
   // 3. Check U
   EXPECT(assert_equal(Rot3::Expmap(omega_b * dt), U.attitude(), 1e-9));
@@ -307,8 +324,7 @@ TEST(Gal3ImuEKF, FormulationsMatchMatrixExponential) {
   xiN(9) = 1.0;
 
   // Compare W
-  // W is given by exp((G-N)*dt) exp(N*dt) 
-  Gal3 W_expected = Gal3::Expmap((xiG + xiN) * dt) * Gal3::Expmap(- xiN * dt);
+  Gal3 W_expected = Gal3::Expmap((xiG - xiN) * dt);
   Gal3 W_actual = Gal3ImuEKF::Gravity(g, dt);
   EXPECT(assert_equal(W_expected, W_actual, 1e-9));
 

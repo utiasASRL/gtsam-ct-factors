@@ -63,7 +63,8 @@ class GTSAM_EXPORT Gal3ImuEKF : public InvariantEKF<Gal3> {
   /// This is the exact integration of gravity over a time dt
   /// followed by undoing the shift in time by dt. We do that in U.
   static Gal3 Gravity(const Vector3& n_gravity, double dt) {
-    return {Rot3(), -0.5 * n_gravity * dt * dt, n_gravity * dt, 0.0};
+    return Gal3::FromPoseVelocityTime({Rot3(), -0.5 * n_gravity * dt * dt},
+                                      n_gravity * dt, -dt);
   }
 
   /// Calculate U from raw IMU (no gravity): body-frame increments
