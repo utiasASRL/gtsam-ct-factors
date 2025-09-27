@@ -33,6 +33,15 @@ NavStateImuEKF::NavStateImuEKF(const NavState& X0, const Covariance& P0,
   Q_.template block<3, 3>(6, 6) = p->accelerometerCovariance;
 }
 
+NavState NavStateImuEKF::IMU(const Vector3& omega_b, const Vector3& f_b,
+                             double dt) {
+  const Vector3 phi_b = omega_b * dt;
+  const so3::DexpFunctor local(phi_b);
+  const Matrix3 J_l = local.Jacobian().left();
+  const Matrix3 N_l = local.Gamma().left();
+  return {Rot3::Expmap(phi_b), N_l * f_b * dt * dt, J_l * f_b * dt};
+}
+
 NavState NavStateImuEKF::Dynamics(const Vector3& g_n, const NavState& X,
                                   const Vector3& omega_b, const Vector3& f_b,
                                   double dt, OptionalJacobian<9, 9> A) {

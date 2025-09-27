@@ -49,9 +49,8 @@ class GTSAM_EXPORT NavStateImuEKF : public LeftLinearEKF<NavState> {
   }
 
   /// Calculate U from raw IMU (no gravity): body-frame increments
-  static NavState IMU(const Vector3& omega_b, const Vector3& f_b, double dt) {
-    return {Rot3::Expmap(omega_b * dt), f_b * (0.5 * dt * dt), f_b * dt};
-  }
+  /// We do an explicit closed-form integration based on SO3(3) kernels
+  static NavState IMU(const Vector3& omega_b, const Vector3& f_b, double dt);
 
   /**
    * @brief Compute the dynamics of the system.

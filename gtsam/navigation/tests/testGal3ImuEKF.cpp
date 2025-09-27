@@ -53,8 +53,7 @@ Vector3 f_b(0.5, -0.3, 0.2);
 auto params = PreintegrationParams::MakeSharedU(9.81);
 }  // namespace nontrivial_gal3_example
 
-// /* *************************************************************************
-// */
+/* ************************************************************************* */
 TEST(Gal3ImuEKF, DefaultProcessNoiseFromParams) {
   using namespace nontrivial_gal3_example;
 
@@ -97,6 +96,43 @@ TEST(Gal3ImuEKF, DynamicsJacobian) {
 }
 
 /* ************************************************************************* */
+TEST(Gal3ImuEKF, PredictMatchesExplicitIntegration) {
+  using namespace nontrivial_gal3_example;
+  double dt = 10;
+
+  // Explicit integration from paper
+  const Vector3 phi_b = omega_b * dt;
+  const so3::DexpFunctor local(phi_b);
+  const Matrix3 J_l = local.Jacobian().left();
+  const Matrix3 N_l = local.Gamma().left();
+
+  const Gal3 U{Rot3::Expmap(phi_b), N_l * f_b * dt * dt, J_l * f_b * dt, dt};
+
+  // Check against static IMU function:
+  const Gal3 U_static = Gal3ImuEKF::IMU(omega_b, f_b, dt);
+  EXPECT(assert_equal(U, U_static, 1e-9));
+
+  // Check against Gal3::Expmap
+  Vector10 xi;
+  xi << omega_b, f_b, Vector3::Zero(), 1.0;
+  const Gal3 U_gal3 = Gal3::Expmap(xi * dt);
+  EXPECT(assert_equal(U_gal3, U, 1e-9));
+
+  // Explicit integration, combined with gravity and v0 * dt boost
+  const Vector3& g_n = params->n_gravity;
+  const Rot3 R_new = R0 * U.attitude();
+  const Vector3 v_new = v0 + g_n * dt + R0 * U.velocity();
+  const Point3 p_new = p0 + g_n * (0.5 * dt * dt) + v0 * dt + R0 * U.position();
+  const Gal3 X_explicit(R_new, p_new, v_new, t0 + dt);
+
+  // Increment-based integration should match exactly
+  auto params = PreintegrationParams::MakeSharedU(9.81);
+  Gal3ImuEKF ekf(X0, I_10x10 * 1e-3, params);
+  Gal3 X_next = Gal3ImuEKF::Dynamics(g_n, X0, omega_b, f_b, dt);
+  EXPECT(assert_equal(X_explicit, X_next, 1e-12));
+}
+
+/* ************************************************************************* */
 // Test predict with a scenario that can be integrated exactly.
 TEST(Gal3ImuEKF, PredictMatchesScenario) {
   // --- Scenario: camera orbiting a fixed point ---
@@ -132,8 +168,7 @@ TEST(Gal3ImuEKF, PredictMatchesScenario) {
   }
 }
 
-// /*
-// *************************************************************************
+/* ************************************************************************* */
 // Check Jacobian for world-position measurement h(X)=position(X).
 TEST(Gal3ImuEKF, PositionMeasurementJacobian) {
   using namespace nontrivial_gal3_example;
@@ -157,10 +192,8 @@ TEST(Gal3ImuEKF, PositionMeasurementJacobian) {
 
   EXPECT(assert_equal(expected, H, 1e-6));
 }
-//
-// /*
-// *************************************************************************
-// */ Sanity-check a single position update using updateWithVector. Verifies
+/* ************************************************************************* */
+// Sanity-check a single position update using updateWithVector. Verifies
 // delta_xi = K * innovation and covariance reduction in pos block.
 TEST(Gal3ImuEKF, PositionUpdateSanity) {
   using namespace nontrivial_gal3_example;
@@ -251,8 +284,7 @@ TEST(Gal3ImuEKF, PositionUpdateSanity) {
   EXPECT(assert_equal(delta_graph, delta_ekf, 1e-9));
 }
 
-/* *************************************************************************
- */
+/* ************************************************************************* */
 // Verify dynamics W and U.
 TEST(Gal3ImuEKF, PredictWithWandU) {
   using namespace nontrivial_gal3_example;
@@ -279,8 +311,7 @@ TEST(Gal3ImuEKF, PredictWithWandU) {
   EXPECT(assert_equal(A_expected, A_ekf, 1e-9));
 }
 
-/* *************************************************************************
- */
+/* ************************************************************************* */
 // Ensure W, U, X match the T_j = Gamma_ij * T_i * Upsilon_ij
 TEST(Gal3ImuEKF, ComponentsMatchGamma) {
   using namespace nontrivial_gal3_example;
@@ -311,8 +342,7 @@ TEST(Gal3ImuEKF, ComponentsMatchGamma) {
   EXPECT_DOUBLES_EQUAL(dt, U.time(), 1e-12);
 }
 
-/* *************************************************************************
- */
+/* ************************************************************************* */
 // Verify W, U match the Exp (G,N) function
 TEST(Gal3ImuEKF, FormulationsMatchMatrixExponential) {
   using namespace nontrivial_gal3_example;
@@ -345,8 +375,8 @@ TEST(Gal3ImuEKF, FormulationsMatchMatrixExponential) {
   Gal3 U_actual = Gal3ImuEKF::IMU(omega_b, f_b, dt);
   EXPECT(assert_equal(U_expected, U_actual, 1e-5));
 }
-/* *************************************************************************
- */
+
+/* ************************************************************************* */
 // Check that TimeZeroingGravity and CompensatedGravity match the "correction:
 // math" formulas from the paper.
 TEST(Gal3ImuEKF, TestCorrectionFormulas) {
@@ -376,12 +406,10 @@ TEST(Gal3ImuEKF, TestCorrectionFormulas) {
   EXPECT(assert_equal(W_comp_math, W_comp_actual, 1e-9));
 }
 
-/* *************************************************************************
- */
+/* ************************************************************************* */
 int main() {
   TestResult tr;
   return TestRegistry::runAllTests(tr);
 }
 
-/* *************************************************************************
- */
+/* ************************************************************************* */
