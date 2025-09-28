@@ -666,7 +666,7 @@ class NavStateImuEKF : gtsam::LeftLinearEKF<gtsam::NavState> {
 };
 
 #include <gtsam/navigation/Gal3ImuEKF.h>
-class Gal3ImuEKF : gtsam::LeftLinearEKF<gtsam::Gal3> {
+class Gal3ImuEKF : gtsam::InvariantEKF<gtsam::Gal3> {
   enum Mode { NO_TIME, TRACK_TIME_NO_COVARIANCE, TRACK_TIME_WITH_COVARIANCE };
   // Constructors
   Gal3ImuEKF(const gtsam::Gal3& X0, gtsam::Matrix P0,
