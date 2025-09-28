@@ -545,7 +545,6 @@ virtual class Scenario {
   gtsam::NavState navState(double t) const;
   gtsam::Vector velocity_b(double t) const;
   gtsam::Vector acceleration_b(double t) const;
-  gtsam::Gal3 gal3(double t) const;
 };
 
 virtual class ConstantTwistScenario : gtsam::Scenario {
