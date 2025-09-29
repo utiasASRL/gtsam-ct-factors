@@ -15,39 +15,37 @@
  * @author  Frank Dellaert
  */
 
-#include <GeographicLib/Config.h>
-#include <GeographicLib/Geocentric.hpp>
-#include <GeographicLib/UTMUPS.hpp>
-#include <GeographicLib/LocalCartesian.hpp>
-
-#include <gtsam/base/types.h>
 #include <CppUnitLite/TestHarness.h>
+#include <GeographicLib/Config.h>
+#include <gtsam/base/types.h>
 
-#include <string>
+#include <GeographicLib/Geocentric.hpp>
+#include <GeographicLib/LocalCartesian.hpp>
+#include <GeographicLib/UTMUPS.hpp>
 #include <iostream>
+#include <string>
 
 using namespace std;
-//using namespace gtsam;
+// using namespace gtsam;
 using namespace GeographicLib;
 
 // Dekalb-Peachtree Airport runway 2L
 static const double lat = 33.87071, lon = -84.30482, h = 274;
 
-#if GEOGRAPHICLIB_VERSION_MINOR<37
-static const auto& kWGS84 = Geocentric::WGS84;
+#if GEOGRAPHICLIB_VERSION_MINOR < 37
+static const auto& kWGS84 = Geocentric::WGS84();
 #else
 static const auto& kWGS84 = Geocentric::WGS84();
 #endif
 
 //**************************************************************************
-TEST( GeographicLib, Geocentric) {
-
+TEST(GeographicLib, Geocentric) {
   // From lat-lon to geocentric
   double X, Y, Z;
   kWGS84.Forward(lat, lon, h, X, Y, Z);
-  EXPECT_DOUBLES_EQUAL(526, X/1000, 1);
-  EXPECT_DOUBLES_EQUAL(-5275, Y/1000, 1);
-  EXPECT_DOUBLES_EQUAL(3535, Z/1000, 1);
+  EXPECT_DOUBLES_EQUAL(526, X / 1000, 1);
+  EXPECT_DOUBLES_EQUAL(-5275, Y / 1000, 1);
+  EXPECT_DOUBLES_EQUAL(3535, Z / 1000, 1);
 
   // From geocentric to lat-lon
   double lat_, lon_, h_;
@@ -58,8 +56,7 @@ TEST( GeographicLib, Geocentric) {
 }
 
 //**************************************************************************
-TEST( GeographicLib, UTM) {
-
+TEST(GeographicLib, UTM) {
   // From lat-lon to UTM
   int zone;
   bool northp;
@@ -72,14 +69,13 @@ TEST( GeographicLib, UTM) {
   auto actual = UTMUPS::EncodeZone(zone, northp);
   // transform to upper case
   std::transform(actual.begin(), actual.end(), actual.begin(), ::toupper);
-  EXPECT(actual=="16N");
+  EXPECT(actual == "16N");
   EXPECT_DOUBLES_EQUAL(749305.58, x, 1e-2);
   EXPECT_DOUBLES_EQUAL(3751090.08, y, 1e-2);
 }
 
 //**************************************************************************
-TEST( GeographicLib, ENU) {
-
+TEST(GeographicLib, ENU) {
   // ENU Origin is where the plane was in hold next to runway
   const double lat0 = 33.86998, lon0 = -84.30626, h0 = 274;
   LocalCartesian enu(lat0, lon0, h0, kWGS84);

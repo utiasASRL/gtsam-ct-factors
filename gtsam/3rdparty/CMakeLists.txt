@@ -85,25 +85,3 @@ add_subdirectory(ceres)
 
 list(PREPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake/modules")
 
-# Try to find an already-installed GeographicLib.
-
-if(NOT TARGET GeographicLib::GeographicLib)
-  find_package(GeographicLib MODULE QUIET)
-endif()
-
-if(GeographicLib_FOUND AND NOT TARGET GeographicLib::GeographicLib)
-  add_library(GeographicLib::GeographicLib UNKNOWN IMPORTED)
-  set_target_properties(
-    GeographicLib::GeographicLib
-    PROPERTIES IMPORTED_LOCATION "${GeographicLib_LIBRARIES}"
-               INTERFACE_INCLUDE_DIRECTORIES "${GeographicLib_INCLUDE_DIRS}")
-endif()
-
-if(TARGET GeographicLib::GeographicLib)
-  message(STATUS "Using system GeographicLib: ${GeographicLib_LIBRARIES}")
-else()
-  message(
-    STATUS
-      "GeographicLib not found; GeographicLib-dependent tests disabled."
-  )
-endif()

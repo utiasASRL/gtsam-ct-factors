@@ -16,21 +16,20 @@
  * @date   January 22, 2014
  */
 
-#include <gtsam/navigation/GPSFactor.h>
+#include <CppUnitLite/TestHarness.h>
+#include <GeographicLib/Config.h>
 #include <gtsam/base/Testable.h>
 #include <gtsam/base/numericalDerivative.h>
+#include <gtsam/navigation/GPSFactor.h>
 
-#include <CppUnitLite/TestHarness.h>
-
-#include <GeographicLib/Config.h>
 #include <GeographicLib/LocalCartesian.hpp>
 
 using namespace std;
 using namespace gtsam;
 using namespace GeographicLib;
 
-#if GEOGRAPHICLIB_VERSION_MINOR<37
-static const auto& kWGS84 = Geocentric::WGS84;
+#if GEOGRAPHICLIB_VERSION_MINOR < 37
+static const auto& kWGS84 = Geocentric::WGS84();
 #else
 static const auto& kWGS84 = Geocentric::WGS84();
 #endif
@@ -51,7 +50,7 @@ static const Point3 leverArm(0.1, 0.2, 0.3);
 }  // namespace example
 
 // *************************************************************************
-TEST( GPSFactor, Constructor ) {
+TEST(GPSFactor, Constructor) {
   using namespace example;
 
   // From lat-lon to geocentric
@@ -68,7 +67,7 @@ TEST( GPSFactor, Constructor ) {
 
   // Create a linearization point at zero error
   Pose3 T(Rot3::RzRyRx(0.15, -0.30, 0.45), Point3(E, N, U));
-  EXPECT(assert_equal(Z_3x1,factor.evaluateError(T),1e-5));
+  EXPECT(assert_equal(Z_3x1, factor.evaluateError(T), 1e-5));
 
   // Calculate numerical derivatives
   Matrix expectedH = numericalDerivative11<Vector, Pose3>(
@@ -83,7 +82,7 @@ TEST( GPSFactor, Constructor ) {
 }
 
 // *************************************************************************
-TEST( GPSFactorArm, Constructor ) {
+TEST(GPSFactorArm, Constructor) {
   using namespace example;
 
   // From lat-lon to geocentric
@@ -99,7 +98,7 @@ TEST( GPSFactorArm, Constructor ) {
   const Rot3 nRb = Rot3::RzRyRx(0.15, -0.30, 0.45);
   const Point3 np = Point3(E, N, U) - nRb * leverArm;
   Pose3 T(nRb, np);
-  EXPECT(assert_equal(Z_3x1,factor.evaluateError(T),1e-5));
+  EXPECT(assert_equal(Z_3x1, factor.evaluateError(T), 1e-5));
 
   // Calculate numerical derivatives
   Matrix expectedH = numericalDerivative11<Vector, Pose3>(
@@ -114,7 +113,7 @@ TEST( GPSFactorArm, Constructor ) {
 }
 
 // *************************************************************************
-TEST( GPSFactorArmCalib, Constructor ) {
+TEST(GPSFactorArmCalib, Constructor) {
   using namespace example;
 
   // From lat-lon to geocentric
@@ -130,7 +129,7 @@ TEST( GPSFactorArmCalib, Constructor ) {
   const Rot3 nRb = Rot3::RzRyRx(0.15, -0.30, 0.45);
   const Point3 np = Point3(E, N, U) - nRb * leverArm;
   Pose3 T(nRb, np);
-  EXPECT(assert_equal(Z_3x1,factor.evaluateError(T, leverArm),1e-5));
+  EXPECT(assert_equal(Z_3x1, factor.evaluateError(T, leverArm), 1e-5));
 
   // Calculate numerical derivatives
   Matrix expectedH1 = numericalDerivative11<Vector, Pose3>(
@@ -154,7 +153,7 @@ TEST( GPSFactorArmCalib, Constructor ) {
 }
 
 // *************************************************************************
-TEST( GPSFactor2, Constructor ) {
+TEST(GPSFactor2, Constructor) {
   using namespace example;
 
   // From lat-lon to geocentric
@@ -168,7 +167,7 @@ TEST( GPSFactor2, Constructor ) {
 
   // Create a linearization point at zero error
   NavState T(Rot3::RzRyRx(0.15, -0.30, 0.45), Point3(E, N, U), Vector3::Zero());
-  EXPECT(assert_equal(Z_3x1,factor.evaluateError(T),1e-5));
+  EXPECT(assert_equal(Z_3x1, factor.evaluateError(T), 1e-5));
 
   // Calculate numerical derivatives
   Matrix expectedH = numericalDerivative11<Vector, NavState>(
@@ -183,7 +182,7 @@ TEST( GPSFactor2, Constructor ) {
 }
 
 // *************************************************************************
-TEST( GPSFactor2Arm, Constructor ) {
+TEST(GPSFactor2Arm, Constructor) {
   using namespace example;
 
   // From lat-lon to geocentric
@@ -199,7 +198,7 @@ TEST( GPSFactor2Arm, Constructor ) {
   const Rot3 nRb = Rot3::RzRyRx(0.15, -0.30, 0.45);
   const Point3 np = Point3(E, N, U) - nRb * leverArm;
   NavState T(nRb, np, Vector3::Zero());
-  EXPECT(assert_equal(Z_3x1,factor.evaluateError(T),1e-5));
+  EXPECT(assert_equal(Z_3x1, factor.evaluateError(T), 1e-5));
 
   // Calculate numerical derivatives
   Matrix expectedH = numericalDerivative11<Vector, NavState>(
@@ -214,7 +213,7 @@ TEST( GPSFactor2Arm, Constructor ) {
 }
 
 // *************************************************************************
-TEST( GPSFactor2ArmCalib, Constructor ) {
+TEST(GPSFactor2ArmCalib, Constructor) {
   using namespace example;
 
   // From lat-lon to geocentric
@@ -230,7 +229,7 @@ TEST( GPSFactor2ArmCalib, Constructor ) {
   const Rot3 nRb = Rot3::RzRyRx(0.15, -0.30, 0.45);
   const Point3 np = Point3(E, N, U) - nRb * leverArm;
   NavState T(nRb, np, Vector3::Zero());
-  EXPECT(assert_equal(Z_3x1,factor.evaluateError(T, leverArm),1e-5));
+  EXPECT(assert_equal(Z_3x1, factor.evaluateError(T, leverArm), 1e-5));
 
   // Calculate numerical derivatives
   Matrix expectedH1 = numericalDerivative11<Vector, NavState>(
@@ -255,7 +254,6 @@ TEST( GPSFactor2ArmCalib, Constructor ) {
 
 //***************************************************************************
 TEST(GPSData, init) {
-
   // GPS Reading 1 will be ENU origin
   double t1 = 84831;
   Point3 NED1(0, 0, 0);
@@ -271,8 +269,8 @@ TEST(GPSData, init) {
   const auto [T, nV] = GPSFactor::EstimateState(t1, NED1, t2, NED2, 84831.0796);
 
   // Check values values
-  EXPECT(assert_equal((Vector )Vector3(29.9575, -29.0564, -1.95993), nV, 1e-4));
-  EXPECT( assert_equal(Rot3::Ypr(-0.770131, 0.046928, 0), T.rotation(), 1e-5));
+  EXPECT(assert_equal((Vector)Vector3(29.9575, -29.0564, -1.95993), nV, 1e-4));
+  EXPECT(assert_equal(Rot3::Ypr(-0.770131, 0.046928, 0), T.rotation(), 1e-5));
   Point3 expectedT(2.38461, -2.31289, -0.156011);
   EXPECT(assert_equal(expectedT, T.translation(), 1e-5));
 }

@@ -1,7 +1,7 @@
 set(test_link_libraries gtsam)
 set(tests_excluded "")
 
-if(TARGET GeographicLib::GeographicLib)
+if(GTSAM_HAVE_GEOGRAPHICLIB)
   list(APPEND test_link_libraries GeographicLib::GeographicLib)
 else()
   list(APPEND tests_excluded

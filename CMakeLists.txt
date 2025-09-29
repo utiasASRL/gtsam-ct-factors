@@ -128,6 +128,15 @@ if(GTSAM_ENABLE_BOOST_SERIALIZATION OR GTSAM_USE_BOOST_FEATURES)
 endif()
 # ##############################################################################
 
+# ############## Decide on GeographicLib ######################################
+# Enable or disable GeographicLib integration with GTSAM_ENABLE_GEOGRAPHICLIB
+option(GTSAM_ENABLE_GEOGRAPHICLIB "Enable Features that use GeographicLib" OFF)
+
+if (GTSAM_ENABLE_GEOGRAPHICLIB)
+  include(cmake/HandleGeographicLib.cmake)
+endif()
+# ##############################################################################
+
 # Other Libraries:
 include(cmake/HandleCCache.cmake) # ccache
 include(cmake/HandleCPack.cmake) # CPack
@@ -139,7 +148,6 @@ include(cmake/HandleOpenMP.cmake) # OpenMP
 include(cmake/HandlePerfTools.cmake) # Google perftools
 include(cmake/HandlePython.cmake) # Python options and commands
 include(cmake/HandleTBB.cmake) # TBB
-include(cmake/HandleGeographicLib.cmake) # Geographic Lib
 include(cmake/HandleUninstall.cmake) # for "make uninstall"
 
 include(cmake/HandleAllocators.cmake) # Must be after tbb, pertools
