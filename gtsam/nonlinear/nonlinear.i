@@ -643,6 +643,47 @@ virtual class PriorFactor : gtsam::NoiseModelFactor {
   void serialize() const;
 };
 
+#include <gtsam/nonlinear/NonlinearLikelihood.h>
+template <T = {double,
+               gtsam::Vector,
+               gtsam::Point2,
+               gtsam::StereoPoint2,
+               gtsam::Point3,
+               gtsam::Gal3,
+               gtsam::Rot2,
+               gtsam::SO3,
+               gtsam::SO4,
+               gtsam::SOn,
+               gtsam::SL4,
+               gtsam::Rot3,
+               gtsam::Pose2,
+               gtsam::Pose3,
+               gtsam::Similarity2,
+               gtsam::Similarity3,
+               gtsam::Unit3,
+               gtsam::Cal3_S2,
+               gtsam::Cal3DS2,
+               gtsam::Cal3Bundler,
+               gtsam::Cal3Fisheye,
+               gtsam::Cal3Unified,
+               gtsam::CalibratedCamera,
+               gtsam::PinholeCamera<gtsam::Cal3_S2>,
+               gtsam::PinholeCamera<gtsam::Cal3Bundler>,
+               gtsam::PinholeCamera<gtsam::Cal3Fisheye>,
+               gtsam::PinholeCamera<gtsam::Cal3Unified>,
+               gtsam::NavState,
+               gtsam::imuBias::ConstantBias}>
+virtual class NonlinearLikelihood : gtsam::NoiseModelFactor {
+  NonlinearLikelihood(gtsam::Key key, const T& prior,
+              const gtsam::noiseModel::Base* noiseModel);
+  NonlinearLikelihood(gtsam::Key key, const T& prior,
+              const gtsam::noiseModel::Base* noiseModel, const gtsam::Vector& mean);
+  T prior() const;
+
+  // enabling serialization functionality
+  void serialize() const;
+};
+
 #include <gtsam/nonlinear/NonlinearEquality.h>
 template <T = {gtsam::Point2, gtsam::StereoPoint2, gtsam::Point3, gtsam::Rot2,
                gtsam::SO3, gtsam::SO4, gtsam::SOn, gtsam::SL4, gtsam::Rot3, gtsam::Pose2, gtsam::Gal3,
