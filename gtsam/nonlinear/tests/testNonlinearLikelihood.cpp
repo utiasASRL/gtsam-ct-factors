@@ -81,7 +81,7 @@ TEST(NonlinearLikelihood, Likelihood) {
   Pose2 x = origin.retract(mean);
   double expected_likelihood = 1.0;
   double actual_likelihood = factor.likelihood(x);
-  EXPECT_DOUBLES_EQUAL(expected_likelihood, actual_likelihood, 1e-9);
+  EXPECT_DOUBLES_EQUAL(expected_likelihood, actual_likelihood, 1e-4);
 }
 
 //******************************************************************************

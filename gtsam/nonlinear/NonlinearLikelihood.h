@@ -25,12 +25,18 @@ namespace gtsam {
 /**
  * A class for a soft prior on any Value type, but with a non-zero mean
  * in the tangent space.
- * The error is `e(x) = Local(origin, x) - mean`.
+ * The error is `e(x) = -Local(x, origin) - mean`.
  * The loss is `0.5 * ||e(x)||^2_Sigma` for a Gaussian noise model,
  * and `rho(e(x))` for a robust noise model `rho`.
  * The likelihood is `exp(-loss)`.
+ *
+ * Note: The "extended concentrated Gaussian" on Lie groups is defined as
+ * `~ exp{-0.5*|log(origin_^{-1} x) - mean|^2_Sigma}`. Our implementation,
+ * with a Gaussian noise model, is identical (up to a constant) to this
+ * for all Lie Groups.
+ *
  * @ingroup nonlinear
- **/
+ */
 template <class VALUE>
 class NonlinearLikelihood : public NoiseModelFactorN<VALUE> {
  public:
@@ -112,13 +118,13 @@ class NonlinearLikelihood : public NoiseModelFactorN<VALUE> {
         gtsam::NonlinearFactor::shared_ptr(new This(*this)));
   }
 
-  /** vector of errors */
   Vector evaluateError(const T& x, OptionalMatrixType H) const override {
-    if (H)
+    if (H) {
       (*H) = Matrix::Identity(traits<T>::GetDimension(x),
                               traits<T>::GetDimension(x));
-    // manifold equivalent of (x-z)-mu -> Local(z,x)-mu
-    Vector error = traits<T>::Local(origin_, x);
+    }
+    // manifold equivalent of z-x -> Local(x,z)
+    Vector error = -traits<T>::Local(x, origin_);
     if (mean_) {
       return error - *mean_;
     }
