@@ -679,19 +679,55 @@ virtual class NonlinearLikelihood : gtsam::NoiseModelFactor {
   NonlinearLikelihood(gtsam::Key key, const T& origin,
               const gtsam::noiseModel::Base* noiseModel, const gtsam::Vector& mean);
   T origin() const;
+  // Optional tangent space mean (may be empty / None)
+  std::optional<gtsam::Vector> mean() const;
   double likelihood(const T& x) const;
+  // Tangent space residual (no Jacobian return variant)
+  gtsam::Vector evaluateError(const T& x) const;
+  // Negative log-likelihood (robust) for a single VALUE (not the Values-based factor interface)
+  double error(const T& x) const;
 
   // enabling serialization functionality
   void serialize() const;
 };
 
 #include <gtsam/nonlinear/NonlinearDensity.h>
-template<T = {gtsam::Pose2, gtsam::Pose3, gtsam::Point2, gtsam::Point3, gtsam::Rot2, gtsam::Rot3}>
+template <T = {double,
+               gtsam::Vector,
+               gtsam::Point2,
+               gtsam::StereoPoint2,
+               gtsam::Point3,
+               gtsam::Gal3,
+               gtsam::Rot2,
+               gtsam::SO3,
+               gtsam::SO4,
+               gtsam::SOn,
+               gtsam::SL4,
+               gtsam::Rot3,
+               gtsam::Pose2,
+               gtsam::Pose3,
+               gtsam::Similarity2,
+               gtsam::Similarity3}>
 class NonlinearDensity : gtsam::NonlinearLikelihood<T> {
   NonlinearDensity();
-  NonlinearDensity(gtsam::Key key, const T& prior, const gtsam::SharedNoiseModel& noiseModel);
+  // Constructors mirroring header (origin terminology)
+  NonlinearDensity(gtsam::Key key, const T& origin, const gtsam::SharedNoiseModel& noiseModel);
+  NonlinearDensity(gtsam::Key key, const T& origin, const gtsam::SharedNoiseModel& noiseModel, const gtsam::Vector& mean);
+  NonlinearDensity(gtsam::Key key, const T& origin, const gtsam::Matrix& covariance);
+  NonlinearDensity(gtsam::Key key, const T& origin, const gtsam::Matrix& covariance, const gtsam::Vector& mean);
+  // Return element corresponding to mean (no Jacobian variant)
+  T retractMean() const;
+  // Normalization constant (negative log) and log-probability helpers
+  double negLogConstant() const;
   double logProbability(const T& x) const;
+  double logProbability(const gtsam::Values& values) const;
   double evaluate(const T& x) const;
+  double evaluate(const gtsam::Values& values) const;
+  // Chart transport / reset operations
+  NonlinearDensity reset() const;
+  NonlinearDensity transportTo(const T& x_hat) const;
+  // Fusion operator
+  NonlinearDensity operator*(const NonlinearDensity& other) const;
 };
 
 #include <gtsam/nonlinear/NonlinearEquality.h>
