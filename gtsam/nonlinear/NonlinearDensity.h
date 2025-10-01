@@ -39,7 +39,8 @@ inline FusedGaussian FuseGaussians(const Vector& mu1, const Matrix& S1,
 }
 
 /**
- * A nonlinear density, inherits from NonlinearLikelihood.
+ * A nonlinear density, inherits from NonlinearLikelihood. With Gaussian noise
+ * models, models exactly a (left) extended concentrated Gaussian (L-ECG).
  * @ingroup nonlinear
  */
 template <class VALUE>
@@ -54,10 +55,15 @@ class NonlinearDensity : public NonlinearLikelihood<VALUE> {
   /// Default constructor for serialization.
   NonlinearDensity() {}
 
-  /// Constructor
+  /// Constructor with noise model and optional mean in tangent space
   NonlinearDensity(Key key, const VALUE& origin, const SharedNoiseModel& model,
                    const std::optional<Vector>& mean = {})
       : Base(key, origin, model, mean) {}
+
+  /// Constructor with covariance matrix and optional mean in tangent space
+  NonlinearDensity(Key key, const VALUE& origin, const Matrix& covariance,
+                   const std::optional<Vector>& mean = {})
+      : Base(key, origin, noiseModel::Gaussian::Covariance(covariance), mean) {}
 
   /// @}
   /// @name Standard Destructor
@@ -102,12 +108,6 @@ class NonlinearDensity : public NonlinearLikelihood<VALUE> {
   }
 
   /**
-   * Evaluate the probability density at the given value.
-   * P(x) = exp(logProbability(x)).
-   */
-  double evaluate(const T& x) const { return exp(logProbability(x)); }
-
-  /**
    * Log-probability overload taking a Values container. This mirrors the
    * linear GaussianConditional interface so densities can be queried in a
    * uniform way when only a Values is available.
@@ -117,6 +117,12 @@ class NonlinearDensity : public NonlinearLikelihood<VALUE> {
     return logProbability(x);
   }
 
+  /**
+   * Evaluate the probability density at the given value.
+   * P(x) = exp(logProbability(x)).
+   */
+  double evaluate(const T& x) const { return exp(logProbability(x)); }
+
   /// Evaluate density P(x) using a Values container.
   double evaluate(const Values& values) const {
     const T& x = values.at<T>(this->key());
@@ -124,16 +130,32 @@ class NonlinearDensity : public NonlinearLikelihood<VALUE> {
   }
 
   /**
+   * Calculate the normalization constant for the density.
+   * For a Gaussian noise model with covariance Σ, we return
+   *   - log k = 0.5 * n * log(2*pi) + 0.5 * log |Σ|
+   * where n = dim().  Note: gaussian->logDeterminant() returns log|Σ|.
+   * For non-Gaussian noise models this is not (easily) defined and we throw.
+   */
+  double negLogConstant() const {
+    const size_t n = this->dim();
+    auto gaussian = getGaussian("negLogConstant");
+    constexpr double log2pi = 1.8378770664093454835606594728112;  // log(2*pi)
+    const double logDetSigma = gaussian->logDeterminant();        // log |Σ|
+    return 0.5 * n * log2pi + 0.5 * logDetSigma;
+  }
+
+  /**
    * Fusion operator implementing the (approximate) three-step Fusion
-   * method in Ge–van Goor–Mahony (2024): choose a reference, express both
-   * densities as extended concentrated Gaussians in that chart, fuse the
-   * Gaussians, then reset to a zero-mean concentrated Gaussian.
+   * method in:
+   *   Y. Ge, P. van Goor and R. Mahony, "A Geometric Perspective on Fusing
+   *   Gaussian Distributions on Lie Groups," in IEEE Control Systems Letters,
+   *   vol. 8, pp. 844-849, 2024, https://ieeexplore.ieee.org/document/10539262
+   *
+   * We choose our origin as the reference, express other density in our chart,
+   * fuse the Gaussians, then reset to a zero-mean concentrated Gaussian.
    *
    * Notes/assumptions:
    *  - Only supports Gaussian noise models; throws otherwise.
-   *  - Uses a full first-order Jacobian for the change of coordinates between
-   * charts via the chain rule: J_map = (∂Local(x̂,q)/∂q)|_{q=origin} ·
-   * (∂Retract(origin,δ)/∂δ)|_{δ=0}.
    *  - If both inputs share the same origin and mean, this reduces to
    *    classical Gaussian fusion: Σ⁺ = (Σ₁^{-1}+Σ₂^{-1})^{-1} at the same
    * origin.
@@ -144,14 +166,8 @@ class NonlinearDensity : public NonlinearLikelihood<VALUE> {
       throw std::invalid_argument("NonlinearDensity::operator*: keys differ");
 
     // Extract Gaussian noise models and covariances
-    auto g1 =
-        std::dynamic_pointer_cast<noiseModel::Gaussian>(this->noiseModel());
-    auto g2 =
-        std::dynamic_pointer_cast<noiseModel::Gaussian>(other.noiseModel());
-    if (!g1 || !g2)
-      throw std::runtime_error(
-          "NonlinearDensity::operator*: only Gaussian noise models are "
-          "supported");
+    auto g1 = getGaussian("operator*");
+    auto g2 = other.getGaussian("operator*");
 
     const Matrix Sigma1 = g1->covariance();
     const Matrix Sigma2 = g2->covariance();
@@ -167,90 +183,125 @@ class NonlinearDensity : public NonlinearLikelihood<VALUE> {
     // 2) Map both ECGs to chart at x̂
     Vector mu1_hat, mu2_hat;
     Matrix S1_hat, S2_hat;
-    mapToReference_(xhat, this->origin_, this->mean_, Sigma1, mu1_hat, S1_hat);
-    mapToReference_(xhat, other.origin_, other.mean_, Sigma2, mu2_hat, S2_hat);
+    // mapToReference_ removed
 
-    // 3) Classical Gaussian fusion in common tangent
+    // 3) Classical Gaussian fusion in the common tangent at x̂ (simple form)
+    // We must map mu1_hat, S1_hat, mu2_hat, S2_hat before fusion: implement
+    // here
+
+    // Compute mapping for first density
+    {
+      const size_t n = Sigma1.rows();
+      Matrix Hlp1, Hlq1;
+      Vector r1 = traits<T>::Local(xhat, this->origin_, Hlp1, Hlq1);
+      Matrix Hr_p, Hr_v1;
+      traits<T>::Retract(this->origin_, Vector::Zero(n), Hr_p, Hr_v1);
+      const Matrix Jmap1 = Hlq1 * Hr_v1;
+      const Vector m1 = this->mean_.value_or(Vector::Zero(n));
+      mu1_hat = r1 + Jmap1 * m1;
+      S1_hat = Jmap1 * Sigma1 * Jmap1.transpose();
+    }
+
+    // Compute mapping for second density
+    {
+      const size_t n = Sigma2.rows();
+      Matrix Hlp2, Hlq2;
+      Vector r2 = traits<T>::Local(xhat, other.origin_, Hlp2, Hlq2);
+      Matrix Hr_p2, Hr_v2;
+      traits<T>::Retract(other.origin_, Vector::Zero(n), Hr_p2, Hr_v2);
+      const Matrix Jmap2 = Hlq2 * Hr_v2;
+      const Vector m2 = other.mean_.value_or(Vector::Zero(n));
+      mu2_hat = r2 + Jmap2 * m2;
+      S2_hat = Jmap2 * Sigma2 * Jmap2.transpose();
+    }
+
     const FusedGaussian fg = FuseGaussians(mu1_hat, S1_hat, mu2_hat, S2_hat);
 
-    // 4) Reset to zero-mean at fused origin
-    const T xplus = traits<T>::Retract(xhat, fg.mean);
-    const SharedNoiseModel modelPlus =
-        noiseModel::Gaussian::Covariance(fg.covariance);
-    return NonlinearDensity(this->key(), xplus, modelPlus);
-  }
-
-  /** Reset this ECG to a new reference x̂: map (origin, mean, Σ) into the
-   *  chart at x̂ via first-order Jacobians, then retract by the mapped mean
-   *  so the result has zero mean at the new origin.
-   *  Requires a Gaussian noise model; throws otherwise. */
-  NonlinearDensity resetToZeroMeanAt(const T& xhat) const {
-    auto g =
-        std::dynamic_pointer_cast<noiseModel::Gaussian>(this->noiseModel());
-    if (!g)
-      throw std::runtime_error(
-          "NonlinearDensity::resetToZeroMeanAt: only Gaussian noise models are "
-          "supported");
-
-    const Matrix& Sigma = g->covariance();
-
-    Vector mu_hat;
-    Matrix S_hat;
-    mapToReference_(xhat, this->origin_, this->mean_, Sigma, mu_hat, S_hat);
-
-    const T xplus = traits<T>::Retract(xhat, mu_hat);
-    const SharedNoiseModel modelPlus = noiseModel::Gaussian::Covariance(S_hat);
-    return NonlinearDensity(this->key(), xplus, modelPlus);
+    // 4) Reset to zero-mean at fused origin (covariance form)
+    return resetFrom(xhat, fg.mean, fg.covariance, /*isInformation=*/false);
   }
 
   /**
-   * Calculate the normalization constant for the density.
-   * For a Gaussian noise model with covariance Σ, we return
-   *   - log k = 0.5 * n * log(2*pi) + 0.5 * log |Σ|
-   * where n = dim().  Note: gaussian->logDeterminant() returns log|Σ|.
-   * For non-Gaussian noise models this is not (straightforwardly) defined and
-   * we throw.
+   * Transport this density to a new origin x̂, returning a density at x̂
+   * with nonzero mean in that chart. Uses a full first-order Jacobian for the
+   * change of coordinates between charts via the chain rule:
+   *   J = ∂Local(x̂,x)/∂x · ∂Retract(origin,m)/∂m
+   * @note: Only Gaussian noise models are supported.
    */
-  double negLogConstant() const {
-    // Get number of rows
-    const size_t n = this->dim();
+  NonlinearDensity transportTo(const T& newOrigin) const {
+    auto g = getGaussian("transportTo");
+    const Matrix& dSd = g->covariance();
 
-    // Get noise model and dynamic cast to Gaussian
-    const auto& noiseModel = this->noiseModel();
-    auto gaussian = std::dynamic_pointer_cast<noiseModel::Gaussian>(noiseModel);
-    if (gaussian) {
-      constexpr double log2pi = 1.8378770664093454835606594728112;  // log(2*pi)
-      const double logDetSigma = gaussian->logDeterminant();        // log |Σ|
-      return 0.5 * n * log2pi + 0.5 * logDetSigma;
-    }
+    Matrix xHd;
+    const T x = this->mean_ ? traits<T>::Retract(this->origin_, *(this->mean()),
+                                                 {}, xHd)
+                            : this->origin_;
 
-    // If not Gaussian, throw an error
-    throw std::runtime_error(
-        "NonlinearDensity::negLogConstant() is only implemented for "
-        "Gaussian noise models. The noise model used is of type " +
-        std::string(typeid(*noiseModel).name()));
+    Matrix mHx;  // d Local(x̂,q)/d p and d Local(x̂,q)/d q
+    Vector muHat = traits<T>::Local(newOrigin, x, {}, mHx);
+    const Matrix mJd = mHx * xHd;  // chain rule
+    const Matrix covHat = mJd * dSd * mJd.transpose();
+
+    return NonlinearDensity(this->key(), newOrigin, covHat, muHat);
   }
+
+  /**
+   * Create a new NonlinearDensity with zero mean by moving the origin to x⁺ =
+   * Retract(origin, mean). Returns an ECG with origin=x⁺, zero mean, and
+   * covariance transported to x⁺.
+   * @note Requires a Gaussian noise model; throws otherwise.
+   */
+  NonlinearDensity reset() const {
+    auto g = getGaussian("reset");
+    const size_t n = this->dim();
+    const Vector m = this->mean_.value_or(Vector::Zero(n));
+
+    // If already zero-mean, nothing to do.
+    if (m.isZero(0)) return *this;
+
+    // New origin is Retract(origin, mean)
+    const T newOrigin = traits<T>::Retract(this->origin_, m);
+
+    // Transport to newOrigin to obtain mapped covariance; then drop the mean
+    NonlinearDensity mapped = this->transportTo(newOrigin);
+    auto g_mapped =
+        std::dynamic_pointer_cast<noiseModel::Gaussian>(mapped.noiseModel());
+    const Matrix S_hat = g_mapped->covariance();
+
+    const SharedNoiseModel modelPlus = noiseModel::Gaussian::Covariance(S_hat);
+    return NonlinearDensity(this->key(), newOrigin, modelPlus);  // zero-mean
+  }
+
+  /** Reset given a reference x̂ and a nonzero mean μ in its chart, returning
+   *  a zero-mean ECG at x⁺ = Retract(x̂, μ). If isInformation=true, Σ_or_Λ is
+   *  interpreted as precision Λ and we construct a Gaussian Information model.
+   */
+  NonlinearDensity resetFrom(const T& xhat, const Vector& mu,
+                             const Matrix& Sigma_or_Lambda,
+                             bool isInformation = false) const {
+    const T xplus = traits<T>::Retract(xhat, mu);
+    const SharedNoiseModel modelPlus =
+        isInformation ? noiseModel::Gaussian::Information(Sigma_or_Lambda)
+                      : noiseModel::Gaussian::Covariance(Sigma_or_Lambda);
+    return NonlinearDensity(this->key(), xplus, modelPlus);
+  }
+
+  noiseModel::Gaussian::shared_ptr getGaussian(
+      const std::string& method) const {
+    using noiseModel::Gaussian;
+    const auto& model = this->noiseModel();
+    auto g = std::dynamic_pointer_cast<Gaussian>(model);
+    if (!g)
+      throw std::runtime_error("NonlinearDensity::" + method +
+                               " is only implemented for  Gaussian noise "
+                               "models. The noise model used is of type " +
+                               std::string(typeid(*model).name()));
+    return g;
+  }
+
   /// @}
 
  private:
-  static void mapToReference_(const T& xhat, const T& origin,
-                              const std::optional<Vector>& mean,
-                              const Matrix& Sigma, Vector& mu_hat,
-                              Matrix& S_hat) {
-    const size_t n = Sigma.rows();
-    Matrix Hlp, Hlq;  // d Local(xhat,q)/d p and d Local(xhat,q)/d q
-    Vector r = traits<T>::Local(xhat, origin, Hlp, Hlq);
-
-    Matrix Hr_p, Hr_v;  // d Retract(origin,δ)/d origin and /d δ at δ=0
-    traits<T>::Retract(origin, Vector::Zero(n), Hr_p, Hr_v);
-
-    const Matrix Jmap = Hlq * Hr_v;  // chain rule
-    const Vector m = mean.value_or(Vector::Zero(n));
-
-    mu_hat = r + Jmap * m;
-    S_hat = Jmap * Sigma * Jmap.transpose();
-  }
-
 #ifdef GTSAM_ENABLE_BOOST_SERIALIZATION
   /** Serialization function */
   friend class boost::serialization::access;

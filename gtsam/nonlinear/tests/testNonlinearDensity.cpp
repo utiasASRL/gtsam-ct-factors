@@ -97,6 +97,65 @@ TEST(NonlinearDensity, Pose2WithMean) {
 }
 
 //******************************************************************************
+TEST(NonlinearDensity, MapToReferenceIdentity) {
+  Key key(1);
+  Pose2 origin(1.0, 2.0, 0.3);
+  Matrix3 Sigma;
+  Sigma << 0.04, 0.0, 0.0, 0.0, 0.09, 0.0, 0.0, 0.0, 0.16;
+  SharedNoiseModel model = noiseModel::Gaussian::Covariance(Sigma);
+
+  // Nonzero mean to verify it's preserved when mapping to same reference
+  Vector3 mean;
+  mean << 0.01, -0.02, 0.05;
+  NonlinearDensity<Pose2> d(key, origin, model, mean);
+
+  NonlinearDensity<Pose2> mapped = d.transportTo(origin);
+
+  // Origin preserved
+  EXPECT(assert_equal(origin, mapped.origin()));
+
+  // Mean and covariance preserved
+  auto g = std::dynamic_pointer_cast<noiseModel::Gaussian>(mapped.noiseModel());
+  CHECK(g);
+  EXPECT(assert_equal(Sigma, g->covariance(), 1e-9));
+  CHECK(mapped.mean().has_value());
+  EXPECT(assert_equal(mean, *mapped.mean(), 1e-9));
+}
+
+//******************************************************************************
+TEST(NonlinearDensity, ResetToZeroMeanMatchesTransport) {
+  Key key(1);
+  Pose2 origin(1.0, 2.0, 0.3);
+  Matrix3 Sigma;
+  Sigma << 0.04, 0.0, 0.0, 0.0, 0.09, 0.0, 0.0, 0.0, 0.16;
+  SharedNoiseModel model = noiseModel::Gaussian::Covariance(Sigma);
+
+  Vector3 mean;
+  mean << 0.05, -0.02, 0.1;
+  NonlinearDensity<Pose2> d(key, origin, model, mean);
+
+  // Compute expected new origin xplus = Retract(origin, mean)
+  Pose2 xplus = traits<Pose2>::Retract(origin, mean);
+
+  // Our reset method should move origin to xplus and set zero mean
+  NonlinearDensity<Pose2> r = d.reset();
+  EXPECT(assert_equal(xplus, r.origin()));
+  CHECK(!r.mean().has_value());
+
+  // Transport-to(xplus) should yield the same covariance, and near-zero mean
+  NonlinearDensity<Pose2> mapped = d.transportTo(xplus);
+  auto g_r = r.getGaussian("ResetToZeroMeanMatchesTransport");
+  auto g_m = mapped.getGaussian("ResetToZeroMeanMatchesTransport");
+  CHECK(g_r && g_m);
+  EXPECT(assert_equal(g_r->covariance(), g_m->covariance(), 1e-9));
+
+  // Mapped mean should be (approximately) zero in the chart at xplus
+  Vector3 zero = Vector3::Zero();
+  Vector3 mapped_mean = mapped.mean().value_or(Vector3::Zero());
+  EXPECT(assert_equal(zero, mapped_mean, 1e-7));
+}
+
+//******************************************************************************
 TEST(NonlinearDensity, FusionPose2Identical) {
   Key key(1);
   Pose2 origin(1.0, 2.0, 0.3);
@@ -114,7 +173,7 @@ TEST(NonlinearDensity, FusionPose2Identical) {
   EXPECT(assert_equal(origin, fused.origin()));
 
   // Covariance should be halved: (Σ^{-1}+Σ^{-1})^{-1} = Σ/2
-  auto gf = std::dynamic_pointer_cast<noiseModel::Gaussian>(fused.noiseModel());
+  auto gf = fused.getGaussian("FusionPose2Identical");
   CHECK(gf);
   Matrix3 Sigma_f = gf->covariance();
   EXPECT(assert_equal<Matrix3>(0.5 * Sigma, Sigma_f, 1e-9));
