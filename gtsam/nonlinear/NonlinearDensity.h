@@ -50,28 +50,29 @@ class NonlinearDensity : public NonlinearLikelihood<VALUE> {
 
   /**
    * Calculate the log-probability of the given value.
-   * log P(x) = -0.5 * error(x) + C,
-   * where C is the normalization constant.
-   * The error is 0.5 * |h(x)-z|^2_Sigma, and for this factor h(x) = Local(origin,x) and z=0.
+   * error(x) as defined for a GTSAM factor already equals 0.5 * ||r(x)||^2_Σ
+   * (i.e. the negative log-likelihood without the normalization constant).
+   * Hence: log P(x) = log k - error(x).
    */
   double logProbability(const T& x) const {
-    const double error = this->error(x);
-    return -error + this->normalizationConstant();
+    return -(negLogConstant() + this->error(x));
   }
 
   /**
-   * Evaluate the error at the given value.
-   * This is the same as the negative log-probability without the normalization constant.
+   * Evaluate the probability density at the given value.
+   * P(x) = exp(logProbability(x)).
    */
-  double evaluate(const T& x) const { return this->error(x); }
+  double evaluate(const T& x) const { return exp(logProbability(x)); }
 
- private:
   /**
    * Calculate the normalization constant for the density.
-   * For a Gaussian noise model, this is -0.5*n*log(2*pi) + log|R|, where R is the upper-triangular factor of the precision matrix.
-   * For other noise models, this is not well-defined and this method will throw an exception.
+   * For a Gaussian noise model with covariance Σ, we return
+   *   - log k = 0.5 * n * log(2*pi) + 0.5 * log |Σ|
+   * where n = dim().  Note: gaussian->logDeterminant() returns log|Σ|.
+   * For non-Gaussian noise models this is not (straightforwardly) defined and
+   * we throw.
    */
-  double normalizationConstant() const {
+  double negLogConstant() const {
     // Get number of rows
     const size_t n = this->dim();
 
@@ -79,32 +80,28 @@ class NonlinearDensity : public NonlinearLikelihood<VALUE> {
     const auto& noiseModel = this->noiseModel();
     auto gaussian = std::dynamic_pointer_cast<noiseModel::Gaussian>(noiseModel);
     if (gaussian) {
-      const double logdetR = gaussian->logDeterminant();
-      return -0.5 * n * log(2.0 * M_PI) + logdetR;
+      constexpr double log2pi = 1.8378770664093454835606594728112;  // log(2*pi)
+      const double logDetSigma = gaussian->logDeterminant();        // log |Σ|
+      return 0.5 * n * log2pi + 0.5 * logDetSigma;
     }
 
     // If not Gaussian, throw an error
     throw std::runtime_error(
-        "NonlinearDensity::normalizationConstant() is only implemented for "
+        "NonlinearDensity::negLogConstant() is only implemented for "
         "Gaussian noise models. The noise model used is of type " +
         std::string(typeid(*noiseModel).name()));
   }
 
-  /// @name Advanced Interface
-  /// @{
-
+ private:
 #ifdef GTSAM_ENABLE_BOOST_SERIALIZATION
   /** Serialization function */
   friend class boost::serialization::access;
   template <class ARCHIVE>
   void serialize(ARCHIVE& ar, const unsigned int /*version*/) {
     ar& boost::serialization::make_nvp(
-        "NonlinearLikelihood",
-        boost::serialization::base_object<Base>(*this));
+        "NonlinearLikelihood", boost::serialization::base_object<Base>(*this));
   }
 #endif
-
-  /// @}
 };
 
 }  // namespace gtsam
