@@ -23,6 +23,21 @@
 
 namespace gtsam {
 
+// Simple, non-templated Gaussian fusion in a common tangent space
+struct FusedGaussian {
+  Vector mean;        // fused mean
+  Matrix covariance;  // fused covariance
+};
+
+inline FusedGaussian FuseGaussians(const Vector& mu1, const Matrix& S1,
+                                   const Vector& mu2, const Matrix& S2) {
+  const Matrix iS1 = S1.inverse();
+  const Matrix iS2 = S2.inverse();
+  const Matrix S = (iS1 + iS2).inverse();
+  const Vector m = S * (iS1 * mu1 + iS2 * mu2);
+  return {m, S};
+}
+
 /**
  * A nonlinear density, inherits from NonlinearLikelihood.
  * @ingroup nonlinear
@@ -116,10 +131,12 @@ class NonlinearDensity : public NonlinearLikelihood<VALUE> {
    *
    * Notes/assumptions:
    *  - Only supports Gaussian noise models; throws otherwise.
-   *  - Uses a full first-order Jacobian for the change of coordinates between charts
-   *    via the chain rule: J_map = (∂Local(x̂,q)/∂q)|_{q=origin} · (∂Retract(origin,δ)/∂δ)|_{δ=0}.
+   *  - Uses a full first-order Jacobian for the change of coordinates between
+   * charts via the chain rule: J_map = (∂Local(x̂,q)/∂q)|_{q=origin} ·
+   * (∂Retract(origin,δ)/∂δ)|_{δ=0}.
    *  - If both inputs share the same origin and mean, this reduces to
-   *    classical Gaussian fusion: Σ⁺ = (Σ₁^{-1}+Σ₂^{-1})^{-1} at the same origin.
+   *    classical Gaussian fusion: Σ⁺ = (Σ₁^{-1}+Σ₂^{-1})^{-1} at the same
+   * origin.
    */
   NonlinearDensity operator*(const NonlinearDensity& other) const {
     // 0) Sanity checks
@@ -136,58 +153,53 @@ class NonlinearDensity : public NonlinearLikelihood<VALUE> {
           "NonlinearDensity::operator*: only Gaussian noise models are "
           "supported");
 
-    const size_t n = this->dim();
-    if (n != other.dim())
-      throw std::invalid_argument(
-          "NonlinearDensity::operator*: dimension mismatch");
-
     const Matrix Sigma1 = g1->covariance();
     const Matrix Sigma2 = g2->covariance();
 
-    // 1) Choose a reference x̂. We use the naive-fusion reference in identity
-    //    coordinates to remain generic across VALUE types.
-    const Vector mu1_ref =
-        traits<T>::Logmap(this->origin_);  // in chart at identity
+    // 1) Reference selection (info-weighted in identity chart)
+    const Vector mu1_ref = traits<T>::Logmap(this->origin_);
     const Vector mu2_ref = traits<T>::Logmap(other.origin_);
-    const Matrix SigmaRef = (Sigma1.inverse() + Sigma2.inverse()).inverse();
+    const Matrix SigRef = (Sigma1.inverse() + Sigma2.inverse()).inverse();
     const Vector muRef =
-        SigmaRef * (Sigma1.inverse() * mu1_ref + Sigma2.inverse() * mu2_ref);
+        SigRef * (Sigma1.inverse() * mu1_ref + Sigma2.inverse() * mu2_ref);
     const T xhat = traits<T>::Expmap(muRef);
 
-    // 2) Express both densities at x̂ as extended concentrated Gaussians using Jacobians.
-    // For density 1
-    Matrix Hlp1, Hlq1; // d Local(xhat,q)/d p and d Local(xhat,q)/d q
-    Vector r1 = traits<T>::Local(xhat, this->origin_, Hlp1, Hlq1);
+    // 2) Map both ECGs to chart at x̂
+    Vector mu1_hat, mu2_hat;
+    Matrix S1_hat, S2_hat;
+    mapToReference_(xhat, this->origin_, this->mean_, Sigma1, mu1_hat, S1_hat);
+    mapToReference_(xhat, other.origin_, other.mean_, Sigma2, mu2_hat, S2_hat);
 
-    Matrix Hr_p1, Hr_v1; // d Retract(origin,delta)/d origin and /d delta at delta=0
-    traits<T>::Retract(this->origin_, Vector::Zero(n), Hr_p1, Hr_v1);
+    // 3) Classical Gaussian fusion in common tangent
+    const FusedGaussian fg = FuseGaussians(mu1_hat, S1_hat, mu2_hat, S2_hat);
 
-    Matrix Jmap1 = Hlq1 * Hr_v1;  // chain rule mapping from δ at origin to chart at xhat
-    Vector m1 = this->mean_.value_or(Vector::Zero(n));
-    Vector mu1_hat = r1 + Jmap1 * m1;
-    Matrix S1_hat = Jmap1 * Sigma1 * Jmap1.transpose();
-
-    // For density 2
-    Matrix Hlp2, Hlq2;
-    Vector r2 = traits<T>::Local(xhat, other.origin_, Hlp2, Hlq2);
-    Matrix Hr_p2, Hr_v2;
-    traits<T>::Retract(other.origin_, Vector::Zero(n), Hr_p2, Hr_v2);
-    Matrix Jmap2 = Hlq2 * Hr_v2;
-    Vector m2 = other.mean_.value_or(Vector::Zero(n));
-    Vector mu2_hat = r2 + Jmap2 * m2;
-    Matrix S2_hat = Jmap2 * Sigma2 * Jmap2.transpose();
-
-    // 3) Classical Gaussian fusion in the common tangent at x̂.
-    const Matrix Sdiamond = (S1_hat.inverse() + S2_hat.inverse()).inverse();
-    const Vector mu_plus =
-        Sdiamond * (S1_hat.inverse() * mu1_hat + S2_hat.inverse() * mu2_hat);
-
-    // 4) Reset: x⁺ = Retract(x̂, µ⁺); set zero-mean concentrated Gaussian with
-    // Σ⁺ ≈ Sdiamond.
-    const T xplus = traits<T>::Retract(xhat, mu_plus);
+    // 4) Reset to zero-mean at fused origin
+    const T xplus = traits<T>::Retract(xhat, fg.mean);
     const SharedNoiseModel modelPlus =
-        noiseModel::Gaussian::Covariance(Sdiamond);
+        noiseModel::Gaussian::Covariance(fg.covariance);
+    return NonlinearDensity(this->key(), xplus, modelPlus);
+  }
 
+  /** Reset this ECG to a new reference x̂: map (origin, mean, Σ) into the
+   *  chart at x̂ via first-order Jacobians, then retract by the mapped mean
+   *  so the result has zero mean at the new origin.
+   *  Requires a Gaussian noise model; throws otherwise. */
+  NonlinearDensity resetToZeroMeanAt(const T& xhat) const {
+    auto g =
+        std::dynamic_pointer_cast<noiseModel::Gaussian>(this->noiseModel());
+    if (!g)
+      throw std::runtime_error(
+          "NonlinearDensity::resetToZeroMeanAt: only Gaussian noise models are "
+          "supported");
+
+    const Matrix& Sigma = g->covariance();
+
+    Vector mu_hat;
+    Matrix S_hat;
+    mapToReference_(xhat, this->origin_, this->mean_, Sigma, mu_hat, S_hat);
+
+    const T xplus = traits<T>::Retract(xhat, mu_hat);
+    const SharedNoiseModel modelPlus = noiseModel::Gaussian::Covariance(S_hat);
     return NonlinearDensity(this->key(), xplus, modelPlus);
   }
 
@@ -221,6 +233,24 @@ class NonlinearDensity : public NonlinearLikelihood<VALUE> {
   /// @}
 
  private:
+  static void mapToReference_(const T& xhat, const T& origin,
+                              const std::optional<Vector>& mean,
+                              const Matrix& Sigma, Vector& mu_hat,
+                              Matrix& S_hat) {
+    const size_t n = Sigma.rows();
+    Matrix Hlp, Hlq;  // d Local(xhat,q)/d p and d Local(xhat,q)/d q
+    Vector r = traits<T>::Local(xhat, origin, Hlp, Hlq);
+
+    Matrix Hr_p, Hr_v;  // d Retract(origin,δ)/d origin and /d δ at δ=0
+    traits<T>::Retract(origin, Vector::Zero(n), Hr_p, Hr_v);
+
+    const Matrix Jmap = Hlq * Hr_v;  // chain rule
+    const Vector m = mean.value_or(Vector::Zero(n));
+
+    mu_hat = r + Jmap * m;
+    S_hat = Jmap * Sigma * Jmap.transpose();
+  }
+
 #ifdef GTSAM_ENABLE_BOOST_SERIALIZATION
   /** Serialization function */
   friend class boost::serialization::access;
