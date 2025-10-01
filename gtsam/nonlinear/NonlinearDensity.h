@@ -23,21 +23,6 @@
 
 namespace gtsam {
 
-// Simple, non-templated Gaussian fusion in a common tangent space
-struct FusedGaussian {
-  Vector mean;        // fused mean
-  Matrix covariance;  // fused covariance
-};
-
-inline FusedGaussian FuseGaussians(const Vector& mu1, const Matrix& S1,
-                                   const Vector& mu2, const Matrix& S2) {
-  const Matrix iS1 = S1.inverse();
-  const Matrix iS2 = S2.inverse();
-  const Matrix S = (iS1 + iS2).inverse();
-  const Vector m = S * (iS1 * mu1 + iS2 * mu2);
-  return {m, S};
-}
-
 /**
  * A nonlinear density, inherits from NonlinearLikelihood. With Gaussian noise
  * models, models exactly a (left) extended concentrated Gaussian (L-ECG).
@@ -129,96 +114,18 @@ class NonlinearDensity : public NonlinearLikelihood<VALUE> {
     return evaluate(x);
   }
 
-  /**
-   * Calculate the normalization constant for the density.
-   * For a Gaussian noise model with covariance Σ, we return
-   *   - log k = 0.5 * n * log(2*pi) + 0.5 * log |Σ|
-   * where n = dim().  Note: gaussian->logDeterminant() returns log|Σ|.
-   * For non-Gaussian noise models this is not (easily) defined and we throw.
-   */
-  double negLogConstant() const {
-    const size_t n = this->dim();
-    auto gaussian = getGaussian("negLogConstant");
-    constexpr double log2pi = 1.8378770664093454835606594728112;  // log(2*pi)
-    const double logDetSigma = gaussian->logDeterminant();        // log |Σ|
-    return 0.5 * n * log2pi + 0.5 * logDetSigma;
-  }
-
-  /**
-   * Fusion operator implementing the (approximate) three-step Fusion
-   * method in:
-   *   Y. Ge, P. van Goor and R. Mahony, "A Geometric Perspective on Fusing
-   *   Gaussian Distributions on Lie Groups," in IEEE Control Systems Letters,
-   *   vol. 8, pp. 844-849, 2024, https://ieeexplore.ieee.org/document/10539262
-   *
-   * We choose our origin as the reference, express other density in our chart,
-   * fuse the Gaussians, then reset to a zero-mean concentrated Gaussian.
-   *
-   * Notes/assumptions:
-   *  - Only supports Gaussian noise models; throws otherwise.
-   *  - If both inputs share the same origin and mean, this reduces to
-   *    classical Gaussian fusion: Σ⁺ = (Σ₁^{-1}+Σ₂^{-1})^{-1} at the same
-   * origin.
-   */
-  NonlinearDensity operator*(const NonlinearDensity& other) const {
-    // 0) Sanity checks
-    if (this->key() != other.key())
-      throw std::invalid_argument("NonlinearDensity::operator*: keys differ");
-
-    // Extract Gaussian noise models and covariances
-    auto g1 = getGaussian("operator*");
-    auto g2 = other.getGaussian("operator*");
-
-    const Matrix Sigma1 = g1->covariance();
-    const Matrix Sigma2 = g2->covariance();
-
-    // 1) Reference selection (info-weighted in identity chart)
-    const Vector mu1_ref = traits<T>::Logmap(this->origin_);
-    const Vector mu2_ref = traits<T>::Logmap(other.origin_);
-    const Matrix SigRef = (Sigma1.inverse() + Sigma2.inverse()).inverse();
-    const Vector muRef =
-        SigRef * (Sigma1.inverse() * mu1_ref + Sigma2.inverse() * mu2_ref);
-    const T xhat = traits<T>::Expmap(muRef);
-
-    // 2) Map both ECGs to chart at x̂
-    Vector mu1_hat, mu2_hat;
-    Matrix S1_hat, S2_hat;
-    // mapToReference_ removed
-
-    // 3) Classical Gaussian fusion in the common tangent at x̂ (simple form)
-    // We must map mu1_hat, S1_hat, mu2_hat, S2_hat before fusion: implement
-    // here
-
-    // Compute mapping for first density
-    {
-      const size_t n = Sigma1.rows();
-      Matrix Hlp1, Hlq1;
-      Vector r1 = traits<T>::Local(xhat, this->origin_, Hlp1, Hlq1);
-      Matrix Hr_p, Hr_v1;
-      traits<T>::Retract(this->origin_, Vector::Zero(n), Hr_p, Hr_v1);
-      const Matrix Jmap1 = Hlq1 * Hr_v1;
-      const Vector m1 = this->mean_.value_or(Vector::Zero(n));
-      mu1_hat = r1 + Jmap1 * m1;
-      S1_hat = Jmap1 * Sigma1 * Jmap1.transpose();
-    }
-
-    // Compute mapping for second density
-    {
-      const size_t n = Sigma2.rows();
-      Matrix Hlp2, Hlq2;
-      Vector r2 = traits<T>::Local(xhat, other.origin_, Hlp2, Hlq2);
-      Matrix Hr_p2, Hr_v2;
-      traits<T>::Retract(other.origin_, Vector::Zero(n), Hr_p2, Hr_v2);
-      const Matrix Jmap2 = Hlq2 * Hr_v2;
-      const Vector m2 = other.mean_.value_or(Vector::Zero(n));
-      mu2_hat = r2 + Jmap2 * m2;
-      S2_hat = Jmap2 * Sigma2 * Jmap2.transpose();
-    }
-
-    const FusedGaussian fg = FuseGaussians(mu1_hat, S1_hat, mu2_hat, S2_hat);
-
-    // 4) Reset to zero-mean at fused origin (covariance form)
-    return resetFrom(xhat, fg.mean, fg.covariance, /*isInformation=*/false);
+  /// Get the Gaussian noise model, or throw if not Gaussian
+  noiseModel::Gaussian::shared_ptr gaussianModel(
+      const std::string& method) const {
+    using noiseModel::Gaussian;
+    const auto& model = this->noiseModel();
+    auto g = std::dynamic_pointer_cast<Gaussian>(model);
+    if (!g)
+      throw std::runtime_error("NonlinearDensity::" + method +
+                               " is only implemented for  Gaussian noise "
+                               "models. The noise model used is of type " +
+                               std::string(typeid(*model).name()));
+    return g;
   }
 
   /// Return T element corresponding to the mean, with optional Jacobian
@@ -239,7 +146,7 @@ class NonlinearDensity : public NonlinearLikelihood<VALUE> {
    * @note: Only Gaussian noise models are supported.
    */
   NonlinearDensity transportTo(const T& x_hat) const {
-    auto g = getGaussian("transportTo");
+    auto g = gaussianModel("transportTo");
 
     Matrix xHm;
     const T x = retractMean(&xHm);
@@ -260,7 +167,7 @@ class NonlinearDensity : public NonlinearLikelihood<VALUE> {
    */
   NonlinearDensity reset() const {
     if (!this->mean_) return *this;  // already zero-mean
-    auto g = getGaussian("reset");
+    auto g = gaussianModel("reset");
 
     Matrix hatJm;
     const T x_hat = retractMean(&hatJm);
@@ -269,31 +176,77 @@ class NonlinearDensity : public NonlinearLikelihood<VALUE> {
     return NonlinearDensity(this->key(), x_hat, covHat);
   }
 
-  /** Reset given a reference x̂ and a nonzero mean μ in its chart, returning
-   *  a zero-mean ECG at x⁺ = Retract(x̂, μ). If isInformation=true, Σ_or_Λ is
-   *  interpreted as precision Λ and we construct a Gaussian Information model.
+  /**
+   * Calculate the normalization constant for the density.
+   * For a Gaussian noise model with covariance Σ, we return
+   *   - log k = 0.5 * n * log(2*pi) + 0.5 * log |Σ|
+   * where n = dim().  Note: gaussian->logDeterminant() returns log|Σ|.
+   * For non-Gaussian noise models this is not (easily) defined and we throw.
    */
-  NonlinearDensity resetFrom(const T& xhat, const Vector& mu,
-                             const Matrix& Sigma_or_Lambda,
-                             bool isInformation = false) const {
-    const T xplus = traits<T>::Retract(xhat, mu);
-    const SharedNoiseModel modelPlus =
-        isInformation ? noiseModel::Gaussian::Information(Sigma_or_Lambda)
-                      : noiseModel::Gaussian::Covariance(Sigma_or_Lambda);
-    return NonlinearDensity(this->key(), xplus, modelPlus);
+  double negLogConstant() const {
+    const size_t n = this->dim();
+    auto gaussian = gaussianModel("negLogConstant");
+    constexpr double log2pi = 1.8378770664093454835606594728112;  // log(2*pi)
+    const double logDetSigma = gaussian->logDeterminant();        // log |Σ|
+    return 0.5 * n * log2pi + 0.5 * logDetSigma;
   }
 
-  noiseModel::Gaussian::shared_ptr getGaussian(
-      const std::string& method) const {
-    using noiseModel::Gaussian;
-    const auto& model = this->noiseModel();
-    auto g = std::dynamic_pointer_cast<Gaussian>(model);
-    if (!g)
-      throw std::runtime_error("NonlinearDensity::" + method +
-                               " is only implemented for  Gaussian noise "
-                               "models. The noise model used is of type " +
-                               std::string(typeid(*model).name()));
-    return g;
+  /// Simple, non-templated Gaussian fusion in a common tangent space
+  struct Gaussian {
+    Vector m;  //  mean
+    Matrix P;  //  covariance
+
+    /// Fuse two Gaussian distributions into a single Gaussian.
+    inline Gaussian operator*(const Gaussian& other) {
+      const Matrix W1 = this->P.inverse();
+      const Matrix W2 = other.P.inverse();
+      const Matrix P = (W1 + W2).inverse();
+      const Vector m = P * (W1 * this->m + W2 * other.m);
+      return {m, P};
+    }
+  };
+
+  /// Get a Gaussian, or throw if not Gaussian
+  Gaussian getGaussian(const std::string& method) const {
+    auto gaussian = gaussianModel(method);
+    return {this->mean_.value_or(Vector::Zero(this->dim())),
+            gaussian->covariance()};
+  }
+
+  /**
+   * Fusion operator implementing the (approximate) three-step Fusion
+   * method in:
+   *   Y. Ge, P. van Goor and R. Mahony, "A Geometric Perspective on Fusing
+   *   Gaussian Distributions on Lie Groups," in IEEE Control Systems Letters,
+   *   vol. 8, pp. 844-849, 2024, https://ieeexplore.ieee.org/document/10539262
+   *
+   * We choose our origin as the reference, express other density in our chart,
+   * fuse the Gaussians, then reset to a zero-mean concentrated Gaussian.
+   *
+   * Notes/assumptions:
+   *  - Only supports Gaussian noise models; throws otherwise.
+   *  - If both inputs share the same origin, this reduces to
+   *    classical Gaussian fusion: Σ⁺ = (Σ₁^{-1}+Σ₂^{-1})^{-1} at the same
+   * origin.
+   */
+  NonlinearDensity operator*(const NonlinearDensity& other) const {
+    // 0) Sanity checks
+    if (this->key() != other.key())
+      throw std::invalid_argument("NonlinearDensity::operator*: keys differ");
+
+    // 1) Transport other to our chart
+    NonlinearDensity o = other.transportTo(this->origin_);
+
+    // 2) Fuse the Gaussians in our tangent space
+    auto g1 = this->getGaussian("operator*");
+    auto g2 = o.getGaussian("operator*");
+    Gaussian fused = g1 * g2;
+
+    // 3) Create a fused NonlinearDensity at our origin with fused mean
+    NonlinearDensity ecg(this->key(), this->origin_, fused.P, fused.m);
+
+    // 4) Reset to zero mean
+    return ecg.reset();
   }
 
   /// @}
