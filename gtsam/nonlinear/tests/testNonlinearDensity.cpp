@@ -69,7 +69,7 @@ TEST(NonlinearDensity, Pose2WithMean) {
 
   // Non-zero mean in tangent space (dx, dy, dtheta)
   Vector3 mean(0.05, -0.02, 0.1);
-  NonlinearDensity<Pose2> factor(key, origin, model, mean);
+  NonlinearDensity<Pose2> factor(key, origin, mean, model);
 
   // Compute expected error = 0.5 * ||-mean||^2_{Sigma^{-1}}
   Vector sigmas(3);
@@ -102,12 +102,11 @@ TEST(NonlinearDensity, TransportToSameOrigin) {
   Pose2 origin(1.0, 2.0, 0.3);
   Matrix3 Sigma;
   Sigma << 0.04, 0.0, 0.0, 0.0, 0.09, 0.0, 0.0, 0.0, 0.16;
-  SharedNoiseModel model = noiseModel::Gaussian::Covariance(Sigma);
 
   // Nonzero mean to verify it's preserved when mapping to same reference
   Vector3 mean;
   mean << 0.01, -0.02, 0.05;
-  NonlinearDensity<Pose2> d(key, origin, model, mean);
+  NonlinearDensity<Pose2> d(key, origin, mean, Sigma);
 
   NonlinearDensity<Pose2> mapped = d.transportTo(origin);
 
@@ -128,11 +127,10 @@ TEST(NonlinearDensity, ResetMatchesTransport) {
   Pose2 origin(1.0, 2.0, 0.3);
   Matrix3 Sigma;
   Sigma << 0.04, 0.0, 0.0, 0.0, 0.09, 0.0, 0.0, 0.0, 0.16;
-  SharedNoiseModel model = noiseModel::Gaussian::Covariance(Sigma);
 
   Vector3 mean;
   mean << 0.05, -0.02, 0.1;
-  NonlinearDensity<Pose2> d(key, origin, model, mean);
+  NonlinearDensity<Pose2> d(key, origin, mean, Sigma);
 
   // Compute expected new origin xplus = Retract(origin, mean)
   Pose2 xplus = traits<Pose2>::Retract(origin, mean);
@@ -160,8 +158,7 @@ TEST(NonlinearDensity, FusionPose2Identical) {
   Key key(1);
   Pose2 origin(1.0, 2.0, 0.3);
   Matrix3 Sigma;
-  Sigma << 0.04, 0.0, 0.0, 0.0, 0.09, 0.0, 0.0, 0.0,
-      0.16;  // covariances (not sigmas)
+  Sigma << 0.04, 0.0, 0.0, 0.0, 0.09, 0.0, 0.0, 0.0, 0.16;
   SharedNoiseModel model = noiseModel::Gaussian::Covariance(Sigma);
 
   NonlinearDensity<Pose2> a(key, origin, model);

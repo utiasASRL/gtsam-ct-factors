@@ -44,14 +44,31 @@ class NonlinearDensity : public NonlinearLikelihood<T> {
   NonlinearDensity() {}
 
   /// Constructor with noise model and optional mean in tangent space
-  NonlinearDensity(Key key, const T& origin, const SharedNoiseModel& model,
-                   const std::optional<Vector>& mean = {})
-      : Base(key, origin, model, mean) {}
+  NonlinearDensity(Key key, const T& origin, const SharedNoiseModel& model)
+      : Base(key, origin, model) {}
 
-  /// Constructor with covariance matrix and optional mean in tangent space
-  NonlinearDensity(Key key, const T& origin, const Matrix& covariance,
-                   const std::optional<Vector>& mean = {})
-      : Base(key, origin, noiseModel::Gaussian::Covariance(covariance), mean) {}
+  /// Constructor with noise model and optional mean in tangent space
+  NonlinearDensity(Key key, const T& origin, const Vector& mean,
+                   const SharedNoiseModel& model)
+      : Base(key, origin, mean, model) {
+    if (mean.size() != static_cast<Eigen::Index>(model->dim()))
+      throw std::invalid_argument(
+          "NonlinearDensity: mean dimension does not match noise model");
+  }
+
+  /// Constructor with covariance matrix (zero mean in tangent space)
+  NonlinearDensity(Key key, const T& origin, const Matrix& covariance)
+      : Base(key, origin, covariance) {}
+
+  /// Constructor with mean (in tangent space) and covariance matrix
+  NonlinearDensity(Key key, const T& origin, const Vector& mean,
+                   const Matrix& covariance)
+      : Base(key, origin, mean, covariance) {
+    if (mean.size() != covariance.rows() ||
+        covariance.rows() != covariance.cols())
+      throw std::invalid_argument(
+          "NonlinearDensity: mean and covariance dimensions do not match");
+  }
 
   /// @}
   /// @name Standard Destructor
@@ -184,7 +201,7 @@ class NonlinearDensity : public NonlinearLikelihood<T> {
     const Matrix hatJm = hatHx * xHm;  // chain rule
     const Matrix covHat = hatJm * g->covariance() * hatJm.transpose();
 
-    return NonlinearDensity(this->key(), x_hat, Symmetrize(covHat), muHat);
+    return NonlinearDensity(this->key(), x_hat, muHat, Symmetrize(covHat));
   }
 
   /**
@@ -220,7 +237,7 @@ class NonlinearDensity : public NonlinearLikelihood<T> {
     auto [m, P] = Fuse(*g1, *g2);
 
     // 3) Create a fused NonlinearDensity at our origin with fused mean
-    NonlinearDensity ecg(this->key(), this->origin_, P, m);
+    NonlinearDensity ecg(this->key(), this->origin_, m, P);
 
     // 4) Reset to zero mean
     return ecg.reset();

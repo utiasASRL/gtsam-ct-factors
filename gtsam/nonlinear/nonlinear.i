@@ -674,10 +674,10 @@ template <T = {double,
                gtsam::NavState,
                gtsam::imuBias::ConstantBias}>
 virtual class NonlinearLikelihood : gtsam::NoiseModelFactor {
-  NonlinearLikelihood(gtsam::Key key, const T& origin,
-              const gtsam::noiseModel::Base* noiseModel);
-  NonlinearLikelihood(gtsam::Key key, const T& origin,
-              const gtsam::noiseModel::Base* noiseModel, const gtsam::Vector& mean);
+  NonlinearLikelihood(gtsam::Key key, const T& origin, const gtsam::SharedNoiseModel& noiseModel);
+  NonlinearLikelihood(gtsam::Key key, const T& origin, const gtsam::Vector& mean, const gtsam::SharedNoiseModel& noiseModel);
+  NonlinearLikelihood(gtsam::Key key, const T& origin, const gtsam::Matrix& covariance);
+  NonlinearLikelihood(gtsam::Key key, const T& origin, const gtsam::Vector& mean, const gtsam::Matrix& covariance);
   T origin() const;
   // Optional tangent space mean (may be empty / None)
   std::optional<gtsam::Vector> mean() const;
@@ -714,9 +714,9 @@ class NonlinearDensity : gtsam::NonlinearLikelihood<T> {
   NonlinearDensity();
   // Constructors mirroring header (origin terminology)
   NonlinearDensity(gtsam::Key key, const T& origin, const gtsam::SharedNoiseModel& noiseModel);
-  NonlinearDensity(gtsam::Key key, const T& origin, const gtsam::SharedNoiseModel& noiseModel, const gtsam::Vector& mean);
+  NonlinearDensity(gtsam::Key key, const T& origin, const gtsam::Vector& mean, const gtsam::SharedNoiseModel& noiseModel);
   NonlinearDensity(gtsam::Key key, const T& origin, const gtsam::Matrix& covariance);
-  NonlinearDensity(gtsam::Key key, const T& origin, const gtsam::Matrix& covariance, const gtsam::Vector& mean);
+  NonlinearDensity(gtsam::Key key, const T& origin, const gtsam::Vector& mean, const gtsam::Matrix& covariance);
   // Return element corresponding to mean (no Jacobian variant)
   T retractMean() const;
   // Normalization constant (negative log) and log-probability helpers

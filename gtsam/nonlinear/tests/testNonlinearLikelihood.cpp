@@ -38,7 +38,7 @@ TEST(NonlinearLikelihood, ConstructorWithMean) {
   Pose2 origin(1, 2, 0.3);
   auto model = noiseModel::Isotropic::Sigma(3, 0.5);
   Vector mean = (Vector(3) << 0.1, 0.2, 0.3).finished();
-  NonlinearLikelihood<Pose2> factor(key, origin, model, mean);
+  NonlinearLikelihood<Pose2> factor(key, origin, mean, model);
 }
 
 //******************************************************************************
@@ -61,7 +61,7 @@ TEST(NonlinearLikelihood, ErrorWithMean) {
   Pose2 origin(1, 2, 0.3);
   auto model = noiseModel::Isotropic::Sigma(3, 0.5);
   Vector mean = (Vector(3) << 0.1, 0.2, 0.05).finished();
-  NonlinearLikelihood<Pose2> factor(key, origin, model, mean);
+  NonlinearLikelihood<Pose2> factor(key, origin, mean, model);
 
   Pose2 x(1.1, 2.2, 0.3);
   Vector expected_error =
@@ -76,7 +76,7 @@ TEST(NonlinearLikelihood, Likelihood) {
   Pose2 origin(1, 2, 0.3);
   auto model = noiseModel::Isotropic::Sigma(3, 1.0);
   Vector mean = (Vector(3) << 0.1, 0.2, 0.05).finished();
-  NonlinearLikelihood<Pose2> factor(key, origin, model, mean);
+  NonlinearLikelihood<Pose2> factor(key, origin, mean, model);
 
   Pose2 x = origin.retract(mean);
   double expected_likelihood = 1.0;

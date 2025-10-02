@@ -49,7 +49,8 @@ class NonlinearLikelihood : public NoiseModelFactorN<VALUE> {
   typedef NoiseModelFactorN<VALUE> Base;
 
   VALUE origin_; /** The point in manifold at which tangent space is rooted. */
-  std::optional<Vector> mean_; /** Mean in the tangent space, default zero. */
+  std::optional<Vector>
+      mean_; /** Mean in the tangent space, default nullopt. */
 
   /// concept check by type
   GTSAM_CONCEPT_TESTABLE_TYPE(T)
@@ -64,11 +65,35 @@ class NonlinearLikelihood : public NoiseModelFactorN<VALUE> {
   /// default constructor - only use for serialization
   NonlinearLikelihood() {}
 
-  /// Constructor
-  NonlinearLikelihood(Key key, const VALUE& origin,
-                      const SharedNoiseModel& model,
-                      const std::optional<Vector>& mean = {})
-      : Base(model, key), origin_(origin), mean_(mean) {}
+  /// Constructor with noise model and optional mean in tangent space
+  NonlinearLikelihood(Key key, const T& origin, const SharedNoiseModel& model)
+      : Base(model, key), origin_(origin) {}
+
+  /// Constructor with noise model and optional mean in tangent space
+  NonlinearLikelihood(Key key, const T& origin, const Vector& mean,
+                      const SharedNoiseModel& model)
+      : Base(model, key), origin_(origin), mean_(mean) {
+    if (mean.size() != static_cast<Eigen::Index>(model->dim()))
+      throw std::invalid_argument(
+          "NonlinearDensity: mean dimension does not match noise model");
+  }
+
+  /// Constructor with covariance matrix (zero mean in tangent space)
+  NonlinearLikelihood(Key key, const T& origin, const Matrix& covariance)
+      : Base(noiseModel::Gaussian::Covariance(covariance), key),
+        origin_(origin) {}
+
+  /// Constructor with mean (in tangent space) and covariance matrix
+  NonlinearLikelihood(Key key, const T& origin, const Vector& mean,
+                      const Matrix& covariance)
+      : Base(noiseModel::Gaussian::Covariance(covariance), key),
+        origin_(origin),
+        mean_(mean) {
+    if (mean.size() != covariance.rows() ||
+        covariance.rows() != covariance.cols())
+      throw std::invalid_argument(
+          "NonlinearDensity: mean and covariance dimensions do not match");
+  }
 
   /// @}
   /// @name Standard Destructor
