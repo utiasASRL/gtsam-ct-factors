@@ -120,7 +120,7 @@ jobs:
       - name: Install GeographicLib (Conditional)
         if: contains(matrix.name, 'geographiclib') && matrix.build_type == 'Release'
         run: |
-          sudo apt-get -y install libgeographic-dev
+          sudo apt-get -y install libgeographiclib-dev
           echo "GTSAM_ENABLE_GEOGRAPHICLIB=ON" >> $GITHUB_ENV
 
       - name: Build and Test
