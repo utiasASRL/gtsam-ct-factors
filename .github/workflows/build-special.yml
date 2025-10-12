@@ -160,7 +160,7 @@ jobs:
 
       - name: Build & Test
         run: |
-          docker run -v $GITHUB_WORKSPACE:/gtsam borglab/gtsam-ci:${{ matrix.os }}-${{ matrix.compiler }}-${{ matrix.version }} \
+          docker run -v $GITHUB_WORKSPACE:/gtsam \
             -e CMAKE_BUILD_TYPE=${{ matrix.build_type }} \
             -e GTSAM_BUILD_UNSTABLE=${{ env.GTSAM_BUILD_UNSTABLE || 'ON' }} \
             -e GTSAM_ALLOW_DEPRECATED_SINCE_V43=${{ env.GTSAM_ALLOW_DEPRECATED_SINCE_V43 || 'OFF' }} \
@@ -170,4 +170,5 @@ jobs:
             -e GTSAM_ROT3_EXPMAP=${{ env.GTSAM_ROT3_EXPMAP || 'ON' }} \
             -e GTSAM_BUILD_EXAMPLES_ALWAYS=${{ env.GTSAM_BUILD_EXAMPLES_ALWAYS || 'OFF' }} \
             -e GTSAM_USE_SYSTEM_EIGEN=${{ env.GTSAM_USE_SYSTEM_EIGEN || 'OFF' }} \
-            -e GTSAM_USE_SYSTEM_METIS=${{ env.GTSAM_USE_SYSTEM_METIS || 'OFF' }}
+            -e GTSAM_USE_SYSTEM_METIS=${{ env.GTSAM_USE_SYSTEM_METIS || 'OFF' }} \
+            borglab/gtsam-ci:${{ matrix.os }}-${{ matrix.compiler }}-${{ matrix.version }}
