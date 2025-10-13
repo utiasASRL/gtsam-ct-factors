@@ -35,6 +35,7 @@ Interpolator<PoseType>::Interpolator(const VectorN& Q_psd)
                    WNOAMotionFactor<PoseType>::computeJacobianPrev,
                    WNOAMotionFactor<PoseType>::computeJacobianNext) {}
 
+
 // ---- Member Functions ----
 template <typename PoseType>
 typename Interpolator<PoseType>::PoseVel
@@ -43,7 +44,8 @@ Interpolator<PoseType>::interpolatePoseAndVelocity(
     const std::optional<TimestampedPoseVel>& tPoseVel_kp1, double t_tau,
     OptionalMatrixVecType H,
     const std::shared_ptr<Matrix>& mainSolveMarginalMatrix,
-    Matrix* covarianceOut) const {
+    Matrix* covarianceOut,
+    const std::shared_ptr<const LambdaPsiMats>& LambdaPsiPreComp) const {
   assert((tPoseVel_k.has_value() || tPoseVel_kp1.has_value()) &&
          "At least one TimestampedPoseVel must be defined");
   // second point not defined, extrap from first
@@ -90,7 +92,7 @@ Interpolator<PoseType>::interpolatePoseAndVelocity(
     // call protected overload of interpolate function
     return interpolatePoseAndVelocity_(tPoseVel_k.value(), tPoseVel_kp1.value(),
                                        t_tau, H, mainSolveMarginalMatrix,
-                                       covarianceOut);
+                                       covarianceOut, LambdaPsiPreComp);
   }
 }
 
@@ -195,7 +197,8 @@ Interpolator<PoseType>::interpolatePoseAndVelocity_(
     const TimestampedPoseVel& tPoseVel_kp1, double t_tau,
     OptionalMatrixVecType H,
     const std::shared_ptr<Matrix>& mainSolveMarginalMatrix,
-    Matrix* covarianceOut) const {
+    Matrix* covarianceOut,
+    const std::shared_ptr<const LambdaPsiMats>& LambdaPsiPreComp) const {
   // unpack poses and velocities
   const auto& [poseVel_k, t_k] = tPoseVel_k;
   const auto& [poseVel_kp1, t_kp1] = tPoseVel_kp1;
@@ -204,7 +207,12 @@ Interpolator<PoseType>::interpolatePoseAndVelocity_(
 
   // Retrieve interpolation matrices
   Matrix2N Lambda, Psi;
-  std::tie(Lambda, Psi) = getLambdaPsi(t_k, t_kp1, t_tau);
+  if (!LambdaPsiPreComp){
+    std::tie(Lambda, Psi) = getLambdaPsi(t_k, t_kp1, t_tau);
+  }else{
+    std::tie(Lambda, Psi) = *LambdaPsiPreComp;
+  }
+  
 
   // form quantities for Eq. (11.45) in the book, (5.13) in the paper
   VectorN xi_k, xi_dot_k;
@@ -484,12 +492,11 @@ Values Interpolator<PoseType>::interpolatePosesAndVelocities(
   return interpolatedSolution;
 }
 
+// Lambda-Psi interpolator equations for WNOA-specific interpolator
 template <typename PoseType>
 std::pair<Matrix, Matrix> Interpolator<PoseType>::getLambdaPsi(
     double t_k, double t_kp1, double t_tau) const {
-  // TODO (SL): This is currently hardcoded for WNOA.
-  // we might want to move this code into the WNOA-specific factor and call
-  // it?
+
   double dt = t_kp1 - t_k;
   double alpha = (t_tau - t_k) / dt;
   double alpha2 = alpha * alpha;

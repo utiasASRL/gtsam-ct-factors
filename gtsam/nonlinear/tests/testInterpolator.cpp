@@ -831,6 +831,29 @@ TEST(Interpolator, LambdaPsiConsistencyP3) {
     EXPECT(assert_equal(Psi_paper, Psi_book));
   }
 }
+
+
+/* ************************************************************************* */
+TEST(Interpolator, LambdaPsiExternal) {
+  Interpolator<Point3> interpolator(Q_p3);
+  using MatPair = Interpolator<Point3>::LambdaPsiMats;
+  double ratio = 0.5;
+  // get lambda and psi 
+  auto lambda_psi_ptr = std::make_shared<MatPair>(interpolator.getLambdaPsi(
+      0.0, timestep, timestep * ratio));
+  
+  // get lambda and psi using Eq. (5.23) in the paper
+  auto tpvk = TimestampedPoseVelocity<Point3>(p0_p3, v0_p3, 0.0);
+  auto tpvkp1 = TimestampedPoseVelocity<Point3>(p1_p3, v1_p3, timestep);
+  auto pvtau = interpolator.interpolatePoseAndVelocity(
+      tpvk, tpvkp1, timestep * ratio);
+  auto pvtau_alt = interpolator.interpolatePoseAndVelocity(
+      tpvk, tpvkp1, timestep * ratio, nullptr, nullptr, nullptr, lambda_psi_ptr);
+
+  EXPECT(assert_equal(pvtau.pose, pvtau_alt.pose));
+  EXPECT(assert_equal(pvtau.vel, pvtau_alt.vel));
+}
+
 // The tests below are commented out because the required tolerance are ~1e1
 // /* ************************************************************************* */
 // TEST(Interpolator, LambdaPsiConsistencySE2) {
