@@ -9,10 +9,11 @@ namespace gtsam {
 // ---- Constructors ----
 template <typename PoseType>
 Interpolator<PoseType>::Interpolator(
-    const VectorN& Q_psd, std::function<Matrix(double dt)> transitionFunction,
+    const VectorN& Q_psd, bool small_angle_approx,
+    std::function<Matrix(double dt)> transitionFunction,
     std::function<Matrix(double dt, const VectorN& Q_psd)> covarianceFunction,
     std::function<Matrix(double dt, const VectorN& Q_psd)>
-       
+
         inverseCovarianceFunction,
     std::function<Matrix(const std::pair<PoseType, VelocityType>&,
                          const std::pair<PoseType, VelocityType>&, double)>
@@ -21,6 +22,7 @@ Interpolator<PoseType>::Interpolator(
                          const std::pair<PoseType, VelocityType>&, double)>
         computeJacobianNext)
     : Q_psd_(Q_psd),
+      small_angle_approx_(small_angle_approx),
       transitionFunction_(transitionFunction),
       covarianceFunction_(covarianceFunction),
       inverseCovarianceFunction_(inverseCovarianceFunction),
@@ -28,13 +30,14 @@ Interpolator<PoseType>::Interpolator(
       computeJacobianNext_(computeJacobianNext) {}
 
 template <typename PoseType>
-Interpolator<PoseType>::Interpolator(const VectorN& Q_psd)
-    : Interpolator(Q_psd, WNOAMotionFactor<PoseType>::transitionFunction,
+Interpolator<PoseType>::Interpolator(const VectorN& Q_psd,
+                                     bool small_angle_approx)
+    : Interpolator(Q_psd, small_angle_approx,
+                   WNOAMotionFactor<PoseType>::transitionFunction,
                    WNOAMotionFactor<PoseType>::buildWNOACovariance,
                    WNOAMotionFactor<PoseType>::buildInverseWNOACovariance,
                    WNOAMotionFactor<PoseType>::computeJacobianPrev,
                    WNOAMotionFactor<PoseType>::computeJacobianNext) {}
-
 
 // ---- Member Functions ----
 template <typename PoseType>
@@ -54,14 +57,14 @@ Interpolator<PoseType>::interpolatePoseAndVelocity(
     double t_diff = t_tau - t;
     return extrapolatePoseAndVelocity(poseVel, t_diff, H,
                                       mainSolveMarginalMatrix, covarianceOut);
-  } 
+  }
   // first point not defined, extrapolated from second
   if (!tPoseVel_k.has_value()) {
     const auto& [poseVel, t] = tPoseVel_kp1.value();
     double t_diff = t_tau - t;
     return extrapolatePoseAndVelocity(poseVel, t_diff, H,
                                       mainSolveMarginalMatrix, covarianceOut);
-  } 
+  }
 
   // extract both values
   const auto& [poseVel_k, t_k] = tPoseVel_k.value();
@@ -90,9 +93,15 @@ Interpolator<PoseType>::interpolatePoseAndVelocity(
   } else {
     // only remaining case is that t_tau is within border states
     // call protected overload of interpolate function
-    return interpolatePoseAndVelocity_(tPoseVel_k.value(), tPoseVel_kp1.value(),
-                                       t_tau, H, mainSolveMarginalMatrix,
-                                       covarianceOut, LambdaPsiPreComp);
+    if (small_angle_approx_) {
+      return interpolatePoseAndVelocitySmallAngle(
+          tPoseVel_k.value(), tPoseVel_kp1.value(), t_tau, H,
+          mainSolveMarginalMatrix, covarianceOut, LambdaPsiPreComp);
+    } else {
+      return interpolatePoseAndVelocity_(
+          tPoseVel_k.value(), tPoseVel_kp1.value(), t_tau, H,
+          mainSolveMarginalMatrix, covarianceOut, LambdaPsiPreComp);
+    }
   }
 }
 
@@ -207,12 +216,11 @@ Interpolator<PoseType>::interpolatePoseAndVelocity_(
 
   // Retrieve interpolation matrices
   Matrix2N Lambda, Psi;
-  if (!LambdaPsiPreComp){
+  if (!LambdaPsiPreComp) {
     std::tie(Lambda, Psi) = getLambdaPsi(t_k, t_kp1, t_tau);
-  }else{
+  } else {
     std::tie(Lambda, Psi) = *LambdaPsiPreComp;
   }
-  
 
   // form quantities for Eq. (11.45) in the book, (5.13) in the paper
   VectorN xi_k, xi_dot_k;
@@ -231,13 +239,14 @@ Interpolator<PoseType>::interpolatePoseAndVelocity_(
     xi = traits<PoseType>::Logmap(
         traits<PoseType>::Between(T_k, T_kp1, &dbetween_Tk, &dbetween_Tkp1),
         &right_jac_inv);
+    // Compute deriviatives
     dxi_dTk = right_jac_inv * dbetween_Tk;
     dxi_dTkp1 = right_jac_inv * dbetween_Tkp1;
   } else {
     xi = traits<PoseType>::Logmap(traits<PoseType>::Between(T_k, T_kp1),
                                   &right_jac_inv);
   }
-
+  // xi derivative at next time step
   VectorN xi_kp1, xi_dot_kp1;
   xi_kp1 << xi;
   xi_dot_kp1 = right_jac_inv * varpi_kp1;
@@ -258,6 +267,7 @@ Interpolator<PoseType>::interpolatePoseAndVelocity_(
         T_k, traits<PoseType>::Expmap(xi_tau, &right_jac_tau), &dTtau_dTk,
         &dTtau_dxitau);
     dTtau_dxitau = dTtau_dxitau * right_jac_tau;
+
   } else {
     T_tau = traits<PoseType>::Compose(
         T_k, traits<PoseType>::Expmap(xi_tau, &right_jac_tau));
@@ -281,9 +291,10 @@ Interpolator<PoseType>::interpolatePoseAndVelocity_(
     }
     // dgammakp1
     Eigen::Matrix<double, dim, dim> dxidot_dTk;
-    dxidot_dTk << dxidot_dxi * dxi_dTk;
     Eigen::Matrix<double, dim, dim> dxidot_dTkp1;
+    dxidot_dTk << dxidot_dxi * dxi_dTk;
     dxidot_dTkp1 << dxidot_dxi * dxi_dTkp1;
+
     Eigen::Matrix<double, dim, dim> dxidotkp1_dvarpikp1;
     dxidotkp1_dvarpikp1 << right_jac_inv;
     // dxitau
@@ -325,6 +336,126 @@ Interpolator<PoseType>::interpolatePoseAndVelocity_(
     // dvarpitau_dvarpikp1
     (*H)[7] = right_jac_tau * dxidottau_dvarpikp1 +
               dvarpitau_dxitau * dxitau_dvarpikp1;
+  }
+
+  // Output pair
+  auto poseVel_tau = PoseVel{T_tau, varpi_tau};
+
+  // compute covariance of the interpolated pose and velocity, if required
+  if (mainSolveMarginalMatrix) {
+    Eigen::Matrix<double, 2 * dim, 4 * dim> LambdaPsi;
+
+    // uncomment this block to recompute Lambda and Psi using (5.23) in paper
+    // Matrix Lambda_paper(2*dim, 2*dim), Psi_paper(2*dim, 2*dim);
+    // Matrix2N Sigma = computeConditionalCov(Tvarpi_k, Tvarpi_kp1,
+    // Tvarpi_tau, t_k, t_kp1, t_tau,
+    //                                       &Lambda_paper, &Psi_paper);
+    // LambdaPsi << Lambda_paper, Psi_paper;
+
+    // use existing Lambda and Psi computed from (11.41) in the book
+    Matrix2N Sigma = computeConditionalCov(
+        tPoseVel_k, tPoseVel_kp1, TimestampedPoseVel{poseVel_tau, t_tau});
+    LambdaPsi << Lambda, Psi;
+    *covarianceOut =
+        Sigma + LambdaPsi * *mainSolveMarginalMatrix * LambdaPsi.transpose();
+  }
+  return poseVel_tau;
+}
+
+template <typename PoseType>
+typename Interpolator<PoseType>::PoseVel
+Interpolator<PoseType>::interpolatePoseAndVelocitySmallAngle(
+    const TimestampedPoseVel& tPoseVel_k,
+    const TimestampedPoseVel& tPoseVel_kp1, double t_tau,
+    OptionalMatrixVecType H,
+    const std::shared_ptr<Matrix>& mainSolveMarginalMatrix,
+    Matrix* covarianceOut,
+    const std::shared_ptr<const LambdaPsiMats>& LambdaPsiPreComp) const {
+  // unpack poses and velocities
+  const auto& [poseVel_k, t_k] = tPoseVel_k;
+  const auto& [poseVel_kp1, t_kp1] = tPoseVel_kp1;
+  const auto& [T_k, varpi_k] = poseVel_k;
+  const auto& [T_kp1, varpi_kp1] = poseVel_kp1;
+
+  // Retrieve interpolation matrices
+  Matrix2N Lambda, Psi;
+  if (!LambdaPsiPreComp) {
+    std::tie(Lambda, Psi) = getLambdaPsi(t_k, t_kp1, t_tau);
+  } else {
+    std::tie(Lambda, Psi) = *LambdaPsiPreComp;
+  }
+
+  // form quantities for Eq. (11.45) in the book, (5.13) in the paper
+  VectorN xi_k, xi_dot_k;
+  xi_k.setZero();
+  xi_dot_k = varpi_k;
+
+  // Note that p1 = T(t_k), p2 = T(t_{k+1})
+  //  compute xi = log(T_k^-1 T_{k+1})^check
+  MatrixN dxi_dTk;
+  MatrixN dxi_dTkp1;
+  VectorN xi;
+  if (H) {
+    MatrixN dxi_dTk;
+    MatrixN dxi_dTkp1;
+    xi = traits<PoseType>::Logmap(
+        traits<PoseType>::Between(T_k, T_kp1, &dxi_dTk, &dxi_dTkp1));
+  } else {
+    xi = traits<PoseType>::Logmap(traits<PoseType>::Between(T_k, T_kp1));
+  }
+  // xi and xi derivative at next time step
+  const auto& xi_kp1 = xi;
+  const auto& xi_dot_kp1 = varpi_kp1;
+
+  VectorN xi_tau =
+      Lambda(0, dim) * xi_dot_k + Psi(0, 0) * xi_kp1 +
+      Psi(0, dim) * xi_dot_kp1;  // Dropping xi_k term here since it's zero
+  VectorN xidot_tau =
+      Lambda(dim, dim) * xi_dot_k + Psi(dim, 0) * xi_kp1 +
+      Psi(dim, dim) * xi_dot_kp1;  // Dropping xi_k term here since it's zero
+  // Eq. (11.45) in Barfoot 2025
+  MatrixN dTtau_dTk;
+  MatrixN dTtau_dxitau;
+  MatrixN right_jac_tau;
+  PoseType T_tau;
+  if (H) {
+    T_tau = traits<PoseType>::Compose(T_k, traits<PoseType>::Expmap(xi_tau, &right_jac_tau),
+                                      &dTtau_dTk, &dTtau_dxitau);
+
+  } else {
+    T_tau = traits<PoseType>::Compose(T_k, traits<PoseType>::Expmap(xi_tau));
+  }
+  VectorN varpi_tau;
+  varpi_tau << xidot_tau;
+
+  // Compute Jacobians
+  if (H) {
+    // derivatives of xi_tau
+    auto dxitau_dTk = Psi(0, 0) * dxi_dTk;
+    const auto& dxitau_dvarpik = Lambda(0, dim);
+    auto dxitau_dTkp1 = Psi(0, 0) * dxi_dTkp1;
+    const auto& dxitau_dvarpikp1 = Psi(0, dim); 
+    auto dxidottau_dTk = Psi(dim, 0) * dxi_dTk;
+    const auto& dxidottau_dvarpik = Lambda(dim, dim);
+    auto dxidottau_dTkp1 = Psi(dim, 0) * dxi_dTkp1;
+    const auto& dxidottau_dvarpikp1 = Psi(dim, dim);
+
+    // dTtau_dTk
+    (*H)[0] = dTtau_dxitau * dxitau_dTk + dTtau_dTk ;
+    // dTtau_dvarpik
+    (*H)[1] = dTtau_dxitau * dxitau_dvarpik;
+    // dTtau_dTkp1
+    (*H)[2] = dTtau_dxitau * dxitau_dTkp1;
+    // dTtau_dvarpikp1
+    (*H)[3] = dTtau_dxitau * dxitau_dvarpikp1;
+    // dvarpitau_dTk
+    (*H)[4] = right_jac_tau * dxidottau_dTk;
+    // dvarpitau_dvarpik
+    (*H)[5] = right_jac_tau * dxidottau_dvarpik;
+    // dvarpitau_dTkp1
+    (*H)[6] = right_jac_tau * dxidottau_dTkp1;
+    // dvarpitau_dvarpikp1
+    (*H)[7] = right_jac_tau * dxidottau_dvarpikp1;
   }
 
   // Output pair
@@ -496,7 +627,6 @@ Values Interpolator<PoseType>::interpolatePosesAndVelocities(
 template <typename PoseType>
 std::pair<Matrix, Matrix> Interpolator<PoseType>::getLambdaPsi(
     double t_k, double t_kp1, double t_tau) const {
-
   double dt = t_kp1 - t_k;
   double alpha = (t_tau - t_k) / dt;
   double alpha2 = alpha * alpha;

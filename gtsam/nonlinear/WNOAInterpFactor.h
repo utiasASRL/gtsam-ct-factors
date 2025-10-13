@@ -79,10 +79,11 @@ class WNOAInterpFactor : public NoiseModelFactor {
                    const set<StateData> interp_states,
                    const Eigen::Vector<double, dim> Q_psd,
                    const bool fixed_noise_model = false,
-                   const bool precomp_interp_mats = true)
+                   const bool precomp_interp_mats = true,
+                   const bool small_angle_approx = false)
       : Base(inner_factor->noiseModel()),
         inner_factor_(inner_factor),
-        interpolator_(Q_psd),
+        interpolator_(Q_psd, small_angle_approx),
         fixed_noise_model_(fixed_noise_model) {
     // PROCESS INTERPOLATED STATES
     // est state iterator
@@ -600,7 +601,8 @@ template <class PoseType>
 NonlinearFactorGraph interpolateFactorGraph(
     const NonlinearFactorGraph& graph, const set<StateData>& estimated_states,
     const set<StateData>& interp_states, Vector Q_psd,
-    bool fixed_noise = false) {
+    bool fixed_noise = false,
+    bool small_angle_approx = false) {
   // assert that the pose is the right kind of variable
   static_assert(
       std::is_same_v<typename traits<PoseType>::structure_category,
@@ -683,7 +685,7 @@ NonlinearFactorGraph interpolateFactorGraph(
       // Define and add factor to new graph
       const auto wrapped_factor = std::make_shared<WNOAInterpFactor<PoseType>>(
           nmfactor, factor_estimated_states, factor_interp_states, Q_psd,
-          fixed_noise);
+          fixed_noise, small_angle_approx);
       new_graph.add(wrapped_factor);
     }
   }

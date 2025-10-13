@@ -107,6 +107,7 @@ class Interpolator {
   using MatrixNx2N = Eigen::Matrix<double, dim, 2 * dim>;
 
   VectorN Q_psd_;  // Diagonal power Spectral Density for WNOA
+  bool small_angle_approx_; // Controls speed/fidelity trade-off
   std::function<Matrix(double dt)> transitionFunction_;
   std::function<Matrix(double dt, const VectorN& Q_psd)> covarianceFunction_;
   std::function<Matrix(double dt, const VectorN& Q_psd)>
@@ -132,7 +133,8 @@ class Interpolator {
   Interpolator() = delete;
 
   Interpolator(
-      const VectorN& Q_psd, std::function<Matrix(double dt)> transitionFunction,
+      const VectorN& Q_psd, bool small_angle_approx,
+       std::function<Matrix(double dt)> transitionFunction,
       std::function<Matrix(double dt, const VectorN& Q_psd)> covarianceFunction,
       std::function<Matrix(double dt, const VectorN& Q_psd)>
           inverseCovarianceFunction,
@@ -144,7 +146,7 @@ class Interpolator {
           computeJacobianNext);
 
   // Default to WNOA
-  Interpolator(const VectorN& Q_psd);
+  Interpolator(const VectorN& Q_psd, bool small_angle_approx=false);
 
   PoseVel interpolatePoseAndVelocity(
       const std::optional<TimestampedPoseVel>& Tvarpi_k, const std::optional<TimestampedPoseVel>& Tvarpi_kp1,
@@ -206,6 +208,16 @@ class Interpolator {
       const std::shared_ptr<Matrix>& mainSolveMarginalMatrix = nullptr,
       Matrix* covarianceOut = nullptr,
       const std::shared_ptr<const LambdaPsiMats>& LambdaPsiPreComp = nullptr) const;
+  
+  // Fast version that makes small angle approximation.
+  PoseVel interpolatePoseAndVelocitySmallAngle(
+      const TimestampedPoseVel& tPoseVel_k,
+      const TimestampedPoseVel& tPoseVel_kp1, double t_tau,
+      OptionalMatrixVecType H = nullptr,
+      const std::shared_ptr<Matrix>& mainSolveMarginalMatrix = nullptr,
+      Matrix* covarianceOut = nullptr,
+      const std::shared_ptr<const LambdaPsiMats>& LambdaPsiPreComp = nullptr) const;
+
   static std::map<StateDataInterval, std::shared_ptr<Matrix>>
   computeJointMarginals(
     const std::map<StateDataInterval, std::vector<StateData>>& queryBuckets,
