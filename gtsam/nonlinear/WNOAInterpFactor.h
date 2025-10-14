@@ -376,7 +376,7 @@ class WNOAInterpFactor : public NoiseModelFactor {
       unordered_map<StateData, Matrix2N>* InterpCondCovs = nullptr,
       PassedInterpData* passedInterpData = nullptr) const {
     // Top-level timing for entire function
-    gttic(WNOAInterpFactor_computeInterpolatedError);
+    // gttic(WNOAInterpFactor_computeInterpolatedError);
 
   // Interpolation Jacobians stored as flattened map: per interpolated key -> 4 blocks
   unordered_map<Key, std::array<Matrix, 4>> interpJacobiansLocal;
@@ -385,7 +385,7 @@ class WNOAInterpFactor : public NoiseModelFactor {
   unordered_map<Key, std::array<Matrix, 4>>* InterpJacobians = nullptr;
     Values* values_interp = nullptr;
 
-    gttic(WNOAInterpFactor_computeInterpolatedError_interpolate_values);
+    // gttic(WNOAInterpFactor_computeInterpolatedError_interpolate_values);
 
     if (passedInterpData) {
       values_interp = &passedInterpData->values;
@@ -405,9 +405,9 @@ class WNOAInterpFactor : public NoiseModelFactor {
       }
     }
 
-    gttoc(WNOAInterpFactor_computeInterpolatedError_interpolate_values);
+    // gttoc(WNOAInterpFactor_computeInterpolatedError_interpolate_values);
 
-    gttic(WNOAInterpFactor_computeInterpolatedError_compute_error);
+    // gttic(WNOAInterpFactor_computeInterpolatedError_compute_error);
 
     // cache inner keys once
     const KeyVector& inner_keys = inner_factor_->keys();
@@ -443,8 +443,8 @@ class WNOAInterpFactor : public NoiseModelFactor {
       error = inner_factor_->unwhitenedError(values_inner);
     }
 
-    gttoc(WNOAInterpFactor_computeInterpolatedError_compute_error);
-    gttic(WNOAInterpFactor_computeInterpolatedError_compute_jacobians);
+    // gttoc(WNOAInterpFactor_computeInterpolatedError_compute_error);
+    // gttic(WNOAInterpFactor_computeInterpolatedError_compute_jacobians);
 
     // compute Jacobians for outer keys
     if (H) {
@@ -485,7 +485,7 @@ class WNOAInterpFactor : public NoiseModelFactor {
       }
     }
 
-    gttoc(WNOAInterpFactor_computeInterpolatedError_compute_jacobians);
+    // gttoc(WNOAInterpFactor_computeInterpolatedError_compute_jacobians);
 
     return error;
   }

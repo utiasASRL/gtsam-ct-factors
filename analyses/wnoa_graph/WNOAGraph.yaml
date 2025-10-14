@@ -2,12 +2,12 @@ noise:
   unary: [1.0, 1.0, 1.0]
   wnoa: [1.0, 1.0, 1.0]
 flags:
-  perturb_meas: false
+  perturb_meas: true
   fixed_noise: true
-  run_original: false
-  run_wrapper: false
+  run_original: true
+  run_wrapper: true
   run_wnoa_wrapper: true
-  print_timing: true
+  print_timing: false
 params:
   vel_mean: [0.1, 0.0, 0.01]
   del_t: 0.1

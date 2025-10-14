@@ -86,7 +86,7 @@ std::shared_ptr<GaussianFactorGraph>  WNOAFactorGraph<PoseType>::linearize(const
 {
   gttic(WNOAFactorGraph_linearize);
 
-  gttic(WNOAFactorGraph_linearize_InterpValues);
+  // gttic(WNOAFactorGraph_linearize_InterpValues);
 
 
   // Compute values, Jacobians and conditional covariances for all interpolated states
@@ -100,10 +100,10 @@ std::shared_ptr<GaussianFactorGraph>  WNOAFactorGraph<PoseType>::linearize(const
   }
 
 
-  gttoc(WNOAFactorGraph_linearize_InterpValues);
+  // gttoc(WNOAFactorGraph_linearize_InterpValues);
 
   
-  gttic(WNOAFactorGraph_linearize_factors);
+  // gttic(WNOAFactorGraph_linearize_factors);
 
   // create an empty linear FG
   GaussianFactorGraph::shared_ptr linearFG = std::make_shared<GaussianFactorGraph>();
@@ -153,7 +153,7 @@ std::shared_ptr<GaussianFactorGraph>  WNOAFactorGraph<PoseType>::linearize(const
 
 #endif
 
-  gttoc(WNOAFactorGraph_linearize_factors);
+  //gttoc(WNOAFactorGraph_linearize_factors);
 
   return linearFG;
 }
@@ -167,7 +167,7 @@ double WNOAFactorGraph<PoseType>::error(const Values& values) const {
   double total_error = 0.;
 
 
-  gttic(WNOAFactorGraph_error_InterpValues);
+  // gttic(WNOAFactorGraph_error_InterpValues);
   // Compute values, Jacobians and conditional covariances for all interpolated states
 
   auto passedInterpData = std::make_shared<typename WNOAInterpFactor<PoseType>::PassedInterpData>();
@@ -176,9 +176,9 @@ double WNOAFactorGraph<PoseType>::error(const Values& values) const {
   } else {
     passedInterpData->values = getInterpolatedValues(values, nullptr, &passedInterpData->condCovs);
   }
-  gttoc(WNOAFactorGraph_error_InterpValues);
+  // gttoc(WNOAFactorGraph_error_InterpValues);
 
-  gttic(WNOAFactorGraph_error_factors);
+  // gttic(WNOAFactorGraph_error_factors);
 
   // iterate over all the factors_ to accumulate the log probabilities
   for(const sharedFactor& factor: factors_) {
@@ -194,7 +194,7 @@ double WNOAFactorGraph<PoseType>::error(const Values& values) const {
     }
   }
 
-  gttoc(WNOAFactorGraph_error_factors);
+  // gttoc(WNOAFactorGraph_error_factors);
   return total_error;
 }
 
