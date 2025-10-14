@@ -119,7 +119,6 @@ std::shared_ptr<GaussianFactorGraph>  WNOAFactorGraph<PoseType>::linearize(const
     auto& factor = (*this)[i];
     if(factor && !(factor->sendable())) {
       // Check if i is in wnoa_interp_factor_indices_
-      size_t i = &factor - &factors_[0];
       if (isWNOAInterpFactorIndex(i)) {
         // This is a WNOAInterpFactor, cast down statically to avoid dynamic cast
         auto wnoa_factor = static_pointer_cast<WNOAInterpFactor<PoseType>>(factor);
@@ -137,7 +136,7 @@ std::shared_ptr<GaussianFactorGraph>  WNOAFactorGraph<PoseType>::linearize(const
   // linearize all factors
   for (const sharedFactor& factor : factors_) {
     // Get index of factor
-    size_t i = &factor - &factors_[0];
+  size_t i = &factor - &factors_[0];
     // Check if i is in wnoa_interp_factor_indices_
     if (isWNOAInterpFactorIndex(i)) {
       // This is a WNOAInterpFactor, cast down statically to avoid dynamic cast
@@ -181,9 +180,9 @@ double WNOAFactorGraph<PoseType>::error(const Values& values) const {
   // iterate over all the factors_ to accumulate the log probabilities
   for(const sharedFactor& factor: factors_) {
 
-     size_t i = &factor - &factors_[0];
+  size_t i = &factor - &factors_[0];
     // Check if i is in wnoa_interp_factor_indices_
-    if (isWNOAInterpFactorIndex(i)) {
+  if (isWNOAInterpFactorIndex(i)) {
       // This is a WNOAInterpFactor, cast down statically to avoid dynamic cast
       auto wnoa_factor = static_pointer_cast<WNOAInterpFactor<PoseType>>(factor);
       total_error += wnoa_factor->error(values, passedInterpData.get());
@@ -200,9 +199,9 @@ double WNOAFactorGraph<PoseType>::error(const Values& values) const {
   * Put their values in a Values structure and compute their Jacobians.*/
 template <typename PoseType>
 Values WNOAFactorGraph<PoseType>::getInterpolatedValues(
-    const Values& values,
-    unordered_map<Key, unordered_map<Key, Matrix>>* InterpJacobians,
-    unordered_map<StateData, Matrix2N>* InterpCondCovs) const {
+  const Values& values,
+  unordered_map<Key, unordered_map<Key, Matrix>>* InterpJacobians,
+  unordered_map<StateData, Matrix2N>* InterpCondCovs) const {
 
 #ifdef GTSAM_USE_TBB
 
@@ -255,7 +254,7 @@ Values WNOAFactorGraph<PoseType>::getInterpolatedValues(
                     border_pose_cache[right.pose], border_vel_cache[right.vel], right.time);
 
                 PoseVelocity<PoseType> result;
-                if (InterpJacobians) {
+        if (InterpJacobians) {
                     result = interpolator_.interpolatePoseAndVelocity(
                         state_left, state_right, interp_state.time, &local_data.H);
 
@@ -268,7 +267,7 @@ Values WNOAFactorGraph<PoseType>::getInterpolatedValues(
                     local_data.jacobians.emplace_back(interp_state.vel, left.vel, std::move(local_data.H[5]));
                     local_data.jacobians.emplace_back(interp_state.vel, right.pose, std::move(local_data.H[6]));
                     local_data.jacobians.emplace_back(interp_state.vel, right.vel, std::move(local_data.H[7]));
-                } else {
+        } else {
                     result = interpolator_.interpolatePoseAndVelocity(
                         state_left, state_right, interp_state.time);
                 }
@@ -289,20 +288,21 @@ Values WNOAFactorGraph<PoseType>::getInterpolatedValues(
     // --- Step 4: Sequential merge ---
     Values values_interp;
 
-    if (InterpJacobians) InterpJacobians->reserve(interp_to_borders_vec_.size());
+  if (InterpJacobians) InterpJacobians->reserve(interp_to_borders_vec_.size());
     if (InterpCondCovs) InterpCondCovs->reserve(interp_to_borders_vec_.size());
 
     for (const auto& local_data : thread_data) {
         for (const auto& [key, pose] : local_data.poses) values_interp.insert(key, pose);
         for (const auto& [key, vel] : local_data.vels) values_interp.insert(key, vel);
 
-        if (InterpJacobians) {
+  if (InterpJacobians) {
             for (const auto& [outer_key, inner_key, matrix] : local_data.jacobians) {
                 auto& inner_map = (*InterpJacobians)[outer_key];
                 if (inner_map.empty()) inner_map.reserve(8);
                 inner_map[inner_key] = matrix;
             }
         }
+    
 
         if (InterpCondCovs) {
             for (const auto& [state, cov] : local_data.condcovs)

@@ -60,6 +60,19 @@ class WNOAInterpFactor : public NoiseModelFactor {
   // map outer key to outer key index (for Jacobians)
   unordered_map<Key, int> outer_key_to_index;
 
+  // Precomputed mapping per inner key to avoid repeated lookups
+  struct InnerKeyMapping {
+    bool isInterpolated = false;
+    // For non-interpolated keys
+    int directOuterIndex = -1;
+    // For interpolated keys: cached outer indices and keys
+    int idxPoseL = -1, idxVelL = -1, idxPoseR = -1, idxVelR = -1;
+    Key keyPoseL = 0, keyVelL = 0, keyPoseR = 0, keyVelR = 0;
+  };
+  std::vector<InnerKeyMapping> inner_key_mappings_;
+
+  // (No internal flattened Jacobian representation; we use nested maps unless passed externally)
+
  public:
 
  struct PassedInterpData {
@@ -132,6 +145,31 @@ class WNOAInterpFactor : public NoiseModelFactor {
     // later)
     for (size_t i = 0; i < this->keys_.size(); i++) {
       outer_key_to_index[this->keys_[i]] = i;
+    }
+
+    // Build inner key mappings once
+    const KeyVector& inner_keys_init = inner_factor_->keys();
+    inner_key_mappings_.resize(inner_keys_init.size());
+    for (size_t i = 0; i < inner_keys_init.size(); ++i) {
+      Key ik = inner_keys_init[i];
+      InnerKeyMapping mk;
+      auto itInterp = key_to_interp.find(ik);
+      if (itInterp == key_to_interp.end()) {
+        auto itOuter = outer_key_to_index.find(ik);
+        if (itOuter != outer_key_to_index.end()) mk.directOuterIndex = itOuter->second;
+      } else {
+        mk.isInterpolated = true;
+        const StateData &sd = itInterp->second;
+        const auto &br = interp_to_borders.at(sd);
+        const StateData &left = br.first; const StateData &right = br.second;
+        mk.idxPoseL = outer_key_to_index.at(left.pose);
+        mk.idxVelL  = outer_key_to_index.at(left.vel);
+        mk.idxPoseR = outer_key_to_index.at(right.pose);
+        mk.idxVelR  = outer_key_to_index.at(right.vel);
+        mk.keyPoseL = left.pose; mk.keyVelL = left.vel;
+        mk.keyPoseR = right.pose; mk.keyVelR = right.vel;
+      }
+      inner_key_mappings_[i] = mk;
     }
 
   };
@@ -339,15 +377,12 @@ class WNOAInterpFactor : public NoiseModelFactor {
     // Top-level timing for entire function
     gttic(WNOAInterpFactor_computeInterpolatedError);
 
-    // Define mapping from interpolated keys to interpolation jacobians
-    // Nested Key: map[interp key][estimated key] = Jac
-    gttic(WNOAInterpFactor_computeInterpolatedError_set_up_vars);
-    unordered_map<Key, unordered_map<Key, Matrix>> interpJacobiansLocal;
+  // Interpolation Jacobians stored as nested maps
+  unordered_map<Key, unordered_map<Key, Matrix>> interpJacobiansLocal;
     Values valuesInterpLocal;
 
-    unordered_map<Key, unordered_map<Key, Matrix>>* InterpJacobians = nullptr;
+  unordered_map<Key, unordered_map<Key, Matrix>>* InterpJacobians = nullptr;
     Values* values_interp = nullptr;
-    gttoc(WNOAInterpFactor_computeInterpolatedError_set_up_vars);
 
     gttic(WNOAInterpFactor_computeInterpolatedError_interpolate_values);
 
@@ -373,30 +408,33 @@ class WNOAInterpFactor : public NoiseModelFactor {
 
     gttic(WNOAInterpFactor_computeInterpolatedError_compute_error);
 
-    // construct values for inner factor
+    // cache inner keys once
+    const KeyVector& inner_keys = inner_factor_->keys();
+
+    // construct values for inner factor using mappings
     Values values_inner;
-    for (const auto& key : inner_factor_->keys()) {
+    for (size_t i = 0; i < inner_keys.size(); ++i) {
+      Key key = inner_keys[i];
+      if (inner_key_mappings_[i].isInterpolated) {
         auto it_interp = values_interp->find(key);
-        if (it_interp != values_interp->end()) {
-            values_inner.insert(key, it_interp->value);
-        } else {
-            auto it_outer = values.find(key);
-            if (it_outer != values.end()) {
-                values_inner.insert(key, it_outer->value);
-            } else {
-                throw std::runtime_error(
-                    "Key " + DefaultKeyFormatter(key) +
-                    " not in interpolated states or outer keys");
-            }
-        }
+        if (it_interp == values_interp->end())
+          throw std::runtime_error("Interpolated key missing in values_interp");
+        values_inner.insert(key, it_interp->value);
+      } else {
+        auto it_outer = values.find(key);
+        if (it_outer == values.end())
+          throw std::runtime_error("Key " + DefaultKeyFormatter(key) + " not found in outer values");
+        values_inner.insert(key, it_outer->value);
+      }
     }
 
     // Call inner factor error function with interpolated values.
+    std::vector<Matrix> H_inner_local;
     Vector error;
-    vector<Matrix> H_inner_(inner_factor_->size());
     if (!H_inner) {
       // if H_inner not passed in, use local variable.
-      H_inner = &H_inner_;
+      H_inner_local.resize(inner_keys.size());
+      H_inner = &H_inner_local;
     }
     if (H || !fixed_noise_model_) {
       error = inner_factor_->unwhitenedError(values_inner, H_inner);
@@ -411,38 +449,40 @@ class WNOAInterpFactor : public NoiseModelFactor {
     if (H) {
       // loop through inner keys and update outer keys via backpropagation
       // NOTE: it is possible for two inner keys to affect the same outer key
-      for (size_t i = 0; i < inner_factor_->keys().size(); i++) {
-        Key inner_key = inner_factor_->keys()[i];
-        auto it_interp = values_interp->find(inner_key);
-        if (it_interp != values_interp->end()) {
-          const StateData& interp = key_to_interp.at(inner_key);
-          const auto& [left, right] = interp_to_borders.at(interp);
-
-
-          auto& inner_map = InterpJacobians->at(inner_key); // cache inner map
-
-          // Create vector of outer keys
-          KeyVector outer_keys = {left.pose, left.vel, right.pose, right.vel};
-          // Loop over keys and update Jacobian
-          for (Key& outer_key : outer_keys) {
-            // get position of outer key
-            int k = outer_key_to_index.at(outer_key);
-            // add to the outer jacobian
-            const Matrix& J = (*H_inner)[i] * inner_map.at(outer_key);
-            if ((*H)[k].size() == 0){
-              (*H)[k] = J;
-            } else {
-              (*H)[k] += J;
-            }
+      for (size_t i = 0; i < inner_keys.size(); i++) {
+        const Key inner_key = inner_keys[i];
+        const Matrix &Jinner = (*H_inner)[i];
+        const InnerKeyMapping &mk = inner_key_mappings_[i];
+        if (mk.isInterpolated) {
+          auto& inner_map = InterpJacobians->at(inner_key);
+          // left.pose
+          if (mk.idxPoseL >= 0) {
+            const Matrix &Jblock = inner_map.at(mk.keyPoseL);
+            if ((*H)[mk.idxPoseL].size() == 0) (*H)[mk.idxPoseL].setZero(Jinner.rows(), Jblock.cols());
+            (*H)[mk.idxPoseL].noalias() += Jinner * Jblock;
+          }
+          // left.vel
+          if (mk.idxVelL >= 0) {
+            const Matrix &Jblock = inner_map.at(mk.keyVelL);
+            if ((*H)[mk.idxVelL].size() == 0) (*H)[mk.idxVelL].setZero(Jinner.rows(), Jblock.cols());
+            (*H)[mk.idxVelL].noalias() += Jinner * Jblock;
+          }
+          // right.pose
+          if (mk.idxPoseR >= 0) {
+            const Matrix &Jblock = inner_map.at(mk.keyPoseR);
+            if ((*H)[mk.idxPoseR].size() == 0) (*H)[mk.idxPoseR].setZero(Jinner.rows(), Jblock.cols());
+            (*H)[mk.idxPoseR].noalias() += Jinner * Jblock;
+          }
+          // right.vel
+          if (mk.idxVelR >= 0) {
+            const Matrix &Jblock = inner_map.at(mk.keyVelR);
+            if ((*H)[mk.idxVelR].size() == 0) (*H)[mk.idxVelR].setZero(Jinner.rows(), Jblock.cols());
+            (*H)[mk.idxVelR].noalias() += Jinner * Jblock;
           }
         } else {
-          int k = outer_key_to_index.at(inner_key);
-          const Matrix& J = (*H_inner)[i];
-          if ((*H)[k].size() == 0){
-            (*H)[k] = J;
-          } else {
-            (*H)[k] += J;
-          }
+          const int k = mk.directOuterIndex;
+          if ((*H)[k].size() == 0) (*H)[k].setZero(Jinner.rows(), Jinner.cols());
+          (*H)[k].noalias() += Jinner;
         }
       }
     }
@@ -459,6 +499,7 @@ class WNOAInterpFactor : public NoiseModelFactor {
       unordered_map<Key, unordered_map<Key, Matrix>>* InterpJacobians = nullptr,
       unordered_map<StateData, Matrix2N>* InterpCondCovs = nullptr) const {
     Values values_interp;  // interpolated values
+    
     // loop through interpolated state map and compute values
     for (const auto& [interp_state, border_states] : interp_to_borders) {
       // unpack border states
@@ -476,8 +517,8 @@ class WNOAInterpFactor : public NoiseModelFactor {
 
       // Get interpolated state velocity pair
       PoseVelocity<PoseType> result;
-      vector<Matrix> H(8);
-      if (InterpJacobians) {
+  vector<Matrix> H(8);
+  if (InterpJacobians) {
         result = interpolator_.interpolatePoseAndVelocity(
             state_left, state_right, interp_state.time,
             &H);

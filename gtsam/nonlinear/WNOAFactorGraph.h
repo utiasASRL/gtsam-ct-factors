@@ -65,8 +65,8 @@ private:
 
   Values getInterpolatedValues(
       const Values& values,
-      unordered_map<Key, unordered_map<Key, Matrix>>* InterpJacobians,
-      unordered_map<StateData, Matrix2N>* InterpCondCovs = nullptr) const;
+    unordered_map<Key, unordered_map<Key, Matrix>>* InterpJacobians,
+    unordered_map<StateData, Matrix2N>* InterpCondCovs = nullptr) const;
 
 public:
     /// Linearize a nonlinear factor graph exploiting precomputation of interpolation data
