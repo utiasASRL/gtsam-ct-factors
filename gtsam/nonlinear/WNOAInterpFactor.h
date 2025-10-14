@@ -17,6 +17,7 @@
 #include <gtsam/base/timing.h>
 
 #include <algorithm>
+#include <array>
 #include <stdexcept>
 #include <unordered_set>
 #include <utility>
@@ -77,7 +78,7 @@ class WNOAInterpFactor : public NoiseModelFactor {
 
  struct PassedInterpData {
     Values values;
-    unordered_map<Key, unordered_map<Key, Matrix>> jacobians;
+   unordered_map<Key, std::array<Matrix, 4>> jacobians; // flattened [LPose, LVel, RPose, RVel]
     unordered_map<StateData, Matrix2N> condCovs;
   };
 
@@ -377,11 +378,11 @@ class WNOAInterpFactor : public NoiseModelFactor {
     // Top-level timing for entire function
     gttic(WNOAInterpFactor_computeInterpolatedError);
 
-  // Interpolation Jacobians stored as nested maps
-  unordered_map<Key, unordered_map<Key, Matrix>> interpJacobiansLocal;
+  // Interpolation Jacobians stored as flattened map: per interpolated key -> 4 blocks
+  unordered_map<Key, std::array<Matrix, 4>> interpJacobiansLocal;
     Values valuesInterpLocal;
 
-  unordered_map<Key, unordered_map<Key, Matrix>>* InterpJacobians = nullptr;
+  unordered_map<Key, std::array<Matrix, 4>>* InterpJacobians = nullptr;
     Values* values_interp = nullptr;
 
     gttic(WNOAInterpFactor_computeInterpolatedError_interpolate_values);
@@ -454,28 +455,25 @@ class WNOAInterpFactor : public NoiseModelFactor {
         const Matrix &Jinner = (*H_inner)[i];
         const InnerKeyMapping &mk = inner_key_mappings_[i];
         if (mk.isInterpolated) {
-          auto& inner_map = InterpJacobians->at(inner_key);
-          // left.pose
+          const std::array<Matrix,4>& J4 = InterpJacobians->at(inner_key);
+          // Order: 0:LPose, 1:LVel, 2:RPose, 3:RVel
           if (mk.idxPoseL >= 0) {
-            const Matrix &Jblock = inner_map.at(mk.keyPoseL);
+            const Matrix &Jblock = J4[0];
             if ((*H)[mk.idxPoseL].size() == 0) (*H)[mk.idxPoseL].setZero(Jinner.rows(), Jblock.cols());
             (*H)[mk.idxPoseL].noalias() += Jinner * Jblock;
           }
-          // left.vel
           if (mk.idxVelL >= 0) {
-            const Matrix &Jblock = inner_map.at(mk.keyVelL);
+            const Matrix &Jblock = J4[1];
             if ((*H)[mk.idxVelL].size() == 0) (*H)[mk.idxVelL].setZero(Jinner.rows(), Jblock.cols());
             (*H)[mk.idxVelL].noalias() += Jinner * Jblock;
           }
-          // right.pose
           if (mk.idxPoseR >= 0) {
-            const Matrix &Jblock = inner_map.at(mk.keyPoseR);
+            const Matrix &Jblock = J4[2];
             if ((*H)[mk.idxPoseR].size() == 0) (*H)[mk.idxPoseR].setZero(Jinner.rows(), Jblock.cols());
             (*H)[mk.idxPoseR].noalias() += Jinner * Jblock;
           }
-          // right.vel
           if (mk.idxVelR >= 0) {
-            const Matrix &Jblock = inner_map.at(mk.keyVelR);
+            const Matrix &Jblock = J4[3];
             if ((*H)[mk.idxVelR].size() == 0) (*H)[mk.idxVelR].setZero(Jinner.rows(), Jblock.cols());
             (*H)[mk.idxVelR].noalias() += Jinner * Jblock;
           }
@@ -496,7 +494,7 @@ class WNOAInterpFactor : public NoiseModelFactor {
    * Put their values in a Values structure and compute their Jacobians.*/
   Values getInterpolatedValues(
       const Values& values,
-      unordered_map<Key, unordered_map<Key, Matrix>>* InterpJacobians = nullptr,
+  unordered_map<Key, std::array<Matrix, 4>>* InterpJacobians = nullptr,
       unordered_map<StateData, Matrix2N>* InterpCondCovs = nullptr) const {
     Values values_interp;  // interpolated values
     
@@ -531,16 +529,10 @@ class WNOAInterpFactor : public NoiseModelFactor {
       values_interp.insert(interp_state.pose, result.pose);
       values_interp.insert(interp_state.vel, result.vel);
 
-      // arrange jacobians in unordered map (for easy access later)
+      // arrange jacobians in flattened map (fixed order blocks)
       if (InterpJacobians) {
-        (*InterpJacobians)[interp_state.pose][left.pose] = H[0];
-        (*InterpJacobians)[interp_state.pose][left.vel] = H[1];
-        (*InterpJacobians)[interp_state.pose][right.pose] = H[2];
-        (*InterpJacobians)[interp_state.pose][right.vel] = H[3];
-        (*InterpJacobians)[interp_state.vel][left.pose] = H[4];
-        (*InterpJacobians)[interp_state.vel][left.vel] = H[5];
-        (*InterpJacobians)[interp_state.vel][right.pose] = H[6];
-        (*InterpJacobians)[interp_state.vel][right.vel] = H[7];
+        (*InterpJacobians)[interp_state.pose] = std::array<Matrix,4>{H[0], H[1], H[2], H[3]};
+        (*InterpJacobians)[interp_state.vel]  = std::array<Matrix,4>{H[4], H[5], H[6], H[7]};
       }
 
       // Conditional covariance of interpolated states for noise model update

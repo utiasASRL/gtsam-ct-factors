@@ -24,6 +24,7 @@
 #include <unordered_set>
 #include <gtsam/nonlinear/StateData.h>
 #include <gtsam/linear/GaussianFactorGraph.h>
+#include <array>
 
 using namespace std;
 
@@ -65,7 +66,7 @@ private:
 
   Values getInterpolatedValues(
       const Values& values,
-    unordered_map<Key, unordered_map<Key, Matrix>>* InterpJacobians,
+    unordered_map<Key, std::array<Matrix, 4>>* InterpJacobians,
     unordered_map<StateData, Matrix2N>* InterpCondCovs = nullptr) const;
 
 public:

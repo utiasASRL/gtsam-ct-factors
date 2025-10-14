@@ -27,6 +27,9 @@
 
 #include <mutex>
 #include <unordered_set>
+#include <algorithm>
+#include <array>
+#include <thread>
 
 
 using namespace std;
@@ -200,24 +203,24 @@ double WNOAFactorGraph<PoseType>::error(const Values& values) const {
 template <typename PoseType>
 Values WNOAFactorGraph<PoseType>::getInterpolatedValues(
   const Values& values,
-  unordered_map<Key, unordered_map<Key, Matrix>>* InterpJacobians,
+  unordered_map<Key, std::array<Matrix, 4>>* InterpJacobians,
   unordered_map<StateData, Matrix2N>* InterpCondCovs) const {
 
 #ifdef GTSAM_USE_TBB
 
   // --- Step 1: Cache boundary poses/velocities ---
-    unordered_map<Key, PoseType>    border_pose_cache;
-    unordered_map<Key, VelocityType> border_vel_cache;
-    border_pose_cache.reserve(border_pose_keys_.size());
-    border_vel_cache.reserve(border_vel_keys_.size());
-    for (Key k : border_pose_keys_) border_pose_cache.emplace(k, values.at<PoseType>(k));
-    for (Key k : border_vel_keys_)  border_vel_cache.emplace(k, values.at<VelocityType>(k));
+  unordered_map<Key, PoseType>    border_pose_cache;
+  unordered_map<Key, typename WNOAFactorGraph<PoseType>::VelocityType> border_vel_cache;
+  border_pose_cache.reserve(this->border_pose_keys_.size());
+  border_vel_cache.reserve(this->border_vel_keys_.size());
+  for (Key k : this->border_pose_keys_) border_pose_cache.emplace(k, values.at<PoseType>(k));
+  for (Key k : this->border_vel_keys_)  border_vel_cache.emplace(k, values.at<typename WNOAFactorGraph<PoseType>::VelocityType>(k));
 
     // --- Step 2: Define thread-local storage ---
-    struct ThreadLocalData {
+  struct ThreadLocalData {
         std::vector<std::pair<Key, PoseType>> poses;
         std::vector<std::pair<Key, VelocityType>> vels;
-        std::vector<std::tuple<Key, Key, Matrix>> jacobians;
+    std::vector<std::pair<Key, std::array<Matrix, 4>>> jacobians; // flattened per interp key
         std::vector<std::pair<StateData, Matrix2N>> condcovs;
         vector<Matrix> H; // Reuse matrices per thread
     };
@@ -225,11 +228,11 @@ Values WNOAFactorGraph<PoseType>::getInterpolatedValues(
     tbb::enumerable_thread_specific<ThreadLocalData> thread_data;
 
     // Get number of physical cores (approximate if hyperthreaded)
-    unsigned int num_logical = std::thread::hardware_concurrency();
-    unsigned int num_physical_cores = num_logical > 0 ? std::max(1u, num_logical / 2) : 1;
-    size_t grain = std::max(size_t(1), interp_to_borders_vec_.size() / (8 * num_physical_cores));
+  unsigned int num_logical = std::thread::hardware_concurrency();
+  unsigned int num_physical_cores = num_logical > 0 ? std::max<unsigned>(1u, num_logical / 2) : 1u;
+  size_t grain = std::max<size_t>(1, this->interp_to_borders_vec_.size() / (8 * static_cast<size_t>(num_physical_cores)));
     // --- Step 3: Parallel interpolation ---
-    tbb::parallel_for(tbb::blocked_range<size_t>(0, interp_to_borders_vec_.size(), grain),
+  tbb::parallel_for(tbb::blocked_range<size_t>(0, this->interp_to_borders_vec_.size(), grain),
         [&](const tbb::blocked_range<size_t>& range) {
             auto& local_data = thread_data.local();
 
@@ -237,21 +240,21 @@ Values WNOAFactorGraph<PoseType>::getInterpolatedValues(
             size_t chunk_size = range.size();
             local_data.poses.reserve(chunk_size * 2);
             local_data.vels.reserve(chunk_size * 2);
-            if (InterpJacobians) local_data.jacobians.reserve(chunk_size * 8);
+            if (InterpJacobians) local_data.jacobians.reserve(chunk_size * 2);
             if (InterpCondCovs) local_data.condcovs.reserve(chunk_size);
 
             // Preallocate reusable H matrices
             if (local_data.H.empty()) local_data.H.resize(8);
 
-            for (size_t i = range.begin(); i != range.end(); ++i) {
-                const auto& [interp_state, border_states] = interp_to_borders_vec_[i];
+      for (size_t i = range.begin(); i != range.end(); ++i) {
+        const auto& [interp_state, border_states] = this->interp_to_borders_vec_[i];
                 const auto& [left, right] = border_states;
 
                 // Use cached poses/velocities
-                const auto state_left = TimestampedPoseVelocity<PoseType>(
-                    border_pose_cache[left.pose], border_vel_cache[left.vel], left.time);
-                const auto state_right = TimestampedPoseVelocity<PoseType>(
-                    border_pose_cache[right.pose], border_vel_cache[right.vel], right.time);
+        const auto state_left = TimestampedPoseVelocity<PoseType>(
+          border_pose_cache[left.pose], border_vel_cache[left.vel], left.time);
+        const auto state_right = TimestampedPoseVelocity<PoseType>(
+          border_pose_cache[right.pose], border_vel_cache[right.vel], right.time);
 
                 PoseVelocity<PoseType> result;
         if (InterpJacobians) {
@@ -259,14 +262,10 @@ Values WNOAFactorGraph<PoseType>::getInterpolatedValues(
                         state_left, state_right, interp_state.time, &local_data.H);
 
                     // Store jacobians
-                    local_data.jacobians.emplace_back(interp_state.pose, left.pose, std::move(local_data.H[0]));
-                    local_data.jacobians.emplace_back(interp_state.pose, left.vel, std::move(local_data.H[1]));
-                    local_data.jacobians.emplace_back(interp_state.pose, right.pose, std::move(local_data.H[2]));
-                    local_data.jacobians.emplace_back(interp_state.pose, right.vel, std::move(local_data.H[3]));
-                    local_data.jacobians.emplace_back(interp_state.vel, left.pose, std::move(local_data.H[4]));
-                    local_data.jacobians.emplace_back(interp_state.vel, left.vel, std::move(local_data.H[5]));
-                    local_data.jacobians.emplace_back(interp_state.vel, right.pose, std::move(local_data.H[6]));
-                    local_data.jacobians.emplace_back(interp_state.vel, right.vel, std::move(local_data.H[7]));
+                    std::array<Matrix,4> Jpose = {local_data.H[0], local_data.H[1], local_data.H[2], local_data.H[3]};
+                    std::array<Matrix,4> Jvel  = {local_data.H[4], local_data.H[5], local_data.H[6], local_data.H[7]};
+                    local_data.jacobians.emplace_back(interp_state.pose, std::move(Jpose));
+                    local_data.jacobians.emplace_back(interp_state.vel,  std::move(Jvel));
         } else {
                     result = interpolator_.interpolatePoseAndVelocity(
                         state_left, state_right, interp_state.time);
@@ -279,7 +278,7 @@ Values WNOAFactorGraph<PoseType>::getInterpolatedValues(
                 // Conditional covariance
                 if (InterpCondCovs) {
                     auto state_tau = TimestampedPoseVelocity<PoseType>(result, interp_state.time);
-                    Matrix2N Sigma_tau = interpolator_.computeConditionalCov(state_left, state_right, state_tau);
+          typename WNOAFactorGraph<PoseType>::Matrix2N Sigma_tau = interpolator_.computeConditionalCov(state_left, state_right, state_tau);
                     local_data.condcovs.emplace_back(interp_state, std::move(Sigma_tau));
                 }
             }
@@ -288,19 +287,17 @@ Values WNOAFactorGraph<PoseType>::getInterpolatedValues(
     // --- Step 4: Sequential merge ---
     Values values_interp;
 
-  if (InterpJacobians) InterpJacobians->reserve(interp_to_borders_vec_.size());
-    if (InterpCondCovs) InterpCondCovs->reserve(interp_to_borders_vec_.size());
+  if (InterpJacobians) InterpJacobians->reserve(this->interp_to_borders_vec_.size() * 2);
+    if (InterpCondCovs) InterpCondCovs->reserve(this->interp_to_borders_vec_.size());
 
     for (const auto& local_data : thread_data) {
         for (const auto& [key, pose] : local_data.poses) values_interp.insert(key, pose);
         for (const auto& [key, vel] : local_data.vels) values_interp.insert(key, vel);
 
   if (InterpJacobians) {
-            for (const auto& [outer_key, inner_key, matrix] : local_data.jacobians) {
-                auto& inner_map = (*InterpJacobians)[outer_key];
-                if (inner_map.empty()) inner_map.reserve(8);
-                inner_map[inner_key] = matrix;
-            }
+      for (const auto& kv : local_data.jacobians) {
+        (*InterpJacobians)[kv.first] = kv.second;
+      }
         }
     
 
@@ -327,17 +324,17 @@ Values WNOAFactorGraph<PoseType>::getInterpolatedValues(
   // Preallocate space for border_pose_cache and border_vel_cache
 
   unordered_map<Key, PoseType>    border_pose_cache;
-  unordered_map<Key, VelocityType> border_vel_cache;
-  border_pose_cache.reserve(border_pose_keys_.size());
-  border_vel_cache.reserve(border_vel_keys_.size());
-  for (Key k : border_pose_keys_) border_pose_cache.emplace(k, values.at<PoseType>(k));
-  for (Key k : border_vel_keys_)  border_vel_cache.emplace(k, values.at<VelocityType>(k));
+  unordered_map<Key, typename WNOAFactorGraph<PoseType>::VelocityType> border_vel_cache;
+  border_pose_cache.reserve(this->border_pose_keys_.size());
+  border_vel_cache.reserve(this->border_vel_keys_.size());
+  for (Key k : this->border_pose_keys_) border_pose_cache.emplace(k, values.at<PoseType>(k));
+  for (Key k : this->border_vel_keys_)  border_vel_cache.emplace(k, values.at<typename WNOAFactorGraph<PoseType>::VelocityType>(k));
 
   // 2. Reusable Jacobian storage (allocated once). The interpolate function overwrites entries.
   vector<Matrix> H(8);
 
   // 3. Iterate interpolation entries.
-  for (const auto& kv : interp_to_borders_map_) {
+  for (const auto& kv : this->interp_to_borders_map_) {
     const auto& interp_state  = kv.first;
     const auto& border_states = kv.second;
     const auto& left  = border_states.first;
@@ -362,16 +359,8 @@ Values WNOAFactorGraph<PoseType>::getInterpolatedValues(
 
     // 6. Store Jacobians (minimize repeated map lookups by binding references once).
     if (InterpJacobians) {
-      auto& J_pose = (*InterpJacobians)[interp_state.pose];
-      auto& J_vel  = (*InterpJacobians)[interp_state.vel];
-      J_pose[left.pose]   = H[0];
-      J_pose[left.vel]    = H[1];
-      J_pose[right.pose]  = H[2];
-      J_pose[right.vel]   = H[3];
-      J_vel[left.pose]    = H[4];
-      J_vel[left.vel]     = H[5];
-      J_vel[right.pose]   = H[6];
-      J_vel[right.vel]    = H[7];
+      (*InterpJacobians)[interp_state.pose] = std::array<Matrix,4>{H[0], H[1], H[2], H[3]};
+      (*InterpJacobians)[interp_state.vel]  = std::array<Matrix,4>{H[4], H[5], H[6], H[7]};
     }
 
     // 7. Conditional covariance if requested.
