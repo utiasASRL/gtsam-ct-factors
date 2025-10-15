@@ -1,6 +1,6 @@
 # GTSAM: Georgia Tech Smoothing and Mapping Library
-[![C++ Docs](https://img.shields.io/badge/docs-C%2B%2B-blue.svg)](https://gtsam.org/doxygen/)
-[![Python Docs](https://img.shields.io/badge/docs-Python-green.svg)](https://borglab.github.io/gtsam/)
+[![C++ API](https://img.shields.io/badge/docs-C%2B%2B-blue.svg)](https://gtsam.org/doxygen/)
+[![Python|C++ Docs](https://img.shields.io/badge/docs-Python-green.svg)](https://borglab.github.io/gtsam/)
 
 **Important Note**
 
