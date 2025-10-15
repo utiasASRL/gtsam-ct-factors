@@ -515,8 +515,9 @@ class WNOAInterpFactor : public NoiseModelFactor {
 
       // Get interpolated state velocity pair
       PoseVelocity<PoseType> result;
-  vector<Matrix> H(8);
-  if (InterpJacobians) {
+      
+    vector<Matrix> H(8);
+    if (InterpJacobians) {
         result = interpolator_.interpolatePoseAndVelocity(
             state_left, state_right, interp_state.time,
             &H);

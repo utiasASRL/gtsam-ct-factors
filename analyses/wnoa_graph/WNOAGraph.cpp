@@ -58,8 +58,7 @@ void runInterpExample(InterpExampleParams& p) {
   Pose2 pose_init(0.0, 0.0, 0.0);
 
   // Init RNG
-  std::random_device rd;   // Seed
-  std::mt19937 gen(rd());  // Mersenne Twister RNG
+  std::mt19937 gen(42);  // Fixed seed for reproducibility
   // Velocity sampled covariance
   Vector3 cov_vel = pow(p.del_t, 2) * p.Q_wnoa;
 

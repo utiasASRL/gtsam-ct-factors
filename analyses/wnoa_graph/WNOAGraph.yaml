@@ -2,7 +2,7 @@ noise:
   unary: [1.0, 1.0, 1.0]
   wnoa: [1.0, 1.0, 1.0]
 flags:
-  perturb_meas: true
+  perturb_meas: false
   fixed_noise: true
   run_original: true
   run_wrapper: true
@@ -14,4 +14,4 @@ params:
   period_interp: 10
   n_points: 300
   n_runs: 1000
-  n_unary: 10
+  n_unary: 11
