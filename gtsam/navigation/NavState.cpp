@@ -444,14 +444,19 @@ Vector9 NavState::coriolis(double dt, const Vector3& omega, bool secondOrder,
   const double dt2 = dt * dt;
   const Vector3 omega_cross_vel = omega.cross(n_v);
 
-  // Get perturbations in nav frame
+  // Because our navigation frames are placed on a spinning Earth, we experience two apparent forces on our inertials
+  // Let Omega be the Earth's rotation rate in the navigation frame
+  // Coriolis acceleration = -2 * (omega X n_v)
+  // Centrifugal acceleration (secondOrder) = -omega X (omega X n_t)
+  // We would also experience a rotation of (omega*dt) over time - so, counteract by compensating rotation by (-omega * dt)
+  // Integrate centrifugal & coriolis accelerations to yield position, velocity perturbations
   Vector9 n_xi, xi;
   Matrix3 D_dR_R, D_dP_R, D_dV_R, D_body_nav;
   dR(n_xi) << ((-dt) * omega);
   dP(n_xi) << ((-dt2) * omega_cross_vel); // NOTE(luca): we got rid of the 2 wrt INS paper
   dV(n_xi) << ((-2.0 * dt) * omega_cross_vel);
   if (secondOrder) {
-    const Vector3 omega_cross2_t = omega.cross(omega.cross(n_t));
+    const Vector3 omega_cross2_t = doubleCross(omega, n_t);
     dP(n_xi) -= (0.5 * dt2) * omega_cross2_t;
     dV(n_xi) -= dt * omega_cross2_t;
   }
