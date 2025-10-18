@@ -4,8 +4,8 @@
 |-------------------------------------------------------|--------|
 | CameraResectioning                                    | :heavy_check_mark: |
 | CombinedImuFactorsExample                             | :heavy_check_mark: |
-| CreateSFMExampleData                                  |        |
-| DiscreteBayesNetExample                               |        |
+| CreateSFMExampleData                                  | :heavy_check_mark: |
+| DiscreteBayesNetExample                               | :heavy_check_mark: |
 | DiscreteBayesNet_FG                                   | none of the required discrete functionality is exposed through Python |
 | easyPoint2KalmanFilter                                | ExtendedKalmanFilter not yet exposed through Python |
 | elaboratePoint2KalmanFilter                           | GaussianSequentialSolver not yet exposed through Python |
