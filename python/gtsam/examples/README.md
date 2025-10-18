@@ -28,7 +28,7 @@
 | Pose2SLAMExample_graphviz                             | :heavy_check_mark: |
 | Pose2SLAMExample_lago                                 | lago not yet exposed through Python |
 | Pose2SLAMStressTest                                   |        |
-| Pose2SLAMwSPCG                                        |        |
+| Pose2SLAMwSPCG                                        | :heavy_check_mark: |
 | Pose3Localization                                     |        |
 | Pose3SLAMExample_changeKeys                           |        |
 | Pose3SLAMExampleExpressions_BearingRangeWithTransform |        |
