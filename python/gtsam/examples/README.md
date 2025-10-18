@@ -9,8 +9,8 @@
 | DiscreteBayesNet_FG                                   | none of the required discrete functionality is exposed through Python |
 | easyPoint2KalmanFilter                                | ExtendedKalmanFilter not yet exposed through Python |
 | elaboratePoint2KalmanFilter                           | GaussianSequentialSolver not yet exposed through Python |
-| FisheyeExample                                        |        |
-| HMMExample                                            |        |
+| FisheyeExample                                        | :heavy_check_mark:       |
+| HMMExample                                            | :heavy_check_mark:       |
 | ImuFactorsExample2                                    | :heavy_check_mark: |
 | ImuFactorsExample                                     |        |
 | IMUKittiExampleGPS                                    |        |
