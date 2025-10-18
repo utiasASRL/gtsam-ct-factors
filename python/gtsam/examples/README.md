@@ -22,14 +22,14 @@
 | OdometryExample                                       | :heavy_check_mark: |
 | PlanarSLAMExample                                     | :heavy_check_mark: |
 | Pose2SLAMExample                                      | :heavy_check_mark: |
-| Pose2SLAMExampleExpressions                           |        |
+| Pose2SLAMExampleExpressions                           | :heavy_check_mark: |
 | Pose2SLAMExample_g2o                                  | :heavy_check_mark: |
-| Pose2SLAMExample_graph                                |        |
-| Pose2SLAMExample_graphviz                             |        |
+| Pose2SLAMExample_graph                                | :heavy_check_mark: |
+| Pose2SLAMExample_graphviz                             | :heavy_check_mark: |
 | Pose2SLAMExample_lago                                 | lago not yet exposed through Python |
 | Pose2SLAMStressTest                                   |        |
 | Pose2SLAMwSPCG                                        |        |
-| Pose3Localization                                 |        |
+| Pose3Localization                                     |        |
 | Pose3SLAMExample_changeKeys                           |        |
 | Pose3SLAMExampleExpressions_BearingRangeWithTransform |        |
 | Pose3SLAMExample_g2o                                  | :heavy_check_mark: |
