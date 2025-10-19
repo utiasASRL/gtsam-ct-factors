@@ -6,10 +6,10 @@ Script to process Jupyter notebooks and add standardized cells:
 3. Try/except import cell for Colab with remove-cell tag
 
 Usage:
-    python process_notebooks.py <directory_path>
+    python standardize_notebooks.py <directory_path>
     
 Example:
-    python process_notebooks.py ../python/gtsam/examples/
+    python standardize_notebooks.py ../python/gtsam/examples/
 """
 
 import json
@@ -20,7 +20,6 @@ from typing import Dict, List, Any
 
 
 def create_colab_button_cell(notebook_path: str) -> Dict[str, Any]:
-    """Create the 'Open in Colab' button cell."""
     # Convert absolute path to relative GitHub path
     github_path = notebook_path.replace('/Users/apollo/dev/research/gtsam/', '')
     
@@ -36,7 +35,6 @@ def create_colab_button_cell(notebook_path: str) -> Dict[str, Any]:
 
 
 def create_license_cell() -> Dict[str, Any]:
-    """Create the license cell with remove-cell tag."""
     return {
         "cell_type": "markdown",
         "id": "license_cell",
@@ -56,7 +54,6 @@ def create_license_cell() -> Dict[str, Any]:
 
 
 def create_colab_import_cell() -> Dict[str, Any]:
-    """Create the try/except import cell for Colab with remove-cell tag."""
     return {
         "cell_type": "code",
         "execution_count": None,
@@ -96,15 +93,7 @@ def find_title_cell_index(cells: List[Dict[str, Any]]) -> int:
 
 
 def process_notebook(notebook_path: Path) -> bool:
-    """
-    Process a single notebook to add required cells.
-    
-    Args:
-        notebook_path: Path to the notebook file
-        
-    Returns:
-        bool: True if notebook was modified, False otherwise
-    """
+
     try:
         with open(notebook_path, 'r', encoding='utf-8') as f:
             notebook = json.load(f)
@@ -139,12 +128,10 @@ def process_notebook(notebook_path: Path) -> bool:
         cells_to_add.append(create_colab_button_cell(str(notebook_path)))
         modified = True
     
-    # Insert cells in reverse order
     for cell in cells_to_add:
         cells.insert(insert_index, cell)
     
     if modified:
-        # Write back the modified notebook
         try:
             with open(notebook_path, 'w', encoding='utf-8') as f:
                 json.dump(notebook, f, indent=2, ensure_ascii=False)
@@ -159,12 +146,7 @@ def process_notebook(notebook_path: Path) -> bool:
 
 
 def process_directory(directory_path: Path) -> None:
-    """
-    Process all .ipynb files in the given directory.
-    
-    Args:
-        directory_path: Path to the directory containing notebooks
-    """
+
     if not directory_path.exists():
         print(f"Error: Directory {directory_path} does not exist")
         return
@@ -193,11 +175,11 @@ def process_directory(directory_path: Path) -> None:
 
 
 def main():
-    """Main function to handle command line arguments and process notebooks."""
+
     if len(sys.argv) != 2:
-        print("Usage: python process_notebooks.py <directory_path>")
+        print("Usage: python standardize_notebooks.py <directory_path>")
         print("\nExample:")
-        print("    python process_notebooks.py ../python/gtsam/examples/")
+        print("    python standardize_notebooks.py ../python/gtsam/examples/")
         sys.exit(1)
     
     directory_path = Path(sys.argv[1]).resolve()
