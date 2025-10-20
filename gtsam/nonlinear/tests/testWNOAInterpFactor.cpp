@@ -415,6 +415,44 @@ TEST(WNOAInterp, JacobianSE3UnaryPose) {
 
 /* *************************************************************************
  */
+TEST(WNOAInterp, PrecomputeLambdaPsiUnarySe3) {
+  // Model
+  const auto model = noiseModel::Diagonal::Sigmas(Vector6::Ones());
+  const auto prior_factor =
+      std::make_shared<PriorFactor<Pose3>>(P(1), p1_se3, model);
+  // Construct factor for interpolated pose and velocity
+  const auto factor =
+      WNOAInterpFactor<Pose3>(prior_factor, border, interp, Q_se3, false, false);
+  // factor with precomputed interpolation matrices
+  const auto factor_alt =
+      WNOAInterpFactor<Pose3>(prior_factor, border, interp, Q_se3, false, true);
+  
+  // Set up values
+  Values values;
+  values.insert(P(0), p0_se3);
+  values.insert(P(2), p2_se3);
+  values.insert(V(0), v0_se3);
+  values.insert(V(2), v2_se3);
+
+  // Create container for Jacobians
+  vector<Matrix> H(factor.keys().size());
+  vector<Matrix> H_alt(factor.keys().size());
+  // Get residual and Jacobian
+  auto residual = factor.unwhitenedError(values, &H);
+  auto residual_alt = factor_alt.unwhitenedError(values, &H_alt);
+  // check residuals
+  EXPECT(assert_equal(residual, residual_alt));
+  // check that derivatives are identical
+  int index = 0;
+  for (auto& mat : H){
+    EXPECT(assert_equal(mat, H_alt[index]));
+    index++;
+  }
+  
+}
+
+/* *************************************************************************
+ */
 
 TEST(WNOAInterp, Interpolator) {
   // Create Interpolator
