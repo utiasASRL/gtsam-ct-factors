@@ -13,6 +13,7 @@ find_package(GTSAM REQUIRED)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../examples)
 # add execs
 add_executable(SimpleInterpExample simple_traj/SimpleInterpExample.cpp)
+add_executable(InterpSpeedTest simple_traj/InterpSpeedTest.cpp)
 add_executable(WNOAGraph wnoa_graph/WNOAGraph.cpp)
 add_executable(LostInTheWoods LostInTheWoods/LostInTheWoodsStudy.cpp)
 
@@ -21,5 +22,6 @@ add_executable(LostInTheWoods LostInTheWoods/LostInTheWoodsStudy.cpp)
 # include directories (-I) flags, and add any other
 # required build flags (e.g. C++11, etc.)
 target_link_libraries(SimpleInterpExample PRIVATE gtsam;yaml-cpp)
+target_link_libraries(InterpSpeedTest PRIVATE gtsam;yaml-cpp)
 target_link_libraries(WNOAGraph PRIVATE gtsam;yaml-cpp)
 target_link_libraries(LostInTheWoods PRIVATE gtsam;yaml-cpp)

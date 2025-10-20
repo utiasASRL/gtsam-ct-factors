@@ -70,6 +70,7 @@ namespace gtsam {
 // empty optional = unbounded
 using StateDataInterval = std::pair<std::optional<StateData>, std::optional<StateData>>;
 
+
 template <typename PoseType>
 struct PoseVelocity {
   PoseType pose;
@@ -106,6 +107,7 @@ class Interpolator {
   using MatrixNx2N = Eigen::Matrix<double, dim, 2 * dim>;
 
   VectorN Q_psd_;  // Diagonal power Spectral Density for WNOA
+  bool small_angle_approx_; // Controls speed/fidelity trade-off
   std::function<Matrix(double dt)> transitionFunction_;
   std::function<Matrix(double dt, const VectorN& Q_psd)> covarianceFunction_;
   std::function<Matrix(double dt, const VectorN& Q_psd)>
@@ -123,6 +125,7 @@ class Interpolator {
   using StateDataSet = std::set<StateData>;
   using PoseVel = PoseVelocity<PoseType>;
   using TimestampedPoseVel = TimestampedPoseVelocity<PoseType>;
+  using LambdaPsiMats = std::pair<Matrix2N, Matrix2N>;
 
   // Maps a pose or velocity to their covariance matrix
   using CovarianceMap = std::map<Key, Matrix>;
@@ -130,7 +133,8 @@ class Interpolator {
   Interpolator() = delete;
 
   Interpolator(
-      const VectorN& Q_psd, std::function<Matrix(double dt)> transitionFunction,
+      const VectorN& Q_psd, bool small_angle_approx,
+       std::function<Matrix(double dt)> transitionFunction,
       std::function<Matrix(double dt, const VectorN& Q_psd)> covarianceFunction,
       std::function<Matrix(double dt, const VectorN& Q_psd)>
           inverseCovarianceFunction,
@@ -142,13 +146,14 @@ class Interpolator {
           computeJacobianNext);
 
   // Default to WNOA
-  Interpolator(const VectorN& Q_psd);
+  Interpolator(const VectorN& Q_psd, bool small_angle_approx=false);
 
   PoseVel interpolatePoseAndVelocity(
       const std::optional<TimestampedPoseVel>& Tvarpi_k, const std::optional<TimestampedPoseVel>& Tvarpi_kp1,
       double t_tau, OptionalMatrixVecType H = nullptr,
       const std::shared_ptr<Matrix>& mainSolveMarginalMatrix = nullptr,
-      Matrix* covarianceOut = nullptr) const;
+      Matrix* covarianceOut = nullptr,
+      const std::shared_ptr<const LambdaPsiMats>& LambdaPsiPreComp = nullptr) const;
 
   Values interpolatePosesAndVelocities(
       const NonlinearFactorGraph& mainSolveGraph,
@@ -170,6 +175,7 @@ class Interpolator {
   // Retrieve interpolation matrices. General implementation.
   std::pair<Matrix, Matrix> getLambdaPsiGeneral(double t_k, double t_kp1,
                                                 double t_tau) const;
+
 
  protected:
   // Interpoate pose and velocity at left boundary
@@ -200,7 +206,18 @@ class Interpolator {
       const TimestampedPoseVel& tPoseVel_kp1, double t_tau,
       OptionalMatrixVecType H = nullptr,
       const std::shared_ptr<Matrix>& mainSolveMarginalMatrix = nullptr,
-      Matrix* covarianceOut = nullptr) const;
+      Matrix* covarianceOut = nullptr,
+      const std::shared_ptr<const LambdaPsiMats>& LambdaPsiPreComp = nullptr) const;
+  
+  // Fast version that makes small angle approximation.
+  PoseVel interpolatePoseAndVelocitySmallAngle(
+      const TimestampedPoseVel& tPoseVel_k,
+      const TimestampedPoseVel& tPoseVel_kp1, double t_tau,
+      OptionalMatrixVecType H = nullptr,
+      const std::shared_ptr<Matrix>& mainSolveMarginalMatrix = nullptr,
+      Matrix* covarianceOut = nullptr,
+      const std::shared_ptr<const LambdaPsiMats>& LambdaPsiPreComp = nullptr) const;
+
   static std::map<StateDataInterval, std::shared_ptr<Matrix>>
   computeJointMarginals(
     const std::map<StateDataInterval, std::vector<StateData>>& queryBuckets,
