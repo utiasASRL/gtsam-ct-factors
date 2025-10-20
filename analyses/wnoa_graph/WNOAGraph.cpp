@@ -1,7 +1,7 @@
 // Enable GTSAM timing instrumentation for this translation unit (must precede including timing.h)
-//#ifndef ENABLE_TIMING
-//#define ENABLE_TIMING
-//#endif
+#ifndef ENABLE_TIMING
+#define ENABLE_TIMING
+#endif
 
 #include <gtsam/nonlinear/Interpolator.h>
 
@@ -166,7 +166,7 @@ void runInterpExample(InterpExampleParams& p) {
   {
     Values result_original;
     // start timer (chrono)
-    auto start = std::chrono::high_resolution_clock::now();
+    // auto start = std::chrono::high_resolution_clock::now();
 
     for(unsigned int i = 0; i < p.n_runs; i++)
     {
@@ -179,9 +179,9 @@ void runInterpExample(InterpExampleParams& p) {
      }
    }
     // stop timer and print
-    auto end = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<double> elapsed = (end - start)/p.n_runs;
-    std::cout << "Original Graph Optimization Time: " << elapsed.count() << " seconds." << std::endl;
+    // auto end = std::chrono::high_resolution_clock::now();
+    // std::chrono::duration<double> elapsed = (end - start)/p.n_runs;
+    // std::cout << "Original Graph Optimization Time: " << elapsed.count() << " seconds." << std::endl;
   }
 
    if(p.print_timing)
@@ -196,7 +196,7 @@ void runInterpExample(InterpExampleParams& p) {
    {
      Values result_interp;
     // start timer (chrono)
-    auto start = std::chrono::high_resolution_clock::now();
+    // auto start = std::chrono::high_resolution_clock::now();
      for(unsigned int i = 0; i < p.n_runs; i++)
      {
        auto lm_opt_interp = LevenbergMarquardtOptimizer(graph_interp, values_interp_init, params);
@@ -208,9 +208,9 @@ void runInterpExample(InterpExampleParams& p) {
        }
      }
     // stop timer and print
-    auto end = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<double> elapsed = (end - start)/p.n_runs;
-    std::cout << "Wrapper Interpolated Graph Optimization Time: " << elapsed.count() << " seconds." << std::endl;
+    // auto end = std::chrono::high_resolution_clock::now();
+    // std::chrono::duration<double> elapsed = (end - start)/p.n_runs;
+    // std::cout << "Wrapper Interpolated Graph Optimization Time: " << elapsed.count() << " seconds." << std::endl;
    }
 
    if(p.print_timing)
@@ -223,7 +223,7 @@ void runInterpExample(InterpExampleParams& p) {
    {
      Values result_wnoa;
     // start timer (chrono)
-    auto start = std::chrono::high_resolution_clock::now();
+    // auto start = std::chrono::high_resolution_clock::now();
      for(unsigned int i = 0; i < p.n_runs; i++)
      {
        auto lm_opt_wnoa = WNOALevenbergMarquardtOptimizer<Pose2>(graph_wnoa, values_interp_init, params);
@@ -235,9 +235,9 @@ void runInterpExample(InterpExampleParams& p) {
         }
      }
     // stop timer and print
-    auto end = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<double> elapsed = (end - start)/p.n_runs;
-    std::cout << "WNOA Interpolated Graph Optimization Time: " << elapsed.count() << " seconds." << std::endl;
+    // auto end = std::chrono::high_resolution_clock::now();
+    // std::chrono::duration<double> elapsed = (end - start)/p.n_runs;
+    // std::cout << "WNOA Interpolated Graph Optimization Time: " << elapsed.count() << " seconds." << std::endl;
    }
 
 
