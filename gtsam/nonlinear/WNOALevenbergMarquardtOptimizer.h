@@ -54,14 +54,7 @@ public:
                                   const LevenbergMarquardtParams& params = LevenbergMarquardtParams());
 
   /** Override linearize to use WNOAFactorGraph's custom linearize method with cached interpolation data */
-  GaussianFactorGraph::shared_ptr linearize() const override {
-    return wnoa_graph_.linearize(this->values());
-  }
-
-  /** Get error from the custom WNOA graph */
-  double error(const Values& values) const {
-    return wnoa_graph_.error(values);
-  }
+  GaussianFactorGraph::shared_ptr linearize() const override;
 
   /** Override iterate to use custom tryLambda and error calculation */
   GaussianFactorGraph::shared_ptr iterate() override;

@@ -84,6 +84,7 @@ public:
 template <typename PoseType>
 std::shared_ptr<GaussianFactorGraph>  WNOAFactorGraph<PoseType>::linearize(const Values& linearizationPoint) const
 {
+
   gttic(WNOAFactorGraph_linearize);
 
   // gttic(WNOAFactorGraph_linearize_InterpValues);
@@ -165,7 +166,6 @@ double WNOAFactorGraph<PoseType>::error(const Values& values) const {
 
 
   double total_error = 0.;
-
 
   // gttic(WNOAFactorGraph_error_InterpValues);
   // Compute values, Jacobians and conditional covariances for all interpolated states

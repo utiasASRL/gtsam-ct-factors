@@ -18,6 +18,7 @@
 
 #include <gtsam/nonlinear/WNOALevenbergMarquardtOptimizer.h>
 #include <gtsam/nonlinear/internal/LevenbergMarquardtState.h>
+#include <gtsam/nonlinear/NonlinearOptimizer.h>
 #include <gtsam/linear/linearExceptions.h>
 #include <iostream>
 #include <iomanip>
@@ -60,7 +61,7 @@ WNOALevenbergMarquardtOptimizer<PoseType>::WNOALevenbergMarquardtOptimizer(
 template<typename PoseType>
 bool WNOALevenbergMarquardtOptimizer<PoseType>::tryLambda(const GaussianFactorGraph& linear,
                                             const VectorValues& sqrtHessianDiagonal) {
-  auto currentState = static_cast<const internal::LevenbergMarquardtState*>(this->state_.get());
+  auto currentState = static_cast<const internal::LevenbergMarquardtState*>(state_.get());
   bool verbose = (params_.verbosityLM >= LevenbergMarquardtParams::TRYLAMBDA);
 
 #if GTSAM_USE_BOOST_FEATURES
@@ -79,7 +80,7 @@ bool WNOALevenbergMarquardtOptimizer<PoseType>::tryLambda(const GaussianFactorGr
     std::cout << "trying lambda = " << currentState->lambda << std::endl;
 
   // Build damped system for this lambda (adds prior factors that make it like gradient descent)
-  auto dampedSystem = this->buildDampedSystem(linear, sqrtHessianDiagonal);
+  auto dampedSystem = buildDampedSystem(linear, sqrtHessianDiagonal);
 
   // Try solving
   double modelFidelity = 0.0;
@@ -184,12 +185,12 @@ bool WNOALevenbergMarquardtOptimizer<PoseType>::tryLambda(const GaussianFactorGr
     // we have successfully decreased the cost and we have good modelFidelity
     // NOTE(frank): As we return immediately after this, we move the newValues
     // TODO(frank): make Values actually support move. Does not seem to happen now.
-    this->state_ = currentState->decreaseLambda(params_, modelFidelity, std::move(newValues), newError);
+    state_ = currentState->decreaseLambda(params_, modelFidelity, std::move(newValues), newError);
     return true;
   } else if (!stopSearchingLambda) {  // we failed to solved the system or had no decrease in cost
     if (verbose)
       std::cout << "increasing lambda" << std::endl;
-    auto* modifiedState = static_cast<internal::LevenbergMarquardtState*>(this->state_.get());
+    auto* modifiedState = static_cast<internal::LevenbergMarquardtState*>(state_.get());
     modifiedState->increaseLambda(params_); // TODO(frank): make this functional with Values move
 
     // check if lambda is too big
@@ -212,14 +213,14 @@ bool WNOALevenbergMarquardtOptimizer<PoseType>::tryLambda(const GaussianFactorGr
 // Implementation of iterate that uses custom tryLambda
 template<typename PoseType>
 GaussianFactorGraph::shared_ptr WNOALevenbergMarquardtOptimizer<PoseType>::iterate() {
-  auto currentState = static_cast<const State*>(this->state_.get());
+  auto currentState = static_cast<const State*>(state_.get());
 
   gttic(LM_iterate);
 
   // Linearize graph - this will call our custom linearize() method
   if (params_.verbosityLM >= LevenbergMarquardtParams::DAMPED)
     std::cout << "linearizing = " << std::endl;
-  GaussianFactorGraph::shared_ptr linear = this->linearize();
+  GaussianFactorGraph::shared_ptr linear = linearize();
 
   if(currentState->totalNumberInnerIterations==0) { // write initial error
     writeLogFile(currentState->error);
@@ -241,24 +242,30 @@ GaussianFactorGraph::shared_ptr WNOALevenbergMarquardtOptimizer<PoseType>::itera
 
   // Keep increasing lambda until we make make progress - this calls our custom tryLambda
   while (!tryLambda(*linear, sqrtHessianDiagonal)) {
-    auto newState = static_cast<const State*>(this->state_.get());
+    auto newState = static_cast<const State*>(state_.get());
     writeLogFile(newState->error);
   }
 
   return linear;
 }
 
+/** Override linearize to use WNOAFactorGraph's custom linearize method with cached interpolation data */
+template<typename PoseType>
+GaussianFactorGraph::shared_ptr WNOALevenbergMarquardtOptimizer<PoseType>::linearize() const {
+  return wnoa_graph_.linearize(state_->values);
+}
+
 // Helper method for logging
 template<typename PoseType>
 void WNOALevenbergMarquardtOptimizer<PoseType>::writeLogFile(double currentError) {
-  auto currentState = static_cast<const State*>(this->state_.get());
+  auto currentState = static_cast<const State*>(state_.get());
 
   if (!params_.logFile.empty()) {
     std::ofstream os(params_.logFile.c_str(), std::ios::app);
     // use chrono to measure time in microseconds
     auto currentTime = std::chrono::high_resolution_clock::now();
     // Get the time spent in seconds and print it
-    double timeSpent = std::chrono::duration_cast<std::chrono::microseconds>(currentTime - this->startTime_).count() / 1e6;
+    double timeSpent = std::chrono::duration_cast<std::chrono::microseconds>(currentTime - startTime_).count() / 1e6;
     os << /*inner iterations*/ currentState->totalNumberInnerIterations << ","
         << timeSpent << ","
         << /*current error*/ currentError << "," << currentState->lambda << ","
