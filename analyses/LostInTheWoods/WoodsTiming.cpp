@@ -268,9 +268,16 @@ int runLostInTheWoods(TimingParams& params) {
 
   Values result_full, result_interp;
 
+  // WARMUP runs
+  for(unsigned int i = 0; i < 20; i++)
+  {
+    auto LM_warmup = LevenbergMarquardtOptimizer(graph, initial, opt_params_silent);
+    LM_warmup.optimize();
+  }
+
   // set up stopwatch
-  auto t_start = chrono::high_resolution_clock::now();
-  auto t_end = chrono::high_resolution_clock::now();
+  auto t_start = chrono::steady_clock::now();
+  auto t_end = chrono::steady_clock::now();
   auto t_runtime =
       chrono::duration_cast<chrono::microseconds>(t_end - t_start).count();
 
@@ -278,13 +285,15 @@ int runLostInTheWoods(TimingParams& params) {
   std::cout << "Number of factors in original graph: " << graph.size() << std::endl;
   result_full = LevenbergMarquardtOptimizer(graph, initial, opt_params).optimize();
 
-  t_start = chrono::high_resolution_clock::now();
+  
+
+  t_start = chrono::steady_clock::now();
   for(unsigned int i = 0; i < params.n_runs; i++)
   {
     auto LM_opt = LevenbergMarquardtOptimizer(graph, initial, opt_params_silent);
-    result_full = LM_opt.optimize();
+    LM_opt.optimize();
   }
-  t_end = chrono::high_resolution_clock::now();
+  t_end = chrono::steady_clock::now();
   t_runtime =
       chrono::duration_cast<chrono::microseconds>(t_end - t_start).count();
   cout << "Runtime for solving original graph: " << t_runtime / params.n_runs << " (micro-s)" << endl;
@@ -312,13 +321,13 @@ int runLostInTheWoods(TimingParams& params) {
   std::cout << "Number of factors in interpolated graph: " << graph_interp.size() << std::endl;
   result_interp = WNOALevenbergMarquardtOptimizer<Pose2>(graph_interp, initial, opt_params).optimize();
 
-  t_start = chrono::high_resolution_clock::now();
+  t_start = chrono::steady_clock::now();
   for(unsigned int i = 0; i < params.n_runs; i++)
   {
     auto LM_inter = WNOALevenbergMarquardtOptimizer<Pose2>(graph_interp, initial, opt_params_silent);
-    result_interp = LM_inter.optimize();
+    LM_inter.optimize();
   }
-  t_end = chrono::high_resolution_clock::now();
+  t_end = chrono::steady_clock::now();
   t_runtime = chrono::duration_cast<chrono::microseconds>(t_end - t_start).count();
   cout << "Runtime for solving wrapper graph: " << t_runtime / params.n_runs << " (micro-s)" << endl;
 

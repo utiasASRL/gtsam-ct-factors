@@ -20,7 +20,7 @@ flags:
   solve_slam: false
 interp:
   interp_period: 1
-  fixed_noise: false
+  fixed_noise: true
 noise:
   prior: [1e-2, 1e-2, 1e-3]
   odom_y: 1.0e-2
