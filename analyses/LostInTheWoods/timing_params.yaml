@@ -10,17 +10,17 @@ params:
   del_t: 0.1
   start: 1000
   end: 6000
-  n_runs: 1
+  n_runs: 20
 flags:
   prior: true
   odom: false
   wnoa: true
   br: true
   gt_init: false
-  solve_slam: true
+  solve_slam: false
 interp:
-  interp_period: 50
-  fixed_noise: true
+  interp_period: 1
+  fixed_noise: false
 noise:
   prior: [1e-2, 1e-2, 1e-3]
   odom_y: 1.0e-2

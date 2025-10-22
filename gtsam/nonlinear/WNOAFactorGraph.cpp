@@ -17,12 +17,13 @@
 
 #include <gtsam/nonlinear/WNOAFactorGraph.h>
 #include <gtsam/nonlinear/WNOAInterpFactor.h>
+#include <gtsam/config.h> // for GTSAM_USE_TBB
 
 #ifdef GTSAM_USE_TBB
-#  include <tbb/parallel_for.h>
-#  include <tbb/parallel_for_each.h>
-#  include <tbb/concurrent_unordered_map.h>
-#  include <tbb/enumerable_thread_specific.h>
+#include <tbb/parallel_for.h>
+#include <tbb/parallel_for_each.h>
+#include <tbb/concurrent_unordered_map.h>
+#include <tbb/enumerable_thread_specific.h>
 #endif
 
 #include <mutex>
