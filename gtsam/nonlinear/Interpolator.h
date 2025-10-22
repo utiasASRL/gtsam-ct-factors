@@ -209,6 +209,14 @@ class Interpolator {
       Matrix* covarianceOut = nullptr,
       const std::shared_ptr<const LambdaPsiMats>& LambdaPsiPreComp = nullptr) const;
   
+  std::pair<Vector2N, Vector2N> MapToVectorSpace(
+    const PoseType& T_k, 
+    const PoseVel& varpi_k, 
+    const PoseType& T_kp1, 
+    const PoseVel& varpi_kp1, 
+    OptionalMatrixVecType H = nullptr
+  ) const;
+
   // Fast version that makes small angle approximation.
   PoseVel interpolatePoseAndVelocitySmallAngle(
       const TimestampedPoseVel& tPoseVel_k,

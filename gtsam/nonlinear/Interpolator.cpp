@@ -363,6 +363,80 @@ Interpolator<PoseType>::interpolatePoseAndVelocity_(
 }
 
 template <typename PoseType>
+std::pair<typename Interpolator<PoseType>::Vector2N,
+          typename Interpolator<PoseType>::Vector2N>
+Interpolator<PoseType>::MapToVectorSpace(const PoseType& T_k,
+                                         const PoseVel& varpi_k,
+                                         const PoseType& T_kp1,
+                                         const PoseVel& varpi_kp1,
+                                         OptionalMatrixVecType H) const {
+  using Vector2N = Interpolator<PoseType>::Vector2N;
+  using VectorN = Interpolator<PoseType>::VectorN;
+  using MatrixN = Interpolator<PoseType>::MatrixN;
+  using dim = Interpolator<PoseType>::dim;
+
+  // define interpolation state variables (in tangent space of first pose)
+  Vector2N gamma_k, gamma_kp1;
+  gamma_k.segment(0, dim).setZero();
+  gamma_k.segment(dim, dim) = varpi_k;
+  // Re-express the second pose in the tangent space of the first
+  // Note that p1 = T(t_k), p2 = T(t_{k+1})
+  //  compute xi = log(T_k^-1 T_{k+1})^check
+  MatrixN dbetween_Tk;
+  MatrixN dbetween_Tkp1;
+  MatrixN right_jac_inv;
+  if (H) {
+    
+    gamma_kp1.segment(0, dim) = traits<PoseType>::Logmap(
+        traits<PoseType>::Between(T_k, T_kp1, &dbetween_Tk, &dbetween_Tkp1),
+        &right_jac_inv);
+    // Compute deriviatives
+    dxi_dTk = right_jac_inv * dbetween_Tk;
+    dxi_dTkp1 = right_jac_inv * dbetween_Tkp1;
+  } else {
+    gamma_kp1.segment(0, dim) = traits<PoseType>::Logmap(
+        traits<PoseType>::Between(T_k, T_kp1), &right_jac_inv);
+  }
+  // Use right jacobian to map velocity of second pose into the tangent space of the first
+  gamma_kp1.segment(dim,dim) = right_jac_inv * varpi_kp1;
+
+  if (H) {
+    // compute jacobian of gamma_k wrt input vars
+    // NOTE: should reduce this Jacobian to just the one non-zero element
+    dgammak_dvars = Eigen::Matrix<double,2*dim,4*dim>;
+    dgammak_dvars.block(0, 0, dim, 4*dim).setZero();
+    dgammak_dvars.block(dim, 0, dim, dim).setZero();
+    dgammak_dvars.block(dim,2*dim, dim, 2*dim).setZero();
+    dgammak_dvars.block(dim,dim, dim, dim).setIdentity();
+    (*H)[0] = dgammak_dvars;
+    // compute the jacobian of gamma_kp1 wrt input vars
+    dgammakp1_dvars = Eigen::Matrix<double,2*dim,4*dim>;
+    // Derivative of right Jacobians
+    // Zero for vector spaces, use an approximation for Lie groups
+    dgammakp1_dvars.block(0,0,dim,dim) = right_jac_inv * dbetween_Tk; // dxi / dTk
+    dgammakp1_dvars.block(0,dim,dim,dim).setZero(); // dxi / dvarpik
+    dgammakp1_dvars.block(0,2*dim,dim,dim) = right_jac_inv * dbetween_Tkp1; // dxi / dTkp1
+    dgammakp1_dvars.block(0,3*dim,dim,dim).setZero(); // dxi / dvarpi_kp1
+    if constexpr (std::is_same_v<typename traits<PoseType>::structure_category,
+                                 vector_space_tag>) {
+      dgammakp1_dvars.block(0,0,2*dim,2*dim).setZero();
+    } else {
+      // For Lie groups
+      MatrixN dxidot_dxi = -PoseType::adjointMap(varpi_kp1) / 2.0;
+      
+    }
+    
+    
+
+
+    
+    
+  }
+
+
+}
+
+template <typename PoseType>
 typename Interpolator<PoseType>::PoseVel
 Interpolator<PoseType>::interpolatePoseAndVelocitySmallAngle(
     const TimestampedPoseVel& tPoseVel_k,
@@ -419,8 +493,9 @@ Interpolator<PoseType>::interpolatePoseAndVelocitySmallAngle(
   MatrixN right_jac_tau;
   PoseType T_tau;
   if (H) {
-    T_tau = traits<PoseType>::Compose(T_k, traits<PoseType>::Expmap(xi_tau, &right_jac_tau),
-                                      &dTtau_dTk, &dTtau_dxitau);
+    T_tau = traits<PoseType>::Compose(
+        T_k, traits<PoseType>::Expmap(xi_tau, &right_jac_tau), &dTtau_dTk,
+        &dTtau_dxitau);
 
   } else {
     T_tau = traits<PoseType>::Compose(T_k, traits<PoseType>::Expmap(xi_tau));
@@ -434,14 +509,14 @@ Interpolator<PoseType>::interpolatePoseAndVelocitySmallAngle(
     auto dxitau_dTk = Psi(0, 0) * dxi_dTk;
     const auto& dxitau_dvarpik = Lambda(0, dim);
     auto dxitau_dTkp1 = Psi(0, 0) * dxi_dTkp1;
-    const auto& dxitau_dvarpikp1 = Psi(0, dim); 
+    const auto& dxitau_dvarpikp1 = Psi(0, dim);
     auto dxidottau_dTk = Psi(dim, 0) * dxi_dTk;
     const auto& dxidottau_dvarpik = Lambda(dim, dim);
     auto dxidottau_dTkp1 = Psi(dim, 0) * dxi_dTkp1;
     const auto& dxidottau_dvarpikp1 = Psi(dim, dim);
 
     // dTtau_dTk
-    (*H)[0] = dTtau_dxitau * dxitau_dTk + dTtau_dTk ;
+    (*H)[0] = dTtau_dxitau * dxitau_dTk + dTtau_dTk;
     // dTtau_dvarpik
     (*H)[1] = dTtau_dxitau * dxitau_dvarpik;
     // dTtau_dTkp1
