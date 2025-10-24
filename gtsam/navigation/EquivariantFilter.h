@@ -192,7 +192,7 @@ class EqF : public LieGroupEKF<G> {
  private:
   G X_hat;                // Filter state
   Matrix Sigma;           // Error covariance
-  M xi_0;                 // Origin state
+  M xi_ref;                 // Origin state
   Matrix Dphi0;           // Differential of phi at origin
   Matrix InnovationLift;  // Innovation lift matrix
 
@@ -209,6 +209,8 @@ class EqF : public LieGroupEKF<G> {
    * @return Current state estimate
    */
   M stateEstimate() const;
+
+  G groupEstimate() const;
 
    /**
    * Propagate the filter state
@@ -240,7 +242,7 @@ class EqF : public LieGroupEKF<G> {
  */
 template <typename G, typename M, typename Geometry>
 EqF<G, M, Geometry>::EqF(const G& X0, const M& x0, const Matrix& Sigma, int m) : LieGroupEKF<G>(X0, Sigma),
-    X_hat(X0), Sigma(Sigma), xi_0(x0) {
+    X_hat(X0), Sigma(Sigma), xi_ref(x0) {
   if (Sigma.rows() != DOF || Sigma.cols() != DOF) {
     throw std::invalid_argument(
         "Initial covariance dimensions must match the degrees of freedom");
@@ -280,7 +282,7 @@ EqF<G, M, Geometry>::EqF(const G& X0, const M& x0, const Matrix& Sigma, int m) :
                 "Geometry must define static outputMatrixDt(int, GType)");
 
   // Compute differential of phi
-  Dphi0 = stateActionDiff(xi_0);
+  Dphi0 = stateActionDiff(xi_ref);
   InnovationLift = Dphi0.completeOrthogonalDecomposition().pseudoInverse();
 }
 /**
@@ -289,8 +291,15 @@ EqF<G, M, Geometry>::EqF(const G& X0, const M& x0, const Matrix& Sigma, int m) :
  */
 template <typename G, typename M, typename Geometry>
 M EqF<G, M, Geometry>::stateEstimate() const {
-  return Geometry::groupAction(X_hat, xi_0);
+  return Geometry::groupAction(X_hat, xi_ref);
 }
+
+
+template <typename G, typename M, typename Geometry>
+G EqF<G, M, Geometry>::groupEstimate() const {
+ return X_hat;
+}
+
 /**
  * Implements the prediction step of the EqF using system dynamics and
  * covariance propagation and advances the filter state by symmtery-preserving

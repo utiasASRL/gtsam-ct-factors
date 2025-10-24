@@ -170,7 +170,7 @@ struct G {
   std::array<Rot3, N> B;  /// List of SO(3) elements for calibration
   static constexpr int dimension = 6 + 3 * N;
   using TangentVector = Eigen::Matrix<double, dimension, 1>;
-
+  static constexpr int numSensors = N;
   /// Initialize the symmetry group G
   G(const Rot3& A = Rot3::Identity(), const Matrix3& a = Matrix3::Zero(),
     const std::array<Rot3, N>& B = std::array<Rot3, N>{})
@@ -194,6 +194,8 @@ struct G {
     }
     return G(A.inverse(), -Rot3::Hat(Ainv * Rot3::Vee(a)), Binv);
   }
+
+  G inverse() const { return inv(); }
 
   /// Identity element
   static G identity(int n) {
@@ -231,12 +233,33 @@ struct G {
     return Eigen::Matrix<double, dimension, dimension>::Identity();
   }
 
-  // Logmap: maps group element to tangent space
   static Eigen::Matrix<double, dimension, 1>
   Logmap(const G& g, OptionalJacobian<dimension, dimension> H = {}) {
-    if (H) *H = Eigen::Matrix<double, dimension, dimension>::Zero();
-    // TODO: implement actual log, here just a placeholder vector
-    return Eigen::Matrix<double, dimension, 1>::Zero();
+    // 1) Create the identity state and apply group action to it.
+    //    We assume State<N>::identity() exists and operator*(G, State) is defined
+    //    as the group action (or provide a groupAction(g, xi) helper).
+    State<N> xi0 = State<N>::identity();
+
+    // If you have a group action function (g * state) available:
+    State<N> xi_transformed = g * xi0;  // or groupAction(g, xi0)
+
+    // 2) Compute local coordinates between identity and transformed state:
+    Vector logv = xi0.localCoordinates(xi_transformed);
+
+    // 3) If Jacobian requested, compute numeric Jacobian of the map G -> Vector
+    if (H) {
+      // lambda: maps G -> Vector
+      auto mapGtoVec = [&xi0](const G& gg) {
+        State<N> x_trans = gg * xi0;           // group action
+        return xi0.localCoordinates(x_trans);  // returns Vector dimension x 1
+      };
+
+      // Use gtsam numerical derivative helper (type-deduction)
+      *H = gtsam::numericalDerivative11<Vector, G>(
+          std::function<Vector(const G&)>(mapGtoVec), g);
+    }
+
+    return logv;
   }
   
 };
@@ -451,25 +474,24 @@ struct ABCGeometry {
    * @return Measurement matrix
    * Uses the matrix zero, Rot3 hat and the Unitvector functions
    */
-  static Matrix measurementMatrixC(const Unit3& d, int idx) {
+static Matrix measurementMatrixC(const Unit3& d, int idx) {
     Matrix Cc = Matrix::Zero(3, 3 * N);
 
     // If the measurement is related to a sensor that has a calibration state
-    if (idx >= 0) {
-      // Set the correct 3x3 block in Cc
+    if (idx >= 0) { // Set the correct 3x3 block in Cc
       Cc.block<3, 3>(0, 3 * idx) = Rot3::Hat(d.unitVector());
     }
 
     Matrix3 wedge_d = Rot3::Hat(d.unitVector());
 
-    // Create the combined matrix
+    // Build the combined matrix
     Matrix temp(3, 6 + 3 * N);
     temp.block<3, 3>(0, 0) = wedge_d;
     temp.block<3, 3>(0, 3) = Matrix3::Zero();
     temp.block(0, 6, 3, 3 * N) = Cc;
 
     return wedge_d * temp;
-  }
+}
   /**
    * Computes the measurement uncertainty propagation matrix
    * @param idx Calibration index
@@ -557,6 +579,24 @@ struct traits<abc_eqf_lib::G<N>> : internal::LieGroupTraits<abc_eqf_lib::G<N>> {
     // Use composition: g * Expmap(v)
     return Compose(g, Expmap(v));  // will call Compose and Expmap above
   }
+
+  static void Print(const GType& g, const std::string& s = "") {
+        std::cout << s << std::endl;
+        std::cout << "A = " << g.A << std::endl;
+        std::cout << "a = " << g.a << std::endl;
+        for(size_t i = 0; i < GType::N; ++i) {
+            std::cout << "B[" << i << "] = " << g.B[i] << std::endl;
+        }
+    }
+  
+  static bool Equals(const GType& g1, const GType& g2, double tol = 1e-9) {
+        if (!g1.A.equals(g2.A, tol)) return false;
+        if (!gtsam::assert_equal<Matrix3>(g1.a, g2.a, tol)) return false;
+        for(size_t i = 0; i < GType::numSensors; ++i) {
+            if (!g1.B[i].equals(g2.B[i], tol)) return false;
+        }
+        return true;
+    }
 };
 }  // namespace gtsam
 
