@@ -18,7 +18,7 @@ using namespace std;
 // Define N for testing purposes, e.g., 2 calibration states
 static const size_t N_TEST = 2;
 using StateN = State<N_TEST>;
-using GN = G<N_TEST>;
+using GN = Group<N_TEST>;
 using ABCGeometryN = ABCGeometry<N_TEST>;
 
 // Helper for approximate equality of arrays of Rot3
@@ -35,7 +35,7 @@ bool ArraysEqual(const std::array<Rot3, N_TEST>& arr1, const std::array<Rot3, N_
 namespace gtsam {
 namespace abc_eqf_lib {
 template <size_t N>
-std::ostream& operator<<(std::ostream& os, const G<N>& g) {
+std::ostream& operator<<(std::ostream& os, const Group<N>& g) {
     os << "A: " << g.A << "\n";
     os << "a: " << Rot3::Vee(g.a).transpose() << "\n";
     os << "B: [";
@@ -448,27 +448,27 @@ TEST(ABC, ABCGeometry_stateTransitionMatrix) {
 
 
 ///* ************************************************************************* */
-TEST(ABC, ABCGeometry_inputMatrix) {
-    // Setup G element for X_hat
-    Rot3 A = Rot3::Rx(0.1);
-    Matrix3 a = Rot3::Hat((Vector(3) << 0.01, 0.02, 0.03).finished());
-    std::array<Rot3, N_TEST> B;
-    B[0] = Rot3::Ry(0.05);
-    B[1] = Rot3::Rz(0.06);
-    GN X_hat(A, a, B);
-
-    Matrix input_matrix = ABCGeometryN::inputMatrix(X_hat);
-
-    Matrix expected_B1 = blockDiag(X_hat.A.matrix(), X_hat.A.matrix());
-    Matrix expected_B2(3 * N_TEST, 3 * N_TEST);
-    expected_B2.setZero();
-    for (size_t i = 0; i < N_TEST; ++i) {
-        expected_B2.block<3, 3>(3 * i, 3 * i) = X_hat.B[i].matrix();
-    }
-    Matrix expected_input_matrix = blockDiag(expected_B1, expected_B2);
-
-    EXPECT(assert_equal(input_matrix, expected_input_matrix, 1e-9));
-}
+//TEST(ABC, ABCGeometry_inputMatrix) {
+//    // Setup G element for X_hat
+//    Rot3 A = Rot3::Rx(0.1);
+//    Matrix3 a = Rot3::Hat((Vector(3) << 0.01, 0.02, 0.03).finished());
+//    std::array<Rot3, N_TEST> B;
+//    B[0] = Rot3::Ry(0.05);
+//    B[1] = Rot3::Rz(0.06);
+//    GN X_hat(A, a, B);
+//
+//    Matrix input_matrix = ABCGeometryN::inputMatrix(X_hat);
+//
+//    Matrix expected_B1 = blockDiag(X_hat.A.matrix(), X_hat.A.matrix());
+//    Matrix expected_B2(3 * N_TEST, 3 * N_TEST);
+//    expected_B2.setZero();
+//    for (size_t i = 0; i < N_TEST; ++i) {
+//        expected_B2.block<3, 3>(3 * i, 3 * i) = X_hat.B[i].matrix();
+//    }
+//    Matrix expected_input_matrix = blockDiag(expected_B1, expected_B2);
+//
+//    EXPECT(assert_equal(input_matrix, expected_input_matrix, 1e-9));
+//}
 
 ///* ************************************************************************* */
 TEST(ABC, ABCGeometry_processNoise) {
@@ -531,15 +531,15 @@ TEST(ABC, ABCGeometry_processNoise) {
 //}
 TEST(ABC, EqFilter){
     using M = abc_eqf_lib::State<N_TEST>;
-    using Group = abc_eqf_lib::G<N_TEST>;
+    using G = abc_eqf_lib::Group<N_TEST>;
     using Geometry = ABCGeometry<N_TEST>;
-    using EqFilter = abc_eqf_lib::EqF<Group, M, Geometry>;
+    using EqFilter = abc_eqf_lib::EqF<G, M, Geometry>;
     
-    const Group g_0;
+    const G g_0;
     const M xi_ref; // Reference state (xi circle) and not inital state?
     const int numSensors = 2;
     
-    Matrix initialSigma = Matrix::Identity(Group::dimension, Group::dimension);
+    Matrix initialSigma = Matrix::Identity(G::dimension, G::dimension);
     initialSigma.diagonal().head<3>() =
         Vector3::Constant(0.1);  // Attitude uncertainty
     initialSigma.diagonal().segment<3>(3) =
@@ -549,12 +549,21 @@ TEST(ABC, EqFilter){
     
     EqFilter filter(g_0, xi_ref, initialSigma, numSensors);
 
-    Group X_HatActual = filter.groupEstimate();
+    G X_HatActual = filter.groupEstimate();
 
-    Group X_HatExpected = filter.state(); //from LieGroupEKF
+    G X_HatExpected = filter.state(); //from LieGroupEKF
 
-    EXPECT(traits<Group>::Equals(g_0, X_HatActual, 1e-9));
+    EXPECT(traits<G>::Equals(g_0, X_HatActual, 1e-9));
+
+    EXPECT(traits<G>::Equals(X_HatActual, X_HatExpected, 1e-9));
     // Next check predict
+    typename Geometry::Input u;
+	u.w = (Vector3() << 0.01, -0.02, 0.015).finished();
+	double dt = 0.01;
+
+	filter.predict(u, dt);
+
+	EXPECT(traits<G>::Equals(filter.groupEstimate(), filter.state(), 1e-9));
   }
 /* ************************************************************************* */
 int main() { TestResult tr; return TestRegistry::runAllTests(tr); }

@@ -190,8 +190,6 @@ class has_outputMatrixDt {
 template <typename G, typename M, typename Geometry>
 class EqF : public LieGroupEKF<G> {
  private:
-  G X_hat;                // Filter state
-  Matrix Sigma;           // Error covariance
   M xi_ref;                 // Origin state
   Matrix Dphi0;           // Differential of phi at origin
   Matrix InnovationLift;  // Innovation lift matrix
@@ -242,7 +240,7 @@ class EqF : public LieGroupEKF<G> {
  */
 template <typename G, typename M, typename Geometry>
 EqF<G, M, Geometry>::EqF(const G& X0, const M& x0, const Matrix& Sigma, int m) : LieGroupEKF<G>(X0, Sigma),
-    X_hat(X0), Sigma(Sigma), xi_ref(x0) {
+    xi_ref(x0) {
   if (Sigma.rows() != DOF || Sigma.cols() != DOF) {
     throw std::invalid_argument(
         "Initial covariance dimensions must match the degrees of freedom");
@@ -291,13 +289,13 @@ EqF<G, M, Geometry>::EqF(const G& X0, const M& x0, const Matrix& Sigma, int m) :
  */
 template <typename G, typename M, typename Geometry>
 M EqF<G, M, Geometry>::stateEstimate() const {
-  return Geometry::groupAction(X_hat, xi_ref);
+  return Geometry::groupAction(this->X_, xi_ref);
 }
 
 
 template <typename G, typename M, typename Geometry>
 G EqF<G, M, Geometry>::groupEstimate() const {
- return X_hat;
+ return this->X_;
 }
 
 /**
@@ -311,16 +309,19 @@ G EqF<G, M, Geometry>::groupEstimate() const {
 template <typename G, typename M, typename Geometry>
 void EqF<G, M, Geometry>::predict(const typename Geometry::Input& u,
                                       double dt) {
-  M state_est = stateEstimate();            // General manifold
-  Vector L = Geometry::lift(state_est, u);  // Lifted vector in tangent space
+  M state_est = stateEstimate();            // your manifold version
+  Vector L = Geometry::lift(state_est, u);  // tangent vector
 
-  Matrix Phi = Geometry::stateTransitionMatrix(u, dt, X_hat);
-  Matrix Bt = Geometry::inputMatrixBt(X_hat);
 
-  Matrix Q = Geometry::processNoise(u);  // Replaces blockDiag(...)
+  Matrix Phi = Geometry::stateTransitionMatrix(u, dt, this->X_);
+  Matrix Bt  = Geometry::inputMatrixBt(this->X_);
+  Matrix Q   = Geometry::processNoise(u);
 
-  X_hat = traits<G>::Compose(X_hat, traits<G>::Expmap(L * dt));
-  Sigma = Phi * Sigma * Phi.transpose() + Bt * Q * Bt.transpose() * dt;
+
+  this->X_ = traits<G>::Compose(this->X_, traits<G>::Expmap(L * dt));
+
+
+  this->P_ = Phi * this->P_ * Phi.transpose() + Bt * Q * Bt.transpose() * dt;
 }
 /**
  * Implements the correction step of the filter using discrete measurements
@@ -347,15 +348,15 @@ void EqF<G, M, Geometry>::update(const typename Geometry::Measurement& y) {
 
   Matrix Ct = Geometry::measurementMatrixC(y.d, y.cal_idx);
 
-  Vector3 action_result = outputAction(X_hat.inv(), y.y, y.cal_idx);
+  Vector3 action_result = outputAction(this->X_.inv(), y.y, y.cal_idx);
   Vector3 delta_vec = Rot3::Hat(y.d.unitVector()) * action_result;
-  Matrix Dt = Geometry::outputMatrixDt(y.cal_idx, X_hat);
+  Matrix Dt = Geometry::outputMatrixDt(y.cal_idx, this->X_);
 
-  Matrix S = Ct * Sigma * Ct.transpose() + Dt * y.Sigma * Dt.transpose();
-  Matrix K = Sigma * Ct.transpose() * S.inverse();
+  Matrix S = Ct * this->P_ * Ct.transpose() + Dt * y.Sigma * Dt.transpose();
+  Matrix K = this->P_ * Ct.transpose() * S.inverse();
   Vector Delta = InnovationLift * K * delta_vec;
-  X_hat = traits<G>::Compose(traits<G>::Expmap(Delta), X_hat);
-  Sigma = (Matrix::Identity(DOF, DOF) - K * Ct) * Sigma;
+  this->X_ = traits<G>::Compose(traits<G>::Expmap(Delta), this->X_);
+  this->P_ = (Matrix::Identity(DOF, DOF) - K * Ct) * this->P_;
 }
 }  // namespace gtsam
 

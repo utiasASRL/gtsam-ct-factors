@@ -164,48 +164,48 @@ class State {
  * Each element of the B list is associated with a calibration state
  */
 template <size_t N>
-struct G {
+struct Group {
   Rot3 A;                 /// First SO(3) element
   Matrix3 a;              /// so(3) element (skew-symmetric matrix)
   std::array<Rot3, N> B;  /// List of SO(3) elements for calibration
   static constexpr int dimension = 6 + 3 * N;
   using TangentVector = Eigen::Matrix<double, dimension, 1>;
   static constexpr int numSensors = N;
-  /// Initialize the symmetry group G
-  G(const Rot3& A = Rot3::Identity(), const Matrix3& a = Matrix3::Zero(),
+  /// Initialize the symmetry Group
+  Group(const Rot3& A = Rot3::Identity(), const Matrix3& a = Matrix3::Zero(),
     const std::array<Rot3, N>& B = std::array<Rot3, N>{})
       : A(A), a(a), B(B) {}
 
   /// Group multiplication
-  G operator*(const G<N>& other) const {
+  Group operator*(const Group<N>& other) const {
     std::array<Rot3, N> newB;
     for (size_t i = 0; i < N; i++) {
       newB[i] = B[i] * other.B[i];
     }
-    return G(A * other.A, a + Rot3::Hat(A.matrix() * Rot3::Vee(other.a)), newB);
+    return Group(A * other.A, a + Rot3::Hat(A.matrix() * Rot3::Vee(other.a)), newB);
   }
 
   /// Group inverse
-  G inv() const {
+  Group inv() const {
     Matrix3 Ainv = A.inverse().matrix();
     std::array<Rot3, N> Binv;
     for (size_t i = 0; i < N; i++) {
       Binv[i] = B[i].inverse();
     }
-    return G(A.inverse(), -Rot3::Hat(Ainv * Rot3::Vee(a)), Binv);
+    return Group(A.inverse(), -Rot3::Hat(Ainv * Rot3::Vee(a)), Binv);
   }
 
-  G inverse() const { return inv(); }
+  Group inverse() const { return inv(); }
 
   /// Identity element
-  static G identity(int n) {
+  static Group identity(int n) {
     std::array<Rot3, N> B;
     B.fill(Rot3::Identity());
-    return G(Rot3::Identity(), Matrix3::Zero(), B);
+    return Group(Rot3::Identity(), Matrix3::Zero(), B);
   }
 
   /// Exponential map of the tangent space elements to the group
-  static G exp(const Vector& x) {
+  static Group exp(const Vector& x) {
     if (x.size() != static_cast<Eigen::Index>(6 + 3 * N)) {
       throw std::invalid_argument("Vector size mismatch for group exponential");
     }
@@ -216,14 +216,14 @@ struct G {
     for (size_t i = 0; i < N; i++) {
       B[i] = Rot3::Expmap(x.segment<3>(6 + 3 * i));
     }
-    return G(A, a, B);
+    return Group(A, a, B);
   }
 
   /// Retract a tangent vector back to the manifold using Expmap
-  G retract(const TangentVector& v,
+  Group retract(const TangentVector& v,
             OptionalJacobian<dimension, dimension> H = {},
             OptionalJacobian<dimension, dimension> Hv = {}) const {
-    return gtsam::traits<G>::Compose(*this, gtsam::traits<G>::Expmap(v));
+    return gtsam::traits<Group>::Compose(*this, gtsam::traits<Group>::Expmap(v));
   }
 
   // Adjoint matrix of this group element (for SE(3) or similar)
@@ -234,9 +234,9 @@ struct G {
   }
 
   static Eigen::Matrix<double, dimension, 1>
-  Logmap(const G& g, OptionalJacobian<dimension, dimension> H = {}) {
+  Logmap(const Group& g, OptionalJacobian<dimension, dimension> H = {}) {
     // 1) Create the identity state and apply group action to it.
-    //    We assume State<N>::identity() exists and operator*(G, State) is defined
+    //    We assume State<N>::identity() exists and operator*(Group, State) is defined
     //    as the group action (or provide a groupAction(g, xi) helper).
     State<N> xi0 = State<N>::identity();
 
@@ -246,17 +246,17 @@ struct G {
     // 2) Compute local coordinates between identity and transformed state:
     Vector logv = xi0.localCoordinates(xi_transformed);
 
-    // 3) If Jacobian requested, compute numeric Jacobian of the map G -> Vector
+    // 3) If Jacobian requested, compute numeric Jacobian of the map Group -> Vector
     if (H) {
-      // lambda: maps G -> Vector
-      auto mapGtoVec = [&xi0](const G& gg) {
+      // lambda: maps Group -> Vector
+      auto mapGtoVec = [&xi0](const Group& gg) {
         State<N> x_trans = gg * xi0;           // group action
         return xi0.localCoordinates(x_trans);  // returns Vector dimension x 1
       };
 
       // Use gtsam numerical derivative helper (type-deduction)
-      *H = gtsam::numericalDerivative11<Vector, G>(
-          std::function<Vector(const G&)>(mapGtoVec), g);
+      *H = gtsam::numericalDerivative11<Vector, Group>(
+          std::function<Vector(const Group&)>(mapGtoVec), g);
     }
 
     return logv;
@@ -269,7 +269,7 @@ struct G {
 //========================================================================
 /**
  * Implements group actions on the states
- * @param X A symmetry group element G consisting of the attitude, bias and the
+ * @param X A symmetry group element Group consisting of the attitude, bias and the
  * calibration components X.a -> Rotation matrix containing the attitude X.b ->
  * A skew-symmetric matrix representing bias X.B -> A vector of Rotation
  * matrices for the calibration components
@@ -281,7 +281,7 @@ struct G {
  * Uses the Rot3 inverse and Vee functions
  */
 template <size_t N>
-State<N> operator*(const G<N>& X, const State<N>& xi) {
+State<N> operator*(const Group<N>& X, const State<N>& xi) {
   std::array<Rot3, N> new_S;
 
   for (size_t i = 0; i < N; i++) {
@@ -300,7 +300,7 @@ State<N> operator*(const G<N>& X, const State<N>& xi) {
  * the input equivariance
  */
 template <size_t N>
-Input velocityAction(const G<N>& X, const Input& u) {
+Input velocityAction(const Group<N>& X, const Input& u) {
   return Input{X.A.inverse().matrix() * (u.w - Rot3::Vee(X.a)), u.Sigma};
 }
 /**
@@ -312,7 +312,7 @@ Input velocityAction(const G<N>& X, const Input& u) {
  * Uses Rot3 inverse, matric and Unit3 unitvector functions
  */
 template <size_t N>
-Vector3 outputAction(const G<N>& X, const Unit3& y, int idx) {
+Vector3 outputAction(const Group<N>& X, const Unit3& y, int idx) {
   if (idx == -1) {
     return X.A.inverse().matrix() * y.unitVector();
   } else {
@@ -360,16 +360,16 @@ Matrix numericalDifferential(std::function<Vector(const Vector&)> f,
  */
 template <size_t N>
 Matrix stateActionDiff(const State<N>& xi) {
-  return gtsam::numericalDerivative11<Vector, G<N>>(
-      [&xi](const G<N>& g) { return xi.localCoordinates(g * xi); },
-      gtsam::traits<G<N>>::Identity());
+  return gtsam::numericalDerivative11<Vector, Group<N>>(
+      [&xi](const Group<N>& g) { return xi.localCoordinates(g * xi); },
+      gtsam::traits<Group<N>>::Identity());
 }
 
 template <size_t N>
 struct ABCGeometry {
   using Input = abc_eqf_lib::Input;
   using Measurement = abc_eqf_lib::Measurement;
-  using GType = G<N>;
+  using GType = Group<N>;
   using MType = State<N>;
   using TangentVector = typename GType::TangentVector;
   static MType identityState() { return MType::identity(); }
@@ -407,7 +407,7 @@ struct ABCGeometry {
    * @param dt time step
    * @return State transition matrix in discrete time
    */
-  static Matrix stateTransitionMatrix(const Input& u, double dt, GType X_hat) {
+  static Matrix stateTransitionMatrix(const Input& u, double dt, GType X_hat) { // Todo harmonize input order, State first then input
     Matrix3 W0 = velocityAction(X_hat.inv(), u).W();
     Matrix Phi1 = Matrix::Zero(6, 6);
 
@@ -497,7 +497,7 @@ static Matrix measurementMatrixC(const Unit3& d, int idx) {
    * @param idx Calibration index
    * @return Returns B[idx] for calibrated sensors, A for uncalibrated
    */
-  static Matrix outputMatrixDt(int idx, G<N> X_hat) {
+  static Matrix outputMatrixDt(int idx, Group<N> X_hat) {
     // If the measurement is related to a sensor that has a calibration state
     if (idx >= 0) {
       if (idx >= static_cast<int>(N)) {
@@ -515,8 +515,8 @@ static Matrix measurementMatrixC(const Unit3& d, int idx) {
 }  // namespace abc_eqf_lib
 
 template <size_t N>
-struct traits<abc_eqf_lib::G<N>> : internal::LieGroupTraits<abc_eqf_lib::G<N>> {
-  using GType = abc_eqf_lib::G<N>;
+struct traits<abc_eqf_lib::Group<N>> : internal::LieGroupTraits<abc_eqf_lib::Group<N>> {
+  using GType = abc_eqf_lib::Group<N>;
   // dimension should exist on GType; if not, set to compile-time constant
   static constexpr int dimension = GType::dimension;
 
@@ -551,7 +551,7 @@ struct traits<abc_eqf_lib::G<N>> : internal::LieGroupTraits<abc_eqf_lib::G<N>> {
     return g.inv();
   }
 
-  // Expmap (v -> G) with optional Jacobian dExp/dv
+  // Expmap (v -> Group) with optional Jacobian dExp/dv
   static GType Expmap(const Vector& v, OptionalJac H = OptionalJac()) {
     if (H) *H = MatrixDim::Zero();
     return GType::exp(v);

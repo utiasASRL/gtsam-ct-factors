@@ -13,11 +13,11 @@
 
 // Use namespace for convenience
 using namespace gtsam::abc_eqf_lib;
-constexpr size_t N = 1;  // Number of calibration states
-using M = abc_eqf_lib::State<N>;
-using Group = abc_eqf_lib::G<N>;
-using Geometry = ABCGeometry<N>;
-using EqFilter = abc_eqf_lib::EqF<Group, M, Geometry>;
+constexpr size_t n = 1;  // Number of calibration states
+using M = abc_eqf_lib::State<n>;
+using G = abc_eqf_lib::Group<n>;
+using Geometry = ABCGeometry<n>;
+using EqFilter = abc_eqf_lib::EqF<G, M, Geometry>; 
 using gtsam::abc_eqf_lib::EqF;
 using gtsam::abc_eqf_lib::Input;
 using gtsam::abc_eqf_lib::Measurement;
@@ -140,7 +140,7 @@ std::vector<Data> loadDataFromCSV(const std::string& filename, int startRow,
 
     Quaternion calQuat(values[8], values[9], values[10],
                        values[11]);  // w, x, y, z
-    std::array<Rot3, N> S = {Rot3(calQuat)};
+    std::array<Rot3, n> S = {Rot3(calQuat)};
 
     M xi(R, b, S);
 
@@ -418,10 +418,10 @@ int main(int argc, char* argv[]) {
     }
 
     // Initialize the EqF filter with one calibration state
-    int n_sensors = 2;
+    int N = 2; // number of sensors
 
     // Initial covariance - larger values allow faster convergence
-    Matrix initialSigma = Matrix::Identity(6 + 3 * N, 6 + 3 * N);
+    Matrix initialSigma = Matrix::Identity(6 + 3 * n, 6 + 3 * n);
     initialSigma.diagonal().head<3>() =
         Vector3::Constant(0.1);  // Attitude uncertainty
     initialSigma.diagonal().segment<3>(3) =
@@ -429,11 +429,11 @@ int main(int argc, char* argv[]) {
     initialSigma.diagonal().tail<3>() =
         Vector3::Constant(0.1);  // Calibration uncertainty
 
-    Group initialGroup = gtsam::traits<Group>::Identity();
+    G initialGroup = gtsam::traits<G>::Identity();
     M initialState = Geometry::identityState();
 
     // Create filter
-    EqFilter filter(initialGroup, initialState, initialSigma, n_sensors);
+    EqFilter filter(initialGroup, initialState, initialSigma, N);
 
     // Process data
     processDataWithEqF(filter, data);
