@@ -854,6 +854,81 @@ TEST(Interpolator, LambdaPsiExternal) {
   EXPECT(assert_equal(pvtau.vel, pvtau_alt.vel));
 }
 
+TEST(Interpolator, PoseMapToVector) {
+  // Redefine poses along a smooth trajectory
+  const Pose3 p0_se3 = Pose3::Expmap(Vector6(0.5, 0.0, 0.0, 0.0, 0.0, 0.0));
+  const Vector6 v0_se3(1, 0.0, 0.5, 0.1, 0.0, 0.0);
+  const Pose3 p1_se3 = p0_se3.expmap(timestep * v0_se3);
+  // const Vector6 v1_se3 = v0_se3;
+  const Pose3 p2_se3 = p0_se3.expmap(2 * timestep * v0_se3);
+  const Vector6 v2_se3 = v0_se3;
+
+  // Create Interpolator
+  Interpolator<Pose3> interp(Vector6::Ones());
+
+  // Get analytic Jacobians
+  vector<Matrix> H(2);
+  interp.MapToVectorSpace(p0_se3, v0_se3, p2_se3, v2_se3, &H);
+
+  // GAMMA_K DERIVATIVES
+  // define lambda function for derivatives
+  auto f1 = [&](auto& p0, auto& v0, auto& p2, auto& v2) {
+    auto result = interp.MapToVectorSpace(p0, v0, p2, v2);
+
+    return result.first;
+  };
+
+  // Compute numerical derivatives
+  double delta = 1e-6;
+  Matrix J_p0_num =
+      numericalDerivative41<Vector, Pose3, Vector6, Pose3, Vector6>(
+          f1, p0_se3, v0_se3, p2_se3, v2_se3, delta);
+  Matrix J_v0_num =
+      numericalDerivative42<Vector, Pose3, Vector6, Pose3, Vector6>(
+          f1, p0_se3, v0_se3, p2_se3, v2_se3, delta);
+  Matrix J_p2_num =
+      numericalDerivative43<Vector, Pose3, Vector6, Pose3, Vector6>(
+          f1, p0_se3, v0_se3, p2_se3, v2_se3, delta);
+  Matrix J_v2_num =
+      numericalDerivative44<Vector, Pose3, Vector6, Pose3, Vector6>(
+          f1, p0_se3, v0_se3, p2_se3, v2_se3, delta);
+
+  double tol = 1e-3;
+  int dim = 6;
+  EXPECT(assert_equal(J_p0_num,H[0].block(0, 0, 2*dim, dim), tol));
+  EXPECT(assert_equal(J_v0_num,H[0].block(0, dim, 2*dim, dim), tol));
+  EXPECT(assert_equal(J_p2_num,H[0].block(0, 2*dim, 2*dim, dim), tol));
+  EXPECT(assert_equal(J_v2_num,H[0].block(0, 3*dim, 2*dim, dim), tol));
+
+  // GAMMA_K+1 DERIVATIVES
+  // define lambda function for derivatives
+  auto f2 = [&](auto& p0, auto& v0, auto& p2, auto& v2) {
+    auto result = interp.MapToVectorSpace(p0, v0, p2, v2);
+
+    return result.second;
+  };
+
+  // Compute numerical derivatives
+  J_p0_num =
+      numericalDerivative41<Vector, Pose3, Vector6, Pose3, Vector6>(
+          f2, p0_se3, v0_se3, p2_se3, v2_se3, delta);
+  J_v0_num =
+      numericalDerivative42<Vector, Pose3, Vector6, Pose3, Vector6>(
+          f2, p0_se3, v0_se3, p2_se3, v2_se3, delta);
+  J_p2_num =
+      numericalDerivative43<Vector, Pose3, Vector6, Pose3, Vector6>(
+          f2, p0_se3, v0_se3, p2_se3, v2_se3, delta);
+  J_v2_num =
+      numericalDerivative44<Vector, Pose3, Vector6, Pose3, Vector6>(
+          f2, p0_se3, v0_se3, p2_se3, v2_se3, delta);
+
+  EXPECT(assert_equal(J_p0_num,H[1].block(0, 0, 2*dim, dim), tol));
+  EXPECT(assert_equal(J_v0_num,H[1].block(0, dim, 2*dim, dim), tol));
+  EXPECT(assert_equal(J_p2_num,H[1].block(0, 2*dim, 2*dim, dim), tol));
+  EXPECT(assert_equal(J_v2_num,H[1].block(0, 3*dim, 2*dim, dim), tol));
+
+}
+
 // The tests below are commented out because the required tolerance are ~1e1
 // /* ************************************************************************* */
 // TEST(Interpolator, LambdaPsiConsistencySE2) {

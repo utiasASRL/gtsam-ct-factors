@@ -178,6 +178,9 @@ class Interpolator {
 
 
  protected:
+
+  // Add friend class for testing
+  friend class InterpolatorTest;
   // Interpoate pose and velocity at left boundary
   PoseVel interpolateBoundaryLeft(
       const PoseVelocity<PoseType>& poseVel_k,
@@ -209,13 +212,17 @@ class Interpolator {
       Matrix* covarianceOut = nullptr,
       const std::shared_ptr<const LambdaPsiMats>& LambdaPsiPreComp = nullptr) const;
   
+public:
+
   std::pair<Vector2N, Vector2N> MapToVectorSpace(
     const PoseType& T_k, 
-    const PoseVel& varpi_k, 
+    const VelocityType& varpi_k, 
     const PoseType& T_kp1, 
-    const PoseVel& varpi_kp1, 
+    const VelocityType& varpi_kp1, 
     OptionalMatrixVecType H = nullptr
   ) const;
+
+protected:
 
   // Fast version that makes small angle approximation.
   PoseVel interpolatePoseAndVelocitySmallAngle(
