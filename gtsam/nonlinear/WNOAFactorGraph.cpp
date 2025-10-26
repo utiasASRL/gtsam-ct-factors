@@ -143,7 +143,7 @@ std::shared_ptr<GaussianFactorGraph>  WNOAFactorGraph<PoseType>::linearize(const
     // Get index of factor
   size_t i = &factor - &factors_[0];
     // Check if i is in wnoa_interp_factor_indices_
-    if (isWNOAInterpFactorIndex(i)) {
+    if (factor && isWNOAInterpFactorIndex(i)) {
       // This is a WNOAInterpFactor, cast down statically to avoid dynamic cast
       auto wnoa_factor = static_pointer_cast<WNOAInterpFactor<PoseType>>(factor);
       linearFG->push_back(wnoa_factor->linearize(linearizationPoint, passedInterpData.get()));
@@ -334,10 +334,14 @@ Values WNOAFactorGraph<PoseType>::getInterpolatedValues(
   // 2. Reusable Jacobian storage (allocated once). The interpolate function overwrites entries.
   vector<Matrix> H(8);
 
-  // 3. Iterate interpolation entries.
-  for (const auto& kv : this->interp_to_borders_map_) {
-    const auto& interp_state  = kv.first;
-    const auto& border_states = kv.second;
+  // Reserve target containers to minimize rehashing
+  if (InterpJacobians) InterpJacobians->reserve(this->interp_to_borders_vec_.size() * 2);
+  if (InterpCondCovs) InterpCondCovs->reserve(this->interp_to_borders_vec_.size());
+
+  // 3. Iterate interpolation entries using cache-friendly vector layout.
+  for (const auto& entry : this->interp_to_borders_vec_) {
+    const auto& interp_state  = entry.first;
+    const auto& border_states = entry.second;
     const auto& left  = border_states.first;
     const auto& right = border_states.second;
 

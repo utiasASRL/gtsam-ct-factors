@@ -19,7 +19,7 @@ flags:
   gt_init: false
   solve_slam: false
 interp:
-  interp_period: 1
+  interp_period: 10
   fixed_noise: true
 noise:
   prior: [1e-2, 1e-2, 1e-3]
