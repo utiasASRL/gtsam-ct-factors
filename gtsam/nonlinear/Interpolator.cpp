@@ -442,6 +442,10 @@ typename Interpolator<PoseType>::PoseVel
 Interpolator<PoseType>::mapToPoseGroup(const Vector2N& gamma_tau,
                                        const PoseType& T_k,
                                        OptionalMatrixVecType H) const {
+  // Aliases to input vector
+  const VectorN& xi_tau = gamma_tau.segment(0, dim);
+  const VectorN& xi_dot_tau = gamma_tau.segment(dim, dim);
+                                      
   MatrixN right_jac_tau;
   MatrixN dTtau_dTk;
   MatrixN dTtau_dxitau;
@@ -456,10 +460,40 @@ Interpolator<PoseType>::mapToPoseGroup(const Vector2N& gamma_tau,
     T_tau = traits<PoseType>::Compose(
         T_k, traits<PoseType>::Expmap(xi_tau, &right_jac_tau));
   }
-  auto varpi_tau = right_jac_tau * xidot_tau;
+  // get velocity output from gamma_tau
+  VelocityType varpi_tau = right_jac_tau * xi_dot_tau;
 
-  return PoseVelocity<PoseType>(T_tau, varpi_tau);
+  // Jacobians
+  if (H) {
+    // dT_tau / dgamma_tau
+    Eigen::Matrix<double, dim, 2*dim> dTtau_dgamma;
+    dTtau_dgamma.block(0,0,dim,dim) = dTtau_dxitau;
+    dTtau_dgamma.block(0,dim,dim,dim).setZero();
+    (*H)[0] = dTtau_dgamma;
+    // dT_tau / dT_k
+    //TODO: Just pass this address to compose function above
+    (*H)[1] = dTtau_dTk; 
+    
+    // dvarpi_tau / dgamma_tau
+    // need jacobian of right_jac_tau
+    Eigen::Matrix<double, dim, 2*dim> dvarpitau_dgamma;
+    if constexpr (std::is_same_v<typename traits<PoseType>::structure_category,
+      vector_space_tag>) {
+      // Derivative of Jacobian is zero for vector spaces.
+      dvarpitau_dgamma.block(0,0,dim,dim).setZero();
+    } else {
+      // For Lie groups, use the approximate derivative of the right jacobian
+      dvarpitau_dgamma.block(0,0,dim,dim) = PoseType::adjointMap(xi_dot_tau) / 2.0;
+    }
+    dvarpitau_dgamma.block(0,dim,dim,dim) = right_jac_tau;
+    (*H)[2] = dvarpitau_dgamma;
+    
+    // dvarpi_tau / dT_k
+    // We don't add this block because it is simply zeros
+  }
+  return PoseVelocity<PoseType>{T_tau, varpi_tau};
 }
+
 template <typename PoseType>
 typename Interpolator<PoseType>::PoseVel
 Interpolator<PoseType>::interpolatePoseAndVelocitySmallAngle(
