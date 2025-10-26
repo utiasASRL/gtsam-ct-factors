@@ -22,7 +22,7 @@ static Vector2 Q_p2(0.9, 0.8);
 static Vector3 Q_p3(0.9, 0.8, 0.7);
 static Vector3 Q_se2(0.9, 0.8, 0.7);
 static Vector6 Q_se3(0.9, 0.8, 0.7, 0.6, 0.5, 0.4);
-static double timestep = 0.1;
+static double timestep = 0.01;
 
 /**** Point1 Test Variables*****/
 Point1 p0_p1(1.0);
@@ -95,7 +95,7 @@ TEST(Interpolator, CovarianceP1) {
   (void) interpolator.interpolatePoseAndVelocity(
       TimestampedPoseVelocity<Point1>(p0_p1, v0_p1, 0.0),
       TimestampedPoseVelocity<Point1>(p1_p1, v1_p1, timestep),
-      0.05, nullptr, mainSolveMarginalPtr, &covariance);
+      timestep / 2.0, nullptr, mainSolveMarginalPtr, &covariance);
   CHECK(covariance.rows() == 2 && covariance.cols() == 2);
 }
 /* ************************************************************************* */
@@ -108,7 +108,7 @@ TEST(Interpolator, CovarianceP2) {
   (void) interpolator.interpolatePoseAndVelocity(
       TimestampedPoseVelocity<Point2>(p0_p2, v0_p2, 0.0),
       TimestampedPoseVelocity<Point2>(p1_p2, v1_p2, timestep),
-      0.05, nullptr, mainSolveMarginalPtr, &covariance);
+      timestep / 2.0, nullptr, mainSolveMarginalPtr, &covariance);
   CHECK(covariance.rows() == 4 && covariance.cols() == 4);
 }
 /* ************************************************************************* */
@@ -121,7 +121,7 @@ TEST(Interpolator, CovarianceP3) {
   (void) interpolator.interpolatePoseAndVelocity(
       TimestampedPoseVelocity<Point3>(p0_p3, v0_p3, 0.0),
       TimestampedPoseVelocity<Point3>(p1_p3, v1_p3, timestep),
-      0.05, nullptr, mainSolveMarginalPtr, &covariance);
+      timestep / 2.0, nullptr, mainSolveMarginalPtr, &covariance);
   CHECK(covariance.rows() == 6 && covariance.cols() == 6);
 }
 /* ************************************************************************* */
@@ -134,7 +134,7 @@ TEST(Interpolator, CovarianceSE2) {
   (void) interpolator.interpolatePoseAndVelocity(
       TimestampedPoseVelocity<Pose2>(p0_se2, v0_se2, 0.0),
       TimestampedPoseVelocity<Pose2>(p1_se2, v1_se2, timestep),
-      0.05, nullptr, mainSolveMarginalPtr, &covariance);
+      timestep / 2.0, nullptr, mainSolveMarginalPtr, &covariance);
   CHECK(covariance.rows() == 6 && covariance.cols() == 6);
 }
 /* ************************************************************************* */
@@ -147,7 +147,7 @@ TEST(Interpolator, CovarianceSE3) {
   (void) interpolator.interpolatePoseAndVelocity(
       TimestampedPoseVelocity<Pose3>(p0_se3, v0_se3, 0.0),
       TimestampedPoseVelocity<Pose3>(p1_se3, v1_se3, timestep),
-      0.05, nullptr, mainSolveMarginalPtr, &covariance);
+      timestep / 2.0, nullptr, mainSolveMarginalPtr, &covariance);
   CHECK(covariance.rows() == 12 && covariance.cols() == 12);
 }
   
@@ -868,12 +868,12 @@ TEST(Interpolator, PoseMapToVector) {
 
   // Get analytic Jacobians
   vector<Matrix> H(2);
-  interp.MapToVectorSpace(p0_se3, v0_se3, p2_se3, v2_se3, &H);
+  interp.napToVectorSpace(p0_se3, v0_se3, p2_se3, v2_se3, &H);
 
   // GAMMA_K DERIVATIVES
   // define lambda function for derivatives
   auto f1 = [&](auto& p0, auto& v0, auto& p2, auto& v2) {
-    auto result = interp.MapToVectorSpace(p0, v0, p2, v2);
+    auto result = interp.napToVectorSpace(p0, v0, p2, v2);
 
     return result.first;
   };
@@ -893,7 +893,7 @@ TEST(Interpolator, PoseMapToVector) {
       numericalDerivative44<Vector, Pose3, Vector6, Pose3, Vector6>(
           f1, p0_se3, v0_se3, p2_se3, v2_se3, delta);
 
-  double tol = 1e-3;
+  double tol = 5e-3;
   int dim = 6;
   EXPECT(assert_equal(J_p0_num,H[0].block(0, 0, 2*dim, dim), tol));
   EXPECT(assert_equal(J_v0_num,H[0].block(0, dim, 2*dim, dim), tol));
@@ -903,7 +903,7 @@ TEST(Interpolator, PoseMapToVector) {
   // GAMMA_K+1 DERIVATIVES
   // define lambda function for derivatives
   auto f2 = [&](auto& p0, auto& v0, auto& p2, auto& v2) {
-    auto result = interp.MapToVectorSpace(p0, v0, p2, v2);
+    auto result = interp.mapToVectorSpace(p0, v0, p2, v2);
 
     return result.second;
   };

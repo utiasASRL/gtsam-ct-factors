@@ -362,17 +362,15 @@ Interpolator<PoseType>::interpolatePoseAndVelocity_(
   return poseVel_tau;
 }
 
+// Maps the Pose-velocity state variables to Lie Algebra vector space
 template <typename PoseType>
 std::pair<typename Interpolator<PoseType>::Vector2N,
           typename Interpolator<PoseType>::Vector2N>
-Interpolator<PoseType>::MapToVectorSpace(const PoseType& T_k,
+Interpolator<PoseType>::mapToVectorSpace(const PoseType& T_k,
                                          const VelocityType& varpi_k,
                                          const PoseType& T_kp1,
                                          const VelocityType& varpi_kp1,
                                          OptionalMatrixVecType H) const {
-  // using Vector2N = Interpolator<PoseType>::Vector2N;
-  // using VectorN = Interpolator<PoseType>::VectorN;
-  // using MatrixN = Interpolator<PoseType>::MatrixN;
 
   // define interpolation state variables (in tangent space of first pose)
   Vector2N gamma_k, gamma_kp1;
@@ -411,33 +409,57 @@ Interpolator<PoseType>::MapToVectorSpace(const PoseType& T_k,
     (*H)[0] = dgammak_dvars;
     
     // compute the jacobian of gamma_kp1 wrt input vars
-    // top part: d xi
     Eigen::Matrix<double,2*dim,4*dim> dgammakp1_dvars;
+    // top part: d xi
     dgammakp1_dvars.block(0,0,dim,dim) = dxi_dTk; // dxi / dTk
     dgammakp1_dvars.block(0,dim,dim,dim).setZero(); // dxi / dvarpik
     dgammakp1_dvars.block(0,2*dim,dim,dim) = dxi_dTkp1; // dxi / dTkp1
     dgammakp1_dvars.block(0,3*dim,dim,dim).setZero(); // dxi / dvarpi_kp1
     
     // bottom part: d xi_dot
-    // Derivative of right Jacobians
     if constexpr (std::is_same_v<typename traits<PoseType>::structure_category,
       vector_space_tag>) {
-      // Zero for vector spaces, use an approximation for Lie groups
+      // Derivative of Jacobian is zero for vector spaces.
       dgammakp1_dvars.block(dim,0,dim,3*dim).setZero();
     } else {
-      // For Lie groups:
+      // For Lie groups, use the approximate derivative of the right inverse jacobian
       MatrixN dxidot_dxi = -PoseType::adjointMap(varpi_kp1) / 2.0;
       dgammakp1_dvars.block(dim, 0, dim, dim) = dxidot_dxi * dxi_dTk; 
-      dgammakp1_dvars.block(dim, 2*dim, dim, dim) = dxidot_dxi * dxi_dTkp1;  
       dgammakp1_dvars.block(dim,dim,dim,dim).setZero();
+      dgammakp1_dvars.block(dim, 2*dim, dim, dim) = dxidot_dxi * dxi_dTkp1;  
     }
     dgammakp1_dvars.block(dim,3*dim,dim,dim) = right_jac_inv;
+    (*H)[1] = dgammakp1_dvars;
     
   }
   return std::make_pair(gamma_k, gamma_kp1);
 
 }
 
+// Maps the Pose-velocity state variables to Lie Algebra vector space
+template <typename PoseType>
+typename Interpolator<PoseType>::PoseVel
+Interpolator<PoseType>::mapToPoseGroup(const Vector2N& gamma_tau,
+                                       const PoseType& T_k,
+                                       OptionalMatrixVecType H) const {
+  MatrixN right_jac_tau;
+  MatrixN dTtau_dTk;
+  MatrixN dTtau_dxitau;
+  PoseType T_tau;
+  if (H) {
+    T_tau = traits<PoseType>::Compose(
+        T_k, traits<PoseType>::Expmap(xi_tau, &right_jac_tau), &dTtau_dTk,
+        &dTtau_dxitau);
+    dTtau_dxitau = dTtau_dxitau * right_jac_tau;
+
+  } else {
+    T_tau = traits<PoseType>::Compose(
+        T_k, traits<PoseType>::Expmap(xi_tau, &right_jac_tau));
+  }
+  auto varpi_tau = right_jac_tau * xidot_tau;
+
+  return PoseVelocity<PoseType>(T_tau, varpi_tau);
+}
 template <typename PoseType>
 typename Interpolator<PoseType>::PoseVel
 Interpolator<PoseType>::interpolatePoseAndVelocitySmallAngle(
