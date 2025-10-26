@@ -853,13 +853,16 @@ TEST(Interpolator, MapToVector) {
   Interpolator<Pose3> interp(Vector6::Ones());
 
   // Get analytic Jacobians
+  constexpr static int dim = 6;
   vector<Matrix> H(2);
-  interp.mapToVectorSpace(p0_se3, v0_se3, p2_se3, v2_se3, &H);
+  interp.mapToTangentSpace(p0_se3, v0_se3, p2_se3, v2_se3, &H);
+  auto dgammak_dvars = H[0];
+  auto dgammakp1_dvars = H[1];
 
   // GAMMA_K DERIVATIVES
   // define lambda function for derivatives
   auto f1 = [&](auto& p0, auto& v0, auto& p2, auto& v2) {
-    auto result = interp.mapToVectorSpace(p0, v0, p2, v2);
+    auto result = interp.mapToTangentSpace(p0, v0, p2, v2);
 
     return result.first;
   };
@@ -880,16 +883,18 @@ TEST(Interpolator, MapToVector) {
           f1, p0_se3, v0_se3, p2_se3, v2_se3, delta);
 
   double tol = 5e-3;
-  int dim = 6;
-  EXPECT(assert_equal(J_p0_num, H[0].block(0, 0, 2 * dim, dim), tol));
-  EXPECT(assert_equal(J_v0_num, H[0].block(0, dim, 2 * dim, dim), tol));
-  EXPECT(assert_equal(J_p2_num, H[0].block(0, 2 * dim, 2 * dim, dim), tol));
-  EXPECT(assert_equal(J_v2_num, H[0].block(0, 3 * dim, 2 * dim, dim), tol));
+  EXPECT(assert_equal(J_p0_num, dgammak_dvars.block(0, 0, 2 * dim, dim), tol));
+  EXPECT(
+      assert_equal(J_v0_num, dgammak_dvars.block(0, dim, 2 * dim, dim), tol));
+  EXPECT(assert_equal(J_p2_num, dgammak_dvars.block(0, 2 * dim, 2 * dim, dim),
+                      tol));
+  EXPECT(assert_equal(J_v2_num, dgammak_dvars.block(0, 3 * dim, 2 * dim, dim),
+                      tol));
 
   // GAMMA_K+1 DERIVATIVES
   // define lambda function for derivatives
   auto f2 = [&](auto& p0, auto& v0, auto& p2, auto& v2) {
-    auto result = interp.mapToVectorSpace(p0, v0, p2, v2);
+    auto result = interp.mapToTangentSpace(p0, v0, p2, v2);
 
     return result.second;
   };
@@ -904,10 +909,10 @@ TEST(Interpolator, MapToVector) {
   J_v2_num = numericalDerivative44<Vector, Pose3, Vector6, Pose3, Vector6>(
       f2, p0_se3, v0_se3, p2_se3, v2_se3, delta);
 
-  EXPECT(assert_equal(J_p0_num, H[1].block(0, 0, 2 * dim, dim), tol));
-  EXPECT(assert_equal(J_v0_num, H[1].block(0, dim, 2 * dim, dim), tol));
-  EXPECT(assert_equal(J_p2_num, H[1].block(0, 2 * dim, 2 * dim, dim), tol));
-  EXPECT(assert_equal(J_v2_num, H[1].block(0, 3 * dim, 2 * dim, dim), tol));
+  EXPECT(assert_equal(J_p0_num, dgammakp1_dvars.block(0, 0, 2 * dim, dim), tol));
+  EXPECT(assert_equal(J_v0_num, dgammakp1_dvars.block(0, dim, 2 * dim, dim), tol));
+  EXPECT(assert_equal(J_p2_num, dgammakp1_dvars.block(0, 2 * dim, 2 * dim, dim), tol));
+  EXPECT(assert_equal(J_v2_num, dgammakp1_dvars.block(0, 3 * dim, 2 * dim, dim), tol));
 }
 
 TEST(Interpolator, MapToPose) {
@@ -923,33 +928,33 @@ TEST(Interpolator, MapToPose) {
   Interpolator<Pose3> interp(Vector6::Ones());
 
   // Get gamma vals
-  using Vector2N = Eigen::Matrix<double, 12,1>;
+  using Vector2N = Eigen::Matrix<double, 12, 1>;
   Vector2N gamma_k, gamma_kp1;
   std::tie(gamma_k, gamma_kp1) =
-      interp.mapToVectorSpace(p0_se3, v0_se3, p2_se3, v2_se3);
+      interp.mapToTangentSpace(p0_se3, v0_se3, p2_se3, v2_se3);
   // run forward
   vector<Matrix> H(3);
-  interp.mapToPoseGroup(gamma_kp1, p0_se3, &H);
+  interp.mapToManifold(gamma_kp1, p0_se3, &H);
 
   // define lambda function for pose derivative
   auto f_pose = [&](auto& gamma, auto& p0) {
-    auto result = interp.mapToPoseGroup(gamma, p0);
+    auto result = interp.mapToManifold(gamma, p0);
 
     return result.pose;
   };
   // define lambda function for velocity
   auto f_vel = [&](auto& gamma, auto& p0) {
-    auto result = interp.mapToPoseGroup(gamma, p0);
+    auto result = interp.mapToManifold(gamma, p0);
 
     return result.vel;
   };
 
   // Compute numerical derivatives
   double delta = 1e-6;
-  Matrix J_0 = numericalDerivative21<Pose3, Vector2N, Pose3>(
-      f_pose, gamma_kp1, p0_se3, delta);
-  Matrix J_1 = numericalDerivative22<Pose3, Vector2N, Pose3>(
-      f_pose, gamma_kp1, p0_se3, delta);
+  Matrix J_0 = numericalDerivative21<Pose3, Vector2N, Pose3>(f_pose, gamma_kp1,
+                                                             p0_se3, delta);
+  Matrix J_1 = numericalDerivative22<Pose3, Vector2N, Pose3>(f_pose, gamma_kp1,
+                                                             p0_se3, delta);
   Matrix J_2 = numericalDerivative21<Vector6, Vector2N, Pose3>(f_vel, gamma_kp1,
                                                                p0_se3, delta);
 
@@ -957,7 +962,6 @@ TEST(Interpolator, MapToPose) {
   EXPECT(assert_equal(J_0, H[0], tol));
   EXPECT(assert_equal(J_1, H[1], tol));
   EXPECT(assert_equal(J_2, H[2], tol));
-
 }
 
 // The tests below are commented out because the required tolerance are ~1e1

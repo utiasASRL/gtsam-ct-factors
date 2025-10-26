@@ -213,13 +213,22 @@ class Interpolator {
       const std::shared_ptr<const LambdaPsiMats>& LambdaPsiPreComp =
           nullptr) const;
 
+  PoseVel interpolatePoseAndVelocity_old(
+      const TimestampedPoseVel& tPoseVel_k,
+      const TimestampedPoseVel& tPoseVel_kp1, double t_tau,
+      OptionalMatrixVecType H = nullptr,
+      const std::shared_ptr<Matrix>& mainSolveMarginalMatrix = nullptr,
+      Matrix* covarianceOut = nullptr,
+      const std::shared_ptr<const LambdaPsiMats>& LambdaPsiPreComp =
+          nullptr) const;
+
  public:
-  std::pair<Vector2N, Vector2N> mapToVectorSpace(
+  std::pair<Vector2N, Vector2N> mapToTangentSpace(
       const PoseType& T_k, const VelocityType& varpi_k, const PoseType& T_kp1,
       const VelocityType& varpi_kp1, OptionalMatrixVecType H = nullptr) const;
 
-  PoseVel mapToPoseGroup(const Vector2N& gamma_tau, const PoseType& T_k,
-                         OptionalMatrixVecType H = nullptr) const;
+  PoseVel mapToManifold(const Vector2N& gamma_tau, const PoseType& T_k,
+                        OptionalMatrixVecType H = nullptr) const;
 
  protected:
   // Fast version that makes small angle approximation.

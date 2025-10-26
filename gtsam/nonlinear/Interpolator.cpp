@@ -98,9 +98,16 @@ Interpolator<PoseType>::interpolatePoseAndVelocity(
           tPoseVel_k.value(), tPoseVel_kp1.value(), t_tau, H,
           mainSolveMarginalMatrix, covarianceOut, LambdaPsiPreComp);
     } else {
-      return interpolatePoseAndVelocity_(
-          tPoseVel_k.value(), tPoseVel_kp1.value(), t_tau, H,
-          mainSolveMarginalMatrix, covarianceOut, LambdaPsiPreComp);
+      bool use_old_version = false;
+      if (use_old_version) {
+        return interpolatePoseAndVelocity_old(
+            tPoseVel_k.value(), tPoseVel_kp1.value(), t_tau, H,
+            mainSolveMarginalMatrix, covarianceOut, LambdaPsiPreComp);
+      } else {
+        return interpolatePoseAndVelocity_(
+            tPoseVel_k.value(), tPoseVel_kp1.value(), t_tau, H,
+            mainSolveMarginalMatrix, covarianceOut, LambdaPsiPreComp);
+      }
     }
   }
 }
@@ -202,6 +209,98 @@ Interpolator<PoseType>::extrapolatePoseAndVelocity(
 template <typename PoseType>
 typename Interpolator<PoseType>::PoseVel
 Interpolator<PoseType>::interpolatePoseAndVelocity_(
+    const TimestampedPoseVel& tPoseVel_k,
+    const TimestampedPoseVel& tPoseVel_kp1, double t_tau,
+    OptionalMatrixVecType H,
+    const std::shared_ptr<Matrix>& mainSolveMarginalMatrix,
+    Matrix* covarianceOut,
+    const std::shared_ptr<const LambdaPsiMats>& LambdaPsiPreComp) const {
+  // unpack poses and velocities
+  const auto& [poseVel_k, t_k] = tPoseVel_k;
+  const auto& [poseVel_kp1, t_kp1] = tPoseVel_kp1;
+  const auto& [T_k, varpi_k] = poseVel_k;
+  const auto& [T_kp1, varpi_kp1] = poseVel_kp1;
+
+  // Map input poses to tangent space about first pose
+  Vector2N gamma_k, gamma_kp1;
+  vector<Matrix> H_tangent(2);
+  if (H) {
+    std::tie(gamma_k, gamma_kp1) =
+        mapToTangentSpace(T_k, varpi_k, T_kp1, varpi_kp1, &H_tangent);
+  } else {
+    std::tie(gamma_k, gamma_kp1) =
+        mapToTangentSpace(T_k, varpi_k, T_kp1, varpi_kp1);
+  }
+
+  // Linear, WNOA, GP Interpolation
+  Matrix2N Lambda, Psi;
+  if (!LambdaPsiPreComp) {
+    // generate interpolation matrices
+    std::tie(Lambda, Psi) = getLambdaPsi(t_k, t_kp1, t_tau);
+  } else {
+    // retrieve precomputed matrices
+    std::tie(Lambda, Psi) = *LambdaPsiPreComp;
+  }
+  Vector2N gamma_tau = Lambda * gamma_k + Psi * gamma_kp1;
+
+  // Map tangent space vector to manifold pose and velocity
+  PoseVel poseVel_tau; // T_tau, varpi_tau
+  vector<Matrix> H_manifold(3);
+  if (H){
+    poseVel_tau = mapToManifold(gamma_tau, T_k, &H_manifold);
+  } else {
+    poseVel_tau = mapToManifold(gamma_tau, T_k);
+  }
+
+  // Assemble Jacobians
+  if (H){
+    // Aliasing for readability
+    auto dgammak_dvars = H_tangent[0];
+    auto dgammakp1_dvars = H_tangent[1];
+    auto dTtau_dgammatau = H_manifold[0]; 
+    auto dTtau_dTk_compose = H_manifold[1]; 
+    auto dvarpitau_dgammatau = H_manifold[2]; 
+
+    //intermediate blocks
+    auto dgammatau_dvars = Lambda * dgammak_dvars + Psi * dgammakp1_dvars;
+    auto dTtau_dvars = dTtau_dgammatau * dgammatau_dvars;
+    auto dvarpitau_dvars = dvarpitau_dgammatau * dgammatau_dvars;
+
+    // dTtau_dTk
+    (*H)[0] = dTtau_dvars.block(0,0,dim,dim) + dTtau_dTk_compose;
+    // dTtau_dvarpik
+    (*H)[1] = dTtau_dvars.block(0,dim,dim,dim);
+    // dTtau_dTkp1
+    (*H)[2] = dTtau_dvars.block(0,2*dim,dim,dim);
+    // dTtau_dvarpikp1
+    (*H)[3] = dTtau_dvars.block(0,3*dim,dim,dim);
+    // dvarpitau_dTk
+    (*H)[4] = dvarpitau_dvars.block(0,0, dim,dim);
+    // dvarpitau_dvarpik
+    (*H)[5] = dvarpitau_dvars.block(0,dim, dim,dim);
+    // dvarpitau_dTkp1
+    (*H)[6] = dvarpitau_dvars.block(0,2*dim, dim,dim);
+    // dvarpitau_dvarpikp1
+    (*H)[7] = dvarpitau_dvars.block(0,3*dim, dim,dim);
+  }
+
+  // compute covariance of the interpolated pose and velocity, if required
+  if (mainSolveMarginalMatrix) {
+    Eigen::Matrix<double, 2 * dim, 4 * dim> LambdaPsi;
+    // use existing Lambda and Psi computed from (11.41) in the book
+    Matrix2N Sigma = computeConditionalCov(
+        tPoseVel_k, tPoseVel_kp1, TimestampedPoseVel{poseVel_tau, t_tau});
+    LambdaPsi << Lambda, Psi;
+    *covarianceOut =
+        Sigma + LambdaPsi * *mainSolveMarginalMatrix * LambdaPsi.transpose();
+  }
+
+  return poseVel_tau;
+}
+
+template <typename PoseType>
+typename Interpolator<PoseType>::PoseVel
+Interpolator<PoseType>::interpolatePoseAndVelocity_old(
     const TimestampedPoseVel& tPoseVel_k,
     const TimestampedPoseVel& tPoseVel_kp1, double t_tau,
     OptionalMatrixVecType H,
@@ -366,12 +465,11 @@ Interpolator<PoseType>::interpolatePoseAndVelocity_(
 template <typename PoseType>
 std::pair<typename Interpolator<PoseType>::Vector2N,
           typename Interpolator<PoseType>::Vector2N>
-Interpolator<PoseType>::mapToVectorSpace(const PoseType& T_k,
-                                         const VelocityType& varpi_k,
-                                         const PoseType& T_kp1,
-                                         const VelocityType& varpi_kp1,
-                                         OptionalMatrixVecType H) const {
-
+Interpolator<PoseType>::mapToTangentSpace(const PoseType& T_k,
+                                          const VelocityType& varpi_k,
+                                          const PoseType& T_kp1,
+                                          const VelocityType& varpi_kp1,
+                                          OptionalMatrixVecType H) const {
   // define interpolation state variables (in tangent space of first pose)
   Vector2N gamma_k, gamma_kp1;
   gamma_k.segment(0, dim).setZero();
@@ -395,57 +493,56 @@ Interpolator<PoseType>::mapToVectorSpace(const PoseType& T_k,
     gamma_kp1.segment(0, dim) = traits<PoseType>::Logmap(
         traits<PoseType>::Between(T_k, T_kp1), &right_jac_inv);
   }
-  // Use right jacobian to map velocity of second pose into the tangent space of the first
-  gamma_kp1.segment(dim,dim) = right_jac_inv * varpi_kp1;
+  // Use right jacobian to map velocity of second pose into the tangent space of
+  // the first
+  gamma_kp1.segment(dim, dim) = right_jac_inv * varpi_kp1;
 
   if (H) {
     // compute jacobian of gamma_k wrt input vars
     // NOTE: should reduce this Jacobian to just the one non-zero element
-    Eigen::Matrix<double,2*dim,4*dim> dgammak_dvars;
-    dgammak_dvars.block(0, 0, dim, 4*dim).setZero();
+    Eigen::Matrix<double, 2 * dim, 4 * dim> dgammak_dvars;
+    dgammak_dvars.block(0, 0, dim, 4 * dim).setZero();
     dgammak_dvars.block(dim, 0, dim, dim).setZero();
-    dgammak_dvars.block(dim,2*dim, dim, 2*dim).setZero();
-    dgammak_dvars.block(dim,dim, dim, dim).setIdentity();
+    dgammak_dvars.block(dim, 2 * dim, dim, 2 * dim).setZero();
+    dgammak_dvars.block(dim, dim, dim, dim).setIdentity();
     (*H)[0] = dgammak_dvars;
-    
+
     // compute the jacobian of gamma_kp1 wrt input vars
-    Eigen::Matrix<double,2*dim,4*dim> dgammakp1_dvars;
+    Eigen::Matrix<double, 2 * dim, 4 * dim> dgammakp1_dvars;
     // top part: d xi
-    dgammakp1_dvars.block(0,0,dim,dim) = dxi_dTk; // dxi / dTk
-    dgammakp1_dvars.block(0,dim,dim,dim).setZero(); // dxi / dvarpik
-    dgammakp1_dvars.block(0,2*dim,dim,dim) = dxi_dTkp1; // dxi / dTkp1
-    dgammakp1_dvars.block(0,3*dim,dim,dim).setZero(); // dxi / dvarpi_kp1
-    
+    dgammakp1_dvars.block(0, 0, dim, dim) = dxi_dTk;          // dxi / dTk
+    dgammakp1_dvars.block(0, dim, dim, dim).setZero();        // dxi / dvarpik
+    dgammakp1_dvars.block(0, 2 * dim, dim, dim) = dxi_dTkp1;  // dxi / dTkp1
+    dgammakp1_dvars.block(0, 3 * dim, dim, dim).setZero();  // dxi / dvarpi_kp1
+
     // bottom part: d xi_dot
     if constexpr (std::is_same_v<typename traits<PoseType>::structure_category,
-      vector_space_tag>) {
+                                 vector_space_tag>) {
       // Derivative of Jacobian is zero for vector spaces.
-      dgammakp1_dvars.block(dim,0,dim,3*dim).setZero();
+      dgammakp1_dvars.block(dim, 0, dim, 3 * dim).setZero();
     } else {
-      // For Lie groups, use the approximate derivative of the right inverse jacobian
+      // For Lie groups, use the approximate derivative of the right inverse
+      // jacobian
       MatrixN dxidot_dxi = -PoseType::adjointMap(varpi_kp1) / 2.0;
-      dgammakp1_dvars.block(dim, 0, dim, dim) = dxidot_dxi * dxi_dTk; 
-      dgammakp1_dvars.block(dim,dim,dim,dim).setZero();
-      dgammakp1_dvars.block(dim, 2*dim, dim, dim) = dxidot_dxi * dxi_dTkp1;  
+      dgammakp1_dvars.block(dim, 0, dim, dim) = dxidot_dxi * dxi_dTk;
+      dgammakp1_dvars.block(dim, dim, dim, dim).setZero();
+      dgammakp1_dvars.block(dim, 2 * dim, dim, dim) = dxidot_dxi * dxi_dTkp1;
     }
-    dgammakp1_dvars.block(dim,3*dim,dim,dim) = right_jac_inv;
+    dgammakp1_dvars.block(dim, 3 * dim, dim, dim) = right_jac_inv;
     (*H)[1] = dgammakp1_dvars;
-    
   }
   return std::make_pair(gamma_k, gamma_kp1);
-
 }
 
 // Maps the Pose-velocity state variables to Lie Algebra vector space
 template <typename PoseType>
-typename Interpolator<PoseType>::PoseVel
-Interpolator<PoseType>::mapToPoseGroup(const Vector2N& gamma_tau,
-                                       const PoseType& T_k,
-                                       OptionalMatrixVecType H) const {
+typename Interpolator<PoseType>::PoseVel Interpolator<PoseType>::mapToManifold(
+    const Vector2N& gamma_tau, const PoseType& T_k,
+    OptionalMatrixVecType H) const {
   // Aliases to input vector
   const VectorN& xi_tau = gamma_tau.segment(0, dim);
   const VectorN& xi_dot_tau = gamma_tau.segment(dim, dim);
-                                      
+
   MatrixN right_jac_tau;
   MatrixN dTtau_dTk;
   MatrixN dTtau_dxitau;
@@ -466,28 +563,29 @@ Interpolator<PoseType>::mapToPoseGroup(const Vector2N& gamma_tau,
   // Jacobians
   if (H) {
     // dT_tau / dgamma_tau
-    Eigen::Matrix<double, dim, 2*dim> dTtau_dgamma;
-    dTtau_dgamma.block(0,0,dim,dim) = dTtau_dxitau;
-    dTtau_dgamma.block(0,dim,dim,dim).setZero();
+    Eigen::Matrix<double, dim, 2 * dim> dTtau_dgamma;
+    dTtau_dgamma.block(0, 0, dim, dim) = dTtau_dxitau;
+    dTtau_dgamma.block(0, dim, dim, dim).setZero();
     (*H)[0] = dTtau_dgamma;
     // dT_tau / dT_k
-    //TODO: Just pass this address to compose function above
-    (*H)[1] = dTtau_dTk; 
-    
+    // TODO: Just pass this address to compose function above
+    (*H)[1] = dTtau_dTk;
+
     // dvarpi_tau / dgamma_tau
     // need jacobian of right_jac_tau
-    Eigen::Matrix<double, dim, 2*dim> dvarpitau_dgamma;
+    Eigen::Matrix<double, dim, 2 * dim> dvarpitau_dgamma;
     if constexpr (std::is_same_v<typename traits<PoseType>::structure_category,
-      vector_space_tag>) {
+                                 vector_space_tag>) {
       // Derivative of Jacobian is zero for vector spaces.
-      dvarpitau_dgamma.block(0,0,dim,dim).setZero();
+      dvarpitau_dgamma.block(0, 0, dim, dim).setZero();
     } else {
       // For Lie groups, use the approximate derivative of the right jacobian
-      dvarpitau_dgamma.block(0,0,dim,dim) = PoseType::adjointMap(xi_dot_tau) / 2.0;
+      dvarpitau_dgamma.block(0, 0, dim, dim) =
+          PoseType::adjointMap(xi_dot_tau) / 2.0;
     }
-    dvarpitau_dgamma.block(0,dim,dim,dim) = right_jac_tau;
+    dvarpitau_dgamma.block(0, dim, dim, dim) = right_jac_tau;
     (*H)[2] = dvarpitau_dgamma;
-    
+
     // dvarpi_tau / dT_k
     // We don't add this block because it is simply zeros
   }
