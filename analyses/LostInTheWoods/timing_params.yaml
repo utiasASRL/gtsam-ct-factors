@@ -10,20 +10,26 @@ params:
   del_t: 0.1
   start: 1000
   end: 6000
-  n_runs: 20
+  n_runs: 1
 flags:
   prior: true
   odom: false
   wnoa: true
   br: true
   gt_init: false
-  solve_slam: false
+  solve_slam: true
 interp:
   interp_period: 10
   fixed_noise: true
-noise:
-  prior: [1e-2, 1e-2, 1e-3]
+#noise: #loc
+  #prior: [1e-3, 1e-3, 1e-4]
+  #odom_y: 1.0e-2
+  #wnoa: [1e-3, 1e-3, 5e-2]
+  #bearing: 1.5
+  #range: 1.5
+noise: #slam
+  prior: [1e-5, 1e-5, 1e-5]
   odom_y: 1.0e-2
-  wnoa: [1e-2, 1e-3, 5e-4]
-  bearing: 1.5
-  range: 1.5
+  wnoa: [1e-3, 1e-3, 5e-2]
+  bearing: 3.0
+  range: 3.0

@@ -8,6 +8,7 @@
 #include <gtsam/nonlinear/WNOAFactorGraph.h>
 #include <gtsam/nonlinear/LevenbergMarquardtOptimizer.h>
 #include <gtsam/nonlinear/WNOALevenbergMarquardtOptimizer.h>
+#include <gtsam/nonlinear/WrapperLevenbergMarquardtOptimizer.h>
 
 using std::string;
 using std::vector;
@@ -269,11 +270,11 @@ int runLostInTheWoods(TimingParams& params) {
   Values result_full, result_interp;
 
   // WARMUP runs
-  for(unsigned int i = 0; i < 20; i++)
-  {
-    auto LM_warmup = LevenbergMarquardtOptimizer(graph, initial, opt_params_silent);
-    LM_warmup.optimize();
-  }
+  //for(unsigned int i = 0; i < 20; i++)
+  //{
+  //  auto LM_warmup = LevenbergMarquardtOptimizer(graph, initial, opt_params_silent);
+  //  LM_warmup.optimize();
+  //}
 
   // set up stopwatch
   auto t_start = chrono::steady_clock::now();
@@ -313,18 +314,30 @@ int runLostInTheWoods(TimingParams& params) {
       initial.erase(all_states[i].vel);
     }
   }
-  // Generate interpolated version of graph
+
+  t_start = chrono::steady_clock::now();
+  for(unsigned int i = 0; i < params.n_runs; i++)
+  {
+    // Generate interpolated version of graph
+    WNOAFactorGraph graph_interp = interpolateWNOAFactorGraph<Pose2>(
+        graph, estim, interp, sigma_wnoa, params.fixed_noise);
+  }
+  t_end = chrono::steady_clock::now();
+  t_runtime = chrono::duration_cast<chrono::microseconds>(t_end - t_start).count();
+  cout << "Runtime for generating interpolated graph: " << t_runtime / params.n_runs << " (micro-s)" << endl;
+
+
   WNOAFactorGraph graph_interp = interpolateWNOAFactorGraph<Pose2>(
       graph, estim, interp, sigma_wnoa, params.fixed_noise);
 
   // Run optimizer
   std::cout << "Number of factors in interpolated graph: " << graph_interp.size() << std::endl;
-  result_interp = WNOALevenbergMarquardtOptimizer<Pose2>(graph_interp, initial, opt_params).optimize();
+  result_interp = WrapperLevenbergMarquardtOptimizer<Pose2>(graph_interp, initial, opt_params).optimize();
 
   t_start = chrono::steady_clock::now();
   for(unsigned int i = 0; i < params.n_runs; i++)
-  {
-    auto LM_inter = WNOALevenbergMarquardtOptimizer<Pose2>(graph_interp, initial, opt_params_silent);
+  {                           
+    auto LM_inter = WrapperLevenbergMarquardtOptimizer<Pose2>(graph_interp, initial, opt_params_silent);
     LM_inter.optimize();
   }
   t_end = chrono::steady_clock::now();
@@ -333,14 +346,77 @@ int runLostInTheWoods(TimingParams& params) {
 
   // Recover interpolated means using interpolator
   std::shared_ptr<typename Interpolator<Pose2>::CovarianceMap> cov_map;
+
+  t_start = chrono::steady_clock::now();
+  for(unsigned int i = 0; i < params.n_runs; i++)
+  {
+    Values tmp = updateInterpValues<Pose2>(graph_interp, result_interp, estim,
+                                      interp, sigma_wnoa, nullptr);
+  }
+  t_end = chrono::steady_clock::now();
+  t_runtime = chrono::duration_cast<chrono::microseconds>(t_end - t_start).count();
+  cout << "Runtime for recovering interpolated means: " << t_runtime / params.n_runs << " (micro-s)" << endl;
+
   result_interp = updateInterpValues<Pose2>(graph_interp, result_interp, estim,
-                                      interp, sigma_wnoa, cov_map);
+                                    interp, sigma_wnoa, nullptr);
+
   // Save results
   cout << "Optimizer has finished...saving results..." << endl;
   saveResultToFile(result_full, graph, params.output_file, solve_slam);
   saveResultToFile(gt, graph, params.gt_output_file);
   // Save results, interpolate covariances from graph at interp mean
   saveResultToFile(result_interp, graph, params.interp_out, solve_slam);
+
+  // Compute position RMSE for between resul_full and gt as well as result_interp and gt
+  std::vector<Point2> errors_full, errors_interp;
+  for(int i = start; i <= end; i++) {
+    Pose2 pose_full = result_full.at<Pose2>(Symbol('x', i));
+    Pose2 pose_interp = result_interp.at<Pose2>(Symbol('x', i));
+    Pose2 pose_gt = gt.at<Pose2>(Symbol('x', i));
+    Point2 err_full = pose_full.compose(pose_gt.inverse()).translation();
+    Point2 err_interp = pose_interp.compose(pose_gt.inverse()).translation();
+    errors_full.push_back(err_full);
+    errors_interp.push_back(err_interp);
+  }
+
+  // Compute RMSE values from vectors
+  if (errors_full.empty() || errors_interp.empty()) {
+    cout << "No error vectors to compute RMSE." << endl;
+  } else {
+    const size_t n = errors_full.size();
+    double sum_sq_full = 0.0, sum_sq_interp = 0.0;
+    double sum_sq_full_x = 0.0, sum_sq_full_y = 0.0;
+    double sum_sq_interp_x = 0.0, sum_sq_interp_y = 0.0;
+
+    for (size_t i = 0; i < n; ++i) {
+      double fx = errors_full[i].x(), fy = errors_full[i].y();
+      double ix = errors_interp[i].x(), iy = errors_interp[i].y();
+      sum_sq_full += fx * fx + fy * fy;
+      sum_sq_interp += ix * ix + iy * iy;
+      sum_sq_full_x += fx * fx;
+      sum_sq_full_y += fy * fy;
+      sum_sq_interp_x += ix * ix;
+      sum_sq_interp_y += iy * iy;
+    }
+
+    double rmse_full = std::sqrt(sum_sq_full / n);
+    double rmse_interp = std::sqrt(sum_sq_interp / n);
+    double rmse_full_x = std::sqrt(sum_sq_full_x / n);
+    double rmse_full_y = std::sqrt(sum_sq_full_y / n);
+    double rmse_interp_x = std::sqrt(sum_sq_interp_x / n);
+    double rmse_interp_y = std::sqrt(sum_sq_interp_y / n);
+
+    // Print with higher precision
+    cout << std::fixed << std::setprecision(8);
+    cout << "RMSE (full)       : " << rmse_full << " m" << endl;
+    cout << "  RMSE x (full)   : " << rmse_full_x << " m" << endl;
+    cout << "  RMSE y (full)   : " << rmse_full_y << " m" << endl;
+    cout << "RMSE (interp)     : " << rmse_interp << " m" << endl;
+    cout << "  RMSE x (interp) : " << rmse_interp_x << " m" << endl;
+    cout << "  RMSE y (interp) : " << rmse_interp_y << " m" << endl;
+    // restore default formatting (optional)
+    cout << std::defaultfloat;
+  }
 
   return 0;
 }

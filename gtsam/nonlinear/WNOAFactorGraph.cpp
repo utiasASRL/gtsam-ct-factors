@@ -18,12 +18,14 @@
 #include <gtsam/nonlinear/WNOAFactorGraph.h>
 #include <gtsam/nonlinear/WNOAInterpFactor.h>
 #include <gtsam/config.h> // for GTSAM_USE_TBB
+#include <Eigen/Core> // for Eigen::setNbThreads
 
 #ifdef GTSAM_USE_TBB
 #include <tbb/parallel_for.h>
 #include <tbb/parallel_for_each.h>
 #include <tbb/concurrent_unordered_map.h>
 #include <tbb/enumerable_thread_specific.h>
+#include <tbb/partitioner.h>
 #endif
 
 #include <mutex>
@@ -39,6 +41,7 @@ namespace gtsam {
 
   /* ************************************************************************* */
 namespace {
+
 
 #ifdef GTSAM_USE_TBB
 template <typename PoseType>
@@ -115,9 +118,14 @@ std::shared_ptr<GaussianFactorGraph>  WNOAFactorGraph<PoseType>::linearize(const
   linearFG->resize(size());
   TbbOpenMPMixedScope threadLimiter; // Limits OpenMP threads since we're mixing TBB and OpenMP
 
-  // First linearize all sendable factors
-  tbb::parallel_for(tbb::blocked_range<size_t>(0, size()),
-    _LinearizeOneFactor<PoseType>(*this, linearizationPoint, *linearFG, *passedInterpData));
+  // First linearize all sendable factors (hint affinity for better cache locality)
+  {
+    tbb::affinity_partitioner ap;
+    tbb::parallel_for(
+        tbb::blocked_range<size_t>(0, size()),
+        _LinearizeOneFactor<PoseType>(*this, linearizationPoint, *linearFG, *passedInterpData),
+        ap);
+  }
 
   // Linearize all non-sendable factors
   for(size_t i = 0; i < size(); i++) {
@@ -209,6 +217,8 @@ Values WNOAFactorGraph<PoseType>::getInterpolatedValues(
 
 #ifdef GTSAM_USE_TBB
 
+  TbbOpenMPMixedScope threadLimiter; // Limits OpenMP threads since we're mixing TBB and OpenMP
+
   // --- Step 1: Cache boundary poses/velocities ---
   unordered_map<Key, PoseType>    border_pose_cache;
   unordered_map<Key, typename WNOAFactorGraph<PoseType>::VelocityType> border_vel_cache;
@@ -233,7 +243,10 @@ Values WNOAFactorGraph<PoseType>::getInterpolatedValues(
   unsigned int num_physical_cores = num_logical > 0 ? std::max<unsigned>(1u, num_logical / 2) : 1u;
   size_t grain = std::max<size_t>(1, this->interp_to_borders_vec_.size() / (8 * static_cast<size_t>(num_physical_cores)));
     // --- Step 3: Parallel interpolation ---
-  tbb::parallel_for(tbb::blocked_range<size_t>(0, this->interp_to_borders_vec_.size(), grain),
+  {
+    tbb::affinity_partitioner ap;
+    tbb::parallel_for(
+        tbb::blocked_range<size_t>(0, this->interp_to_borders_vec_.size(), grain),
         [&](const tbb::blocked_range<size_t>& range) {
             auto& local_data = thread_data.local();
 
@@ -283,7 +296,9 @@ Values WNOAFactorGraph<PoseType>::getInterpolatedValues(
                     local_data.condcovs.emplace_back(interp_state, std::move(Sigma_tau));
                 }
             }
-        });
+    },
+    ap);
+  }
 
     // --- Step 4: Sequential merge ---
     Values values_interp;
@@ -296,8 +311,8 @@ Values WNOAFactorGraph<PoseType>::getInterpolatedValues(
         for (const auto& [key, vel] : local_data.vels) values_interp.insert(key, vel);
 
   if (InterpJacobians) {
-      for (const auto& kv : local_data.jacobians) {
-        (*InterpJacobians)[kv.first] = kv.second;
+      for (auto& kv : local_data.jacobians) {
+        InterpJacobians->insert_or_assign(kv.first, std::move(kv.second));
       }
         }
     

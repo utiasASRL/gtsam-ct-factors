@@ -60,6 +60,9 @@ class WNOAInterpFactor : public NoiseModelFactor {
   // vector of precomputed matrices for interpolation
   vector<std::shared_ptr<LambdaPsiMats>> lambda_psi_pre_comp;
 
+  // Cache inner key -> index mapping to avoid rebuilding in noise model calc
+  unordered_map<Key, int> inner_key_to_index_;
+
   // Precomputed mapping per inner key to avoid repeated lookups
   struct InnerKeyMapping {
     bool isInterpolated = false;
@@ -159,11 +162,13 @@ class WNOAInterpFactor : public NoiseModelFactor {
       outer_key_to_index[this->keys_[i]] = i;
     }
 
-    // Build inner key mappings once
+    // Build inner key mappings once and cache inner key indices
     const KeyVector& inner_keys_init = inner_factor_->keys();
     inner_key_mappings_.resize(inner_keys_init.size());
+    inner_key_to_index_.reserve(inner_keys_init.size());
     for (size_t i = 0; i < inner_keys_init.size(); ++i) {
       Key ik = inner_keys_init[i];
+      inner_key_to_index_[ik] = static_cast<int>(i);
       InnerKeyMapping mk;
       auto itInterp = key_to_interp.find(ik);
       if (itInterp == key_to_interp.end()) {
@@ -590,13 +595,7 @@ class WNOAInterpFactor : public NoiseModelFactor {
     int err_dim = noise_model_ptr->dim();
     Matrix noise_cov = noise_model_ptr->covariance();
 
-    // Get mappings from inner keys to index, required to index into jacobian
-    // vector
-    KeyVector inner_keys = inner_factor_->keys();
-    unordered_map<Key, int> key_index;
-    for (size_t i = 0; i < inner_keys.size(); i++) {
-      key_index[inner_keys[i]] = i;
-    }
+    // Use cached mapping from inner keys to indices for Jacobian lookup
     // Compute the covariance update based on interpolated states
     // Note: Here, we leverage the block-diagonal approximation of the
     // interpolated covariances (i.e., independence approximation)
@@ -604,13 +603,15 @@ class WNOAInterpFactor : public NoiseModelFactor {
       // Retrieve Jacobians from inner factor
       Matrix G_pose(err_dim, dim);
       Matrix G_vel(err_dim, dim);
-      if (key_index.count(state.pose) > 0) {
-        G_pose = Jacobians[key_index[state.pose]];
+      auto itPose = inner_key_to_index_.find(state.pose);
+      if (itPose != inner_key_to_index_.end()) {
+        G_pose = Jacobians[itPose->second];
       } else {
         G_pose.setZero();
       }
-      if (key_index.count(state.vel) > 0) {
-        G_vel = Jacobians[key_index[state.vel]];
+      auto itVel = inner_key_to_index_.find(state.vel);
+      if (itVel != inner_key_to_index_.end()) {
+        G_vel = Jacobians[itVel->second];
       } else {
         G_vel.setZero();
       }

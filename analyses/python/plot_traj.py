@@ -339,12 +339,12 @@ if __name__ == "__main__":
     plotTrajectory(
         fname1=fname_interp,
         fname2=None,
-        label1="Ground Truth",
-        label2="Estimate",
+        label1="Estimate",
+        label2=None,
         plot_cov=False,
         step=1,
         plot_heading=False,
-        plot_landmark_estimates=True,
+        plot_landmark_estimates=False,
     )
     
     
