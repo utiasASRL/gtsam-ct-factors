@@ -368,55 +368,84 @@ int runLostInTheWoods(TimingParams& params) {
   saveResultToFile(result_interp, graph, params.interp_out, solve_slam);
 
   // Compute position RMSE for between resul_full and gt as well as result_interp and gt
-  std::vector<Point2> errors_full, errors_interp;
+  std::vector<Point2> errors_full, errors_interp, errors_interp_full;
+  std::vector<Rot2> errors_full_rot, errors_interp_rot, errors_interp_full_rot;
   for(int i = start; i <= end; i++) {
     Pose2 pose_full = result_full.at<Pose2>(Symbol('x', i));
     Pose2 pose_interp = result_interp.at<Pose2>(Symbol('x', i));
     Pose2 pose_gt = gt.at<Pose2>(Symbol('x', i));
     Point2 err_full = pose_full.compose(pose_gt.inverse()).translation();
     Point2 err_interp = pose_interp.compose(pose_gt.inverse()).translation();
+    Point2 err_interp_full = pose_interp.compose(pose_full.inverse()).translation();
+    Rot2 err_full_rot = pose_full.compose(pose_gt.inverse()).rotation();
+    Rot2 err_interp_rot = pose_interp.compose(pose_gt.inverse()).rotation();
+    Rot2 err_interp_full_rot = pose_interp.compose(pose_full.inverse()).rotation();
     errors_full.push_back(err_full);
     errors_interp.push_back(err_interp);
+    errors_interp_full.push_back(err_interp_full);
+    errors_full_rot.push_back(err_full_rot);
+    errors_interp_rot.push_back(err_interp_rot);
+    errors_interp_full_rot.push_back(err_interp_full_rot);
   }
 
   // Compute RMSE values from vectors
-  if (errors_full.empty() || errors_interp.empty()) {
-    cout << "No error vectors to compute RMSE." << endl;
-  } else {
-    const size_t n = errors_full.size();
-    double sum_sq_full = 0.0, sum_sq_interp = 0.0;
-    double sum_sq_full_x = 0.0, sum_sq_full_y = 0.0;
-    double sum_sq_interp_x = 0.0, sum_sq_interp_y = 0.0;
+  const size_t n = errors_full.size();
+  double sum_sq_full = 0.0, sum_sq_interp = 0.0, sum_sq_interp_full = 0.0;
+  double sum_sq_full_x = 0.0, sum_sq_full_y = 0.0;
+  double sum_sq_interp_x = 0.0, sum_sq_interp_y = 0.0;
+  double sum_sq_interp_full_x = 0.0, sum_sq_interp_full_y = 0.0;
+  double sum_sq_full_rot = 0.0, sum_sq_interp_rot = 0.0, sum_sq_interp_full_rot = 0.0;
 
-    for (size_t i = 0; i < n; ++i) {
-      double fx = errors_full[i].x(), fy = errors_full[i].y();
-      double ix = errors_interp[i].x(), iy = errors_interp[i].y();
-      sum_sq_full += fx * fx + fy * fy;
-      sum_sq_interp += ix * ix + iy * iy;
-      sum_sq_full_x += fx * fx;
-      sum_sq_full_y += fy * fy;
-      sum_sq_interp_x += ix * ix;
-      sum_sq_interp_y += iy * iy;
-    }
-
-    double rmse_full = std::sqrt(sum_sq_full / n);
-    double rmse_interp = std::sqrt(sum_sq_interp / n);
-    double rmse_full_x = std::sqrt(sum_sq_full_x / n);
-    double rmse_full_y = std::sqrt(sum_sq_full_y / n);
-    double rmse_interp_x = std::sqrt(sum_sq_interp_x / n);
-    double rmse_interp_y = std::sqrt(sum_sq_interp_y / n);
-
-    // Print with higher precision
-    cout << std::fixed << std::setprecision(8);
-    cout << "RMSE (full)       : " << rmse_full << " m" << endl;
-    cout << "  RMSE x (full)   : " << rmse_full_x << " m" << endl;
-    cout << "  RMSE y (full)   : " << rmse_full_y << " m" << endl;
-    cout << "RMSE (interp)     : " << rmse_interp << " m" << endl;
-    cout << "  RMSE x (interp) : " << rmse_interp_x << " m" << endl;
-    cout << "  RMSE y (interp) : " << rmse_interp_y << " m" << endl;
-    // restore default formatting (optional)
-    cout << std::defaultfloat;
+  for (size_t i = 0; i < n; ++i) {
+    double fx = errors_full[i].x(), fy = errors_full[i].y();
+    double ix = errors_interp[i].x(), iy = errors_interp[i].y();
+    double ix_full = errors_interp_full[i].x(), iy_full = errors_interp_full[i].y();
+    sum_sq_full += fx * fx + fy * fy;
+    sum_sq_interp += ix * ix + iy * iy;
+    sum_sq_interp_full += ix_full * ix_full + iy_full * iy_full;
+    sum_sq_full_x += fx * fx;
+    sum_sq_full_y += fy * fy;
+    sum_sq_interp_x += ix * ix;
+    sum_sq_interp_y += iy * iy;
+    sum_sq_interp_full_x += ix_full * ix_full;
+    sum_sq_interp_full_y += iy_full * iy_full;
+    double ftheta = errors_full_rot[i].degrees();
+    double itheta = errors_interp_rot[i].degrees();
+    double itheta_full = errors_interp_full_rot[i].degrees();
+    sum_sq_full_rot += ftheta * ftheta;
+    sum_sq_interp_rot += itheta * itheta;
+    sum_sq_interp_full_rot += itheta_full * itheta_full;
   }
+
+  double rmse_full = std::sqrt(sum_sq_full / n);
+  double rmse_interp = std::sqrt(sum_sq_interp / n);
+  double rmse_interp_full = std::sqrt(sum_sq_interp_full / n);
+  double rmse_full_x = std::sqrt(sum_sq_full_x / n);
+  double rmse_full_y = std::sqrt(sum_sq_full_y / n);
+  double rmse_interp_x = std::sqrt(sum_sq_interp_x / n);
+  double rmse_interp_y = std::sqrt(sum_sq_interp_y / n);
+  double rmse_interp_full_x = std::sqrt(sum_sq_interp_full_x / n);
+  double rmse_interp_full_y = std::sqrt(sum_sq_interp_full_y / n);
+  double rmse_full_rot = std::sqrt(sum_sq_full_rot / n);
+  double rmse_interp_rot = std::sqrt(sum_sq_interp_rot / n);
+  double rmse_interp_full_rot = std::sqrt(sum_sq_interp_full_rot / n);
+
+  // Print with higher precision
+  cout << std::fixed << std::setprecision(8);
+  cout << "--------------------------------------------------------------" << endl;
+  cout << "RMSE (full)           : " << rmse_full << " m" << endl;
+  cout << "RMSE rot (full)       : " << rmse_full_rot << " deg" << endl;
+  cout << "--------------------------------------------------------------" << endl;
+  cout << "RMSE (interp)         : " << rmse_interp << " m" << endl;
+  cout << "RMSE rot (interp)     : " << rmse_interp_rot << " deg" << endl;
+
+  cout << "--------------------------------------------------------------" << endl;
+  cout << "RMSE (interp-full)    : " << rmse_interp_full << " m" << endl;
+  cout << "RMSE rot (interp-full): " << rmse_interp_full_rot << " deg" << endl;
+  cout << "--------------------------------------------------------------" << endl;
+  // restore default formatting (optional)
+  cout << std::defaultfloat;
+
 
   return 0;
 }

@@ -17,19 +17,19 @@ flags:
   wnoa: true
   br: true
   gt_init: false
-  solve_slam: true
+  solve_slam: false
 interp:
-  interp_period: 10
-  fixed_noise: true
-#noise: #loc
-  #prior: [1e-3, 1e-3, 1e-4]
+  interp_period: 50
+  fixed_noise: false
+noise: #loc
+  prior: [1e-3, 1e-3, 1e-4]
+  odom_y: 1.0e-2
+  wnoa: [1e-3, 1e-5, 5e-3]
+  bearing: 0.1
+  range: 0.1
+#noise: #slam
+  #prior: [1e-5, 1e-5, 1e-5]
   #odom_y: 1.0e-2
   #wnoa: [1e-3, 1e-3, 5e-2]
-  #bearing: 1.5
-  #range: 1.5
-noise: #slam
-  prior: [1e-5, 1e-5, 1e-5]
-  odom_y: 1.0e-2
-  wnoa: [1e-3, 1e-3, 5e-2]
-  bearing: 3.0
-  range: 3.0
+  #bearing: 3.0
+  #range: 3.0

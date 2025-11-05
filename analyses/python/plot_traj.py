@@ -341,7 +341,7 @@ if __name__ == "__main__":
         fname2=None,
         label1="Estimate",
         label2=None,
-        plot_cov=False,
+        plot_cov=True,
         step=1,
         plot_heading=False,
         plot_landmark_estimates=False,

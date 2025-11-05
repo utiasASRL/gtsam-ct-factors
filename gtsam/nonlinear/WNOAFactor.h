@@ -216,21 +216,28 @@ class WNOAMotionFactor
     // corresponds to F in (11.20) in SER
     auto& [p1, v1] = pv1;
     auto& [p2, v2] = pv2;
+
+    MatrixN dbetween_p1;
+    MatrixN dxi_dT1;
     MatrixN right_jac_inv;
-    (void)traits<Pose>::Logmap(traits<Pose>::Between(p1, p2), &right_jac_inv);
-    MatrixN T_k_km1;
-    MatrixN adjoint;
+    VectorN xi;
+    xi = traits<Pose>::Logmap(traits<Pose>::Between(p1, p2, &dbetween_p1, nullptr), &right_jac_inv);
+    dxi_dT1 = right_jac_inv * dbetween_p1;
+    // Derivative of velocity error wrt xi
+    MatrixN dvErr_dxi;
     if constexpr (std::is_same_v<typename traits<Pose>::structure_category,
                                  vector_space_tag>) {
-      T_k_km1 = Identity;
-      adjoint = Zero;
+      dvErr_dxi.setZero();
     } else {
-      T_k_km1 = p1.AdjointMap().inverse() * p2.AdjointMap();
-      adjoint = Pose::adjointMap(v2);
+      dvErr_dxi = -Pose::adjointMap(v2) / 2.0 -
+                    (Pose::adjointMap(Pose::adjointMap(xi) * v2) +
+                     Pose::adjointMap(xi) * Pose::adjointMap(v2)) /
+                        12.0;
     }
     Matrix2N F;
-    F << right_jac_inv * T_k_km1, delta_t * Identity,
-        0.5 * adjoint * right_jac_inv * T_k_km1, Identity;
+    // first column is pose, second column is velocity
+    F << dxi_dT1, -1*delta_t * Identity,
+        dvErr_dxi * dxi_dT1, -1*Identity;
     return F;
   }
 
@@ -240,18 +247,32 @@ class WNOAMotionFactor
     // corresponds to E in (11.21) in SER
     auto& [p1, v1] = pv1;
     auto& [p2, v2] = pv2;
+
+    MatrixN dxi_dT2;
+    MatrixN dbetween_p2;
     MatrixN right_jac_inv;
-    (void)traits<Pose>::Logmap(traits<Pose>::Between(p1, p2), &right_jac_inv);
-    MatrixN adjoint;
+
+    
+    VectorN xi;
+    xi = traits<Pose>::Logmap(traits<Pose>::Between(p1, p2, nullptr, &dbetween_p2), &right_jac_inv);
+
+    dxi_dT2 = right_jac_inv * dbetween_p2;
+    // Derivative of velocity error wrt xi
+    MatrixN dvErr_dxi;
     if constexpr (std::is_same_v<typename traits<Pose>::structure_category,
                                  vector_space_tag>) {
-      adjoint = Zero;
+      dvErr_dxi.setZero();
     } else {
-      adjoint = Pose::adjointMap(v2);
+      dvErr_dxi = -Pose::adjointMap(v2) / 2.0 -
+                    (Pose::adjointMap(Pose::adjointMap(xi) * v2) +
+                     Pose::adjointMap(xi) * Pose::adjointMap(v2)) /
+                        12.0;
     }
     Matrix2N E;
-    E << right_jac_inv, Zero, 0.5 * adjoint * right_jac_inv, right_jac_inv;
-    return E;
+    // First column is pose, second column is velocity
+    E << dxi_dT2, Zero,
+         dvErr_dxi * dxi_dT2, right_jac_inv;
+    return -1*E;
   }
 };
 
