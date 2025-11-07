@@ -17,15 +17,14 @@ constexpr size_t n = 1;  // Number of calibration states
 using M = abc_eqf_lib::State<n>;
 using G = abc_eqf_lib::Group<n>;
 using Geometry = ABCGeometry<n>;
-using EqFilter = abc_eqf_lib::EqF<G, M, Geometry>; 
-using gtsam::abc_eqf_lib::EqF;
-using gtsam::abc_eqf_lib::Input;
+using EqFilter = gtsam::EqF<G, M, Geometry>; 
+using gtsam::abc_eqf_lib::InputData;
 using gtsam::abc_eqf_lib::Measurement;
 
 /// Data structure for ground-truth, input and output data
 struct Data {
   M xi;                        /// Ground-truth state
-  Input u;                     /// Input measurements
+  InputData u;                 /// Input measurements (with noise covariance)
   std::vector<Measurement> y;  /// Output measurements
   int n_meas;                  /// Number of measurements
   double t;                    /// Time
@@ -158,7 +157,9 @@ std::vector<Data> loadDataFromCSV(const std::string& filename, int startRow,
     inputCov(4, 4) = values[19] * values[19];  // std_b_y^2
     inputCov(5, 5) = values[20] * values[20];  // std_b_z^2
 
-    Input u{w, inputCov};
+    InputData u;
+    u.w = w;
+    u.Sigma = inputCov;
 
     // Create measurements
     std::vector<Measurement> measurements;

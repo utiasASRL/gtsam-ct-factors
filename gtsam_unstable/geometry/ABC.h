@@ -75,14 +75,21 @@ Matrix repBlock(const Matrix& A, int n) {
 // Core Data Types
 //========================================================================
 
-/// Input struct for the Biased Attitude System
-
-struct Input {
-  Vector3 w;              /// Angular velocity (3-vector)
-  Matrix Sigma;           /// Noise covariance (6x6 matrix)
-  static Input random();  /// Random input
-  Matrix3 W() const {     /// Return w as a skew symmetric matrix
+/// Input data struct for the Biased Attitude System (stores sensor data and noise)
+struct InputData {
+  Vector3 w;                  /// Angular velocity (3-vector)
+  Matrix Sigma;               /// Noise covariance (6x6 matrix)
+  static InputData random();  /// Random input
+  Matrix3 W() const {         /// Return w as a skew symmetric matrix
     return Rot3::Hat(w);
+  }
+  
+  /// Convert to mathematical input vector (ω, 0)
+  Vector6 toInputVector() const {
+    Vector6 u;
+    u.head<3>() = w;
+    u.tail<3>() = Vector3::Zero();  // Virtual input
+    return u;
   }
 };
 
@@ -153,6 +160,36 @@ class State {
     }
     return State(newR, newB, newS);
   }
+
+  /**
+   * Compute the lifted tangent vector from state and input.
+   * This implements the lift operation from the equivariant filter paper.
+   * @param u Mathematical input vector (ω, 0) where first 3 are angular velocity
+   * @return Vector Lifted vector in the Lie algebra used for propagation.
+   */
+  Vector lift(const Vector6& u) const {
+    Vector L = Vector::Zero(6 + 3 * N);
+
+    Vector3 w = u.head<3>();
+    
+    L.head<3>() = w - b;
+
+    L.segment<3>(3) = -Rot3::Hat(w) * b;
+
+    Vector3 corrected_w = w - b;
+    for (size_t i = 0; i < N; i++) {
+      L.segment<3>(6 + 3 * i) = S[i].inverse().matrix() * corrected_w;
+    }
+
+    return L;
+  }
+  
+  /**
+   * Convenience overload that accepts InputData
+   */
+  Vector lift(const InputData& data) const {
+    return lift(data.toInputVector());
+  }
 };
 
 //========================================================================
@@ -163,23 +200,23 @@ class State {
  * Symmetry group (SO(3) |x so(3)) x SO(3) x ... x SO(3)
  * Each element of the B list is associated with a calibration state
  */
-template <size_t N>
+template <size_t n>
 struct Group {
   Rot3 A;                 /// First SO(3) element
   Matrix3 a;              /// so(3) element (skew-symmetric matrix)
-  std::array<Rot3, N> B;  /// List of SO(3) elements for calibration
-  static constexpr int dimension = 6 + 3 * N;
+  std::array<Rot3, n> B;  /// List of SO(3) elements for calibration
+  static constexpr int dimension = 6 + 3 * n;
   using TangentVector = Eigen::Matrix<double, dimension, 1>;
-  static constexpr int numSensors = N;
+  static constexpr int numSensors = n;
   /// Initialize the symmetry Group
   Group(const Rot3& A = Rot3::Identity(), const Matrix3& a = Matrix3::Zero(),
-    const std::array<Rot3, N>& B = std::array<Rot3, N>{})
+    const std::array<Rot3, n>& B = std::array<Rot3, n>{})
       : A(A), a(a), B(B) {}
 
   /// Group multiplication
-  Group operator*(const Group<N>& other) const {
-    std::array<Rot3, N> newB;
-    for (size_t i = 0; i < N; i++) {
+  Group operator*(const Group<n>& other) const {
+    std::array<Rot3, n> newB;
+    for (size_t i = 0; i < n; i++) {
       newB[i] = B[i] * other.B[i];
     }
     return Group(A * other.A, a + Rot3::Hat(A.matrix() * Rot3::Vee(other.a)), newB);
@@ -188,8 +225,8 @@ struct Group {
   /// Group inverse
   Group inv() const {
     Matrix3 Ainv = A.inverse().matrix();
-    std::array<Rot3, N> Binv;
-    for (size_t i = 0; i < N; i++) {
+    std::array<Rot3, n> Binv;
+    for (size_t i = 0; i < n; i++) {
       Binv[i] = B[i].inverse();
     }
     return Group(A.inverse(), -Rot3::Hat(Ainv * Rot3::Vee(a)), Binv);
@@ -198,22 +235,22 @@ struct Group {
   Group inverse() const { return inv(); }
 
   /// Identity element
-  static Group identity(int n) {
-    std::array<Rot3, N> B;
+  static Group identity(int N) { // todo: N is not used here, possibly remove
+    std::array<Rot3, n> B;
     B.fill(Rot3::Identity());
     return Group(Rot3::Identity(), Matrix3::Zero(), B);
   }
 
   /// Exponential map of the tangent space elements to the group
   static Group exp(const Vector& x) {
-    if (x.size() != static_cast<Eigen::Index>(6 + 3 * N)) {
+    if (x.size() != static_cast<Eigen::Index>(6 + 3 * n)) {
       throw std::invalid_argument("Vector size mismatch for group exponential");
     }
     Rot3 A = Rot3::Expmap(x.head<3>());
     Vector3 a_vee = Rot3::ExpmapDerivative(-x.head<3>()) * x.segment<3>(3);
     Matrix3 a = Rot3::Hat(a_vee);
-    std::array<Rot3, N> B;
-    for (size_t i = 0; i < N; i++) {
+    std::array<Rot3, n> B;
+    for (size_t i = 0; i < n; i++) {
       B[i] = Rot3::Expmap(x.segment<3>(6 + 3 * i));
     }
     return Group(A, a, B);
@@ -238,10 +275,10 @@ struct Group {
     // 1) Create the identity state and apply group action to it.
     //    We assume State<N>::identity() exists and operator*(Group, State) is defined
     //    as the group action (or provide a groupAction(g, xi) helper).
-    State<N> xi0 = State<N>::identity();
+    State<n> xi0 = State<n>::identity();
 
     // If you have a group action function (g * state) available:
-    State<N> xi_transformed = g * xi0;  // or groupAction(g, xi0)
+    State<n> xi_transformed = g * xi0;  // or groupAction(g, xi0)
 
     // 2) Compute local coordinates between identity and transformed state:
     Vector logv = xi0.localCoordinates(xi_transformed);
@@ -250,7 +287,7 @@ struct Group {
     if (H) {
       // lambda: maps Group -> Vector
       auto mapGtoVec = [&xi0](const Group& gg) {
-        State<N> x_trans = gg * xi0;           // group action
+        State<n> x_trans = gg * xi0;           // group action
         return xi0.localCoordinates(x_trans);  // returns Vector dimension x 1
       };
 
@@ -292,16 +329,19 @@ State<N> operator*(const Group<N>& X, const State<N>& xi) {
                   new_S);
 }
 /**
- * Transforms the angular velocity measurements b/w frames
+ * Transforms the mathematical input (ω, 0) between frames
  * @param X A symmetry group element X with the components
- * @param u Inputs
- * @return Transformed inputs
+ * @param u Mathematical input vector (ω, 0)
+ * @return Transformed input vector
  * Uses Rot3 Inverse, matrix and Vee functions and is critical for maintaining
  * the input equivariance
  */
 template <size_t N>
-Input velocityAction(const Group<N>& X, const Input& u) {
-  return Input{X.A.inverse().matrix() * (u.w - Rot3::Vee(X.a)), u.Sigma};
+Vector6 velocityAction(const Group<N>& X, const Vector6& u) {
+  Vector6 result;
+  result.head<3>() = X.A.inverse().matrix() * (u.head<3>() - Rot3::Vee(X.a));
+  result.tail<3>() = Vector3::Zero();  // Virtual input remains zero
+  return result;
 }
 /**
  * Transforms the Direction measurements based on the calibration type ( Eqn 6)
@@ -367,7 +407,8 @@ Matrix stateActionDiff(const State<N>& xi) {
 
 template <size_t N>
 struct ABCGeometry {
-  using Input = abc_eqf_lib::Input;
+  using InputType = Vector6;  // Mathematical input (ω, 0)
+  using InputDataType = abc_eqf_lib::InputData;  // Data with noise params
   using Measurement = abc_eqf_lib::Measurement;
   using GType = Group<N>;
   using MType = State<N>;
@@ -379,36 +420,23 @@ struct ABCGeometry {
    * Compute the lifted tangent vector from state and input.
    * @param xi Current state on the manifold (including orientation, bias, and
    * sensor rotations).
-   * @param u Input measurement containing angular velocity and its covariance.
+   * @param u Mathematical input vector (ω, 0)
    * @return TangentVector Lifted vector in the Lie algebra used for
    * propagation.
    */
-  static TangentVector lift(const MType& xi, const Input& u) {
-    TangentVector L = TangentVector::Zero();
-
-    // First 3 elements
-    L.template head<3>() = u.w - xi.b;
-
-    // Next 3 elements
-    L.template segment<3>(3) = -u.W() * xi.b;
-
-    // Remaining elements
-    for (size_t i = 0; i < N; i++) {
-      L.template segment<3>(6 + 3 * i) =
-          xi.S[i].inverse().matrix() * L.template head<3>();
-    }
-
-    return L;
+  static TangentVector lift(const MType& xi, const InputType& u) {
+    return xi.lift(u);
   }
 
   /**
    * Computes the discrete time state transition matrix
-   * @param u Angular velocity
+   * @param data Input data containing angular velocity and noise
    * @param dt time step
    * @return State transition matrix in discrete time
    */
-  static Matrix stateTransitionMatrix(const Input& u, double dt, GType X_hat) { // Todo harmonize input order, State first then input
-    Matrix3 W0 = velocityAction(X_hat.inv(), u).W();
+  static Matrix stateTransitionMatrix(const InputDataType& data, double dt, GType X_hat) {
+    InputType u = data.toInputVector();
+    Matrix3 W0 = Rot3::Hat(velocityAction(X_hat.inv(), u).template head<3>());
     Matrix Phi1 = Matrix::Zero(6, 6);
 
     Matrix3 Phi12 = -dt * (I_3x3 + (dt / 2) * W0 + ((dt * dt) / 6) * W0 * W0);
@@ -422,19 +450,20 @@ struct ABCGeometry {
   }
   /**
    * Computes linearized continuous time state matrix
-   * @param u Angular velocity
+   * @param data Input data
    * @return Linearized state matrix
    * Uses Matrix zero and Identity functions
    */
-  static Matrix stateMatrixA(const GType& X_hat, const Input& u) {
-    Matrix3 W0 = velocityAction(X_hat.inverse(), u).W();
+  static Matrix stateMatrixA(const GType& X_hat, const InputDataType& data) {
+    InputType u = data.toInputVector();
+    Matrix3 W0 = Rot3::Hat(velocityAction(X_hat.inverse(), u).template head<3>());
 
     Matrix A1 = Matrix::Zero(6, 6);
     A1.block<3, 3>(0, 3) = -I_3x3;
     A1.block<3, 3>(3, 3) = W0;
 
     Matrix A2 = repBlock(W0, N);
-    return blockDiag(A1, A2);  // Now valid inside geometry
+    return blockDiag(A1, A2);
   }
   static Matrix inputMatrix(GType X_hat) {
     Matrix B1 = blockDiag(X_hat.A.matrix(), X_hat.A.matrix());
@@ -447,8 +476,8 @@ struct ABCGeometry {
     return blockDiag(B1, B2);
   }
 
-  static Matrix processNoise(const Input& u) {
-    return blockDiag(u.Sigma, repBlock(1e-9 * I_3x3, N));
+  static Matrix processNoise(const InputDataType& data) {
+    return blockDiag(data.Sigma, repBlock(1e-9 * I_3x3, N));
   }
 
   /**

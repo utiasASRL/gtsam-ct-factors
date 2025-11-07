@@ -103,8 +103,8 @@ TEST(ABC, repBlock) {
 }
 
 ///* ************************************************************************* */
-TEST(ABC, Input) {
-    Input input;
+TEST(ABC, InputData) {
+    InputData input;
     input.w = (Vector(3) << 1, 2, 3).finished();
     input.Sigma = I_6x6;
 
@@ -114,6 +114,11 @@ TEST(ABC, Input) {
 
     EXPECT(input.w.norm() > 0); // Should not be zero
     EXPECT(input.Sigma.norm() > 0); // Should not be zero
+    
+    // Test conversion to Vector6
+    Vector6 u = input.toInputVector();
+    EXPECT(assert_equal<Vector>(u.head<3>(), input.w, 1e-9));
+    EXPECT(assert_equal<Vector>(u.tail<3>(), Vector3::Zero(), 1e-9));
 }
 
 /* ************************************************************************* */
@@ -279,13 +284,14 @@ TEST(ABC, GroupActions) {
     EXPECT(assert_equal(transformed_xi.S[1], X.A.inverse() * xi.S[1] * X.B[1], 1e-9));
 
     // Test velocityAction
-    Input u;
-    u.w = (Vector(3) << 1, 2, 3).finished();
-    u.Sigma = I_6x6;
-
-    Input transformed_u = velocityAction(X, u);
-    EXPECT(assert_equal<Vector>(transformed_u.w, X.A.inverse().matrix() * (u.w - Rot3::Vee(X.a)), 1e-9));
-    EXPECT(assert_equal(transformed_u.Sigma, u.Sigma, 1e-9)); // Sigma should be unchanged
+    InputData u_data;
+    u_data.w = (Vector(3) << 1, 2, 3).finished();
+    u_data.Sigma = I_6x6;
+    
+    Vector6 u = u_data.toInputVector();
+    Vector6 transformed_u = velocityAction(X, u);
+    EXPECT(assert_equal<Vector>(transformed_u.head<3>(), X.A.inverse().matrix() * (u_data.w - Rot3::Vee(X.a)), 1e-9));
+    EXPECT(assert_equal<Vector>(transformed_u.tail<3>(), Vector3::Zero(), 1e-9)); // Virtual input stays zero
 
     // Test outputAction (calibrated sensor)
     Unit3 y_meas = Unit3(1, 0, 0);
@@ -366,15 +372,16 @@ TEST(ABC, ABCGeometry_lift) {
     StateN xi(R, b, S_arr);
 
     // Setup input
-    Input u;
-    u.w = (Vector(3) << 0.5, 0.6, 0.7).finished();
-    u.Sigma = I_6x6;
-
-    typename GN::TangentVector L = ABCGeometryN::lift(xi, u);
+    InputData u_data;
+    u_data.w = (Vector(3) << 0.5, 0.6, 0.7).finished();
+    u_data.Sigma = I_6x6;
+    
+    Vector6 u = u_data.toInputVector();
+    typename GN::TangentVector L = xi.lift(u);
 
     // Expected values
-    Vector3 expected_L_head = u.w - xi.b;
-    Vector3 expected_L_segment3 = -u.W() * xi.b;
+    Vector3 expected_L_head = u_data.w - xi.b;
+    Vector3 expected_L_segment3 = -u_data.W() * xi.b;
     Vector3 expected_L_segment6_0 = S_arr[0].inverse().matrix() * expected_L_head;
     Vector3 expected_L_segment6_1 = S_arr[1].inverse().matrix() * expected_L_head;
 
@@ -395,13 +402,14 @@ TEST(ABC, ABCGeometry_stateMatrixA) {
     GN X_hat(A, a, B);
 
     // Setup input
-    Input u;
-    u.w = (Vector(3) << 0.5, 0.6, 0.7).finished();
-    u.Sigma = I_6x6;
+    InputData u_data;
+    u_data.w = (Vector(3) << 0.5, 0.6, 0.7).finished();
+    u_data.Sigma = I_6x6;
 
-    Matrix A_matrix = ABCGeometryN::stateMatrixA(X_hat, u);
+    Matrix A_matrix = ABCGeometryN::stateMatrixA(X_hat, u_data);
 
-    Matrix3 W0 = velocityAction(X_hat.inverse(), u).W();
+    Vector6 u = u_data.toInputVector();
+    Matrix3 W0 = Rot3::Hat(velocityAction(X_hat.inverse(), u).head<3>());
 
     Matrix expected_A1 = Matrix::Zero(6, 6);
     expected_A1.block<3, 3>(0, 3) = -I_3x3;
@@ -424,15 +432,16 @@ TEST(ABC, ABCGeometry_stateTransitionMatrix) {
     GN X_hat(A, a, B);
 
     // Setup input
-    Input u;
-    u.w = (Vector(3) << 0.5, 0.6, 0.7).finished();
-    u.Sigma = I_6x6;
+    InputData u_data;
+    u_data.w = (Vector(3) << 0.5, 0.6, 0.7).finished();
+    u_data.Sigma = I_6x6;
 
     double dt = 0.1;
 
-    Matrix Phi = ABCGeometryN::stateTransitionMatrix(u, dt, X_hat);
+    Matrix Phi = ABCGeometryN::stateTransitionMatrix(u_data, dt, X_hat);
 
-    Matrix3 W0 = velocityAction(X_hat.inv(), u).W();
+    Vector6 u = u_data.toInputVector();
+    Matrix3 W0 = Rot3::Hat(velocityAction(X_hat.inv(), u).head<3>());
     Matrix Phi1 = Matrix::Zero(6, 6);
     Matrix3 Phi12 = -dt * (I_3x3 + (dt / 2) * W0 + ((dt * dt) / 6) * W0 * W0);
     Matrix3 Phi22 = I_3x3 + dt * W0 + ((dt * dt) / 2) * W0 * W0;
@@ -472,9 +481,9 @@ TEST(ABC, ABCGeometry_stateTransitionMatrix) {
 
 ///* ************************************************************************* */
 TEST(ABC, ABCGeometry_processNoise) {
-    Input u;
-    u.w = Vector3::Zero();
-    u.Sigma = (Matrix(6, 6) <<
+    InputData u_data;
+    u_data.w = Vector3::Zero();
+    u_data.Sigma = (Matrix(6, 6) <<
         1, 0, 0, 0, 0, 0,
         0, 2, 0, 0, 0, 0,
         0, 0, 3, 0, 0, 0,
@@ -482,10 +491,10 @@ TEST(ABC, ABCGeometry_processNoise) {
         0, 0, 0, 0, 5, 0,
         0, 0, 0, 0, 0, 6).finished();
 
-    Matrix Q = ABCGeometryN::processNoise(u);
+    Matrix Q = ABCGeometryN::processNoise(u_data);
 
     Matrix expected_Q_cal_part = repBlock(1e-9 * I_3x3, N_TEST);
-    Matrix expected_Q = blockDiag(u.Sigma, expected_Q_cal_part);
+    Matrix expected_Q = blockDiag(u_data.Sigma, expected_Q_cal_part);
 
     EXPECT(assert_equal(Q, expected_Q, 1e-9));
 }
@@ -557,8 +566,9 @@ TEST(ABC, EqFilter){
 
     EXPECT(traits<G>::Equals(X_HatActual, X_HatExpected, 1e-9));
     // Next check predict
-    typename Geometry::Input u;
+    typename Geometry::InputDataType u;
 	u.w = (Vector3() << 0.01, -0.02, 0.015).finished();
+	u.Sigma = I_6x6;
 	double dt = 0.01;
 
 	filter.predict(u, dt);

@@ -46,7 +46,7 @@ class has_lift {
  private:
   template <typename G>
   static auto test(int)
-      -> decltype(G::lift(std::declval<M>(), std::declval<typename G::Input>()),
+      -> decltype(G::lift(std::declval<M>(), std::declval<typename G::InputType>()),
                   std::true_type{});
 
   template <typename>
@@ -77,7 +77,7 @@ class has_stateTransitionMatrix {
  private:
   template <typename G>
   static auto test(int)
-      -> decltype(G::stateTransitionMatrix(std::declval<typename G::Input>(),
+      -> decltype(G::stateTransitionMatrix(std::declval<typename G::InputDataType>(),
                                            std::declval<double>(),
                                            std::declval<typename G::GType>()),
                   std::true_type{});
@@ -95,7 +95,7 @@ class has_stateMatrixA {
   template <typename G>
   static auto test(int)
       -> decltype(G::stateMatrixA(std::declval<const typename G::GType&>(),
-                                  std::declval<const typename G::Input&>()),
+                                  std::declval<const typename G::InputDataType&>()),
                   std::true_type{});
 
   template <typename>
@@ -125,7 +125,7 @@ class has_processNoise {
  private:
   template <typename G>
   static auto test(int)
-      -> decltype(G::processNoise(std::declval<const typename G::Input&>()),
+      -> decltype(G::processNoise(std::declval<const typename G::InputDataType&>()),
                   std::true_type{});
 
   template <typename>
@@ -212,10 +212,10 @@ class EqF : public LieGroupEKF<G> {
 
    /**
    * Propagate the filter state
-   * @param u Angular velocity measurement
+   * @param data Input data containing angular velocity and noise
    * @param dt Time step
    */
-  void predict(const typename Geometry::Input& u, double dt);
+  void predict(const typename Geometry::InputDataType& data, double dt);
 
   /**
    * Update the filter state with a measurement
@@ -257,20 +257,20 @@ EqF<G, M, Geometry>::EqF(const G& X0, const M& x0, const Matrix& Sigma, int m) :
   }
 
   static_assert(has_lift<Geometry, M>::value,
-                "Geometry must implement static lift(const M&, const Input&)");
+                "Geometry must implement static lift(const M&, const InputType&)");
 
   static_assert(has_stateTransitionMatrix<Geometry>::value,
-                "Geometry must define static stateTransitionMatrix(Input, "
+                "Geometry must define static stateTransitionMatrix(InputDataType, "
                 "double, GType)");
   static_assert(has_groupAction<Geometry>::value,
                 "Geometry must define groupAction(GType, MType)");
   static_assert(
       has_stateMatrixA<Geometry>::value,
-      "Geometry must define static stateMatrixA(const GType&, const Input&)");
+      "Geometry must define static stateMatrixA(const GType&, const InputDataType&)");
   static_assert(has_inputMatrix<Geometry>::value,
                 "Geometry must define static inputMatrix(GType)");
   static_assert(has_processNoise<Geometry>::value,
-                "Geometry must define static processNoise(const Input&)");
+                "Geometry must define static processNoise(const InputDataType&)");
   static_assert(has_inputMatrixBt<Geometry>::value,
                 "Geometry must define static inputMatrixBt(GType)");
   static_assert(
@@ -307,15 +307,15 @@ G EqF<G, M, Geometry>::groupEstimate() const {
  * Updated internal state and covariance
  */
 template <typename G, typename M, typename Geometry>
-void EqF<G, M, Geometry>::predict(const typename Geometry::Input& u,
+void EqF<G, M, Geometry>::predict(const typename Geometry::InputDataType& data,
                                       double dt) {
-  M state_est = stateEstimate();            // your manifold version
-  Vector L = Geometry::lift(state_est, u);  // tangent vector
+  M state_est = stateEstimate();                    // your manifold version
+  Vector L = Geometry::lift(state_est, data.toInputVector());  // tangent vector
 
 
-  Matrix Phi = Geometry::stateTransitionMatrix(u, dt, this->X_);
+  Matrix Phi = Geometry::stateTransitionMatrix(data, dt, this->X_);
   Matrix Bt  = Geometry::inputMatrixBt(this->X_);
-  Matrix Q   = Geometry::processNoise(u);
+  Matrix Q   = Geometry::processNoise(data);
 
 
   this->X_ = traits<G>::Compose(this->X_, traits<G>::Expmap(L * dt));
