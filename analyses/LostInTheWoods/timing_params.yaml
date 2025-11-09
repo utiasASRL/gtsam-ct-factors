@@ -6,10 +6,10 @@ files:
   interp_out : "results/lost_wrapper.csv" 
   interp_graph_out : "results/default_graph.csv"
 params:
-  r_max: 5.0
+  r_max: 10.0
   del_t: 0.1
-  start: 1000
-  end: 6000
+  start: 6000
+  end: 6500
   n_runs: 1
 flags:
   prior: true
@@ -19,14 +19,14 @@ flags:
   gt_init: false
   solve_slam: false
 interp:
-  interp_period: 50
+  interp_period: 1
   fixed_noise: false
 noise: #loc
-  prior: [1e-3, 1e-3, 1e-4]
+  prior: [1e1, 1e1, 1e0]
   odom_y: 1.0e-2
-  wnoa: [1e-3, 1e-5, 5e-3]
-  bearing: 0.1
-  range: 0.1
+  wnoa: [1e0, 1e-2, 1e0]
+  bearing:  10.0
+  range: 10.0
 #noise: #slam
   #prior: [1e-5, 1e-5, 1e-5]
   #odom_y: 1.0e-2

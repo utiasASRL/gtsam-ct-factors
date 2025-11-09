@@ -149,7 +149,7 @@ def plotTrajectory(
             for xi, yi, ti, cov in zip(x, y, theta, covs):
                 cov2d = cov[0:2, 0:2]
                 vals, vecs = np.linalg.eigh(cov2d)
-                angle = np.rad2deg(np.arctan2(*vecs[:, 1][::-1]))
+                angle = np.rad2deg(np.arctan2(*vecs[:, 1][::-1]) + ti)
                 factor = 3
                 height, width = factor * 2 * np.sqrt(vals)
                 ellipse = Ellipse(
@@ -308,7 +308,7 @@ def plotTrajectory(
         for xi, yi, ti, cov in zip(x1, y1, theta1, covariances1):
             cov2d = cov[0:2, 0:2]
             vals, vecs = np.linalg.eigh(cov2d)
-            angle = np.rad2deg(np.arctan2(*vecs[:, 1][::-1]))
+            angle = np.rad2deg(np.arctan2(*vecs[:, 1][::-1]) + ti)
             factor = 3
             height, width = factor * 2 * np.sqrt(vals)
             ellipse = Ellipse(

@@ -304,6 +304,7 @@ int runLostInTheWoods(TimingParams& params) {
   // process states into estimated and interpolated
   set<StateData> interp;
   set<StateData> estim;
+  set<StateData> all;
   for (size_t i = 0; i < all_states.size(); i++) {
     if (i == 0 || i == all_states.size() - 1 || i % interp_period == 0) {
       estim.insert(all_states[i]);
@@ -313,6 +314,7 @@ int runLostInTheWoods(TimingParams& params) {
       initial.erase(all_states[i].pose);
       initial.erase(all_states[i].vel);
     }
+    all.insert(all_states[i]);
   }
 
   t_start = chrono::steady_clock::now();
@@ -345,47 +347,85 @@ int runLostInTheWoods(TimingParams& params) {
   cout << "Runtime for solving wrapper graph: " << t_runtime / params.n_runs << " (micro-s)" << endl;
 
   // Recover interpolated means using interpolator
-  std::shared_ptr<typename Interpolator<Pose2>::CovarianceMap> cov_map;
+  std::shared_ptr<typename Interpolator<Pose2>::CovarianceMap> cov_map = std::make_shared<Interpolator<Pose2>::CovarianceMap>();
+
+
+  // Define interpolator
+  Interpolator<Pose2> interpolator(sigma_wnoa);
 
   t_start = chrono::steady_clock::now();
   for(unsigned int i = 0; i < params.n_runs; i++)
   {
-    Values tmp = updateInterpValues<Pose2>(graph_interp, result_interp, estim,
-                                      interp, sigma_wnoa, nullptr);
+  Values tmp = interpolator.interpolatePosesAndVelocities(
+      graph_interp, result_interp, estim, all, nullptr);
   }
   t_end = chrono::steady_clock::now();
   t_runtime = chrono::duration_cast<chrono::microseconds>(t_end - t_start).count();
   cout << "Runtime for recovering interpolated means: " << t_runtime / params.n_runs << " (micro-s)" << endl;
 
-  result_interp = updateInterpValues<Pose2>(graph_interp, result_interp, estim,
-                                    interp, sigma_wnoa, nullptr);
+
+  // get interpolated values
+  result_interp = interpolator.interpolatePosesAndVelocities(
+      graph_interp, result_interp, estim, all, cov_map);
+
+  // Print name of symbols in result_interp
+  //cout << "Keys in interpolated result: " << endl;
+  //for (const auto& kv : result_interp) {
+  //  Key k = kv.key;
+  //  Symbol s(k);                  // interpret key as a Symbol
+  //  cout << s.chr() << s.index()  // print symbol name like x0, v1, ...
+  //       << " " << endl;
+  //}
+  //cout << endl;
+
+  //print name of symbols in cov_map
+  //cout << "Keys in interpolated covariance map: " << endl;
+  //for (const auto& kv : *cov_map) {
+  //  Key k = kv.first;
+  //  Symbol s(k);                  // interpret key as a Symbol
+  //  cout << s.chr() << s.index()  // print symbol name like x0, v1, ...
+  //       << " " << endl;
+  //}
 
   // Save results
   cout << "Optimizer has finished...saving results..." << endl;
-  saveResultToFile(result_full, graph, params.output_file, solve_slam);
+  saveResultToFile(result_full, graph, params.output_file, solve_slam, nullptr);
   saveResultToFile(gt, graph, params.gt_output_file);
   // Save results, interpolate covariances from graph at interp mean
-  saveResultToFile(result_interp, graph, params.interp_out, solve_slam);
+  saveResultToFile(result_interp, graph, params.interp_out, solve_slam, cov_map);
 
   // Compute position RMSE for between resul_full and gt as well as result_interp and gt
-  std::vector<Point2> errors_full, errors_interp, errors_interp_full;
+  std::vector<Point2> errors_full, errors_interp, errors_interp_full, errors_interp_est_times;
   std::vector<Rot2> errors_full_rot, errors_interp_rot, errors_interp_full_rot;
+  std::vector<double> nees_interp, nees_interp_est_times;
   for(int i = start; i <= end; i++) {
     Pose2 pose_full = result_full.at<Pose2>(Symbol('x', i));
     Pose2 pose_interp = result_interp.at<Pose2>(Symbol('x', i));
     Pose2 pose_gt = gt.at<Pose2>(Symbol('x', i));
-    Point2 err_full = pose_full.compose(pose_gt.inverse()).translation();
-    Point2 err_interp = pose_interp.compose(pose_gt.inverse()).translation();
-    Point2 err_interp_full = pose_interp.compose(pose_full.inverse()).translation();
-    Rot2 err_full_rot = pose_full.compose(pose_gt.inverse()).rotation();
-    Rot2 err_interp_rot = pose_interp.compose(pose_gt.inverse()).rotation();
-    Rot2 err_interp_full_rot = pose_interp.compose(pose_full.inverse()).rotation();
+    Point2 err_full = (pose_full.inverse().compose(pose_gt)).translation();
+    Point2 err_interp = (pose_interp.inverse().compose(pose_gt)).translation();
+    Point2 err_interp_full = (pose_interp.inverse().compose(pose_full)).translation();
+    Rot2 err_full_rot = (pose_full.inverse().compose(pose_gt)).rotation();
+    Rot2 err_interp_rot = (pose_interp.inverse().compose(pose_gt)).rotation();
+    Rot2 err_interp_full_rot = (pose_interp.inverse().compose(pose_full)).rotation();
     errors_full.push_back(err_full);
     errors_interp.push_back(err_interp);
     errors_interp_full.push_back(err_interp_full);
     errors_full_rot.push_back(err_full_rot);
     errors_interp_rot.push_back(err_interp_rot);
     errors_interp_full_rot.push_back(err_interp_full_rot);
+
+
+
+    Matrix2 cov_interp = cov_map->at(Symbol('x', i)).topLeftCorner<2,2>();
+    double nees_i = err_interp.transpose() * cov_interp.inverse() * err_interp;
+    nees_interp.push_back(nees_i);
+
+    if (i == start || i == end || (i - start) % interp_period == 0) {
+      errors_interp_est_times.push_back(err_interp);
+      nees_interp_est_times.push_back(nees_i);
+    }
+
   }
 
   // Compute RMSE values from vectors
@@ -395,7 +435,6 @@ int runLostInTheWoods(TimingParams& params) {
   double sum_sq_interp_x = 0.0, sum_sq_interp_y = 0.0;
   double sum_sq_interp_full_x = 0.0, sum_sq_interp_full_y = 0.0;
   double sum_sq_full_rot = 0.0, sum_sq_interp_rot = 0.0, sum_sq_interp_full_rot = 0.0;
-
   for (size_t i = 0; i < n; ++i) {
     double fx = errors_full[i].x(), fy = errors_full[i].y();
     double ix = errors_interp[i].x(), iy = errors_interp[i].y();
@@ -415,6 +454,19 @@ int runLostInTheWoods(TimingParams& params) {
     sum_sq_full_rot += ftheta * ftheta;
     sum_sq_interp_rot += itheta * itheta;
     sum_sq_interp_full_rot += itheta_full * itheta_full;
+
+  }
+
+  //Compute RMSE at estimation times
+  const size_t n_est = errors_interp_est_times.size();
+  double sum_sq_interp_est = 0.0;
+  double sum_sq_interp_x_est = 0.0, sum_sq_interp_y_est = 0.0;
+  for( size_t i = 0; i < n_est; ++i) {
+    double ix = errors_interp_est_times[i].x();
+    double iy = errors_interp_est_times[i].y();
+    sum_sq_interp_est += ix * ix + iy * iy;
+    sum_sq_interp_x_est += ix * ix;
+    sum_sq_interp_y_est += iy * iy;
   }
 
   double rmse_full = std::sqrt(sum_sq_full / n);
@@ -430,19 +482,29 @@ int runLostInTheWoods(TimingParams& params) {
   double rmse_interp_rot = std::sqrt(sum_sq_interp_rot / n);
   double rmse_interp_full_rot = std::sqrt(sum_sq_interp_full_rot / n);
 
+  double rmse_interp_est = std::sqrt(sum_sq_interp_est / n_est);
+  double rmse_interp_x_est = std::sqrt(sum_sq_interp_x_est / n_est);
+  double rmse_interp_y_est = std::sqrt(sum_sq_interp_y_est / n_est);
+
+  double nees_interp_mean =  std::accumulate(nees_interp.begin(), nees_interp.end(), 0.0) / nees_interp.size();
+  double nees_interp_est_times_mean =  std::accumulate(nees_interp_est_times.begin(), nees_interp_est_times.end(), 0.0) / nees_interp_est_times.size();
+
   // Print with higher precision
   cout << std::fixed << std::setprecision(8);
   cout << "--------------------------------------------------------------" << endl;
   cout << "RMSE (full)           : " << rmse_full << " m" << endl;
-  cout << "RMSE rot (full)       : " << rmse_full_rot << " deg" << endl;
+  //cout << "RMSE rot (full)       : " << rmse_full_rot << " deg" << endl;
   cout << "--------------------------------------------------------------" << endl;
   cout << "RMSE (interp)         : " << rmse_interp << " m" << endl;
-  cout << "RMSE rot (interp)     : " << rmse_interp_rot << " deg" << endl;
-
+  //cout << "RMSE rot (interp)     : " << rmse_interp_rot << " deg" << endl;
+  cout << "NEES (interp)         : " << nees_interp_mean << endl;
   cout << "--------------------------------------------------------------" << endl;
-  cout << "RMSE (interp-full)    : " << rmse_interp_full << " m" << endl;
-  cout << "RMSE rot (interp-full): " << rmse_interp_full_rot << " deg" << endl;
+  cout << "RMSE (interp, est ts) : " << rmse_interp_est << " m" << endl;
+  cout << "NEES (interp, est ts) : " << nees_interp_est_times_mean << endl;
   cout << "--------------------------------------------------------------" << endl;
+  //cout << "RMSE (interp-full)    : " << rmse_interp_full << " m" << endl;
+  //cout << "RMSE rot (interp-full): " << rmse_interp_full_rot << " deg" << endl;
+  //cout << "--------------------------------------------------------------" << endl;
   // restore default formatting (optional)
   cout << std::defaultfloat;
 

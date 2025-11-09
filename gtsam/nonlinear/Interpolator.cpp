@@ -487,8 +487,8 @@ std::map<StateDataInterval, std::shared_ptr<Matrix>>
 Interpolator<PoseType>::computeJointMarginals(
     const std::map<StateDataInterval, std::vector<StateData>>& queryBuckets,
     const std::unique_ptr<Marginals>& marginals) {
-  std::cout << "Computing joint marginals for " << queryBuckets.size()
-            << " intervals." << std::endl;
+  //std::cout << "Computing joint marginals for " << queryBuckets.size()
+  //          << " intervals." << std::endl;
   std::map<StateDataInterval, std::shared_ptr<Matrix>>
       intervalJointMarginals;  // JointMarginal matrices for each interval
   std::unordered_set<Key> allBoundaryKeys;
@@ -540,8 +540,8 @@ Interpolator<PoseType>::computeJointMarginals(
   }
   // ----------------------------------
 
-  std::cout << "Computed joint marginals for " << intervalJointMarginals.size()
-            << " intervals." << std::endl;
+  //std::cout << "Computed joint marginals for " << intervalJointMarginals.size()
+  //          << " intervals." << std::endl;
   return intervalJointMarginals;
 }
 
