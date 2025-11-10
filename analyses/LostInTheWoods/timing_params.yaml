@@ -9,7 +9,7 @@ params:
   r_max: 10.0
   del_t: 0.1
   start: 6000
-  end: 6500
+  end: 7000
   n_runs: 1
 flags:
   prior: true
@@ -19,7 +19,7 @@ flags:
   gt_init: false
   solve_slam: false
 interp:
-  interp_period: 1
+  interp_period: 50
   fixed_noise: false
 noise: #loc
   prior: [1e1, 1e1, 1e0]
