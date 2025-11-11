@@ -8,7 +8,7 @@
 #include <gtsam/base/testLie.h>
 #include <CppUnitLite/TestHarness.h>
 
-#include <gtsam_unstable/geometry/ABC.h> // Include your ABC.h file
+#include <gtsam_unstable/geometry/ABC.h>
 #include <gtsam/navigation/EquivariantFilter.h>
 
 using namespace gtsam;
@@ -541,8 +541,7 @@ TEST(ABC, ABCGeometry_processNoise) {
 TEST(ABC, EqFilter){
     using M = abc_eqf_lib::State<N_TEST>;
     using G = abc_eqf_lib::Group<N_TEST>;
-    using Geometry = ABCGeometry<N_TEST>;
-    using EqFilter = abc_eqf_lib::EqF<G, M, Geometry>;
+    using EqFilter = gtsam::EqF<G, M>;
     
     const G g_0;
     const M xi_ref; // Reference state (xi circle) and not inital state?
@@ -565,8 +564,8 @@ TEST(ABC, EqFilter){
     EXPECT(traits<G>::Equals(g_0, X_HatActual, 1e-9));
 
     EXPECT(traits<G>::Equals(X_HatActual, X_HatExpected, 1e-9));
-    // Next check predict
-    typename Geometry::InputDataType u;
+
+    InputData u;
 	u.w = (Vector3() << 0.01, -0.02, 0.015).finished();
 	u.Sigma = I_6x6;
 	double dt = 0.01;

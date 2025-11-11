@@ -16,8 +16,7 @@ using namespace gtsam::abc_eqf_lib;
 constexpr size_t n = 1;  // Number of calibration states
 using M = abc_eqf_lib::State<n>;
 using G = abc_eqf_lib::Group<n>;
-using Geometry = ABCGeometry<n>;
-using EqFilter = gtsam::EqF<G, M, Geometry>; 
+using EqFilter = gtsam::EqF<G, M>;
 using gtsam::abc_eqf_lib::InputData;
 using gtsam::abc_eqf_lib::Measurement;
 
@@ -431,7 +430,7 @@ int main(int argc, char* argv[]) {
         Vector3::Constant(0.1);  // Calibration uncertainty
 
     G initialGroup = gtsam::traits<G>::Identity();
-    M initialState = Geometry::identityState();
+    M initialState = M::identity();
 
     // Create filter
     EqFilter filter(initialGroup, initialState, initialSigma, N);

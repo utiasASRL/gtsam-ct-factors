@@ -541,6 +541,63 @@ static Matrix measurementMatrixC(const Unit3& d, int idx) {
   static constexpr int n_cal = N;
 };
 
+//========================================================================
+// Free-function adapters for EqF and generic EKF code
+//========================================================================
+
+/**
+ * @brief Discrete-time state transition matrix for the EqF.
+ *
+ * Thin wrapper around ABCGeometry<N>::stateTransitionMatrix so that generic
+ * code (e.g., the EqF implementation) can call this via ADL using only the
+ * group type G = Group<N> and the input data type.
+ */
+template <size_t N>
+Matrix stateTransitionMatrix(const Group<N>& X_hat, const InputData& data,
+                             double dt) {
+  return ABCGeometry<N>::stateTransitionMatrix(data, dt, X_hat);
+}
+
+/**
+ * @brief Input uncertainty propagation matrix Bt for the EqF.
+ *
+ * Wraps ABCGeometry<N>::inputMatrixBt for use via ADL.
+ */
+template <size_t N>
+Matrix inputMatrixBt(const Group<N>& X_hat) {
+  return ABCGeometry<N>::inputMatrixBt(X_hat);
+}
+
+/**
+ * @brief Continuous-time process noise covariance in lifted coordinates.
+ *
+ * Wraps ABCGeometry<N>::processNoise for use with ADL
+ */
+template <size_t N>
+Matrix processNoise(const Group<N>& /*X_hat*/, const InputData& data) {
+  return ABCGeometry<N>::processNoise(data);
+}
+
+/**
+ * @brief Linearized measurement matrix C for a direction measurement.
+ *
+ * Wraps ABCGeometry<N>::measurementMatrixC for use with ADL
+ */
+template <size_t N>
+Matrix measurementMatrixC(const Unit3& d, int idx, const Group<N>& /*X_hat*/) {
+  return ABCGeometry<N>::measurementMatrixC(d, idx);
+}
+
+/**
+ * @brief Measurement uncertainty propagation matrix Dt.
+ *
+ * Wraps ABCGeometry<N>::outputMatrixDt for use with ADL
+ */
+template <size_t N>
+Matrix outputMatrixDt(const Group<N>& X_hat, int idx) {
+  return ABCGeometry<N>::outputMatrixDt(idx, X_hat);
+}
+
 }  // namespace abc_eqf_lib
 
 template <size_t N>
