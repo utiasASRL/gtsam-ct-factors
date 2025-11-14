@@ -408,7 +408,6 @@ Matrix stateActionDiff(const State<N>& xi) {
 template <size_t N>
 struct ABCGeometry {
   using InputType = Vector6;  // Mathematical input (ω, 0)
-  using InputDataType = abc_eqf_lib::InputData;  // Data with noise params
   using Measurement = abc_eqf_lib::Measurement;
   using GType = Group<N>;
   using MType = State<N>;
@@ -428,13 +427,16 @@ struct ABCGeometry {
     return xi.lift(u);
   }
 
+
   /**
    * Computes the discrete time state transition matrix
-   * @param data Input data containing angular velocity and noise
+   * @param u Angular velocity
    * @param dt time step
    * @return State transition matrix in discrete time
    */
-  static Matrix stateTransitionMatrix(const Vector6 &u, double dt, GType X_hat) {
+  // TODO: new version of this function reduces precision, fails ABCGeometry_stateTransitionMatrix test case as a result
+  static Matrix stateTransitionMatrix(const Vector6& u, double dt, 
+                                      GType X_hat) {
     Matrix A = stateMatrixA(X_hat, u);
     Matrix I = Matrix::Identity(A.rows(), A.cols());
 
@@ -444,6 +446,7 @@ struct ABCGeometry {
     return I + dt * A + 0.5 * dt * dt * A2 + (1.0 / 6.0) * dt * dt * dt * A3;
     //return (A * dt).exp().eval();
   }
+
   /**
    * Computes linearized continuous time state matrix
    * @param data Input data
@@ -471,8 +474,8 @@ struct ABCGeometry {
     return blockDiag(B1, B2);
   }
 
-  static Matrix processNoise(const InputDataType& data) {
-    return blockDiag(data.Sigma, repBlock(1e-9 * I_3x3, N));
+  static Matrix processNoise(const Matrix &Sigma) {
+    return blockDiag(Sigma, repBlock(1e-9 * I_3x3, N));
   }
 
   /**
@@ -543,20 +546,18 @@ static Matrix measurementMatrixC(const Unit3& d, int idx) {
 /**
  * @brief Discrete-time state transition matrix for the EqF.
  *
- * Thin wrapper around ABCGeometry<N>::stateTransitionMatrix so that generic
- * code (e.g., the EqF implementation) can call this via ADL using only the
- * group type G = Group<N> and the input data type.
+ * Thin wrapper around ABCGeometry<N>::stateTransitionMatrix
  */
 template <size_t N>
-Matrix stateTransitionMatrix(const Group<N>& X_hat, const InputData& data,
+Matrix stateTransitionMatrix(const Group<N>& X_hat, const Vector6 &u,
                              double dt) {
-  return ABCGeometry<N>::stateTransitionMatrix(data, dt, X_hat);
+  return ABCGeometry<N>::stateTransitionMatrix(u, dt, X_hat);
 }
 
 /**
  * @brief Input uncertainty propagation matrix Bt for the EqF.
  *
- * Wraps ABCGeometry<N>::inputMatrixBt for use via ADL.
+ * Wraps ABCGeometry<N>::inputMatrixBt
  */
 template <size_t N>
 Matrix inputMatrixBt(const Group<N>& X_hat) {
@@ -566,7 +567,7 @@ Matrix inputMatrixBt(const Group<N>& X_hat) {
 /**
  * @brief Continuous-time process noise covariance in lifted coordinates.
  *
- * Wraps ABCGeometry<N>::processNoise for use with ADL
+ * Wraps ABCGeometry<N>::processNoise
  */
 template <size_t N>
 Matrix processNoise(const Group<N>& /*X_hat*/, const InputData& data) {
@@ -576,7 +577,7 @@ Matrix processNoise(const Group<N>& /*X_hat*/, const InputData& data) {
 /**
  * @brief Linearized measurement matrix C for a direction measurement.
  *
- * Wraps ABCGeometry<N>::measurementMatrixC for use with ADL
+ * Wraps ABCGeometry<N>::measurementMatrixC
  */
 template <size_t N>
 Matrix measurementMatrixC(const Unit3& d, int idx, const Group<N>& /*X_hat*/) {
@@ -586,7 +587,7 @@ Matrix measurementMatrixC(const Unit3& d, int idx, const Group<N>& /*X_hat*/) {
 /**
  * @brief Measurement uncertainty propagation matrix Dt.
  *
- * Wraps ABCGeometry<N>::outputMatrixDt for use with ADL
+ * Wraps ABCGeometry<N>::outputMatrixDt
  */
 template <size_t N>
 Matrix outputMatrixDt(const Group<N>& X_hat, int idx) {
