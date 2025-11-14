@@ -83,7 +83,7 @@ struct InputData {
   Matrix3 W() const {         /// Return w as a skew symmetric matrix
     return Rot3::Hat(w);
   }
-  
+
   /// Convert to mathematical input vector (ω, 0)
   Vector6 toInputVector() const {
     Vector6 u;
@@ -171,7 +171,7 @@ class State {
     Vector L = Vector::Zero(6 + 3 * N);
 
     Vector3 w = u.head<3>();
-    
+
     L.head<3>() = w - b;
 
     L.segment<3>(3) = -Rot3::Hat(w) * b;
@@ -183,7 +183,7 @@ class State {
 
     return L;
   }
-  
+
   /**
    * Convenience overload that accepts InputData
    */
@@ -434,19 +434,15 @@ struct ABCGeometry {
    * @param dt time step
    * @return State transition matrix in discrete time
    */
-  static Matrix stateTransitionMatrix(const InputDataType& data, double dt, GType X_hat) {
-    InputType u = data.toInputVector();
-    Matrix3 W0 = Rot3::Hat(velocityAction(X_hat.inv(), u).template head<3>());
-    Matrix Phi1 = Matrix::Zero(6, 6);
+  static Matrix stateTransitionMatrix(const Vector6 &u, double dt, GType X_hat) {
+    Matrix A = stateMatrixA(X_hat, u);
+    Matrix I = Matrix::Identity(A.rows(), A.cols());
 
-    Matrix3 Phi12 = -dt * (I_3x3 + (dt / 2) * W0 + ((dt * dt) / 6) * W0 * W0);
-    Matrix3 Phi22 = I_3x3 + dt * W0 + ((dt * dt) / 2) * W0 * W0;
-
-    Phi1.block<3, 3>(0, 0) = I_3x3;
-    Phi1.block<3, 3>(0, 3) = Phi12;
-    Phi1.block<3, 3>(3, 3) = Phi22;
-    Matrix Phi2 = repBlock(Phi22, N);
-    return blockDiag(Phi1, Phi2);
+    // Use truncated exponential for numerical stability if dt is small
+    Matrix A2 = A * A;
+    Matrix A3 = A2 * A;
+    return I + dt * A + 0.5 * dt * dt * A2 + (1.0 / 6.0) * dt * dt * dt * A3;
+    //return (A * dt).exp().eval();
   }
   /**
    * Computes linearized continuous time state matrix
@@ -454,8 +450,7 @@ struct ABCGeometry {
    * @return Linearized state matrix
    * Uses Matrix zero and Identity functions
    */
-  static Matrix stateMatrixA(const GType& X_hat, const InputDataType& data) {
-    InputType u = data.toInputVector();
+  static Matrix stateMatrixA(const GType& X_hat, const Vector6& u) {
     Matrix3 W0 = Rot3::Hat(velocityAction(X_hat.inverse(), u).template head<3>());
 
     Matrix A1 = Matrix::Zero(6, 6);

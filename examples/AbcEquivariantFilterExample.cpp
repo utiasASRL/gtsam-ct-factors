@@ -253,9 +253,9 @@ void processDataWithEqF(EqFilter& filter, const std::vector<Data>& data_list,
 
   for (size_t i = 0; i < data_list.size(); i++) {
     const Data& data = data_list[i];
-
+    Matrix Q   = Geometry::processNoise(data.u);
     // Propagate filter with current input and time step
-    filter.predict(data.u, data.dt);
+    filter.predict(data.u.toInputVector(), Q, data.dt);
 
     // Process all measurements
     for (const auto& y : data.y) {

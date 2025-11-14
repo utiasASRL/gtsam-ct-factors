@@ -39,6 +39,150 @@ using namespace std;
 using namespace gtsam;
 
 //========================================================================
+// Equivariant Filter (EqF) Template Function Verification
+//========================================================================
+template <typename Geometry, typename M>
+class has_lift {
+ private:
+  template <typename G>
+  static auto test(int)
+      -> decltype(G::lift(std::declval<M>(), std::declval<typename G::InputType>()),
+                  std::true_type{});
+
+  template <typename>
+  static std::false_type test(...);
+
+ public:
+  static constexpr bool value = decltype(test<Geometry>(0))::value;
+};
+
+template <typename Geometry>
+class has_groupAction {
+ private:
+  template <typename G>
+  static auto test(int)
+      -> decltype(G::groupAction(std::declval<typename G::GType>(),
+                                 std::declval<typename G::MType>()),
+                  std::true_type{});
+
+  template <typename>
+  static std::false_type test(...);
+
+ public:
+  static constexpr bool value = decltype(test<Geometry>(0))::value;
+};
+
+template <typename Geometry>
+class has_stateTransitionMatrix {
+ private:
+  template <typename G>
+  static auto test(int)
+      -> decltype(G::stateTransitionMatrix(std::declval<typename G::InputData>(),
+                                           std::declval<double>(),
+                                           std::declval<typename G::GType>()),
+                  std::true_type{});
+
+  template <typename>
+  static std::false_type test(...);
+
+ public:
+  static constexpr bool value = decltype(test<Geometry>(0))::value;
+};
+
+template <typename Geometry>
+class has_stateMatrixA {
+ private:
+  template <typename G>
+  static auto test(int)
+      -> decltype(G::stateMatrixA(std::declval<const typename G::GType&>(),
+                                  std::declval<const typename G::InputDataType&>()),
+                  std::true_type{});
+
+  template <typename>
+  static std::false_type test(...);
+
+ public:
+  static constexpr bool value = decltype(test<Geometry>(0))::value;
+};
+
+template <typename Geometry>
+class has_inputMatrix {
+ private:
+  template <typename G>
+  static auto test(int)
+      -> decltype(G::inputMatrix(std::declval<typename G::GType>()),
+                  std::true_type{});
+
+  template <typename>
+  static std::false_type test(...);
+
+ public:
+  static constexpr bool value = decltype(test<Geometry>(0))::value;
+};
+
+template <typename Geometry>
+class has_processNoise {
+ private:
+  template <typename G>
+  static auto test(int)
+      -> decltype(G::processNoise(std::declval<const typename G::InputDataType&>()),
+                  std::true_type{});
+
+  template <typename>
+  static std::false_type test(...);
+
+ public:
+  static constexpr bool value = decltype(test<Geometry>(0))::value;
+};
+
+template <typename Geometry>
+class has_inputMatrixBt {
+ private:
+  template <typename G>
+  static auto test(int)
+      -> decltype(G::inputMatrixBt(std::declval<typename G::GType>()),
+                  std::true_type{});
+
+  template <typename>
+  static std::false_type test(...);
+
+ public:
+  static constexpr bool value = decltype(test<Geometry>(0))::value;
+};
+
+template <typename Geometry>
+class has_measurementMatrixC {
+ private:
+  template <typename G>
+  static auto test(int)
+      -> decltype(G::measurementMatrixC(std::declval<const Unit3&>(),
+                                        std::declval<int>()),
+                  std::true_type{});
+
+  template <typename>
+  static std::false_type test(...);
+
+ public:
+  static constexpr bool value = decltype(test<Geometry>(0))::value;
+};
+
+template <typename Geometry>
+class has_outputMatrixDt {
+ private:
+  template <typename G>
+  static auto test(int)
+      -> decltype(G::outputMatrixDt(std::declval<int>(),
+                                    std::declval<typename G::GType>()),
+                  std::true_type{});
+
+  template <typename>
+  static std::false_type test(...);
+
+ public:
+  static constexpr bool value = decltype(test<Geometry>(0))::value;
+};
+
+//========================================================================
 // Equivariant Filter (EqF)
 //========================================================================
 
@@ -83,8 +227,7 @@ class EqF : public LieGroupEKF<G> {
    * @param data Input data containing angular velocity and noise
    * @param dt Time step
    */
-  template <class InputDataType>
-  void predict(const InputDataType& data, double dt);
+  void predict(const typename Geometry::InputType &u, const Matrix &Q, double dt);
 
   /**
    * Update the filter state with a direction measurement.
@@ -118,6 +261,29 @@ EqF<G, M>::EqF(const G& X0, const M& x0, const Matrix& Sigma, int m)
     throw std::invalid_argument(
         "Number of direction sensors must be at least 2");
   }
+
+  static_assert(has_lift<Geometry, M>::value,
+                "Geometry must implement static lift(const M&, const InputType&)");
+
+  // static_assert(has_stateTransitionMatrix<Geometry>::value,
+  //               "Geometry must define static stateTransitionMatrix(InputDataType, "
+  //               "double, GType)");
+  static_assert(has_groupAction<Geometry>::value,
+                "Geometry must define groupAction(GType, MType)");
+  // static_assert(
+  //     has_stateMatrixA<Geometry>::value,
+  //     "Geometry must define static stateMatrixA(const GType&, const InputDataType&)");
+  static_assert(has_inputMatrix<Geometry>::value,
+                "Geometry must define static inputMatrix(GType)");
+  static_assert(has_processNoise<Geometry>::value,
+                "Geometry must define static processNoise(const InputDataType&)");
+  static_assert(has_inputMatrixBt<Geometry>::value,
+                "Geometry must define static inputMatrixBt(GType)");
+  static_assert(
+      has_measurementMatrixC<Geometry>::value,
+      "Geometry must define static measurementMatrixC(const Unit3&, int)");
+  static_assert(has_outputMatrixDt<Geometry>::value,
+                "Geometry must define static outputMatrixDt(int, GType)");
 
   // Compute differential of phi
   Dphi0 = stateActionDiff(xi_ref);
