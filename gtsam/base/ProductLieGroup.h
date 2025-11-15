@@ -19,8 +19,11 @@
 #pragma once
 
 #include <gtsam/base/Lie.h>
+#include <gtsam/base/Testable.h>
 
 #include <array>
+#include <iostream>
+#include <string>
 #include <utility>  // pair
 
 namespace gtsam {
@@ -33,6 +36,8 @@ template <typename G, typename H>
 class ProductLieGroup : public std::pair<G, H> {
   GTSAM_CONCEPT_ASSERT(IsLieGroup<G>);
   GTSAM_CONCEPT_ASSERT(IsLieGroup<H>);
+  GTSAM_CONCEPT_ASSERT(IsTestable<G>);
+  GTSAM_CONCEPT_ASSERT(IsTestable<H>);
 
  public:
   /// Base pair type
@@ -253,6 +258,20 @@ class ProductLieGroup : public std::pair<G, H> {
   }
 
   /// @}
+
+  /// @name Testable interface
+  /// @{
+  void print(const std::string& s = "") const {
+    std::cout << s << "ProductLieGroup" << std::endl;
+    traits<G>::Print(this->first, "  first");
+    traits<H>::Print(this->second, "  second");
+  }
+
+  bool equals(const ProductLieGroup& other, double tol = 1e-9) const {
+    return traits<G>::Equals(this->first, other.first, tol) &&
+           traits<H>::Equals(this->second, other.second, tol);
+  }
+  /// @}
 };
 
 /**
@@ -262,8 +281,9 @@ class ProductLieGroup : public std::pair<G, H> {
  */
 template <typename G, size_t N>
 class PowerLieGroup : public std::array<G, N> {
-  static_assert(N >= 2, "PowerLieGroup requires N >= 2");
+  static_assert(N >= 1, "PowerLieGroup requires N >= 1");
   GTSAM_CONCEPT_ASSERT(IsLieGroup<G>);
+  GTSAM_CONCEPT_ASSERT(IsTestable<G>);
 
  public:
   /// Base array type
@@ -507,16 +527,34 @@ class PowerLieGroup : public std::array<G, N> {
   }
 
   /// @}
+
+  /// @name Testable interface
+  /// @{
+  void print(const std::string& s = "") const {
+    std::cout << s << "PowerLieGroup" << std::endl;
+    for (size_t i = 0; i < N; ++i) {
+      traits<G>::Print((*this)[i], "  component[" + std::to_string(i) + "]");
+    }
+  }
+
+  bool equals(const PowerLieGroup& other, double tol = 1e-9) const {
+    for (size_t i = 0; i < N; ++i) {
+      if (!traits<G>::Equals((*this)[i], other[i], tol)) {
+        return false;
+      }
+    }
+    return true;
+  }
+  /// @}
 };
 
 /// Traits specialization for ProductLieGroup
 template <typename G, typename H>
 struct traits<ProductLieGroup<G, H>>
-    : internal::LieGroupTraits<ProductLieGroup<G, H>> {};
+    : internal::LieGroup<ProductLieGroup<G, H>> {};
 
 /// Traits specialization for PowerLieGroup
 template <typename G, int N>
-struct traits<PowerLieGroup<G, N>>
-    : internal::LieGroupTraits<PowerLieGroup<G, N>> {};
+struct traits<PowerLieGroup<G, N>> : internal::LieGroup<PowerLieGroup<G, N>> {};
 
 }  // namespace gtsam
