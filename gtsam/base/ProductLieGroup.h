@@ -260,7 +260,7 @@ class ProductLieGroup : public std::pair<G, H> {
  * Represents the group G^N = G x G x ... x G (N times)
  * Assumes Lie group structure for G and N >= 2
  */
-template <typename G, int N>
+template <typename G, size_t N>
 class PowerLieGroup : public std::array<G, N> {
   static_assert(N >= 2, "PowerLieGroup requires N >= 2");
   GTSAM_CONCEPT_ASSERT(IsLieGroup<G>);
@@ -304,7 +304,7 @@ class PowerLieGroup : public std::array<G, N> {
   /// Group multiplication
   PowerLieGroup operator*(const PowerLieGroup& other) const {
     PowerLieGroup result;
-    for (int i = 0; i < N; ++i) {
+    for (size_t i = 0; i < N; ++i) {
       result[i] = traits<G>::Compose((*this)[i], other[i]);
     }
     return result;
@@ -313,7 +313,7 @@ class PowerLieGroup : public std::array<G, N> {
   /// Group inverse
   PowerLieGroup inverse() const {
     PowerLieGroup result;
-    for (int i = 0; i < N; ++i) {
+    for (size_t i = 0; i < N; ++i) {
       result[i] = traits<G>::Inverse((*this)[i]);
     }
     return result;
@@ -354,7 +354,7 @@ class PowerLieGroup : public std::array<G, N> {
           "PowerLieGroup::retract derivatives not implemented yet");
     }
     PowerLieGroup result;
-    for (int i = 0; i < N; ++i) {
+    for (size_t i = 0; i < N; ++i) {
       const auto vi = v.template segment<baseDimension>(i * baseDimension);
       result[i] = traits<G>::Retract((*this)[i], vi);
     }
@@ -369,7 +369,7 @@ class PowerLieGroup : public std::array<G, N> {
           "PowerLieGroup::localCoordinates derivatives not implemented yet");
     }
     TangentVector v;
-    for (int i = 0; i < N; ++i) {
+    for (size_t i = 0; i < N; ++i) {
       const auto vi = traits<G>::Local((*this)[i], g[i]);
       v.template segment<baseDimension>(i * baseDimension) = vi;
     }
@@ -391,13 +391,13 @@ class PowerLieGroup : public std::array<G, N> {
                         ChartJacobian H2 = {}) const {
     std::array<BaseJacobian, N> jacobians;
     PowerLieGroup result;
-    for (int i = 0; i < N; ++i) {
+    for (size_t i = 0; i < N; ++i) {
       result[i] = traits<G>::Compose((*this)[i], other[i],
                                      H1 ? &jacobians[i] : nullptr);
     }
     if (H1) {
       H1->setZero();
-      for (int i = 0; i < N; ++i) {
+      for (size_t i = 0; i < N; ++i) {
         H1->template block<baseDimension, baseDimension>(
             i * baseDimension, i * baseDimension) = jacobians[i];
       }
@@ -411,13 +411,13 @@ class PowerLieGroup : public std::array<G, N> {
                         ChartJacobian H2 = {}) const {
     std::array<BaseJacobian, N> jacobians;
     PowerLieGroup result;
-    for (int i = 0; i < N; ++i) {
+    for (size_t i = 0; i < N; ++i) {
       result[i] = traits<G>::Between((*this)[i], other[i],
                                      H1 ? &jacobians[i] : nullptr);
     }
     if (H1) {
       H1->setZero();
-      for (int i = 0; i < N; ++i) {
+      for (size_t i = 0; i < N; ++i) {
         H1->template block<baseDimension, baseDimension>(
             i * baseDimension, i * baseDimension) = jacobians[i];
       }
@@ -430,12 +430,12 @@ class PowerLieGroup : public std::array<G, N> {
   PowerLieGroup inverse(ChartJacobian D) const {
     std::array<BaseJacobian, N> jacobians;
     PowerLieGroup result;
-    for (int i = 0; i < N; ++i) {
+    for (size_t i = 0; i < N; ++i) {
       result[i] = traits<G>::Inverse((*this)[i], D ? &jacobians[i] : nullptr);
     }
     if (D) {
       D->setZero();
-      for (int i = 0; i < N; ++i) {
+      for (size_t i = 0; i < N; ++i) {
         D->template block<baseDimension, baseDimension>(
             i * baseDimension, i * baseDimension) = jacobians[i];
       }
@@ -447,13 +447,13 @@ class PowerLieGroup : public std::array<G, N> {
   static PowerLieGroup Expmap(const TangentVector& v, ChartJacobian Hv = {}) {
     std::array<BaseJacobian, N> jacobians;
     PowerLieGroup result;
-    for (int i = 0; i < N; ++i) {
+    for (size_t i = 0; i < N; ++i) {
       const auto vi = v.template segment<baseDimension>(i * baseDimension);
       result[i] = traits<G>::Expmap(vi, Hv ? &jacobians[i] : nullptr);
     }
     if (Hv) {
       Hv->setZero();
-      for (int i = 0; i < N; ++i) {
+      for (size_t i = 0; i < N; ++i) {
         Hv->template block<baseDimension, baseDimension>(
             i * baseDimension, i * baseDimension) = jacobians[i];
       }
@@ -465,13 +465,13 @@ class PowerLieGroup : public std::array<G, N> {
   static TangentVector Logmap(const PowerLieGroup& p, ChartJacobian Hp = {}) {
     std::array<BaseJacobian, N> jacobians;
     TangentVector v;
-    for (int i = 0; i < N; ++i) {
+    for (size_t i = 0; i < N; ++i) {
       const auto vi = traits<G>::Logmap(p[i], Hp ? &jacobians[i] : nullptr);
       v.template segment<baseDimension>(i * baseDimension) = vi;
     }
     if (Hp) {
       Hp->setZero();
-      for (int i = 0; i < N; ++i) {
+      for (size_t i = 0; i < N; ++i) {
         Hp->template block<baseDimension, baseDimension>(
             i * baseDimension, i * baseDimension) = jacobians[i];
       }
@@ -498,7 +498,7 @@ class PowerLieGroup : public std::array<G, N> {
   /// Adjoint map
   Jacobian AdjointMap() const {
     Jacobian adj = Jacobian::Zero();
-    for (int i = 0; i < N; ++i) {
+    for (size_t i = 0; i < N; ++i) {
       const auto adjGi = traits<G>::AdjointMap((*this)[i]);
       adj.template block<baseDimension, baseDimension>(
           i * baseDimension, i * baseDimension) = adjGi;
