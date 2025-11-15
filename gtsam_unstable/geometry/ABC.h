@@ -33,32 +33,10 @@ namespace abc {
 // Core Data Types
 //========================================================================
 
-/// Input data struct for the Biased Attitude System (stores sensor data and
-/// noise)
-struct InputData {
-  Vector3 w;                  /// Angular velocity (3-vector)
-  Matrix Sigma;               /// Noise covariance (6x6 matrix)
-  static InputData random();  /// Random input
-  Matrix3 W() const {         /// Return w as a skew symmetric matrix
-    return Rot3::Hat(w);
-  }
-
-  /// Convert to mathematical input vector (ω, 0)
-  Vector6 toInputVector() const {
-    Vector6 u;
-    u.head<3>() = w;
-    u.tail<3>() = Vector3::Zero();  // Virtual input
-    return u;
-  }
-};
-
-/// Measurement struct
-struct Measurement {
-  Unit3 y;           /// Measurement direction in sensor frame
-  Unit3 d;           /// Known direction in global frame
-  Matrix3 Sigma;     /// Covariance matrix of the measurement
-  int cal_idx = -1;  /// Calibration index (-1 for calibrated sensor)
-};
+/// Convert angular velocity vector to mathematical input (ω, 0)
+inline Vector6 toInputVector(const Vector3& w) {
+  return (Vector6() << w, Z_3x1).finished();
+}
 
 /// State class representing the state of the Biased Attitude System
 template <size_t N>
@@ -69,15 +47,15 @@ class State {
   std::array<Rot3, N> S;  // Sensor calibrations S
 
   /// Constructor
-  State(const Rot3& R = Rot3::Identity(), const Vector3& b = Vector3::Zero(),
+  State(const Rot3& R = Rot3(), const Vector3& b = Z_3x1,
         const std::array<Rot3, N>& S = std::array<Rot3, N>{})
       : R(R), b(b), S(S) {}
 
   /// Identity function
   static State identity() {
     std::array<Rot3, N> S_id{};
-    S_id.fill(Rot3::Identity());
-    return State(Rot3::Identity(), Vector3::Zero(), S_id);
+    S_id.fill(Rot3());
+    return State(Rot3(), Z_3x1, S_id);
   }
   /**
    * Compute Local coordinates in the state relative to another state.
@@ -143,13 +121,6 @@ class State {
 
     return L;
   }
-
-  /**
-   * Convenience overload that accepts InputData
-   */
-  Vector lift(const InputData& data) const {
-    return lift(data.toInputVector());
-  }
 };
 
 //========================================================================
@@ -169,7 +140,7 @@ struct Group {
   using TangentVector = Eigen::Matrix<double, dimension, 1>;
   static constexpr int numSensors = n;
   /// Initialize the symmetry Group
-  Group(const Rot3& A = Rot3::Identity(), const Matrix3& a = Matrix3::Zero(),
+  Group(const Rot3& A = Rot3(), const Matrix3& a = Matrix3::Zero(),
         const std::array<Rot3, n>& B = std::array<Rot3, n>{})
       : A(A), a(a), B(B) {}
 
@@ -198,8 +169,8 @@ struct Group {
   /// Identity element
   static Group identity(int N) {  // todo: N is not used here, possibly remove
     std::array<Rot3, n> B;
-    B.fill(Rot3::Identity());
-    return Group(Rot3::Identity(), Matrix3::Zero(), B);
+    B.fill(Rot3());
+    return Group(Rot3(), Matrix3::Zero(), B);
   }
 
   /// Exponential map of the tangent space elements to the group
@@ -302,7 +273,7 @@ template <size_t N>
 Vector6 velocityAction(const Group<N>& X, const Vector6& u) {
   Vector6 result;
   result.head<3>() = X.A.inverse().matrix() * (u.head<3>() - Rot3::Vee(X.a));
-  result.tail<3>() = Vector3::Zero();  // Virtual input remains zero
+  result.tail<3>() = Z_3x1;  // Virtual input remains zero
   return result;
 }
 /**
@@ -370,7 +341,6 @@ Matrix stateActionDiff(const State<N>& xi) {
 template <size_t N>
 struct Geometry {
   using InputType = Vector6;  // Mathematical input (ω, 0)
-  using Measurement = abc::Measurement;
   using GType = Group<N>;
   using MType = State<N>;
   using TangentVector = typename GType::TangentVector;
@@ -532,16 +502,6 @@ Matrix stateTransitionMatrix(const Group<N>& X_hat, const Vector6& u,
 template <size_t N>
 Matrix inputMatrixBt(const Group<N>& X_hat) {
   return Geometry<N>::inputMatrixBt(X_hat);
-}
-
-/**
- * @brief Continuous-time process noise covariance in lifted coordinates.
- *
- * Wraps Geometry<N>::processNoise
- */
-template <size_t N>
-Matrix processNoise(const Group<N>& /*X_hat*/, const InputData& data) {
-  return Geometry<N>::processNoise(data);
 }
 
 /**

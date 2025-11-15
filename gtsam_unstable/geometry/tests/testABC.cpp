@@ -60,44 +60,9 @@ std::ostream& operator<<(std::ostream& os, const State<N>& s) {
 }  // namespace gtsam
 
 /* ************************************************************************* */
-TEST(ABC, InputData) {
-  abc::InputData input;
-  input.w = (Vector(3) << 1, 2, 3).finished();
-  input.Sigma = I_6x6;
-
-  EXPECT(assert_equal(input.w, (Vector(3) << 1, 2, 3).finished(), 1e-9));
-  EXPECT(assert_equal(input.Sigma, I_6x6, 1e-9));
-  EXPECT(assert_equal(input.W(), Rot3::Hat(input.w), 1e-9));
-
-  EXPECT(input.w.norm() > 0);      // Should not be zero
-  EXPECT(input.Sigma.norm() > 0);  // Should not be zero
-
-  // Test conversion to Vector6
-  Vector6 u = input.toInputVector();
-  EXPECT(assert_equal<Vector>(u.head<3>(), input.w, 1e-9));
-  EXPECT(assert_equal<Vector>(u.tail<3>(), Vector3::Zero(), 1e-9));
-}
-
-/* ************************************************************************* */
-TEST(ABC, Measurement) {
-  abc::Measurement meas;
-  meas.y = Unit3(1, 0, 0);
-  meas.d = Unit3(0, 1, 0);
-  meas.Sigma = I_3x3;
-  meas.cal_idx = 0;
-
-  EXPECT(assert_equal(meas.y.unitVector(), (Vector(3) << 1, 0, 0).finished(),
-                      1e-9));
-  EXPECT(assert_equal(meas.d.unitVector(), (Vector(3) << 0, 1, 0).finished(),
-                      1e-9));
-  EXPECT(assert_equal<Matrix3>(meas.Sigma, I_3x3, 1e-9));
-  EXPECT_LONGS_EQUAL(meas.cal_idx, 0);
-}
-
-/* ************************************************************************* */
 TEST(ABC, State) {
   Rot3 R1 = Rot3::Rx(0.1);
-  Vector3 b1 = (Vector(3) << 0.01, 0.02, 0.03).finished();
+  Vector3 b1(0.01, 0.02, 0.03);
   std::array<Rot3, 2> S1;
   S1[0] = Rot3::Ry(0.05);
   S1[1] = Rot3::Rz(0.06);
@@ -110,15 +75,15 @@ TEST(ABC, State) {
 
   // Test identity
   State2 identityState = State2::identity();
-  EXPECT(assert_equal(identityState.R, Rot3::Identity(), 1e-9));
-  EXPECT(assert_equal<Vector3>(identityState.b, Vector3::Zero(), 1e-9));
+  EXPECT(assert_equal(identityState.R, Rot3(), 1e-9));
+  EXPECT(assert_equal<Vector3>(identityState.b, Z_3x1, 1e-9));
   std::array<Rot3, 2> expectedS_id;
-  expectedS_id.fill(Rot3::Identity());
+  expectedS_id.fill(Rot3());
   EXPECT((ArraysEqual(identityState.S, expectedS_id)));
 
   // Test localCoordinates and retract (manifold properties)
   Rot3 R2 = Rot3::Rx(0.2);
-  Vector3 b2 = (Vector(3) << 0.05, 0.06, 0.07).finished();
+  Vector3 b2(0.05, 0.06, 0.07);
   std::array<Rot3, 2> S2;
   S2[0] = Rot3::Ry(0.1);
   S2[1] = Rot3::Rz(0.15);
@@ -159,14 +124,14 @@ TEST(ABC, State) {
 /* ************************************************************************* */
 TEST(ABC, G_GroupOperations) {
   Rot3 A1 = Rot3::Rx(0.1);
-  Matrix3 a1 = Rot3::Hat((Vector(3) << 0.01, 0.02, 0.03).finished());
+  Matrix3 a1 = Rot3::Hat(Vector3(0.01, 0.02, 0.03));
   std::array<Rot3, 2> B1;
   B1[0] = Rot3::Ry(0.05);
   B1[1] = Rot3::Rz(0.06);
   G2 g1(A1, a1, B1);
 
   Rot3 A2 = Rot3::Ry(0.2);
-  Matrix3 a2 = Rot3::Hat((Vector(3) << 0.04, 0.05, 0.06).finished());
+  Matrix3 a2 = Rot3::Hat(Vector3(0.04, 0.05, 0.06));
   std::array<Rot3, 2> B2;
   B2[0] = Rot3::Rz(0.07);
   B2[1] = Rot3::Rx(0.08);
@@ -228,7 +193,7 @@ TEST(ABC, G_GroupOperations) {
 TEST(ABC, GroupActions) {
   // Setup a G element
   Rot3 gA = Rot3::Rx(0.1);
-  Matrix3 ga_skew = Rot3::Hat((Vector(3) << 0.01, 0.02, 0.03).finished());
+  Matrix3 ga_skew = Rot3::Hat(Vector3(0.01, 0.02, 0.03));
   std::array<Rot3, 2> gB;
   gB[0] = Rot3::Ry(0.05);
   gB[1] = Rot3::Rz(0.06);
@@ -236,7 +201,7 @@ TEST(ABC, GroupActions) {
 
   // Setup a State element
   Rot3 sR = Rot3::Rz(0.2);
-  Vector3 sb = (Vector(3) << 0.04, 0.05, 0.06).finished();
+  Vector3 sb(0.04, 0.05, 0.06);
   std::array<Rot3, 2> sS;
   sS[0] = Rot3::Rx(0.07);
   sS[1] = Rot3::Ry(0.08);
@@ -254,16 +219,13 @@ TEST(ABC, GroupActions) {
                       1e-9));
 
   // Test velocityAction
-  abc::InputData u_data;
-  u_data.w = (Vector(3) << 1, 2, 3).finished();
-  u_data.Sigma = I_6x6;
-
-  Vector6 u = u_data.toInputVector();
+  Vector3 omega(1, 2, 3);
+  Vector6 u = abc::toInputVector(omega);
   Vector6 transformed_u = velocityAction(X, u);
-  EXPECT(assert_equal<Vector>(
-      transformed_u.head<3>(),
-      X.A.inverse().matrix() * (u_data.w - Rot3::Vee(X.a)), 1e-9));
-  EXPECT(assert_equal<Vector>(transformed_u.tail<3>(), Vector3::Zero(),
+  EXPECT(assert_equal<Vector>(transformed_u.head<3>(),
+                              X.A.inverse().matrix() * (omega - Rot3::Vee(X.a)),
+                              1e-9));
+  EXPECT(assert_equal<Vector>(transformed_u.tail<3>(), Z_3x1,
                               1e-9));  // Virtual input stays zero
 
   // Test outputAction (calibrated sensor)
@@ -319,14 +281,14 @@ TEST(ABC, Geometry_identityState) {
 /* ************************************************************************* */
 TEST(ABC, Geometry_groupAction) {
   Rot3 A = Rot3::Rx(0.1);
-  Matrix3 a = Rot3::Hat((Vector(3) << 0.01, 0.02, 0.03).finished());
+  Matrix3 a = Rot3::Hat(Vector3(0.01, 0.02, 0.03));
   std::array<Rot3, 2> B;
   B[0] = Rot3::Ry(0.05);
   B[1] = Rot3::Rz(0.06);
   G2 g(A, a, B);
 
   Rot3 R = Rot3::Rz(0.2);
-  Vector3 b = (Vector(3) << 0.04, 0.05, 0.06).finished();
+  Vector3 b(0.04, 0.05, 0.06);
   std::array<Rot3, 2> S;
   S[0] = Rot3::Rx(0.07);
   S[1] = Rot3::Ry(0.08);
@@ -346,24 +308,21 @@ TEST(ABC, Geometry_groupAction) {
 /* ************************************************************************* */
 TEST(ABC, Geometry_lift) {
   // Setup state
-  Rot3 R = Rot3::Identity();
-  Vector3 b = (Vector(3) << 0.1, 0.2, 0.3).finished();
+  Rot3 R = Rot3();
+  Vector3 b(0.1, 0.2, 0.3);
   std::array<Rot3, 2> S_arr;
   S_arr[0] = Rot3::Rx(0.05);
   S_arr[1] = Rot3::Ry(0.06);
   State2 xi(R, b, S_arr);
 
   // Setup input
-  abc::InputData u_data;
-  u_data.w = (Vector(3) << 0.5, 0.6, 0.7).finished();
-  u_data.Sigma = I_6x6;
-
-  Vector6 u = u_data.toInputVector();
+  Vector3 omega(0.5, 0.6, 0.7);
+  Vector6 u = abc::toInputVector(omega);
   typename G2::TangentVector L = xi.lift(u);
 
   // Expected values
-  Vector3 expected_L_head = u_data.w - xi.b;
-  Vector3 expected_L_segment3 = -u_data.W() * xi.b;
+  Vector3 expected_L_head = omega - xi.b;
+  Vector3 expected_L_segment3 = -Rot3::Hat(omega) * xi.b;
   Vector3 expected_L_segment6_0 = S_arr[0].inverse().matrix() * expected_L_head;
   Vector3 expected_L_segment6_1 = S_arr[1].inverse().matrix() * expected_L_head;
 
@@ -377,18 +336,15 @@ TEST(ABC, Geometry_lift) {
 TEST(ABC, Geometry_stateMatrixA) {
   // Setup G element for X_hat
   Rot3 A = Rot3::Rx(0.1);
-  Matrix3 a = Rot3::Hat((Vector(3) << 0.01, 0.02, 0.03).finished());
+  Matrix3 a = Rot3::Hat(Vector3(0.01, 0.02, 0.03));
   std::array<Rot3, 2> B;
   B[0] = Rot3::Ry(0.05);
   B[1] = Rot3::Rz(0.06);
   G2 X_hat(A, a, B);
 
   // Setup input
-  abc::InputData u_data;
-  u_data.w = (Vector(3) << 0.5, 0.6, 0.7).finished();
-  u_data.Sigma = I_6x6;
-
-  Vector6 u = u_data.toInputVector();
+  Vector3 omega(0.5, 0.6, 0.7);
+  Vector6 u = abc::toInputVector(omega);
   Matrix A_matrix = Geometry2::stateMatrixA(X_hat, u);
   Matrix3 W0 = Rot3::Hat(velocityAction(X_hat.inverse(), u).head<3>());
 
@@ -406,20 +362,17 @@ TEST(ABC, Geometry_stateMatrixA) {
 TEST(ABC, Geometry_stateTransitionMatrix) {
   // Setup G element for X_hat
   Rot3 A = Rot3::Rx(0.1);
-  Matrix3 a = Rot3::Hat((Vector(3) << 0.01, 0.02, 0.03).finished());
+  Matrix3 a = Rot3::Hat(Vector3(0.01, 0.02, 0.03));
   std::array<Rot3, 2> B;
   B[0] = Rot3::Ry(0.05);
   B[1] = Rot3::Rz(0.06);
   G2 X_hat(A, a, B);
 
   // Setup input
-  abc::InputData u_data;
-  u_data.w = (Vector(3) << 0.5, 0.6, 0.7).finished();
-  u_data.Sigma = I_6x6;
-
+  Vector3 omega(0.5, 0.6, 0.7);
   double dt = 0.1;
 
-  Vector6 u = u_data.toInputVector();
+  Vector6 u = abc::toInputVector(omega);
   Matrix Phi = Geometry2::stateTransitionMatrix(u, dt, X_hat);
   Matrix3 W0 = Rot3::Hat(velocityAction(X_hat.inv(), u).head<3>());
   Matrix Phi1 = Matrix::Zero(6, 6);
@@ -439,7 +392,7 @@ TEST(ABC, Geometry_stateTransitionMatrix) {
 TEST(ABC, Geometry_inputMatrix) {
   // Setup G element for X_hat
   Rot3 A = Rot3::Rx(0.1);
-  Matrix3 a = Rot3::Hat((Vector(3) << 0.01, 0.02, 0.03).finished());
+  Matrix3 a = Rot3::Hat(Vector3(0.01, 0.02, 0.03));
   std::array<Rot3, 2> B;
   B[0] = Rot3::Ry(0.05);
   B[1] = Rot3::Rz(0.06);
@@ -460,16 +413,14 @@ TEST(ABC, Geometry_inputMatrix) {
 
 /* ************************************************************************* */
 TEST(ABC, Geometry_processNoise) {
-  abc::InputData u_data;
-  u_data.w = Vector3::Zero();
-  u_data.Sigma = (Matrix(6, 6) << 1, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 3,
+  Matrix Sigma = (Matrix(6, 6) << 1, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 3,
                   0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 5, 0, 0, 0, 0, 0, 0, 6)
                      .finished();
 
-  Matrix Q = Geometry2::processNoise(u_data.Sigma);
+  Matrix Q = Geometry2::processNoise(Sigma);
 
   Matrix expected_Q_cal_part = 1e-9 * I_6x6;
-  Matrix expected_Q = gtsam::diag({u_data.Sigma, expected_Q_cal_part});
+  Matrix expected_Q = gtsam::diag({Sigma, expected_Q_cal_part});
 
   EXPECT(assert_equal(Q, expected_Q, 1e-9));
 }
@@ -479,7 +430,7 @@ TEST(ABC, Geometry_inputMatrixBt) {
   // This function is identical to inputMatrix, so we'll test its output matches
   // inputMatrix. Setup G element for X_hat
   Rot3 A = Rot3::Rx(0.1);
-  Matrix3 a = Rot3::Hat((Vector(3) << 0.01, 0.02, 0.03).finished());
+  Matrix3 a = Rot3::Hat(Vector3(0.01, 0.02, 0.03));
   std::array<Rot3, 2> B;
   B[0] = Rot3::Ry(0.05);
   B[1] = Rot3::Rz(0.06);
@@ -541,13 +492,12 @@ TEST(ABC, EqFilter) {
 
   EXPECT(traits<G>::Equals(X_HatActual, X_HatExpected, 1e-9));
 
-  abc::InputData u;
-  u.w = (Vector3() << 0.01, -0.02, 0.015).finished();
-  u.Sigma = I_6x6;
+  Vector3 omega(0.01, -0.02, 0.015);
+  Matrix Sigma = I_6x6;
   double dt = 0.01;
 
-  Vector6 u_vec = u.toInputVector();
-  Matrix Q = Geometry2::processNoise(u.Sigma);
+  Vector6 u_vec = abc::toInputVector(omega);
+  Matrix Q = Geometry2::processNoise(Sigma);
   filter.predict(u_vec, Q, dt);
 
   EXPECT(traits<G>::Equals(filter.groupEstimate(), filter.state(), 1e-9));
