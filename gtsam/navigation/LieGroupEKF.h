@@ -109,7 +109,7 @@ namespace gtsam {
           // State transition Jacobian for left-invariant EKF:
           *A = traits<G>::Inverse(U).AdjointMap() + Dexp * Df * dt;
         }
-        return this->X_.compose(U);
+        return traits<G>::Compose(this->X_, U);
       }
     }
 
