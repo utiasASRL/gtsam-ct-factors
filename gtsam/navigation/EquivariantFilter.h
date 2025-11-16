@@ -122,8 +122,9 @@ class EqF : public LieGroupEKF<typename StateAction::G> {
     Matrix Phi = psi_u.stateTransitionMatrix(this->X_, dt);
     Matrix Bt = psi_u.inputMatrixBt(this->X_);
 
-    this->X_ = traits<G>::Compose(this->X_, traits<G>::Expmap(xi * dt));
-    this->P_ = Phi * this->P_ * Phi.transpose() + Bt * Q * Bt.transpose() * dt;
+    G X_next = traits<G>::Compose(this->X_, traits<G>::Expmap(xi * dt));
+    Matrix Q_process = Bt * Q * Bt.transpose() * dt;
+    Base::predict(X_next, Phi, Q_process);
   }
 
   /**
