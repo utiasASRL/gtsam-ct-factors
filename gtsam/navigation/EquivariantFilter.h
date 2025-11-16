@@ -79,7 +79,7 @@ class EqF : public LieGroupEKF<typename StateAction::G> {
 
     // Compute differential of action phi at origin
 
-    Matrix Dphi0 = act_on_ref_.JacobianAtIdentity();
+    Matrix Dphi0 = act_on_ref_.jacobianAtIdentity();
     InnovationLift_ = Dphi0.completeOrthogonalDecomposition().pseudoInverse();
   }
 
@@ -97,11 +97,13 @@ class EqF : public LieGroupEKF<typename StateAction::G> {
 
   /**
    * Propagate the filter state.
+   * @tparam Lift Computes the lifted tangent vector.
+   * @tparam InputAction Provides system matrices derived from the input.
    * @tparam u the input vector.
    * @param Q Process noise covariance in lifted coordinates
    * @param dt Time step
    */
-  template <typename Geometry>
+  template <typename Lift, typename InputAction>
   void predict(const Vector6& u, const Matrix& Q, double dt) {
     // auto dynamics = [this](const G& X, const Vector6& u,
     // OptionalJacobian<Dim, Dim> Df) {
@@ -113,10 +115,12 @@ class EqF : public LieGroupEKF<typename StateAction::G> {
     M state_est = stateEstimate();
 
     // Compute lifted tangent vector from state and input
-    Vector xi = Geometry::lift(state_est, u);
+    Lift lift_u(u);
+    typename G::TangentVector xi = lift_u(state_est);
 
-    Matrix Phi = Geometry::stateTransitionMatrix(this->X_, u, dt);
-    Matrix Bt = Geometry::inputMatrixBt(this->X_);
+    InputAction psi_u(u);
+    Matrix Phi = psi_u.stateTransitionMatrix(this->X_, dt);
+    Matrix Bt = psi_u.inputMatrixBt(this->X_);
 
     this->X_ = traits<G>::Compose(this->X_, traits<G>::Expmap(xi * dt));
     this->P_ = Phi * this->P_ * Phi.transpose() + Bt * Q * Bt.transpose() * dt;

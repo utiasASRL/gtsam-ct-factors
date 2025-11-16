@@ -261,7 +261,7 @@ struct StateAction {
    * The Jacobian of the action at the identity of the symmetry group G
    * @return A matrix representing the jacobian of the state action
    */
-  Matrix JacobianAtIdentity() const {
+  Matrix jacobianAtIdentity() const {
     Matrix H = Matrix::Zero(M::dimension, G::dimension);
 
     // Rotation block: δθ maps directly to the state's rotational tangent.
@@ -282,6 +282,35 @@ struct StateAction {
 
     return H;
   }
+};
+
+/**
+ * Functor computing the lifted tangent vector from a state and fixed input.
+ */
+template <size_t N>
+struct Lift {
+  using M = State<N>;
+  using G = Group<N>;
+  using Input = Vector6;
+
+  explicit Lift(const Input& u) : u_(u) {}
+
+  typename G::TangentVector operator()(const M& xi) const {
+    Vector3 w = u_.head<3>();
+    Vector3 corrected_w = w - xi.b;
+
+    typename G::TangentVector L;
+    L.template head<3>() = corrected_w;
+    L.template segment<3>(3) = -Rot3::Hat(w) * xi.b;
+    for (size_t i = 0; i < N; i++) {
+      L.template segment<3>(6 + 3 * i) = xi.S[i].unrotate(corrected_w);
+    }
+
+    return L;
+  }
+
+ private:
+  Input u_;
 };
 
 /**
@@ -307,7 +336,7 @@ struct InputAction {
     return result;
   }
 
-  Matrix JacobianAtIdentity() const {
+  Matrix jacobianAtIdentity() const {
     Matrix H = Matrix::Zero(Input::RowsAtCompileTime, G::dimension);
     H.block<3, 3>(0, 0) = Rot3::Hat(u_.head<3>());
     H.block<3, 3>(0, 3) = -I_3x3;
@@ -315,6 +344,53 @@ struct InputAction {
     // calibrations.
     return H;
   }
+
+  Matrix stateTransitionMatrix(const G& X_hat, double dt) const {
+    const Vector3 omega_tilde =
+        this->operator()(X_hat.inverse()).template head<3>();
+    Matrix3 W0 = Rot3::Hat(omega_tilde);
+    Matrix Phi1 = Matrix::Zero(6, 6);
+    Matrix3 W0_sq = W0 * W0;
+    Matrix3 Phi12 = -dt * (I_3x3 + 0.5 * dt * W0 + (dt * dt / 6.0) * W0_sq);
+    Matrix3 Phi22 = I_3x3 + dt * W0 + 0.5 * dt * dt * W0_sq;
+    Phi1.block<3, 3>(0, 0) = I_3x3;
+    Phi1.block<3, 3>(0, 3) = Phi12;
+    Phi1.block<3, 3>(3, 3) = Phi22;
+
+    std::vector<Matrix> blocks;
+    blocks.push_back(Phi1);
+    blocks.insert(blocks.end(), N, Phi22);
+    return gtsam::diag(blocks);
+  }
+
+  Matrix stateMatrixA(const G& X_hat) const {
+    const Vector3 omega_tilde =
+        this->operator()(X_hat.inverse()).template head<3>();
+    Matrix3 W0 = Rot3::Hat(omega_tilde);
+
+    Matrix A1 = Matrix::Zero(6, 6);
+    A1.block<3, 3>(0, 3) = -I_3x3;
+    A1.block<3, 3>(3, 3) = W0;
+
+    std::vector<Matrix> blocks{A1};
+    blocks.insert(blocks.end(), N, W0);
+    return gtsam::diag(blocks);
+  }
+
+  Matrix inputMatrix(const G& X_hat) const {
+    const Matrix3 A_matrix = X_hat.A().matrix();
+    Matrix B1 = gtsam::diag({A_matrix, A_matrix});
+    Matrix B2(3 * N, 3 * N);
+    B2.setZero();
+
+    for (size_t i = 0; i < N; ++i) {
+      B2.block<3, 3>(3 * i, 3 * i) = X_hat.calibrations()[i].matrix();
+    }
+
+    return gtsam::diag({B1, B2});
+  }
+
+  Matrix inputMatrixBt(const G& X_hat) const { return inputMatrix(X_hat); }
 };
 
 /**
@@ -343,7 +419,7 @@ struct OutputAction {
     }
   }
 
-  Matrix JacobianAtIdentity() const {
+  Matrix jacobianAtIdentity() const {
     Matrix H = Matrix::Zero(Output::RowsAtCompileTime, G::dimension);
     H.block<3, 3>(0, 6 + 3 * index_) = Rot3::Hat(y_.unitVector());
     return H;
@@ -365,106 +441,14 @@ template <size_t N>
 struct Geometry {
   using M = State<N>;
   using G = Group<N>;
-  using InputType = Vector6;  // Mathematical input (ω, 0)
   using OutputAction = abc::OutputAction<N>;
 
-  /**
-   * Compute the lifted tangent vector from state and input.
-   * This implements the lift operation from the equivariant filter paper.
-   * @param xi Current state on the manifold (including orientation, bias, and
-   * sensor rotations).
-   * @param u Mathematical input vector (ω, 0)
-   * @return TangentVector Lifted vector in the Lie algebra used for
-   * propagation.
-   */
-  static typename G::TangentVector lift(const M& xi, const InputType& u) {
-    Vector3 w = u.head<3>();
-    Vector3 corrected_w = w - xi.b;
-
-    Vector L = Vector::Zero(6 + 3 * N);
-    L.head<3>() = corrected_w;
-    L.segment<3>(3) = -Rot3::Hat(w) * xi.b;
-    for (size_t i = 0; i < N; i++) {
-      L.segment<3>(6 + 3 * i) = xi.S[i].unrotate(corrected_w);
-    }
-
-    return L;
-  }
-
-  /**
-   * Computes the discrete time state transition matrix
-   * @param u Angular velocity
-   * @param dt time step
-   * @return State transition matrix in discrete time
-   */
-  static Matrix stateTransitionMatrix(G X_hat, const Vector6& u, double dt) {
-    const InputAction<N> psi_u(u);
-    const Vector3 omega_tilde = psi_u(X_hat.inverse()).template head<3>();
-    Matrix3 W0 = Rot3::Hat(omega_tilde);
-    Matrix Phi1 = Matrix::Zero(6, 6);
-    Matrix3 W0_sq = W0 * W0;
-    Matrix3 Phi12 = -dt * (I_3x3 + 0.5 * dt * W0 + (dt * dt / 6.0) * W0_sq);
-    Matrix3 Phi22 = I_3x3 + dt * W0 + 0.5 * dt * dt * W0_sq;
-    Phi1.block<3, 3>(0, 0) = I_3x3;
-    Phi1.block<3, 3>(0, 3) = Phi12;
-    Phi1.block<3, 3>(3, 3) = Phi22;
-
-    std::vector<Matrix> blocks;
-    blocks.push_back(Phi1);
-    blocks.insert(blocks.end(), N, Phi22);
-    return gtsam::diag(blocks);
-  }
-
-  /**
-   * Computes linearized continuous time state matrix
-   * @param data Input data
-   * @return Linearized state matrix
-   */
-  static Matrix stateMatrixA(const G& X_hat, const Vector6& u) {
-    const InputAction<N> psi_u(u);
-    const Vector3 omega_tilde = psi_u(X_hat.inverse()).template head<3>();
-    Matrix3 W0 = Rot3::Hat(omega_tilde);
-
-    Matrix A1 = Matrix::Zero(6, 6);
-    A1.block<3, 3>(0, 3) = -I_3x3;
-    A1.block<3, 3>(3, 3) = W0;
-
-    std::vector<Matrix> blocks{A1};
-    blocks.insert(blocks.end(), N, W0);
-    return gtsam::diag(blocks);
-  }
-
-  /// Computes the input uncertainty propagation matrix
-  static Matrix inputMatrix(G X_hat) {
-    const Matrix3 A_matrix = X_hat.A().matrix();
-    Matrix B1 = gtsam::diag({A_matrix, A_matrix});
-    Matrix B2(3 * N, 3 * N);
-
-    for (size_t i = 0; i < N; ++i) {
-      B2.block<3, 3>(3 * i, 3 * i) = X_hat.calibrations()[i].matrix();
-    }
-
-    return gtsam::diag({B1, B2});
-  }
 
   /// The continuous-time process noise covariance in lifted coordinates
   static Matrix processNoise(const Matrix& Sigma) {
     std::vector<Matrix> blocks{Sigma};
     blocks.insert(blocks.end(), N, 1e-9 * I_3x3);
     return gtsam::diag(blocks);
-  }
-
-  /// Computes the input uncertainty propagation matrix
-  static Matrix inputMatrixBt(G X_hat) {
-    const Matrix3 A_matrix = X_hat.A().matrix();
-    Matrix B1 = gtsam::diag({A_matrix, A_matrix});
-    Matrix B2(3 * N, 3 * N);
-
-    for (size_t i = 0; i < N; ++i) {
-      B2.block<3, 3>(3 * i, 3 * i) = X_hat.calibrations()[i].matrix();
-    }
-
-    return gtsam::diag({B1, B2});
   }
 
   /**

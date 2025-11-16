@@ -20,6 +20,10 @@ using namespace gtsam;
 // Define N for testing purposes, e.g., 2 calibration states
 using State = abc::State<2>;
 using Group = abc::Group<2>;
+using StateAction = abc::StateAction<2>;
+using Lift = abc::Lift<2>;
+using InputAction = abc::InputAction<2>;
+using OutputAction = abc::OutputAction<2>;
 using Geometry = abc::Geometry<2>;
 using Calibrations = abc::Calibrations<2>;
 
@@ -170,7 +174,7 @@ TEST(ABC, StateAction) {
   using namespace abc_examples;
 
   // Test State Action (G * State)
-  State transformed_xi = abc::StateAction<2>(xi2)(g1);
+  State transformed_xi = StateAction(xi2)(g1);
   EXPECT(assert_equal(transformed_xi.R, xi2.R * g1.A()));
   EXPECT(assert_equal<Matrix>(transformed_xi.b,
                               g1.A().inverse().matrix() * (xi2.b - g1.a())));
@@ -190,14 +194,14 @@ TEST(ABC, StateActionIsRightAction) {
   using namespace abc_examples;
 
   // Create action functors
-  abc::StateAction<2> phi_xi1(xi1);
+  StateAction phi_xi1(xi1);
 
   // Left side: apply composed group element (g1 * g2) to xi
   const State left_side = phi_xi1(g1 * g2);
 
   // Right side: apply g1 first, then g2 to the result
   const State xi1_g1 = phi_xi1(g1);
-  const State right_side = abc::StateAction<2>(xi1_g1)(g2);
+  const State right_side = StateAction(xi1_g1)(g2);
 
   // For a right action, these should be equal
   EXPECT(assert_equal(left_side, right_side));
@@ -206,7 +210,7 @@ TEST(ABC, StateActionIsRightAction) {
   const State left_side_2 = phi_xi1(g2 * g1);
 
   const State xi1_g2 = phi_xi1(g2);
-  const State right_side_2 = abc::StateAction<2>(xi1_g2)(g1);
+  const State right_side_2 = StateAction(xi1_g2)(g1);
 
   EXPECT(assert_equal(left_side_2, right_side_2));
 }
@@ -215,83 +219,27 @@ TEST(ABC, StateActionIsRightAction) {
 TEST(ABC, StateActionJacobianAnalytic) {
   using namespace abc_examples;
 
-  abc::StateAction<2> action_xi1(xi1);
-  Matrix analytic1 = action_xi1.JacobianAtIdentity();
+  StateAction action_xi1(xi1);
+  Matrix analytic1 = action_xi1.jacobianAtIdentity();
   Matrix numerical1 = gtsam::numericalDerivative11<State, Group>(
       [&](const Group& g) { return action_xi1(g); }, Group::Identity());
   EXPECT(assert_equal(analytic1, numerical1));
 
-  abc::StateAction<2> action_xi2(xi2);
-  Matrix analytic2 = action_xi2.JacobianAtIdentity();
+  StateAction action_xi2(xi2);
+  Matrix analytic2 = action_xi2.jacobianAtIdentity();
   Matrix numerical2 = gtsam::numericalDerivative11<State, Group>(
       [&](const Group& g) { return action_xi2(g); }, Group::Identity());
   EXPECT(assert_equal(analytic2, numerical2));
 }
 
 /* ************************************************************************* */
-TEST(ABC, InputAction) {
-  using namespace abc_examples;
-
-  abc::InputAction<2> psi_u(u);
-
-  Vector6 transformed_u = psi_u(g1);
-  EXPECT(assert_equal<Vector>(transformed_u.head<3>(),
-                              g1.A().unrotate(omega - g1.a())));
-  EXPECT(assert_equal<Vector>(transformed_u.tail<3>(), Z_3x1,
-                              1e-9));  // Virtual input stays zero
-
-  EXPECT(assert_equal(transformed_u, abc::InputAction<2>(u)(g1)));
-}
-
-/* ************************************************************************* */
-// A right action satisfies φ(xi, g1 * g2) = φ(φ(xi, g1), g2), i.e. applying
-// g1 then g2 equals applying their product, with the multiplication happening
-// on the right.
-TEST(ABC, InputActionIsRightAction) {
-  using namespace abc_examples;
-
-  // Create action functors
-  abc::InputAction<2> psi_u(u);
-
-  // Left side: apply composed group element (g1 * g2) to xi
-  const Vector6 left_side = psi_u(g1 * g2);
-
-  // Right side: apply g1 first, then g2 to the result
-  const Vector6 u_g1 = psi_u(g1);
-  const Vector6 right_side = abc::InputAction<2>(u_g1)(g2);
-  // For a right action, these should be equal
-  EXPECT(assert_equal(left_side, right_side));
-
-  // Additional test with g1 and g2 reversed
-  const Vector6 left_side_2 = psi_u(g2 * g1);
-
-  const Vector6 u_g2 = psi_u(g2);
-  const Vector6 right_side_2 = abc::InputAction<2>(u_g2)(g1);
-
-  EXPECT(assert_equal(left_side_2, right_side_2));
-}
-
-/* ************************************************************************* */
-TEST(ABC, InputActionJacobianAnalytic) {
-  using namespace abc_examples;
-
-  // Create action functors
-  abc::InputAction<2> psi_u(u);
-  Matrix analytic = psi_u.JacobianAtIdentity();
-  Matrix numerical = gtsam::numericalDerivative11<Vector6, Group>(
-      [&](const Group& g) { return psi_u(g); }, Group::Identity());
-
-  EXPECT(assert_equal(analytic, numerical));
-}
-
-/* ************************************************************************* */
-TEST(ABC, Geometry_lift) {
+TEST(ABC, LiftFunctor) {
   State xi = abc_examples::xi1;
 
   // Setup input
   Vector3 omega(0.5, 0.6, 0.7);
   Vector6 u = abc::toInputVector(omega);
-  typename Group::TangentVector L = Geometry::lift(xi, u);
+  typename Group::TangentVector L = Lift(u)(xi);
 
   // Expected values
   Vector3 expected_L_head = omega - xi.b;
@@ -306,12 +254,68 @@ TEST(ABC, Geometry_lift) {
 }
 
 /* ************************************************************************* */
-TEST(ABC, Geometry_stateMatrixA) {
+TEST(ABC, InputAction) {
+  using namespace abc_examples;
+
+  InputAction psi_u(u);
+
+  Vector6 transformed_u = psi_u(g1);
+  EXPECT(assert_equal<Vector>(transformed_u.head<3>(),
+                              g1.A().unrotate(omega - g1.a())));
+  EXPECT(assert_equal<Vector>(transformed_u.tail<3>(), Z_3x1,
+                              1e-9));  // Virtual input stays zero
+
+  EXPECT(assert_equal(transformed_u, InputAction(u)(g1)));
+}
+
+/* ************************************************************************* */
+// A right action satisfies φ(xi, g1 * g2) = φ(φ(xi, g1), g2), i.e. applying
+// g1 then g2 equals applying their product, with the multiplication happening
+// on the right.
+TEST(ABC, InputActionIsRightAction) {
+  using namespace abc_examples;
+
+  // Create action functors
+  InputAction psi_u(u);
+
+  // Left side: apply composed group element (g1 * g2) to xi
+  const Vector6 left_side = psi_u(g1 * g2);
+
+  // Right side: apply g1 first, then g2 to the result
+  const Vector6 u_g1 = psi_u(g1);
+  const Vector6 right_side = InputAction(u_g1)(g2);
+  // For a right action, these should be equal
+  EXPECT(assert_equal(left_side, right_side));
+
+  // Additional test with g1 and g2 reversed
+  const Vector6 left_side_2 = psi_u(g2 * g1);
+
+  const Vector6 u_g2 = psi_u(g2);
+  const Vector6 right_side_2 = InputAction(u_g2)(g1);
+
+  EXPECT(assert_equal(left_side_2, right_side_2));
+}
+
+/* ************************************************************************* */
+TEST(ABC, InputActionJacobianAnalytic) {
+  using namespace abc_examples;
+
+  // Create action functors
+  InputAction psi_u(u);
+  Matrix analytic = psi_u.jacobianAtIdentity();
+  Matrix numerical = gtsam::numericalDerivative11<Vector6, Group>(
+      [&](const Group& g) { return psi_u(g); }, Group::Identity());
+
+  EXPECT(assert_equal(analytic, numerical));
+}
+
+/* ************************************************************************* */
+TEST(ABC, InputAction_stateMatrixA) {
   using namespace abc_examples;
 
   // Setup input
-  Matrix A_matrix = Geometry::stateMatrixA(g1, u);
-  abc::InputAction<2> psi_u(u);
+  InputAction psi_u(u);
+  Matrix A_matrix = psi_u.stateMatrixA(g1);
   Matrix3 W0 = Rot3::Hat(psi_u(g1.inverse()).head<3>());
 
   Matrix expected_A1 = Matrix::Zero(6, 6);
@@ -325,7 +329,7 @@ TEST(ABC, Geometry_stateMatrixA) {
 }
 
 /* ************************************************************************* */
-TEST(ABC, Geometry_stateTransitionMatrix) {
+TEST(ABC, InputAction_stateTransitionMatrix) {
   Group X_hat = abc_examples::g1;
 
   // Setup input
@@ -333,8 +337,9 @@ TEST(ABC, Geometry_stateTransitionMatrix) {
   double dt = 0.1;
 
   Vector6 u = abc::toInputVector(omega);
-  Matrix Phi = Geometry::stateTransitionMatrix(X_hat, u, dt);
-  Matrix3 W0 = Rot3::Hat(abc::InputAction<2>(u)(X_hat.inverse()).head<3>());
+  InputAction psi_u(u);
+  Matrix Phi = psi_u.stateTransitionMatrix(X_hat, dt);
+  Matrix3 W0 = Rot3::Hat(psi_u(X_hat.inverse()).head<3>());
   Matrix Phi1 = Matrix::Zero(6, 6);
   Matrix3 Phi12 = -dt * (I_3x3 + (dt / 2) * W0 + ((dt * dt) / 6) * W0 * W0);
   Matrix3 Phi22 = I_3x3 + dt * W0 + ((dt * dt) / 2) * W0 * W0;
@@ -349,10 +354,11 @@ TEST(ABC, Geometry_stateTransitionMatrix) {
 }
 
 /* ************************************************************************* */
-TEST(ABC, Geometry_inputMatrix) {
+TEST(ABC, InputAction_inputMatrix) {
   Group X_hat = abc_examples::g1;
+  InputAction psi_u(abc_examples::u);
 
-  Matrix input_matrix = Geometry::inputMatrix(X_hat);
+  Matrix input_matrix = psi_u.inputMatrix(X_hat);
 
   const Matrix3 X_hat_rot = X_hat.A().matrix();
   Matrix expected_B1 = gtsam::diag({X_hat_rot, X_hat_rot});
@@ -381,14 +387,14 @@ TEST(ABC, Geometry_processNoise) {
 }
 
 /* ************************************************************************* */
-TEST(ABC, Geometry_inputMatrixBt) {
+TEST(ABC, InputAction_inputMatrixBt) {
   // This function is identical to inputMatrix, so we'll test its output matches
   // inputMatrix.
   Group X_hat = abc_examples::g1;
+  InputAction psi_u(abc_examples::u);
 
-  Matrix input_matrix_Bt = Geometry::inputMatrixBt(X_hat);
-  Matrix input_matrix =
-      Geometry::inputMatrix(X_hat);  // Reference from the other function
+  Matrix input_matrix_Bt = psi_u.inputMatrixBt(X_hat);
+  Matrix input_matrix = psi_u.inputMatrix(X_hat);  // Reference from other func
 
   EXPECT(assert_equal(input_matrix_Bt, input_matrix));
 }
@@ -401,19 +407,19 @@ TEST(ABC, OutputAction) {
 
   // Test outputAction (calibrated sensor)
   int cal_idx = 0;
-  abc::OutputAction<2> phi_y(y, cal_idx);
+  OutputAction phi_y(y, cal_idx);
   Vector3 transformed_y_calibrated = phi_y(g1);
   EXPECT(assert_equal<Vector>(transformed_y_calibrated,
                               g1.calibrations()[0].unrotate(y.unitVector())));
 
   // Test outputAction (uncalibrated sensor)
   int uncalibrated_idx = -1;
-  abc::OutputAction<2> uncalibrated_phi_y(y, uncalibrated_idx);
+  OutputAction uncalibrated_phi_y(y, uncalibrated_idx);
   Vector3 transformed_y_uncalibrated = uncalibrated_phi_y(g1);
   EXPECT(assert_equal<Vector>(transformed_y_uncalibrated,
                               g1.A().unrotate(y.unitVector())));
 
-  CHECK_EXCEPTION(abc::OutputAction<2>(y, 2), std::out_of_range);
+  CHECK_EXCEPTION(OutputAction(y, 2), std::out_of_range);
 }
 
 /* ************************************************************************* */
@@ -423,17 +429,17 @@ TEST(ABC, OutputActionIsRightAction) {
   using namespace abc_examples;
 
   Unit3 y_meas(1, 0, 0);
-  abc::OutputAction<2> phi_y(y_meas, 0);
+  OutputAction phi_y(y_meas, 0);
 
   const Vector3 left_side = phi_y(g1 * g2);
 
   Unit3 y_g1(phi_y(g1));
-  const Vector3 right_side = abc::OutputAction<2>(y_g1, 0)(g2);
+  const Vector3 right_side = OutputAction(y_g1, 0)(g2);
   EXPECT(assert_equal(left_side, right_side));
 
   const Vector3 left_side_2 = phi_y(g2 * g1);
   Unit3 y_g2(phi_y(g2));
-  const Vector3 right_side_2 = abc::OutputAction<2>(y_g2, 0)(g1);
+  const Vector3 right_side_2 = OutputAction(y_g2, 0)(g1);
 
   EXPECT(assert_equal(left_side_2, right_side_2));
 }
@@ -443,8 +449,8 @@ TEST(ABC, OutputActionJacobianAnalytic) {
   using namespace abc_examples;
 
   Unit3 y_meas(1, 0, 0);
-  abc::OutputAction<2> phi_y(y_meas, 0);
-  Matrix analytic = phi_y.JacobianAtIdentity();
+  OutputAction phi_y(y_meas, 0);
+  Matrix analytic = phi_y.jacobianAtIdentity();
   Matrix numerical = gtsam::numericalDerivative11<Vector3, Group>(
       [&](const Group& g) { return phi_y(g); }, Group::Identity());
 
@@ -498,9 +504,9 @@ TEST(ABC, EqFilter) {
   Matrix Sigma = I_6x6;
   double dt = 0.01;
 
-  Vector6 u_vec = abc::toInputVector(omega);
+  Vector6 u = abc::toInputVector(omega);
   Matrix Q = Geometry::processNoise(Sigma);
-  filter.predict<Geometry>(u_vec, Q, dt);
+  filter.predict<Lift, InputAction>(u, Q, dt);
 
   // Regression
   Group expected({Rot3(1, 0.00015, -0.0004,  //
