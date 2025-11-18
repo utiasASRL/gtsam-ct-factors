@@ -436,6 +436,13 @@ NavState NavState::update(const Vector3& b_acceleration, const Vector3& b_omega,
 }
 
 //------------------------------------------------------------------------------
+
+// Because our navigation frames are placed on a spinning Earth, we experience two apparent forces on our inertials
+// Let Omega be the Earth's rotation rate in the navigation frame
+// Coriolis acceleration = -2 * (omega X n_v)
+// Centrifugal acceleration (secondOrder) = -omega X (omega X n_t)
+// We would also experience a rotation of (omega*dt) over time - so, counteract by compensating rotation by (-omega * dt)
+// Integrate centrifugal & coriolis accelerations to yield position, velocity perturbations
 Vector9 NavState::coriolis(double dt, const Vector3& omega, bool secondOrder,
     OptionalJacobian<9, 9> H) const {
   Rot3 nRb = R_;
@@ -444,13 +451,6 @@ Vector9 NavState::coriolis(double dt, const Vector3& omega, bool secondOrder,
   const double dt2 = dt * dt;
   const Vector3 omega_cross_vel = omega.cross(n_v);
 
-  // Because our navigation frames are placed on a spinning Earth, we experience two apparent forces on our inertials
-  // Let Omega be the Earth's rotation rate in the navigation frame
-  // Coriolis acceleration = -2 * (omega X n_v)
-  // Centrifugal acceleration (secondOrder) = -omega X (omega X n_t)
-  // We would also experience a rotation of (omega*dt) over time - so, counteract by compensating rotation by (-omega * dt)
-  // Integrate centrifugal & coriolis accelerations to yield position, velocity perturbations
-
   Vector9 n_xi;
   // Coriolis (first order) acceleration corrections
   dR(n_xi) << ((-dt) * omega);
@@ -458,34 +458,35 @@ Vector9 NavState::coriolis(double dt, const Vector3& omega, bool secondOrder,
   dV(n_xi) << ((-2.0 * dt) * omega_cross_vel);
 
   // Centrifugal (second order) acceleration corrections
-  Matrix3 H2_wrt_t; // To store Jacobian (if needed/desired)
+  Matrix3 D_c2_nt; // To store Jacobian (if needed/desired)
   if (secondOrder) {
-    const Vector3 omega_cross2_t = doubleCross(omega, n_t, nullptr, H ? &H2_wrt_t : nullptr);
+    const Vector3 omega_cross2_t = doubleCross(omega, n_t, nullptr, H ? &D_c2_nt : nullptr);
     dP(n_xi) -= (0.5 * dt2) * omega_cross2_t;
     dV(n_xi) -= dt * omega_cross2_t;
   }
 
   // Transform correction from navigation frame -> body frame and get Jacobians
   Vector9 xi;
-  Matrix3 D_dR_R, D_dP_R, D_dV_R, D_body_nav;
-  dR(xi) = nRb.unrotate(dR(n_xi), H ? &D_dR_R : 0, H ? &D_body_nav : 0);
+  Matrix3 D_dR_R, D_dP_R, D_dV_R;
+  dR(xi) = nRb.unrotate(dR(n_xi), H ? &D_dR_R : 0);
   dP(xi) = nRb.unrotate(dP(n_xi), H ? &D_dP_R : 0);
   dV(xi) = nRb.unrotate(dV(n_xi), H ? &D_dV_R : 0);
 
   // Assemble Jacobians
   if (H) {
     H->setZero();
-    const Matrix3 Omega = skewSymmetric(omega);
-    const Matrix3 D_cross_state = Omega * R();
+    const Vector3 omega_b = nRb.unrotate(omega);
+    const Matrix3 D_c1_b = skewSymmetric(omega_b);
     H->setZero();
     D_R_R(H) << D_dR_R;
-    D_t_v(H) << D_body_nav * (-dt2) * D_cross_state;
+    D_t_v(H) << (-dt2) * D_c1_b;
     D_t_R(H) << D_dP_R;
-    D_v_v(H) << D_body_nav * (-2.0 * dt) * D_cross_state;
+    D_v_v(H) << (-2.0 * dt) * D_c1_b;
     D_v_R(H) << D_dV_R;
     if (secondOrder) {
-      D_t_t(H) -= (0.5 * dt2) * D_body_nav * (H2_wrt_t * R());
-      D_v_t(H) -= dt * D_body_nav * (H2_wrt_t * R());
+      Matrix3 D_c2_b = D_c1_b * D_c1_b;
+      D_t_t(H) -= (0.5 * dt2) * D_c2_b;
+      D_v_t(H) -= dt * D_c2_b;
     }
   }
   return xi;
