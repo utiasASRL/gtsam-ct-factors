@@ -48,7 +48,9 @@ Interpolator<PoseType>::interpolatePoseAndVelocity(
     OptionalMatrixVecType H,
     const std::shared_ptr<Matrix>& mainSolveMarginalMatrix,
     Matrix* covarianceOut,
-    const std::shared_ptr<const LambdaPsiMats>& LambdaPsiPreComp) const {
+    const std::shared_ptr<const LambdaPsiMats>& LambdaPsiPreComp,
+      const std::shared_ptr<const LocalStateVecs>& localStateVecsPreComp,
+      const std::shared_ptr<const LocalGlobalStateJacs>& localGlobalStateJacsPreComp) const {
   assert((tPoseVel_k.has_value() || tPoseVel_kp1.has_value()) &&
          "At least one TimestampedPoseVel must be defined");
   // second point not defined, extrap from first
@@ -100,7 +102,7 @@ Interpolator<PoseType>::interpolatePoseAndVelocity(
     } else {
       return interpolatePoseAndVelocity_(
           tPoseVel_k.value(), tPoseVel_kp1.value(), t_tau, H,
-          mainSolveMarginalMatrix, covarianceOut, LambdaPsiPreComp);
+          mainSolveMarginalMatrix, covarianceOut, LambdaPsiPreComp, localStateVecsPreComp, localGlobalStateJacsPreComp);
     }
   }
 }
@@ -207,7 +209,9 @@ Interpolator<PoseType>::interpolatePoseAndVelocity_(
     OptionalMatrixVecType H,
     const std::shared_ptr<Matrix>& mainSolveMarginalMatrix,
     Matrix* covarianceOut,
-    const std::shared_ptr<const LambdaPsiMats>& LambdaPsiPreComp) const {
+    const std::shared_ptr<const LambdaPsiMats>& LambdaPsiPreComp,
+    const std::shared_ptr<const LocalStateVecs>& localStateVecsPreComp,
+    const std::shared_ptr<const LocalGlobalStateJacs>& localGlobalStateJacsPreComp) const {
   // unpack poses and velocities
   const auto& [poseVel_k, t_k] = tPoseVel_k;
   const auto& [poseVel_kp1, t_kp1] = tPoseVel_kp1;
@@ -233,23 +237,37 @@ Interpolator<PoseType>::interpolatePoseAndVelocity_(
   MatrixN dxi_dTkp1;
   VectorN xi;
   MatrixN right_jac_inv;
-  if (H) {
-    MatrixN dbetween_Tk;
-    MatrixN dbetween_Tkp1;
-    xi = traits<PoseType>::Logmap(
-        traits<PoseType>::Between(T_k, T_kp1, &dbetween_Tk, &dbetween_Tkp1),
-        &right_jac_inv);
-    // Compute deriviatives
-    dxi_dTk = right_jac_inv * dbetween_Tk;
-    dxi_dTkp1 = right_jac_inv * dbetween_Tkp1;
-  } else {
-    xi = traits<PoseType>::Logmap(traits<PoseType>::Between(T_k, T_kp1),
-                                  &right_jac_inv);
-  }
-  // xi derivative at next time step
+
+  // xi and derivative at next time step
   VectorN xi_kp1, xi_dot_kp1;
-  xi_kp1 << xi;
-  xi_dot_kp1 = right_jac_inv * varpi_kp1;
+  if(localStateVecsPreComp) {
+    xi_kp1 = localStateVecsPreComp->first;
+    xi_dot_kp1 = localStateVecsPreComp->second;
+
+    if(H && localGlobalStateJacsPreComp) {
+      dxi_dTk = localGlobalStateJacsPreComp->at(0);
+      dxi_dTkp1 = localGlobalStateJacsPreComp->at(1);
+    }
+
+  } else
+  {
+    if (H) {
+      MatrixN dbetween_Tk;
+      MatrixN dbetween_Tkp1;
+      xi = traits<PoseType>::Logmap(
+          traits<PoseType>::Between(T_k, T_kp1, &dbetween_Tk, &dbetween_Tkp1),
+          &right_jac_inv);
+      // Compute deriviatives
+      dxi_dTk = right_jac_inv * dbetween_Tk;
+      dxi_dTkp1 = right_jac_inv * dbetween_Tkp1;
+    } else {
+      xi = traits<PoseType>::Logmap(traits<PoseType>::Between(T_k, T_kp1),
+                                    &right_jac_inv);
+    }
+    xi_kp1 << xi;
+    xi_dot_kp1 = right_jac_inv * varpi_kp1;
+  }
+  
 
   VectorN xi_tau =
       Lambda(0, dim) * xi_dot_k + Psi(0, 0) * xi_kp1 +
@@ -277,26 +295,44 @@ Interpolator<PoseType>::interpolatePoseAndVelocity_(
   // Compute Jacobians
   if (H) {
     // Derivative of right Jacobians
+
+    // dgammakp1
+    MatrixN dxidot_dTk;
+    MatrixN dxidot_dTkp1;
+    MatrixN dxidotkp1_dvarpikp1;
+
+    if(localGlobalStateJacsPreComp) {
+      dxidot_dTk = localGlobalStateJacsPreComp->at(2);
+      dxidot_dTkp1 = localGlobalStateJacsPreComp->at(3);
+      dxidotkp1_dvarpikp1 = localGlobalStateJacsPreComp->at(4);
+    }
+
+    else {
+      // Zero for vector spaces, use an approximation for Lie groups
+      MatrixN dxidot_dxi;
+      if constexpr (std::is_same_v<typename traits<PoseType>::structure_category,
+                                  vector_space_tag>) {
+        dxidot_dxi.setZero();
+      } else {
+        // For Lie groups
+        dxidot_dxi = -PoseType::adjointMap(varpi_kp1) / 2.0;
+      }
+      dxidot_dTk << dxidot_dxi * dxi_dTk;
+      dxidot_dTkp1 << dxidot_dxi * dxi_dTkp1;
+      dxidotkp1_dvarpikp1 << right_jac_inv;
+    }
+
     // Zero for vector spaces, use an approximation for Lie groups
-    MatrixN dxidot_dxi;
     MatrixN dvarpitau_dxitau;
     if constexpr (std::is_same_v<typename traits<PoseType>::structure_category,
                                  vector_space_tag>) {
-      dxidot_dxi.setZero();
       dvarpitau_dxitau.setZero();
     } else {
       // For Lie groups
-      dxidot_dxi = -PoseType::adjointMap(varpi_kp1) / 2.0;
       dvarpitau_dxitau = PoseType::adjointMap(xidot_tau) / 2.0;
     }
-    // dgammakp1
-    Eigen::Matrix<double, dim, dim> dxidot_dTk;
-    Eigen::Matrix<double, dim, dim> dxidot_dTkp1;
-    dxidot_dTk << dxidot_dxi * dxi_dTk;
-    dxidot_dTkp1 << dxidot_dxi * dxi_dTkp1;
 
-    Eigen::Matrix<double, dim, dim> dxidotkp1_dvarpikp1;
-    dxidotkp1_dvarpikp1 << right_jac_inv;
+
     // dxitau
     MatrixN dxitau_dTk = Psi(0, 0) * dxi_dTk + Psi(0, dim) * dxidot_dTk;
     MatrixN dxitau_dvarpik =

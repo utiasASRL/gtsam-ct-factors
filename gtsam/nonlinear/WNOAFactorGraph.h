@@ -25,6 +25,7 @@
 #include <gtsam/nonlinear/StateData.h>
 #include <gtsam/linear/GaussianFactorGraph.h>
 #include <array>
+#include <memory>
 
 using namespace std;
 
@@ -51,9 +52,15 @@ private:
   // Interpolator class
   const Interpolator<PoseType> interpolator_;
 
+
+  using LambdaPsiMats = typename Interpolator<PoseType>::LambdaPsiMats;
+  using LocalStateVecs = typename Interpolator<PoseType>::LocalStateVecs;
+  using LocalGlobalStateJacs = typename Interpolator<PoseType>::LocalGlobalStateJacs;
+
   // map interpolated state to border states
   unordered_map<StateData, pair<StateData, StateData>> interp_to_borders_map_;
   std::vector<std::pair<StateData, std::pair<StateData, StateData>>> interp_to_borders_vec_;
+  std::vector<std::pair<StateData, std::shared_ptr<const LambdaPsiMats>>> interp_to_LambdaPsi_vec_;
 
   bool fixed_noise_model_ = false;
 
@@ -92,7 +99,15 @@ public:
               const auto& right = border_states.second;
               border_pose_keys_.insert(left.pose);  border_pose_keys_.insert(right.pose);
               border_vel_keys_.insert(left.vel);    border_vel_keys_.insert(right.vel);
+
+              double tau = kv.first.time;
+              double t_k = left.time;
+              double t_kp1 = right.time;
+                interp_to_LambdaPsi_vec_.emplace_back(
+                  kv.first,
+                  std::make_shared<LambdaPsiMats>(interpolator_.getLambdaPsi(t_k, t_kp1, tau)));
             }
+
 
             // Convert map to vector for optimal parallel access patterns
             interp_to_borders_vec_ = std::vector<std::pair<StateData, std::pair<StateData, StateData>>>(

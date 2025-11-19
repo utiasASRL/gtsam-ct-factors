@@ -269,8 +269,8 @@ Values WNOAFactorGraph<PoseType>::getInterpolatedValues(
 
                 PoseVelocity<PoseType> result;
         if (InterpJacobians) {
-                    result = interpolator_.interpolatePoseAndVelocity(
-                        state_left, state_right, interp_state.time, &local_data.H);
+              result = interpolator_.interpolatePoseAndVelocity(
+                state_left, state_right, interp_state.time, &local_data.H, nullptr, nullptr,  interp_to_LambdaPsi_vec_[i].second);
 
                     // Store jacobians
                     std::array<Matrix,4> Jpose = {local_data.H[0], local_data.H[1], local_data.H[2], local_data.H[3]};
@@ -278,8 +278,8 @@ Values WNOAFactorGraph<PoseType>::getInterpolatedValues(
                     local_data.jacobians.emplace_back(interp_state.pose, std::move(Jpose));
                     local_data.jacobians.emplace_back(interp_state.vel,  std::move(Jvel));
         } else {
-                    result = interpolator_.interpolatePoseAndVelocity(
-                        state_left, state_right, interp_state.time);
+              result = interpolator_.interpolatePoseAndVelocity(
+                state_left, state_right, interp_state.time, nullptr, nullptr, nullptr, interp_to_LambdaPsi_vec_[i].second);
                 }
 
                 // Store results in thread-local vectors
@@ -351,6 +351,7 @@ Values WNOAFactorGraph<PoseType>::getInterpolatedValues(
   if (InterpCondCovs) InterpCondCovs->reserve(this->interp_to_borders_vec_.size());
 
   // 3. Iterate interpolation entries using cache-friendly vector layout.
+  int idx = 0;
   for (const auto& entry : this->interp_to_borders_vec_) {
     const auto& interp_state  = entry.first;
     const auto& border_states = entry.second;
@@ -365,9 +366,9 @@ Values WNOAFactorGraph<PoseType>::getInterpolatedValues(
     // 4. Interpolate (with or without Jacobians).
     PoseVelocity<PoseType> result;
     if (InterpJacobians) {
-      result = interpolator_.interpolatePoseAndVelocity(state_left, state_right, interp_state.time, &H);
+      result = interpolator_.interpolatePoseAndVelocity(state_left, state_right, interp_state.time, &H, nullptr, nullptr, interp_to_LambdaPsi_vec_.at(idx).second);
     } else {
-      result = interpolator_.interpolatePoseAndVelocity(state_left, state_right, interp_state.time);
+      result = interpolator_.interpolatePoseAndVelocity(state_left, state_right, interp_state.time, nullptr, nullptr, nullptr, interp_to_LambdaPsi_vec_.at(idx).second);
     }
 
     // 5. Insert interpolated pose & velocity.
@@ -386,6 +387,7 @@ Values WNOAFactorGraph<PoseType>::getInterpolatedValues(
       Matrix2N Sigma_tau = interpolator_.computeConditionalCov(state_left, state_right, state_tau);
       (*InterpCondCovs)[interp_state] = std::move(Sigma_tau);
     }
+    idx++;
   }
 
   return values_interp;
