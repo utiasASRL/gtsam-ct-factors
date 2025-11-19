@@ -33,6 +33,7 @@
 #include <algorithm>
 #include <array>
 #include <thread>
+#include <memory>
 
 
 using namespace std;
@@ -64,10 +65,9 @@ public:
     for (size_t i = blocked_range.begin(); i != blocked_range.end(); ++i) {
       if (nonlinearGraph_[i] && nonlinearGraph_[i]->sendable())
       {
-        // Check if i is in wnoa_interp_factor_indices_
-        if(nonlinearGraph_.isWNOAInterpFactorIndex(i)) {
-          // This is a WNOAInterpFactor, cast down statically to avoid dynamic cast
-          auto wnoa_factor = static_pointer_cast<WNOAInterpFactor<PoseType>>(nonlinearGraph_[i]);
+        // Attempt dynamic cast to WNOAInterpFactor
+        auto wnoa_factor = dynamic_pointer_cast<WNOAInterpFactor<PoseType>>(nonlinearGraph_[i]);
+        if (wnoa_factor) {
           result_[i] = wnoa_factor->linearize(linearizationPoint_, &passedInterpData_);
         } else {
           result_[i] = nonlinearGraph_[i]->linearize(linearizationPoint_);
@@ -131,12 +131,11 @@ std::shared_ptr<GaussianFactorGraph>  WNOAFactorGraph<PoseType>::linearize(const
   for(size_t i = 0; i < size(); i++) {
     auto& factor = (*this)[i];
     if(factor && !(factor->sendable())) {
-      // Check if i is in wnoa_interp_factor_indices_
-      if (isWNOAInterpFactorIndex(i)) {
-        // This is a WNOAInterpFactor, cast down statically to avoid dynamic cast
-        auto wnoa_factor = static_pointer_cast<WNOAInterpFactor<PoseType>>(factor);
+      // Attempt dynamic cast to WNOAInterpFactor
+      auto wnoa_factor = dynamic_pointer_cast<WNOAInterpFactor<PoseType>>(factor);
+      if (wnoa_factor) {
         (*linearFG)[i] = wnoa_factor->linearize(linearizationPoint, passedInterpData.get());
-      } else{
+      } else {
         (*linearFG)[i] = factor->linearize(linearizationPoint);
       }
     }
@@ -148,15 +147,14 @@ std::shared_ptr<GaussianFactorGraph>  WNOAFactorGraph<PoseType>::linearize(const
 
   // linearize all factors
   for (const sharedFactor& factor : factors_) {
-    // Get index of factor
-  size_t i = &factor - &factors_[0];
-    // Check if i is in wnoa_interp_factor_indices_
-    if (factor && isWNOAInterpFactorIndex(i)) {
-      // This is a WNOAInterpFactor, cast down statically to avoid dynamic cast
-      auto wnoa_factor = static_pointer_cast<WNOAInterpFactor<PoseType>>(factor);
-      linearFG->push_back(wnoa_factor->linearize(linearizationPoint, passedInterpData.get()));
-    } else if (factor) {
+    // Attempt dynamic cast to WNOAInterpFactor
+    if (factor) {
+      auto wnoa_factor = dynamic_pointer_cast<WNOAInterpFactor<PoseType>>(factor);
+      if (wnoa_factor) {
+        linearFG->push_back(wnoa_factor->linearize(linearizationPoint, passedInterpData.get()));
+      } else {
       linearFG->push_back(factor->linearize(linearizationPoint));
+      }
     } else
       linearFG->push_back(GaussianFactor::shared_ptr());
   }
@@ -192,14 +190,13 @@ double WNOAFactorGraph<PoseType>::error(const Values& values) const {
   // iterate over all the factors_ to accumulate the log probabilities
   for(const sharedFactor& factor: factors_) {
 
-  size_t i = &factor - &factors_[0];
-    // Check if i is in wnoa_interp_factor_indices_
-  if (isWNOAInterpFactorIndex(i)) {
-      // This is a WNOAInterpFactor, cast down statically to avoid dynamic cast
-      auto wnoa_factor = static_pointer_cast<WNOAInterpFactor<PoseType>>(factor);
-      total_error += wnoa_factor->error(values, passedInterpData.get());
-    } else if (factor) {
-      total_error += factor->error(values);
+    if (factor) {
+      auto wnoa_factor = dynamic_pointer_cast<WNOAInterpFactor<PoseType>>(factor);
+      if (wnoa_factor) {
+        total_error += wnoa_factor->error(values, passedInterpData.get());
+      } else {
+        total_error += factor->error(values);
+      }
     }
   }
 

@@ -796,7 +796,6 @@ WNOAFactorGraph<PoseType> interpolateWNOAFactorGraph(
     iter_state++;
   }
   // loop through factors and wrap factors on interpolated states
-  unordered_set<size_t> wnoa_factor_indices;  // Store indices of WNOA factors
   for (auto& factor : graph) {
     // handle null factor
     if (!factor) continue;
@@ -831,10 +830,8 @@ WNOAFactorGraph<PoseType> interpolateWNOAFactorGraph(
           nmfactor, factor_estimated_states, factor_interp_states, Q_psd,
           fixed_noise);
       new_graph.add(wrapped_factor);
-      wnoa_factor_indices.insert(new_graph.size() - 1);  // Store index of added factor
     }
   }
-  new_graph.setWNOAInterpFactorIndices(wnoa_factor_indices);
 
   return new_graph;
 }

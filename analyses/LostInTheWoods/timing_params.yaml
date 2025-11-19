@@ -10,7 +10,7 @@ params:
   del_t: 0.1
   start: 6000
   end: 7000
-  n_runs: 1
+  n_runs: 10
 flags:
   prior: true
   odom: false
@@ -19,8 +19,8 @@ flags:
   gt_init: false
   solve_slam: false
 interp:
-  interp_period: 50
-  fixed_noise: false
+  interp_period: 2
+  fixed_noise: true
 noise: #loc
   prior: [1e1, 1e1, 1e0]
   odom_y: 1.0e-2
