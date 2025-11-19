@@ -8,7 +8,6 @@
 #include <gtsam/nonlinear/WNOAFactorGraph.h>
 #include <gtsam/nonlinear/LevenbergMarquardtOptimizer.h>
 #include <gtsam/nonlinear/WNOALevenbergMarquardtOptimizer.h>
-#include <gtsam/nonlinear/WrapperLevenbergMarquardtOptimizer.h>
 
 using std::string;
 using std::vector;
@@ -334,12 +333,12 @@ int runLostInTheWoods(TimingParams& params) {
 
   // Run optimizer
   std::cout << "Number of factors in interpolated graph: " << graph_interp.size() << std::endl;
-  result_interp = WrapperLevenbergMarquardtOptimizer<Pose2>(graph_interp, initial, opt_params).optimize();
+  result_interp = WNOALevenbergMarquardtOptimizer<Pose2>(graph_interp, initial, opt_params).optimize();
 
   t_start = chrono::steady_clock::now();
   for(unsigned int i = 0; i < params.n_runs; i++)
-  {                           
-    auto LM_inter = WrapperLevenbergMarquardtOptimizer<Pose2>(graph_interp, initial, opt_params_silent);
+  {
+    auto LM_inter = WNOALevenbergMarquardtOptimizer<Pose2>(graph_interp, initial, opt_params_silent);
     LM_inter.optimize();
   }
   t_end = chrono::steady_clock::now();

@@ -76,7 +76,8 @@ public:
     /** unnormalized error, \f$ \sum_i 0.5 (h_i(X_i)-z)^2 / \sigma^2 \f$ in the most common case - exploiting precomputation of interpolation data*/
     double error(const Values& values) const;
 
-
+    // TODO: These vectors need to be defined to indicate which factors are WNOAInterpFactors
+    // Switch back to casting factors to detect this, in order to avoid needing to define these vectors for the user?
     void setWNOAInterpFactorIndices(const unordered_set<size_t>& indices) {
       wnoa_interp_factor_indices_ = indices;
     }
