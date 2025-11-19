@@ -69,7 +69,6 @@ jobs:
           [
             ubuntu-22.04-gcc-9,
             ubuntu-22.04-clang-11,
-            macos-13-xcode-14.2,
             macos-14-xcode-15.4,
             windows-2022-msbuild,
           ]
@@ -86,11 +85,6 @@ jobs:
             os: ubuntu-22.04
             compiler: clang
             version: "11"
-
-          - name: macos-13-xcode-14.2
-            os: macos-13
-            compiler: xcode
-            version: "14.2"
 
           - name: macos-14-xcode-15.4
             os: macos-14
