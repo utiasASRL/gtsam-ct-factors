@@ -180,6 +180,10 @@ class Interpolator {
   std::pair<Matrix, Matrix> getLambdaPsiGeneral(double t_k, double t_kp1,
                                                 double t_tau) const;
 
+  LocalStateVecs computeLocalStateVecs(
+      const TimestampedPoseVel& pvk, const TimestampedPoseVel& pvkp1,
+      LocalGlobalStateJacs* jacs = nullptr) const;
+
 
  protected:
   // Interpoate pose and velocity at left boundary

@@ -241,60 +241,15 @@ Values WNOAFactorGraph<PoseType>::getInterpolatedValues(
         const auto state_right= TimestampedPoseVelocity<PoseType>(border_pose_cache[right.pose], border_vel_cache[right.vel], right.time);
 
         // Precompute local state vars and local-global Jacobians for this border pair
-        // TODO: This duplicates some code within the Interpolator class, we should refactor this
-        // Compute xi_kp1 and xi_dot_kp1
-        auto T_k = values.at<PoseType>(left.pose);
-        auto T_kp1 = values.at<PoseType>(right.pose);
-        auto varpi_kp1 = values.at<typename WNOAFactorGraph<PoseType>::VelocityType>(right.vel);
-
-        VectorN xi_kp1, xi_dot_kp1;
-        MatrixN right_jac_inv;
-        MatrixN dxi_dTk, dxi_dTkp1;
-        MatrixN dxidot_dTk, dxidot_dTkp1;
-        MatrixN dxidotkp1_dvarpikp1;
-        
-        if (InterpJacobians) {
-          MatrixN dbetween_Tk;
-          MatrixN dbetween_Tkp1;
-          xi_kp1 = traits<PoseType>::Logmap(
-              traits<PoseType>::Between(T_k, T_kp1, &dbetween_Tk, &dbetween_Tkp1),
-              &right_jac_inv);
-          // Compute deriviatives
-          dxi_dTk = right_jac_inv * dbetween_Tk;
-          dxi_dTkp1 = right_jac_inv * dbetween_Tkp1;
-        } else {
-          xi_kp1 = traits<PoseType>::Logmap(traits<PoseType>::Between(T_k, T_kp1),
-                                        &right_jac_inv);
-        }
-        xi_dot_kp1 = right_jac_inv * varpi_kp1;
-        std::shared_ptr<LocalStateVecs> localStateVecsPreComp = std::make_shared<LocalStateVecs>();
-        localStateVecsPreComp->first = xi_kp1;
-        localStateVecsPreComp->second = xi_dot_kp1;
-
         std::shared_ptr<LocalGlobalStateJacs> localGlobalStateJacsPreComp = std::make_shared<LocalGlobalStateJacs>();
-        if(InterpJacobians) {
-          // Zero for vector spaces, use an approximation for Lie groups
-          MatrixN dxidot_dxi;
-          if constexpr (std::is_same_v<typename traits<PoseType>::structure_category,
-                                      vector_space_tag>) {
-            dxidot_dxi.setZero();
-          } else {
-            // For Lie groups
-            dxidot_dxi = -PoseType::adjointMap(varpi_kp1) / 2.0;
-          }
-          dxidot_dTk << dxidot_dxi * dxi_dTk;
-          dxidot_dTkp1 << dxidot_dxi * dxi_dTkp1;
-          dxidotkp1_dvarpikp1 << right_jac_inv;
+        std::shared_ptr<LocalStateVecs> localStateVecsPreComp = std::make_shared<LocalStateVecs>();
 
-
-          localGlobalStateJacsPreComp->push_back(dxi_dTk);
-          localGlobalStateJacsPreComp->push_back(dxi_dTkp1);
-          localGlobalStateJacsPreComp->push_back(dxidot_dTk);
-          localGlobalStateJacsPreComp->push_back(dxidot_dTkp1);
-          localGlobalStateJacsPreComp->push_back(dxidotkp1_dvarpikp1);
+        if (InterpJacobians) {
+          *localStateVecsPreComp = interpolator_.computeLocalStateVecs(state_left, state_right, localGlobalStateJacsPreComp.get());
+        } else {
+          *localStateVecsPreComp = interpolator_.computeLocalStateVecs(state_left, state_right, nullptr);
         }
-
-
+        
 
         for (size_t interpIdx : batches[bi].second) {
           const StateData &interp_state = interp_to_borders_vec_[interpIdx].first;
@@ -345,57 +300,15 @@ Values WNOAFactorGraph<PoseType>::getInterpolatedValues(
     const auto state_right= TimestampedPoseVelocity<PoseType>(border_pose_cache[right.pose], border_vel_cache[right.vel], right.time);
     
     // Precompute local state vars and local-global Jacobians for this border pair
-    // TODO: This duplicates some code within the Interpolator class, we should refactor this
-    // Compute xi_kp1 and xi_dot_kp1
-    auto T_k = values.at<PoseType>(left.pose);
-    auto T_kp1 = values.at<PoseType>(right.pose);
-    auto varpi_kp1 = values.at<typename WNOAFactorGraph<PoseType>::VelocityType>(right.vel);
-
-    VectorN xi_kp1, xi_dot_kp1;
-    MatrixN right_jac_inv;
-    MatrixN dxi_dTk, dxi_dTkp1;
-    MatrixN dxidot_dTk, dxidot_dTkp1;
-    MatrixN dxidotkp1_dvarpikp1;
-    
-    if (InterpJacobians) {
-      MatrixN dbetween_Tk;
-      MatrixN dbetween_Tkp1;
-      xi_kp1 = traits<PoseType>::Logmap(
-          traits<PoseType>::Between(T_k, T_kp1, &dbetween_Tk, &dbetween_Tkp1),
-          &right_jac_inv);
-      // Compute deriviatives
-      dxi_dTk = right_jac_inv * dbetween_Tk;
-      dxi_dTkp1 = right_jac_inv * dbetween_Tkp1;
-    } else {
-      xi_kp1 = traits<PoseType>::Logmap(traits<PoseType>::Between(T_k, T_kp1),
-                                    &right_jac_inv);
-    }
-    xi_dot_kp1 = right_jac_inv * varpi_kp1;
-    std::shared_ptr<LocalStateVecs> localStateVecsPreComp = std::make_shared<LocalStateVecs>();
-    localStateVecsPreComp->first = xi_kp1;
-    localStateVecsPreComp->second = xi_dot_kp1;
-
     std::shared_ptr<LocalGlobalStateJacs> localGlobalStateJacsPreComp = std::make_shared<LocalGlobalStateJacs>();
-    if(InterpJacobians) {
-      // Zero for vector spaces, use an approximation for Lie groups
-      MatrixN dxidot_dxi;
-      if constexpr (std::is_same_v<typename traits<PoseType>::structure_category,
-                                  vector_space_tag>) {
-        dxidot_dxi.setZero();
-      } else {
-        // For Lie groups
-        dxidot_dxi = -PoseType::adjointMap(varpi_kp1) / 2.0;
-      }
-      dxidot_dTk << dxidot_dxi * dxi_dTk;
-      dxidot_dTkp1 << dxidot_dxi * dxi_dTkp1;
-      dxidotkp1_dvarpikp1 << right_jac_inv;
-      
-      localGlobalStateJacsPreComp->push_back(dxi_dTk);
-      localGlobalStateJacsPreComp->push_back(dxi_dTkp1);
-      localGlobalStateJacsPreComp->push_back(dxidot_dTk);
-      localGlobalStateJacsPreComp->push_back(dxidot_dTkp1);
-      localGlobalStateJacsPreComp->push_back(dxidotkp1_dvarpikp1);
+    std::shared_ptr<LocalStateVecs> localStateVecsPreComp = std::make_shared<LocalStateVecs>();
+
+    if (InterpJacobians) {
+      *localStateVecsPreComp = interpolator_.computeLocalStateVecs(state_left, state_right, localGlobalStateJacsPreComp.get());
+    } else {
+      *localStateVecsPreComp = interpolator_.computeLocalStateVecs(state_left, state_right, nullptr);
     }
+    
 
     
     for (size_t interpIdx : kv.second) {
