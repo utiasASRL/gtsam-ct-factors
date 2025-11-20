@@ -212,6 +212,80 @@ Values WNOAFactorGraph<PoseType>::getInterpolatedValues(
   unordered_map<Key, std::array<Matrix, 4>>* InterpJacobians,
   unordered_map<StateData, Matrix2N>* InterpCondCovs) const {
 
+  // Run through all borders in borders_to_interp_indices_
+  
+  std::vector<std::pair<StateData, std::shared_ptr<const LocalStateVecs>>> interp_to_LocalStateVecs_vec;
+  interp_to_LocalStateVecs_vec.resize(interp_to_borders_vec_.size());
+  std::vector<std::pair<StateData, std::shared_ptr<const LocalGlobalStateJacs>>> interp_to_LocalGlobalStateJacs_vec;
+  interp_to_LocalGlobalStateJacs_vec.resize(interp_to_borders_vec_.size());
+
+  for(const auto& [border, indices] : borders_to_interp_indices_) {
+    // get left pose, velocity and time
+    const StateData& left = border.first;
+    const StateData& right = border.second;
+    auto T_k = values.at<PoseType>(left.pose);
+    auto T_kp1 = values.at<PoseType>(right.pose);
+    auto varpi_kp1 = values.at<typename WNOAFactorGraph<PoseType>::VelocityType>(right.vel);
+
+    // Compute xi_kp1 and xi_dot_kp1
+    VectorN xi_kp1, xi_dot_kp1;
+    MatrixN right_jac_inv;
+    MatrixN dxi_dTk, dxi_dTkp1;
+    MatrixN dxidot_dTk, dxidot_dTkp1;
+    MatrixN dxidotkp1_dvarpikp1;
+    
+    if (InterpJacobians) {
+      MatrixN dbetween_Tk;
+      MatrixN dbetween_Tkp1;
+      xi_kp1 = traits<PoseType>::Logmap(
+          traits<PoseType>::Between(T_k, T_kp1, &dbetween_Tk, &dbetween_Tkp1),
+          &right_jac_inv);
+      // Compute deriviatives
+      dxi_dTk = right_jac_inv * dbetween_Tk;
+      dxi_dTkp1 = right_jac_inv * dbetween_Tkp1;
+    } else {
+      xi_kp1 = traits<PoseType>::Logmap(traits<PoseType>::Between(T_k, T_kp1),
+                                    &right_jac_inv);
+    }
+    xi_dot_kp1 = right_jac_inv * varpi_kp1;
+    LocalStateVecs localStateVecsPreComp;
+    localStateVecsPreComp.first = xi_kp1;
+    localStateVecsPreComp.second = xi_dot_kp1;
+
+    if(InterpJacobians) {
+      // Zero for vector spaces, use an approximation for Lie groups
+      MatrixN dxidot_dxi;
+      if constexpr (std::is_same_v<typename traits<PoseType>::structure_category,
+                                  vector_space_tag>) {
+        dxidot_dxi.setZero();
+      } else {
+        // For Lie groups
+        dxidot_dxi = -PoseType::adjointMap(varpi_kp1) / 2.0;
+      }
+      dxidot_dTk << dxidot_dxi * dxi_dTk;
+      dxidot_dTkp1 << dxidot_dxi * dxi_dTkp1;
+      dxidotkp1_dvarpikp1 << right_jac_inv;
+    }
+
+    LocalGlobalStateJacs localGlobalStateJacsPreComp;
+    localGlobalStateJacsPreComp.push_back(dxi_dTk);
+    localGlobalStateJacsPreComp.push_back(dxi_dTkp1);
+    localGlobalStateJacsPreComp.push_back(dxidot_dTk);
+    localGlobalStateJacsPreComp.push_back(dxidot_dTkp1);
+    localGlobalStateJacsPreComp.push_back(dxidotkp1_dvarpikp1);
+
+    // Run through all interpolated states for this border
+    for (size_t i = 0; i < indices.size(); ++i) {
+      const size_t interp_global_idx = indices[i];
+      const auto& interp_state = interp_to_borders_vec_[interp_global_idx].first;
+      interp_to_LocalStateVecs_vec.at(interp_global_idx) = std::make_pair(interp_state, std::make_shared<LocalStateVecs>(localStateVecsPreComp));
+        if(InterpJacobians) {
+          interp_to_LocalGlobalStateJacs_vec.at(interp_global_idx) = std::make_pair(interp_state, std::make_shared<LocalGlobalStateJacs>(localGlobalStateJacsPreComp));
+      }
+    }
+  }
+  
+
 #ifdef GTSAM_USE_TBB
 
   TbbOpenMPMixedScope threadLimiter; // Limits OpenMP threads since we're mixing TBB and OpenMP
@@ -270,7 +344,7 @@ Values WNOAFactorGraph<PoseType>::getInterpolatedValues(
                 PoseVelocity<PoseType> result;
         if (InterpJacobians) {
               result = interpolator_.interpolatePoseAndVelocity(
-                state_left, state_right, interp_state.time, &local_data.H, nullptr, nullptr,  interp_to_LambdaPsi_vec_[i].second);
+                state_left, state_right, interp_state.time, &local_data.H, nullptr, nullptr,  interp_to_LambdaPsi_vec_[i].second, interp_to_LocalStateVecs_vec[i].second, interp_to_LocalGlobalStateJacs_vec[i].second);
 
                     // Store jacobians
                     std::array<Matrix,4> Jpose = {local_data.H[0], local_data.H[1], local_data.H[2], local_data.H[3]};
@@ -279,7 +353,7 @@ Values WNOAFactorGraph<PoseType>::getInterpolatedValues(
                     local_data.jacobians.emplace_back(interp_state.vel,  std::move(Jvel));
         } else {
               result = interpolator_.interpolatePoseAndVelocity(
-                state_left, state_right, interp_state.time, nullptr, nullptr, nullptr, interp_to_LambdaPsi_vec_[i].second);
+                state_left, state_right, interp_state.time, nullptr, nullptr, nullptr, interp_to_LambdaPsi_vec_[i].second, interp_to_LocalStateVecs_vec[i].second, nullptr);
                 }
 
                 // Store results in thread-local vectors
@@ -366,9 +440,9 @@ Values WNOAFactorGraph<PoseType>::getInterpolatedValues(
     // 4. Interpolate (with or without Jacobians).
     PoseVelocity<PoseType> result;
     if (InterpJacobians) {
-      result = interpolator_.interpolatePoseAndVelocity(state_left, state_right, interp_state.time, &H, nullptr, nullptr, interp_to_LambdaPsi_vec_.at(idx).second);
+      result = interpolator_.interpolatePoseAndVelocity(state_left, state_right, interp_state.time, &H, nullptr, nullptr, interp_to_LambdaPsi_vec_.at(idx).second, interp_to_LocalStateVecs_vec.at(idx).second, interp_to_LocalGlobalStateJacs_vec.at(idx).second);
     } else {
-      result = interpolator_.interpolatePoseAndVelocity(state_left, state_right, interp_state.time, nullptr, nullptr, nullptr, interp_to_LambdaPsi_vec_.at(idx).second);
+      result = interpolator_.interpolatePoseAndVelocity(state_left, state_right, interp_state.time, nullptr, nullptr, nullptr, interp_to_LambdaPsi_vec_.at(idx).second, interp_to_LocalStateVecs_vec.at(idx).second, nullptr);
     }
 
     // 5. Insert interpolated pose & velocity.

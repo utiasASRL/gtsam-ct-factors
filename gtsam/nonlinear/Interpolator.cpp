@@ -306,7 +306,6 @@ Interpolator<PoseType>::interpolatePoseAndVelocity_(
       dxidot_dTkp1 = localGlobalStateJacsPreComp->at(3);
       dxidotkp1_dvarpikp1 = localGlobalStateJacsPreComp->at(4);
     }
-
     else {
       // Zero for vector spaces, use an approximation for Lie groups
       MatrixN dxidot_dxi;

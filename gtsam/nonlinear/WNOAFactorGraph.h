@@ -47,6 +47,7 @@ private:
   // Convenient matrices
   using Matrix2N = Eigen::Matrix<double, 2 * dim, 2 * dim>;
   using MatrixN = Eigen::Matrix<double, dim, dim>;
+  using VectorN = Eigen::Matrix<double, dim, 1>;
 
 
   // Interpolator class
@@ -61,6 +62,21 @@ private:
   unordered_map<StateData, pair<StateData, StateData>> interp_to_borders_map_;
   std::vector<std::pair<StateData, std::pair<StateData, StateData>>> interp_to_borders_vec_;
   std::vector<std::pair<StateData, std::shared_ptr<const LambdaPsiMats>>> interp_to_LambdaPsi_vec_;
+
+  // Hash for a pair of StateData used as a key in unordered_map
+  struct BorderKeyHash {
+    size_t operator()(const std::pair<StateData, StateData>& p) const noexcept {
+      const size_t h1 = std::hash<StateData>{}(p.first);
+      const size_t h2 = std::hash<StateData>{}(p.second);
+      // boost::hash_combine style
+      return h1 ^ (h2 + 0x9e3779b9 + (h1 << 6) + (h1 >> 2));
+    }
+  };
+
+  // Map from bordering states -> indices of entries in interp_to_borders_vec_
+  // Multiple interpolated states can share the same bordering states
+  std::unordered_map<std::pair<StateData, StateData>, std::vector<size_t>, BorderKeyHash>
+      borders_to_interp_indices_;
 
   bool fixed_noise_model_ = false;
 
@@ -112,6 +128,14 @@ public:
             // Convert map to vector for optimal parallel access patterns
             interp_to_borders_vec_ = std::vector<std::pair<StateData, std::pair<StateData, StateData>>>(
                 interp_to_borders_map_.begin(), interp_to_borders_map_.end());
+
+            // Build mapping from border state pairs to indices in interp_to_borders_vec_
+            borders_to_interp_indices_.clear();
+            borders_to_interp_indices_.reserve(interp_to_borders_vec_.size());
+            for (size_t idx = 0; idx < interp_to_borders_vec_.size(); ++idx) {
+              const auto& borders = interp_to_borders_vec_[idx].second; // pair<StateData, StateData>
+              borders_to_interp_indices_[borders].push_back(idx);
+            }
 
           }
 
