@@ -63,20 +63,9 @@ private:
   std::vector<std::pair<StateData, std::pair<StateData, StateData>>> interp_to_borders_vec_;
   std::vector<std::pair<StateData, std::shared_ptr<const LambdaPsiMats>>> interp_to_LambdaPsi_vec_;
 
-  // Hash for a pair of StateData used as a key in unordered_map
-  struct BorderKeyHash {
-    size_t operator()(const std::pair<StateData, StateData>& p) const noexcept {
-      const size_t h1 = std::hash<StateData>{}(p.first);
-      const size_t h2 = std::hash<StateData>{}(p.second);
-      // boost::hash_combine style
-      return h1 ^ (h2 + 0x9e3779b9 + (h1 << 6) + (h1 >> 2));
-    }
-  };
-
-  // Map from bordering states -> indices of entries in interp_to_borders_vec_
-  // Multiple interpolated states can share the same bordering states
-  std::unordered_map<std::pair<StateData, StateData>, std::vector<size_t>, BorderKeyHash>
-      borders_to_interp_indices_;
+  // Precomputed batches of borders -> indices in interp_to_borders_vec_
+  // Each entry contains the border pair and the list of interp indices that share those borders.
+  std::vector<std::pair<std::pair<StateData, StateData>, std::vector<size_t>>> border_batches_;
 
   bool fixed_noise_model_ = false;
 
@@ -129,13 +118,22 @@ public:
             interp_to_borders_vec_ = std::vector<std::pair<StateData, std::pair<StateData, StateData>>>(
                 interp_to_borders_map_.begin(), interp_to_borders_map_.end());
 
-            // Build mapping from border state pairs to indices in interp_to_borders_vec_
-            borders_to_interp_indices_.clear();
-            borders_to_interp_indices_.reserve(interp_to_borders_vec_.size());
+            // Build compact batch vector: for each unique border pair, list indices of interp states
+            struct LocalBorderHash {
+              size_t operator()(const std::pair<StateData, StateData>& p) const noexcept {
+                const size_t h1 = std::hash<StateData>{}(p.first);
+                const size_t h2 = std::hash<StateData>{}(p.second);
+                return h1 ^ (h2 + 0x9e3779b9 + (h1 << 6) + (h1 >> 2));
+              }
+            };
+            std::unordered_map<std::pair<StateData, StateData>, std::vector<size_t>, LocalBorderHash> tmp;
+            tmp.reserve(interp_to_borders_vec_.size());
             for (size_t idx = 0; idx < interp_to_borders_vec_.size(); ++idx) {
               const auto& borders = interp_to_borders_vec_[idx].second; // pair<StateData, StateData>
-              borders_to_interp_indices_[borders].push_back(idx);
+              tmp[borders].push_back(idx);
             }
+            border_batches_.clear(); border_batches_.reserve(tmp.size());
+            for (auto &kv : tmp) border_batches_.emplace_back(std::move(kv));
 
           }
 
