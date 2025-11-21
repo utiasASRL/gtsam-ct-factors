@@ -259,6 +259,7 @@ int runLostInTheWoods(TimingParams& params) {
     }
   }
 
+
   // set up optimizer parameters
   LevenbergMarquardtParams opt_params;
   opt_params.setVerbosityLM("SUMMARY");
@@ -332,9 +333,9 @@ int runLostInTheWoods(TimingParams& params) {
       graph, estim, interp, sigma_wnoa, params.fixed_noise);
 
   // Run optimizer
+
   std::cout << "Number of factors in interpolated graph: " << graph_interp.size() << std::endl;
   result_interp = WNOALevenbergMarquardtOptimizer<Pose2>(graph_interp, initial, opt_params).optimize();
-
   t_start = chrono::steady_clock::now();
   for(unsigned int i = 0; i < params.n_runs; i++)
   {
@@ -364,27 +365,20 @@ int runLostInTheWoods(TimingParams& params) {
 
 
   // get interpolated values
-  result_interp = interpolator.interpolatePosesAndVelocities(
+  Values result_restored = interpolator.interpolatePosesAndVelocities(
       graph_interp, result_interp, estim, all, cov_map);
 
-  // Print name of symbols in result_interp
-  //cout << "Keys in interpolated result: " << endl;
-  //for (const auto& kv : result_interp) {
-  //  Key k = kv.key;
-  //  Symbol s(k);                  // interpret key as a Symbol
-  //  cout << s.chr() << s.index()  // print symbol name like x0, v1, ...
-  //       << " " << endl;
-  //}
-  //cout << endl;
+  // if solve slam, grab landmarks from the result_interp
+  if (solve_slam) {
+    for (int j = 0; j < data.n_landmarks; j++) {
+      Key landmark = Symbol('l', j);
+      if (result_interp.exists(landmark)) {
+        result_restored.insert(landmark, result_interp.at<Point2>(landmark));
+      }
+    }
+  }
 
-  //print name of symbols in cov_map
-  //cout << "Keys in interpolated covariance map: " << endl;
-  //for (const auto& kv : *cov_map) {
-  //  Key k = kv.first;
-  //  Symbol s(k);                  // interpret key as a Symbol
-  //  cout << s.chr() << s.index()  // print symbol name like x0, v1, ...
-  //       << " " << endl;
-  //}
+  result_interp = result_restored;
 
   // Save results
   cout << "Optimizer has finished...saving results..." << endl;
