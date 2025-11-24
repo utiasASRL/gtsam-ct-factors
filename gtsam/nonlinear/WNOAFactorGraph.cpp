@@ -118,14 +118,10 @@ std::shared_ptr<GaussianFactorGraph>  WNOAFactorGraph<PoseType>::linearize(const
   linearFG->resize(size());
   TbbOpenMPMixedScope threadLimiter; // Limits OpenMP threads since we're mixing TBB and OpenMP
 
-  // First linearize all sendable factors (hint affinity for better cache locality)
-  {
-    tbb::affinity_partitioner ap;
-    tbb::parallel_for(
+  // First linearize all sendable factors
+  tbb::parallel_for(
         tbb::blocked_range<size_t>(0, size()),
-        _LinearizeOneFactor<PoseType>(*this, linearizationPoint, *linearFG, *passedInterpData),
-        ap);
-  }
+        _LinearizeOneFactor<PoseType>(*this, linearizationPoint, *linearFG, *passedInterpData),tbb::auto_partitioner());
 
   // Linearize all non-sendable factors
   for(size_t i = 0; i < size(); i++) {
@@ -229,7 +225,6 @@ Values WNOAFactorGraph<PoseType>::getInterpolatedValues(
   unsigned nt = std::thread::hardware_concurrency(); unsigned phys = nt? std::max<unsigned>(1u, nt/2):1u;
   size_t grain = std::max<size_t>(1, batches.size() / (8*phys));
   {
-    tbb::affinity_partitioner ap;
     tbb::parallel_for(tbb::blocked_range<size_t>(0, batches.size(), grain), [&](const tbb::blocked_range<size_t>& r){
       auto &local = tls.local(); if (local.H.empty()) local.H.resize(8);
       size_t expectedInterp = 0; for (size_t bi=r.begin(); bi!=r.end(); ++bi) expectedInterp += batches[bi].second.size();
@@ -272,7 +267,7 @@ Values WNOAFactorGraph<PoseType>::getInterpolatedValues(
           }
         }
       }
-    }, ap);
+    });
   }
   Values values_interp;
   if (InterpJacobians) InterpJacobians->reserve(interp_to_borders_vec_.size()*2);
