@@ -4,6 +4,32 @@
 
 namespace gtsam {
 
+#include <gtsam/geometry/Cal3_S2.h>
+#include <gtsam/geometry/Cal3Bundler.h>
+#include <gtsam/geometry/Cal3DS2.h>
+#include <gtsam/geometry/Cal3f.h>
+#include <gtsam/geometry/Cal3Fisheye.h>
+#include <gtsam/geometry/Cal3Unified.h>
+#include <gtsam/geometry/EssentialMatrix.h>
+#include <gtsam/geometry/FundamentalMatrix.h>
+#include <gtsam/geometry/OrientedPlane3.h>
+#include <gtsam/geometry/PinholeCamera.h>
+#include <gtsam/geometry/Point2.h>
+#include <gtsam/geometry/Point3.h>
+#include <gtsam/geometry/Pose2.h>
+#include <gtsam/geometry/Pose3.h>
+#include <gtsam/geometry/Similarity2.h>
+#include <gtsam/geometry/Similarity3.h>
+#include <gtsam/geometry/Rot2.h>
+#include <gtsam/geometry/Rot3.h>
+#include <gtsam/geometry/SO3.h>
+#include <gtsam/geometry/SO4.h>
+#include <gtsam/geometry/SOn.h>
+#include <gtsam/geometry/StereoPoint2.h>
+#include <gtsam/geometry/Unit3.h>
+#include <gtsam/navigation/ImuBias.h>
+#include <gtsam/navigation/NavState.h>
+
 #include <gtsam/hybrid/HybridValues.h>
 class HybridValues {
   gtsam::VectorValues continuous() const;
@@ -21,17 +47,60 @@ class HybridValues {
 
   void insert(gtsam::Key j, int value);
   void insert(gtsam::Key j, const gtsam::Vector& value);
-
   void insert_or_assign(gtsam::Key j, const gtsam::Vector& value);
   void insert_or_assign(gtsam::Key j, size_t value);
+  
+  // Use same (important) order as in values.i
+  void insertNonlinear(gtsam::Key j, gtsam::Vector vector);
+  void insertNonlinear(gtsam::Key j, gtsam::Matrix matrix);
+  void insertNonlinear(gtsam::Key j, const gtsam::Point2& point2);
+  void insertNonlinear(gtsam::Key j, const gtsam::Point3& point3);
+  void insertNonlinear(gtsam::Key j, const gtsam::Rot2& rot2);
+  void insertNonlinear(gtsam::Key j, const gtsam::Pose2& pose2);
+  void insertNonlinear(gtsam::Key j, const gtsam::SO3& R);
+  void insertNonlinear(gtsam::Key j, const gtsam::SO4& Q);
+  void insertNonlinear(gtsam::Key j, const gtsam::SOn& P);
+  void insertNonlinear(gtsam::Key j, const gtsam::Rot3& rot3);
+  void insertNonlinear(gtsam::Key j, const gtsam::Pose3& pose3);
+  void insertNonlinear(gtsam::Key j, const gtsam::Similarity2& similarity2);
+  void insertNonlinear(gtsam::Key j, const gtsam::Similarity3& similarity3);
+  void insertNonlinear(gtsam::Key j, const gtsam::Unit3& unit3);
+  void insertNonlinear(gtsam::Key j, const gtsam::Cal3Bundler& cal3bundler);
+  void insertNonlinear(gtsam::Key j, const gtsam::Cal3f& cal3f);
+  void insertNonlinear(gtsam::Key j, const gtsam::Cal3_S2& cal3_s2);
+  void insertNonlinear(gtsam::Key j, const gtsam::Cal3DS2& cal3ds2);
+  void insertNonlinear(gtsam::Key j, const gtsam::Cal3Fisheye& cal3fisheye);
+  void insertNonlinear(gtsam::Key j, const gtsam::Cal3Unified& cal3unified);
+  void insertNonlinear(gtsam::Key j, const gtsam::EssentialMatrix& E);
+  void insertNonlinear(gtsam::Key j, const gtsam::FundamentalMatrix& F);
+  void insertNonlinear(gtsam::Key j, const gtsam::SimpleFundamentalMatrix& F);
+  void insertNonlinear(gtsam::Key j, const gtsam::OrientedPlane3& plane);
+  void insertNonlinear(gtsam::Key j, const gtsam::PinholeCamera<gtsam::Cal3Bundler>& camera);
+  void insertNonlinear(gtsam::Key j, const gtsam::PinholeCamera<gtsam::Cal3f>& camera);
+  void insertNonlinear(gtsam::Key j, const gtsam::PinholeCamera<gtsam::Cal3_S2>& camera);
+  void insertNonlinear(gtsam::Key j, const gtsam::PinholeCamera<gtsam::Cal3DS2>& camera);
+  void insertNonlinear(gtsam::Key j, const gtsam::PinholeCamera<gtsam::Cal3Fisheye>& camera);
+  void insertNonlinear(gtsam::Key j, const gtsam::PinholeCamera<gtsam::Cal3Unified>& camera);
+  void insertNonlinear(gtsam::Key j, const gtsam::PinholePose<gtsam::Cal3Bundler>& camera);
+  void insertNonlinear(gtsam::Key j, const gtsam::PinholePose<gtsam::Cal3f>& camera);
+  void insertNonlinear(gtsam::Key j, const gtsam::PinholePose<gtsam::Cal3_S2>& camera);
+  void insertNonlinear(gtsam::Key j, const gtsam::PinholePose<gtsam::Cal3DS2>& camera);
+  void insertNonlinear(gtsam::Key j, const gtsam::PinholePose<gtsam::Cal3Fisheye>& camera);
+  void insertNonlinear(gtsam::Key j, const gtsam::PinholePose<gtsam::Cal3Unified>& camera);
+  void insertNonlinear(gtsam::Key j, const gtsam::imuBias::ConstantBias& constant_bias);
+  void insertNonlinear(gtsam::Key j, const gtsam::NavState& nav_state);
+  void insertNonlinear(gtsam::Key j, double c);
 
   void insert(const gtsam::VectorValues& values);
   void insert(const gtsam::DiscreteValues& values);
+  void insert(const gtsam::Values& values);
   void insert(const gtsam::HybridValues& values);
   void insert(const gtsam::Values& values);
 
+
   void update(const gtsam::VectorValues& values);
   void update(const gtsam::DiscreteValues& values);
+  void update(const gtsam::Values& values);
   void update(const gtsam::HybridValues& values);
 
   bool existsVector(gtsam::Key j);
@@ -47,6 +116,7 @@ class HybridValues {
 
 #include <gtsam/hybrid/HybridFactor.h>
 class AlgebraicDecisionTreeKey {
+  const double& operator()(const gtsam::DiscreteValues& x) const;
   void print(string s = "AlgebraicDecisionTreeKey\n",
              const gtsam::KeyFormatter& keyFormatter =
                  gtsam::DefaultKeyFormatter) const;
@@ -159,6 +229,10 @@ class HybridGaussianConditional : gtsam::HybridGaussianFactor {
       const gtsam::DiscreteConditional &discreteProbs) const;
   bool pruned() const;
 
+  HybridGaussianConditional::shared_ptr prune(
+      const gtsam::DiscreteConditional &discreteProbs) const;
+  bool pruned() const;
+
   void print(string s = "HybridGaussianConditional\n",
              const gtsam::KeyFormatter& keyFormatter =
                  gtsam::DefaultKeyFormatter) const;
@@ -218,6 +292,8 @@ class HybridBayesNet {
   gtsam::HybridGaussianFactorGraph toFactorGraph(
       const gtsam::VectorValues& measurements) const;
 
+  double negLogConstant() const;
+  double negLogConstant(const gtsam::DiscreteValues &discrete) const;
   gtsam::AlgebraicDecisionTreeKey discretePosterior(
       const gtsam::VectorValues &continuousValues) const;
   gtsam::DiscreteBayesNet discreteMarginal() const;

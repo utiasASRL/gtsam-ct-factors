@@ -14,6 +14,7 @@
 // Seems this is not a good idea with inherited stl
 // py::bind_vector<std::vector<gtsam::DiscreteKey>>(m_, "DiscreteKeys");
 
+py::bind_map<gtsam::Assignment<gtsam::Key>>(m_, "AssignmentKey");
 py::bind_map<gtsam::DiscreteValues>(m_, "DiscreteValues");
 
 #include <gtsam/discrete/DiscreteValues.h>
