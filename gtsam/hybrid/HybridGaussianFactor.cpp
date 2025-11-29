@@ -209,21 +209,18 @@ std::shared_ptr<Factor> HybridGaussianFactor::restrict(
   DiscreteKeys newFactorDiscreteKeys;  // For the new, restricted factor
 
   // Iterate over the discrete keys of the current factor
-  for (const DiscreteKey& factor_dk_pair : currentFactorDiscreteKeys) {
-    const Key& key = factor_dk_pair.first;
+  for (const DiscreteKey& discreteKey : currentFactorDiscreteKeys) {
+    const Key& key = discreteKey.first;
 
     // Check if this key is specified in the assignment
-    auto assignment_it = assignment.find(key);
-
-    if (assignment_it != assignment.end()) {
+    if (assignment.find(key) != assignment.end()) {
       // Key is in assignment: restrict the tree by choosing the branch
-      size_t assigned_value = assignment_it->second;
-      restrictedTree = restrictedTree.choose(key, assigned_value);
+      restrictedTree = restrictedTree.choose(key, assignment.at(key));
       // This key is now fixed, so it's not a discrete key for the new factor
     }
     else {
       // Key is not in assignment: it remains a discrete key for the new factor
-      newFactorDiscreteKeys.push_back(factor_dk_pair);
+      newFactorDiscreteKeys.push_back(discreteKey);
     }
   }
 
