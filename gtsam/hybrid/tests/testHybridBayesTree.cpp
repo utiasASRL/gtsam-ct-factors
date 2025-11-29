@@ -490,7 +490,7 @@ TEST(HybridBayesTree, Choose) {
 }
 
 /* ************************************************************************* */
-TEST(HybridBayesTree, EliminateMultifrontal) {
+TEST(HybridBayesTree, Dot) {
   // Create a HybridGaussianFactorGraph
   HybridGaussianFactorGraph hgfg;
 
