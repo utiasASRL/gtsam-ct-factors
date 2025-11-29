@@ -131,12 +131,6 @@ jobs:
           echo "GTSAM_BUILD_UNSTABLE=OFF" >> $GITHUB_ENV
           echo "GTSAM unstable will not be built."
 
-      - name: Create swap (Linux only)
-        if: runner.os == 'Linux'
-        uses: pierotofy/set-swap-space@master
-        with:
-          swap-size-gb: 6
-
       - name: Build & Test
         run: |
           bash .github/scripts/unix.sh -t
