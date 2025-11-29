@@ -72,9 +72,16 @@ class GTSAM_EXPORT HybridNonlinearFactor : public HybridFactor {
   /// Decision tree of nonlinear factors indexed by discrete keys.
   FactorValuePairs factors_;
 
-  /// HybridFactor method implementation. Should not be used for this class.
-  /// This version is for linear/Gaussian continuous values.
-  /// Use the overload taking gtsam::Values for nonlinear values.
+  /**
+   * @brief HybridFactor method implementation.
+   * Should not be used for this class.
+   *
+   * This version is for linear/Gaussian continuous values.
+   * Use the overload taking gtsam::Values for nonlinear values.
+   *
+   * @param continuousValues 
+   * @return AlgebraicDecisionTree<Key> 
+   */
   AlgebraicDecisionTree<Key> errorTree(
     const VectorValues& continuousValues) const override {
     throw std::runtime_error(
@@ -141,7 +148,7 @@ public:
    * @brief Compute error of factor given both continuous and discrete values.
    *
    * @param continuousValues The continuous gtsam::Values.
-   * @param assignment The discrete Values (assignment for discrete keys).
+   * @param assignment The assignment for the discrete keys.
    * @return double The error of this factor for the given assignment.
    */
   double error(const Values& continuousValues,
@@ -167,8 +174,15 @@ public:
   /// Getter for NonlinearFactor decision tree
   const FactorValuePairs& factors() const { return factors_; }
 
-  /// Linearize specific nonlinear factors based on the assignment in
-  /// discreteValues.
+  /**
+   * @brief Linearize specific nonlinear factors based on
+   * the assignment in discreteValues.
+   *
+   * @param continuousValues The continuous values point to linearize around.
+   * @param assignment The discrete assignment specifying which continuous
+   * factors to linearize.
+   * @return GaussianFactor::shared_ptr
+   */
   GaussianFactor::shared_ptr linearize(const Values& continuousValues,
     const DiscreteValues& assignment) const;
 
@@ -176,18 +190,25 @@ public:
   std::shared_ptr<HybridGaussianFactor> linearize(
     const Values& continuousValues) const;
 
-  /// Prune this factor based on the discrete probabilities.
-  /// @param discreteProbs A DecisionTreeFactor representing P(M) or P(M|...).
-  /// Entries with probability 0 (or very small) in discreteProbs will lead to
-  /// pruning of corresponding branches in this factor.
+  /**
+   * @brief Prune this factor based on the discrete probabilities.
+   * Entries with probability 0 (or very small) in discreteProbs will lead to
+   * pruning of corresponding branches in this factor.
+   * 
+   * @param discreteProbs A DecisionTreeFactor representing P(M) or P(M|...).
+   * @return HybridNonlinearFactor::shared_ptr 
+   */
   HybridNonlinearFactor::shared_ptr prune(
       const DecisionTreeFactor& discreteProbs) const;
 
-  /// Restrict the factor to the given discrete values.
-  /// If all discrete keys in this factor are assigned, the result will be
-  /// a NonlinearFactor (wrapped in a Factor::shared_ptr).
-  /// Otherwise, it will be a new HybridNonlinearFactor over the remaining
-  /// unassigned discrete keys.
+  /**
+   * @brief Restrict the factor to the given discrete values.
+   *
+   * If all discrete keys in this factor are assigned, the result will be
+   * a NonlinearFactor (wrapped in a Factor::shared_ptr).
+   * Otherwise, it will be a new HybridNonlinearFactor over the remaining
+   * unassigned discrete keys.
+   */
   std::shared_ptr<Factor> restrict(
       const DiscreteValues& assignment) const override;
 

@@ -138,7 +138,7 @@ void HybridNonlinearFactor::print(const std::string& s,
     auto [factor, val] = v;
     if (factor) {
       RedirectCout rd;
-      std::cout << "(" << val << ") ";
+      std::cout << "(val=" << val << ") ";
       factor->print("", keyFormatter);
       return rd.str();
     } else {
