@@ -133,23 +133,9 @@ jobs:
 
       - name: Create swap (Linux only)
         if: runner.os == 'Linux'
-        shell: bash
-        run: |
-          set -euo pipefail
-          SWAP=/mnt/swapfile
-          sudo swapoff $SWAP 2>/dev/null || true
-          sudo rm -f $SWAP
-
-          for SIZE in 8 4 2 1; do
-            if sudo fallocate -l ${SIZE}G $SWAP; then
-              sudo chmod 600 $SWAP
-              sudo mkswap $SWAP
-              sudo swapon $SWAP && break
-            fi
-            sudo rm -f $SWAP
-          done
-
-          swapon --show
+        uses: pierotofy/set-swap-space@master
+        with:
+          swap-size-gb: 6
 
       - name: Build & Test
         run: |
