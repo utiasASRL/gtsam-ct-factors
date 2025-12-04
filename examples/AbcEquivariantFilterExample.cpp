@@ -22,7 +22,7 @@ constexpr size_t n = 1;  // Number of calibration states
 using M = abc::State<n>;
 using G = abc::Group<n>;
 using StateAction = abc::StateAction<n>;
-using EqFilter = gtsam::EqF<M, StateAction>;
+using EqFilter = gtsam::EquivariantFilter<M, StateAction>;
 using Lift = abc::Lift<n>;
 using InputAction = abc::InputAction<n>;
 using OutputAction = abc::OutputAction<n>;
@@ -269,7 +269,10 @@ void processDataWithEqF(EqFilter& filter, const std::vector<Data>& data_list,
     Matrix Q = InputAction::processNoise(data.inputCovariance);
     // Propagate filter with current input and time step
     Vector6 u = abc::toInputVector(data.omega);
-    filter.predict<Lift, InputAction>(u, Q, data.dt);
+    Lift lift_u(u);
+    InputAction psi_u(u);
+    // Use 3rd order transition matrix for better accuracy
+    filter.predict<3>(lift_u, psi_u, Q, data.dt);
 
     // Process all measurements
     for (const auto& measurement : data.measurements) {
@@ -432,9 +435,6 @@ int main(int argc, char* argv[]) {
       return 1;
     }
 
-    // Initialize the EqF filter with one calibration state
-    int N = 2;  // number of sensors
-
     // Initial covariance - larger values allow faster convergence
     Matrix initialSigma = Matrix::Identity(6 + 3 * n, 6 + 3 * n);
     initialSigma.diagonal().head<3>() =
@@ -448,7 +448,7 @@ int main(int argc, char* argv[]) {
     M initialState = M::identity();
 
     // Create filter
-    EqFilter filter(initialGroup, initialState, initialSigma, N);
+    EqFilter filter(initialGroup, initialState, initialSigma);
 
     // Process data
     processDataWithEqF(filter, data);

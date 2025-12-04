@@ -6,6 +6,12 @@
  * based on the paper "Overcoming Bias: Equivariant Filter Design for Biased
  * Attitude Estimation with Online Calibration" by Fornasier et al.
  *
+ * We follow the paper's notation: the physical state is ξ = ((R,b), C) ∈ M, the
+ * symmetry group element is X = ((A,a), B) ∈ G, and the right actions φ_ξ(X)
+ * and ρ_y(X) drive the equivariant filter update. See Eqs. (4), (7), (14b), and
+ * (23)–(24) in Fornasier et al. (2022) for the continuous-time dynamics, lift
+ * Λ(ξ,u), output action, and EqF update.
+ *
  * @author Darshan Rajasekaran
  * @author Jennifer Oum
  * @author Rohan Bansal
@@ -195,6 +201,22 @@ struct Group : public ProductLieGroup<Pose3, Calibrations<n>> {
     return Base::Logmap(g, Hg);
   }
 
+  /**
+   * Matrix representation of the Lie-algebra adjoint operator ad_xi on g.
+   * For this direct product group it is block-diagonal with Pose3 and Rot3
+   * blocks.
+   */
+  static Jacobian adjointMap(const TangentVector& xi) {
+    Jacobian result = Jacobian::Zero();
+    result.template block<6, 6>(0, 0) =
+        Pose3::adjointMap(xi.template head<6>());
+    for (size_t i = 0; i < n; ++i) {
+      result.template block<3, 3>(6 + 3 * i, 6 + 3 * i) =
+          Rot3::adjointMap(xi.template segment<3>(6 + 3 * i));
+    }
+    return result;
+  }
+
   const Pose3& pose() const { return this->first; }
   Rot3 A() const { return this->first.rotation(); }
   Vector3 a() const { return this->first.translation(); }
@@ -228,6 +250,9 @@ struct Group : public ProductLieGroup<Pose3, Calibrations<n>> {
  *
  * The group action is defined as a function object below,
  * applied to a given state x, specified in constructor.
+ * Implements the right action φ_{ξ}(X) = (R A, Aᵀ(b − a), Aᵀ C B), where
+ * ξ=(R,b,C). This is the discrete version of the homogeneous-space action in
+ * Eq. (4) of Fornasier et al. (2022).
  */
 template <size_t N>
 struct StateAction {
@@ -261,6 +286,8 @@ struct StateAction {
    * The Jacobian of the action at the identity of the symmetry group G
    * @return A matrix representing the jacobian of the state action
    */
+  /// Jacobian Dφ_{ξ}|_{X=I} mapping Lie algebra perturbations to state tangent
+  /// variations.
   Matrix jacobianAtIdentity() const {
     Matrix H = Matrix::Zero(M::dimension, G::dimension);
 
@@ -285,7 +312,11 @@ struct StateAction {
 };
 
 /**
- * Functor computing the lifted tangent vector from a state and fixed input.
+ * /// Implements the lift Λ(ξ,u) from the paper: Λ encodes the lifted dynamics
+ * on G induced by the biased gyroscope input u = (ω,0). Functor computing the
+ * lifted tangent vector from a state and fixed input. In the notation of
+ * Fornasier et al., this corresponds to Eq. (7), written in the so(3)≃ℝ³
+ * identification.
  */
 template <size_t N>
 struct Lift {
@@ -314,9 +345,11 @@ struct Lift {
 };
 
 /**
- * Functor encoding the right group action on the mathematical input u.
- * For a fixed u = (ω, 0), applying X = (A, a, B) ∈ G yields
- * φ_u(X) = (A^{-1}(ω - a), 0).
+ * Encodes the partially applied input action ψ_u(X) = Aᵀ(ω − a), used to
+ * compute A(X,u) and Φ(X,u). Functor encoding the right group action on the
+ * mathematical input u. For a fixed u = (ω, 0), applying X = (A, a, B) ∈ G
+ * yields φ_u(X) = (A^{-1}(ω - a), 0). The matrices A(X,u) and Φ(X,u) here match
+ * the linearization in Eqs. (20) and (21), using ω̃ = Aᵀ(ω − a).
  */
 template <size_t N>
 struct InputAction {
@@ -351,24 +384,6 @@ struct InputAction {
     return H;
   }
 
-  Matrix stateTransitionMatrix(const G& X_hat, double dt) const {
-    const Vector3 omega_tilde =
-        this->operator()(X_hat.inverse()).template head<3>();
-    Matrix3 W0 = Rot3::Hat(omega_tilde);
-    Matrix Phi1 = Matrix::Zero(6, 6);
-    Matrix3 W0_sq = W0 * W0;
-    Matrix3 Phi12 = -dt * (I_3x3 + 0.5 * dt * W0 + (dt * dt / 6.0) * W0_sq);
-    Matrix3 Phi22 = I_3x3 + dt * W0 + 0.5 * dt * dt * W0_sq;
-    Phi1.block<3, 3>(0, 0) = I_3x3;
-    Phi1.block<3, 3>(0, 3) = Phi12;
-    Phi1.block<3, 3>(3, 3) = Phi22;
-
-    std::vector<Matrix> blocks;
-    blocks.push_back(Phi1);
-    blocks.insert(blocks.end(), N, Phi22);
-    return gtsam::diag(blocks);
-  }
-
   Matrix stateMatrixA(const G& X_hat) const {
     const Vector3 omega_tilde =
         this->operator()(X_hat.inverse()).template head<3>();
@@ -378,12 +393,16 @@ struct InputAction {
     A1.block<3, 3>(0, 3) = -I_3x3;
     A1.block<3, 3>(3, 3) = W0;
 
+    // This Jacobian is ∂(lift)/∂(local X) evaluated before the EqF/LieGroupEKF
+    // adds the adjoint correction. In EqF::predict we add G::adjointMap(xi) so
+    // that the net linearized operator matches (Df - ad_xi) from the Lie group
+    // error dynamics, which is also what stateTransitionMatrix encodes.
     std::vector<Matrix> blocks{A1};
     blocks.insert(blocks.end(), N, W0);
     return gtsam::diag(blocks);
   }
 
-  Matrix inputMatrix(const G& X_hat) const {
+  Matrix inputMatrixBt(const G& X_hat) const {
     const Matrix3 A_matrix = X_hat.A().matrix();
     Matrix B1 = gtsam::diag({A_matrix, A_matrix});
     Matrix B2(3 * N, 3 * N);
@@ -395,14 +414,14 @@ struct InputAction {
 
     return gtsam::diag({B1, B2});
   }
-
-  Matrix inputMatrixBt(const G& X_hat) const { return inputMatrix(X_hat); }
 };
 
 /**
- * Functor encoding the right group action on a direction measurement y.
- * For a fixed y coming from sensor Index, applying X = (A, a, B) ∈ G yields
- * φ_y(X) = B[Index]^{-1} y.
+ * Functor encoding the right action ρ_y(X) on direction measurements y
+ * (partially applied). For a fixed y coming from sensor Index, applying X = (A,
+ * a, B) ∈ G yields φ_y(X) = B[Index]^{-1} y. The corresponding measurement
+ * Jacobian C matches the block structure in Eq. (14b) and feeds into the EqF
+ * update (23)–(24).
  */
 template <size_t N>
 struct OutputAction {
@@ -436,8 +455,9 @@ struct OutputAction {
     return H;
   }
 
-  Vector3 innovation(const G& X) const {
-    const Vector3 transformed_y = this->operator()(X);
+  Vector3 innovation(const G& X_hat) const {
+    // Equivariant innovation: compute ν_y(X̂) := ρ_y(X̂⁻¹).
+    const Vector3 transformed_y = this->operator()(X_hat.inverse());
     return Rot3::Hat(d_.unitVector()) * transformed_y;
   }
 
