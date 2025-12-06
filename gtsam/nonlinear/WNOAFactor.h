@@ -16,10 +16,26 @@ using namespace std;
 
 namespace gtsam {
 
+/**
+ * @brief WNOA (White Noise on Acceleration) motion prior factor.
+ *
+ * This factor implements the WNOA motion prior between two
+ * states (pose and velocity at times t_k and t_{k+1}). It provides
+ * residuals and Jacobians consistent with the WNOA continuous-time
+ * prior when discretized over the timestep `delta_t`.
+ *
+ * Template parameter `Pose` is expected to be a GTSAM pose type (e.g.
+ * `Pose2`, `Pose3`) or a vector-space pose; the factor supports both Lie
+ * group and vector-space pose representations.
+ *
+ * The factor's ordering of keys is: pose_k, vel_k, pose_kp1, vel_kp1.
+ *
+ * @tparam Pose Pose group/type (Pose2, Pose3, etc.)
+ */
 template <class Pose>
 class WNOAMotionFactor
-    : public NoiseModelFactorN<Pose, typename traits<Pose>::TangentVector, Pose,
-                               typename traits<Pose>::TangentVector> {
+  : public NoiseModelFactorN<Pose, typename traits<Pose>::TangentVector, Pose,
+                 typename traits<Pose>::TangentVector> {
   // Check that Pose type is a testable Lie group
   GTSAM_CONCEPT_ASSERT(IsTestable<Pose>);
   // We currently support vector spaces and Lie groups
@@ -55,12 +71,18 @@ class WNOAMotionFactor
   using Base::evaluateError;
   // Dimension variable, used for convenience
   
-  /**  Constructor 
-  @param state_k StateData struct of state at t_k
-  @param state_kp1 StateData struct of state at t_{k+1}
-  @param Q Input noise matrix, Noise model is constructed from this and delta_t
-  altered noise model based on the provided model.
-  */
+  /**
+   * @brief Construct a WNOA motion factor from two `StateData` entries.
+   *
+   * This constructor builds a factor connecting the pose and velocity keys
+   * contained in `state_k` and `state_kp1`. The internal noise model is
+   * constructed from the provided diagonal PSD vector `Q` and the timestep
+   * computed from the two state timestamps.
+   *
+   * @param state_k StateData for time t_k (provides keys and timestamp).
+   * @param state_kp1 StateData for time t_{k+1} (provides keys and timestamp).
+   * @param Q Diagonal power spectral density vector used to form the process noise.
+   */
   WNOAMotionFactor(const StateData& state_k, const StateData& state_kp1,
                    const VectorN& Q)
       : Base() {
@@ -74,15 +96,16 @@ class WNOAMotionFactor
     this->noiseModel_ = This::buildWNOANoiseModel(this->delta_t_, Q);
   }
 
-  /**  Constructor overload with keys defined directly
-  @param key1 key for the pose at t_k
-  @param key2 key for the velocity at t_k
-  @param key3 key for the pose at t_{k+1}
-  @param key4 key for the velocity at t_{k+1}
-  @param delta_t Magnitude of the timestep, t_{k+1}-t_k, used to construct an
-  @param Q Input noise matrix, Noise model is constructed from this and delta_t
-  altered noise model based on the provided model.
-  */
+  /**
+   * @brief Construct a WNOA factor given explicit keys and timestep.
+   *
+   * @param key1 Pose key at t_k
+   * @param key2 Velocity key at t_k
+   * @param key3 Pose key at t_{k+1}
+   * @param key4 Velocity key at t_{k+1}
+   * @param delta_t Time interval t_{k+1} - t_k (must be > 0)
+   * @param Q Diagonal PSD vector used to form the process noise.
+   */
   WNOAMotionFactor(Key key1, Key key2, Key key3, Key key4, const double delta_t,
                    const VectorN& Q)
       : Base(This::buildWNOANoiseModel(delta_t, Q), key1, key2, key3, key4),
@@ -108,7 +131,24 @@ class WNOAMotionFactor
     return e != nullptr && Base::equals(*e, tol);
   }
 
-  /** functions required to be a factor */
+  /**
+   * @brief Evaluate the WNOA factor residual and optional Jacobians.
+   *
+   * Residual is a 2N vector formed from the difference between the
+   * discrete relative pose/velocity and the predicted motion under the
+   * WNOA prior. When Jacobian pointers are provided, the function fills
+   * the corresponding derivative blocks with respect to the four inputs.
+   *
+   * @param p1 Pose at time t_k
+   * @param v1 Velocity at time t_k
+   * @param p2 Pose at time t_{k+1}
+   * @param v2 Velocity at time t_{k+1}
+   * @param Hp1 Optional output Jacobian w.r.t. p1
+   * @param Hv1 Optional output Jacobian w.r.t. v1
+   * @param Hp2 Optional output Jacobian w.r.t. p2
+   * @param Hv2 Optional output Jacobian w.r.t. v2
+   * @return Vector Residual vector of size 2*dim
+   */
   Vector evaluateError(const Pose& p1, const Velocity& v1, const Pose& p2,
                        const Velocity& v2, OptionalMatrixType Hp1,
                        OptionalMatrixType Hv1, OptionalMatrixType Hp2,
@@ -173,7 +213,16 @@ class WNOAMotionFactor
     return err;
   }
 
-  // Functions to build the specific covariance for the WNOA model.
+  /**
+   * @brief Build the continuous-time WNOA discretized process covariance.
+   *
+   * Returns the 2N x 2N covariance matrix for a WNOA prior discretized over
+   * `timestep` using the diagonal PSD `Q`.
+   *
+   * @param timestep Time interval over which to compute covariance
+   * @param Q Diagonal PSD vector
+   * @return Matrix2N Process covariance
+   */
   static Matrix2N buildWNOACovariance(double timestep, const VectorN& Q) {
     // construct the covariance matrix for the WNOA factor
     Matrix2N covariance;
@@ -184,6 +233,13 @@ class WNOAMotionFactor
     return covariance;
   }
 
+  /**
+   * @brief Build the inverse of the WNOA discretized process covariance.
+   *
+   * @param timestep Time interval
+   * @param Q Diagonal PSD vector
+   * @return Matrix2N Inverse process covariance matrix
+   */
   static Matrix2N buildInverseWNOACovariance(double timestep,
                                              const VectorN& Q) {
     // construct the inverse covariance matrix for the WNOA factor
@@ -198,11 +254,29 @@ class WNOAMotionFactor
     return inverse_covariance;
   }
 
+  /**
+   * @brief Convenience helper to construct a Gaussian noise model from `Q`.
+   *
+   * The noise model uses the covariance produced by `buildWNOACovariance`.
+   *
+   * @param timestep Time interval
+   * @param Q Diagonal PSD vector
+   * @return noiseModel::Gaussian::shared_ptr Noise model built from covariance
+   */
   static inline noiseModel::Gaussian::shared_ptr buildWNOANoiseModel(
       double timestep, const VectorN& Q) {
     return noiseModel::Gaussian::Covariance(buildWNOACovariance(timestep, Q));
   }
 
+  /**
+   * @brief Transition matrix for the WNOA prior.
+   *
+   * Returns the 2N x 2N transition matrix mapping the concatenated state
+   * [pose; vel] over interval `delta_t` using the standard WNOA linearization.
+   *
+   * @param delta_t Time interval
+   * @return Matrix2N Transition matrix
+   */
   static Matrix2N transitionFunction(double delta_t) {
     // Construct the transition matrix for the WNOA factor
     Matrix2N F;
@@ -210,6 +284,18 @@ class WNOAMotionFactor
     return F;
   }
 
+  /**
+   * @brief Compute interpolation Jacobian with respect to the previous state.
+   *
+   * Computes the 2N x 2N Jacobian block that maps perturbations in the
+   * previous bordering state (pose_k, vel_k) to perturbations in the
+   * interpolated discrete residual.
+   *
+   * @param pv1 Pair (pose_k, vel_k)
+   * @param pv2 Pair (pose_kp1, vel_kp1)
+   * @param delta_t Time interval
+   * @return Matrix2N Jacobian block w.r.t. previous state
+   */
   static Matrix2N computeJacobianPrev(const std::pair<Pose, Velocity>& pv1,
                                       const std::pair<Pose, Velocity>& pv2,
                                       double delta_t) {
@@ -241,6 +327,18 @@ class WNOAMotionFactor
     return F;
   }
 
+  /**
+   * @brief Compute interpolation Jacobian with respect to the next state.
+   *
+   * Computes the 2N x 2N Jacobian block that maps perturbations in the
+   * next bordering state (pose_kp1, vel_kp1) to perturbations in the
+   * interpolated discrete residual.
+   *
+   * @param pv1 Pair (pose_k, vel_k)
+   * @param pv2 Pair (pose_kp1, vel_kp1)
+   * @param delta_t Time interval
+   * @return Matrix2N Jacobian block w.r.t. next state
+   */
   static Matrix2N computeJacobianNext(const std::pair<Pose, Velocity>& pv1,
                                       const std::pair<Pose, Velocity>& pv2,
                                       double delta_t) {
