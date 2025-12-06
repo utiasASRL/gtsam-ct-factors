@@ -16,41 +16,12 @@
  * @author Zi Cong Guo
  */
 #pragma once
-// Both relative poses and recovered trajectory poses will be stored as Pose2.
-#include <gtsam/geometry/Pose3.h>
-using gtsam::Pose2;
 
-// gtsam::Vectors are dynamic Eigen vectors, Vector3 is statically sized.
-#include <gtsam/base/Vector.h>
-using gtsam::Vector;
-using gtsam::Vector2;
-using gtsam::Vector3;
 
-// Unknown landmarks are of type Point2 (which is just a 2D Eigen vector).
-#include <gtsam/geometry/Point2.h>
-using gtsam::Point2;
-
-// Each variable in the system (poses and landmarks) must be identified with a
-// unique key. We can either use simple integer keys (1, 2, 3, ...) or symbols
-// (X1, X2, L1). Here we will use Symbols.
-#include <gtsam/inference/Symbol.h>
-using gtsam::Symbol;
-
-// We want to use iSAM2 to solve the range-SLAM problem incrementally.
-#include <gtsam/nonlinear/ISAM2.h>
 #include <gtsam/nonlinear/Marginals.h>
-
-// Measurement functions are represented as 'factors'. Several common factors
-// have been provided with the library for solving robotics SLAM problems:
 #include <gtsam/nonlinear/WNOAFactor.h>
-
-using gtsam::tictoc_print_;
-
-#include <gtsam/nonlinear/NonlinearEquality.h>
 #include <gtsam/nonlinear/StateData.h>
-#include <gtsam/slam/StereoFactor.h>
 
-// Standard headers, added last, so we know headers above work on their own.
 #include <algorithm>
 #include <fstream>
 #include <functional>
@@ -66,11 +37,24 @@ using gtsam::tictoc_print_;
 
 namespace gtsam {
 
-// Intervals of boundary states
-// empty optional = unbounded
+/**
+ * @brief Type alias for a pair of optional bordering states for an interpolated state.
+ *
+ * The pair holds the left and right bordering StateData for an interpolated
+ * state. Either entry may be empty (std::nullopt) to indicate a missing
+ * border; in that case extrapolation is used instead of interpolation.
+ */
 using StateDataInterval = std::pair<std::optional<StateData>, std::optional<StateData>>;
 
 
+/**
+ * @brief Simple container for a pose and its corresponding velocity.
+ *
+ * Used as the local representation of a state when interpolating pose and
+ * velocity pairs. The velocity uses the tangent vector type associated with
+ * the PoseType.
+ * @tparam PoseType Pose group/type (e.g., Pose2, Pose3, or a vector-space pose)
+ */
 template <typename PoseType>
 struct PoseVelocity {
   PoseType pose;
@@ -81,6 +65,14 @@ struct PoseVelocity {
   }
 };
 
+/**
+ * @brief Timestamped pose and velocity container.
+ *
+ * Wraps a `PoseVelocity` together with a timestamp (double seconds). This is
+ * the primary representation passed to interpolation routines when computing
+ * an interpolated state at a requested time.
+ * @tparam PoseType Pose group/type (e.g., Pose2, Pose3, or a vector-space pose)
+ */
 template <typename PoseType>
 struct TimestampedPoseVelocity {
   PoseVelocity<PoseType> poseVel;
@@ -95,6 +87,17 @@ struct TimestampedPoseVelocity {
       : poseVel(pv), timestamp(time) {}
 };
 
+/**
+ * @brief Interpolator for poses and velocities under a motion prior.
+ *
+ * The `Interpolator` class provides routines to interpolate pose and
+ * velocity at arbitrary times between (or outside) estimated states. It
+ * encapsulates the motion model (WNOA by default) via function objects for
+ * transition, covariance and Jacobian computations. The class also computes
+ * conditional covariances for interpolated states when requested.
+ *
+ * @tparam PoseType Pose group/type (e.g., Pose2, Pose3, or a vector-space pose)
+ */
 template <typename PoseType>
 class Interpolator {
  protected:
@@ -122,6 +125,8 @@ class Interpolator {
       computeJacobianNext_;
 
  public:
+
+  // Type aliases
   using StateDataSet = std::set<StateData>;
   using PoseVel = PoseVelocity<PoseType>;
   using TimestampedPoseVel = TimestampedPoseVelocity<PoseType>;
@@ -133,7 +138,21 @@ class Interpolator {
   using CovarianceMap = std::map<Key, Matrix>;
 
   Interpolator() = delete;
+  
 
+  /**
+   * @brief Construct an Interpolator with custom motion-model functions.
+   *
+   * @param Q_psd Diagonal power spectral density vector for the motion prior.
+   * @param small_angle_approx If true, use small-angle approximations on Lie groups.
+   * @param transitionFunction Function returning the transition matrix for dt.
+   * @param covarianceFunction Function returning process noise covariance for dt and Q_psd.
+   * @param inverseCovarianceFunction Function returning inverse covariance for dt and Q_psd.
+   * @param computeJacobianPrev Function that computes the Jacobian of the interpolated
+   *        state with respect to the previous bordering state.
+   * @param computeJacobianNext Function that computes the Jacobian of the interpolated
+   *        state with respect to the next bordering state.
+   */
   Interpolator(
       const VectorN& Q_psd, bool small_angle_approx,
        std::function<Matrix(double dt)> transitionFunction,
@@ -147,9 +166,35 @@ class Interpolator {
                            const std::pair<PoseType, VelocityType>&, double)>
           computeJacobianNext);
 
-  // Default to WNOA
-  Interpolator(const VectorN& Q_psd, bool small_angle_approx=false);
+    /**
+     * @brief Default constructor using the WNOA motion model.
+     *
+     * @param Q_psd Diagonal power spectral density vector for the motion prior.
+     * @param small_angle_approx If true, use small-angle approximations on Lie groups.
+     */
+    Interpolator(const VectorN& Q_psd, bool small_angle_approx=false);
 
+    /**
+     * @brief Interpolate the pose and velocity at time `t_tau`.
+     *
+     * The function computes the interpolated pose and velocity at the requested
+     * time using the provided bordering (optional) timestamped states. When a
+     * border is missing, boundary or extrapolation logic is used.
+     *
+     * Optionally returns Jacobians (8 matrices) and the interpolated covariance
+     * when the main-solve marginals are provided.
+     *
+     * @param Tvarpi_k Optional timestamped pose/velocity at left border t_k.
+     * @param Tvarpi_kp1 Optional timestamped pose/velocity at right border t_kp1.
+     * @param t_tau Interpolation time.
+     * @param H Optional output vector of Jacobian blocks (8 matrices).
+     * @param mainSolveMarginalMatrix Optional marginal covariance of bordering states from the main solve.
+     * @param covarianceOut Optional output pointer for the interpolated state's covariance (requires mainSolveMarginalMatrix).
+     * @param LambdaPsiPreComp Optional precomputed Lambda/Psi matrices to reuse work.
+     * @param localStateVecsPreComp Optional precomputed local state vectors (xi, xi_dot).
+     * @param localGlobalStateJacsPreComp Optional precomputed local state->global state Jacobians.
+     * @return PoseVel Interpolated pose and velocity pair at `t_tau`.
+     */
   PoseVel interpolatePoseAndVelocity(
       const std::optional<TimestampedPoseVel>& Tvarpi_k, const std::optional<TimestampedPoseVel>& Tvarpi_kp1,
       double t_tau, OptionalMatrixVecType H = nullptr,
@@ -159,56 +204,175 @@ class Interpolator {
       const std::shared_ptr<const LocalStateVecs>& localStateVecsPreComp = nullptr,
       const std::shared_ptr<const LocalGlobalStateJacs>& localGlobalStateJacsPreComp = nullptr) const;
 
+    /**
+     * @brief Interpolate multiple poses and velocities given a solved factor graph.
+     *
+     * This routine takes a factor graph and the solution for the estimated
+     * states and returns a `Values` object containing interpolated poses and
+     * velocities for the requested set of `interpolatedStates`.
+     *
+     * Optionally fills `covarianceMapOut` with the conditional covariances for
+     * each interpolated state.
+     *
+     * @param mainSolveGraph Factor graph used in the main solve (estimated states only).
+     * @param mainSolveSolution Solution `Values` from the main solve.
+     * @param mainSolveStates Ordered set of estimated `StateData` used in the main solve.
+     * @param interpolatedStates Set of `StateData` to interpolate.
+     * @param covarianceMapOut Optional output map to receive per-state covariances.
+     * @return Values A `Values` container with interpolated pose and velocity entries.
+     */
   Values interpolatePosesAndVelocities(
       const NonlinearFactorGraph& mainSolveGraph,
       const Values& mainSolveSolution, const StateDataSet& mainSolveStates,
       const StateDataSet& interpolatedStates,
       std::shared_ptr<CovarianceMap> covarianceMapOut = nullptr) const;
 
-  // if Lambda and Psi are provided, they will be computed using (5.23)
+    /**
+     * @brief Compute the conditional covariance of the interpolated state.
+     *
+     * Given timestamped left and right bordering states and the interpolated
+     * state's timestamped value, compute the 2N x 2N conditional covariance
+     * matrix Sigma_tau. Optionally return the interpolation matrices Lambda and Psi.
+     *
+     * @param pvk Timestamped pose/velocity at left border.
+     * @param pvkp1 Timestamped pose/velocity at right border.
+     * @param pvtau Timestamped pose/velocity at interpolation time.
+     * @param Lambda Optional output pointer to receive Lambda matrix.
+     * @param Psi Optional output pointer to receive Psi matrix.
+     * @return Matrix2N Conditional covariance matrix of the interpolated state.
+     */
   Matrix2N computeConditionalCov(const TimestampedPoseVel& pvk,
                                  const TimestampedPoseVel& pvkp1,
                                  const TimestampedPoseVel& pvtau,
                                  OptionalMatrixType Lambda = nullptr,
                                  OptionalMatrixType Psi = nullptr) const;
 
-  // Retrieve interpolation matrices. Fast implementation specialized for WNOA.
+    /**
+     * @brief Compute interpolation matrices Lambda and Psi (WNOA-optimized).
+     *
+     * Lambda and Psi relate the bordering states to the interpolated state and
+     * are used for both calculating interpolated values and propagating
+     * covariance. This implementation is optimized for the WNOA motion prior.
+     *
+     * @param t_k Time of the left border state.
+     * @param t_kp1 Time of the right border state.
+     * @param t_tau Interpolation time.
+     * @return std::pair<Matrix,Matrix> Pair (Lambda, Psi) interpolation matrices.
+     */
   std::pair<Matrix, Matrix> getLambdaPsi(double t_k, double t_kp1,
                                          double t_tau) const;
 
-  // Retrieve interpolation matrices. General implementation.
+    /**
+     * @brief Compute interpolation matrices Lambda and Psi for a general motion model.
+     *
+     * This general implementation does not rely on WNOA-specific simplifications
+     * and can be used for other motion priors provided the appropriate
+     * transition/covariance functions are supplied.
+     *
+     * @param t_k Time of the left border state.
+     * @param t_kp1 Time of the right border state.
+     * @param t_tau Interpolation time.
+     * @return std::pair<Matrix,Matrix> Pair (Lambda, Psi) interpolation matrices.
+     */
   std::pair<Matrix, Matrix> getLambdaPsiGeneral(double t_k, double t_kp1,
                                                 double t_tau) const;
-
+    /**
+     * @brief Compute the local state vectors (xi, xi_dot) for a pair of bordering states.
+     *
+     * The local state vectors are used as intermediate quantities in interpolation
+     * and in Jacobian computations. Optionally returns local-to-global Jacobians.
+     *
+     * @param pvk Timestamped pose/velocity at left border state.
+     * @param pvkp1 Timestamped pose/velocity at right border state.
+     * @param jacs Optional output pointer to receive local-to-global Jacobians.
+     * @return LocalStateVecs Pair of local state vectors (xi, xi_dot).
+     */
   LocalStateVecs computeLocalStateVecs(
       const TimestampedPoseVel& pvk, const TimestampedPoseVel& pvkp1,
       LocalGlobalStateJacs* jacs = nullptr) const;
 
 
  protected:
-  // Interpoate pose and velocity at left boundary
-  PoseVel interpolateBoundaryLeft(
-      const PoseVelocity<PoseType>& poseVel_k,
-      OptionalMatrixVecType H = nullptr,
-      const std::shared_ptr<Matrix>& mainSolveMarginalMatrix = nullptr,
-      Matrix* covarianceOut = nullptr) const;
+    /**
+     * @brief Interpolate pose and velocity at the left boundary.
+     *
+     * When the requested interpolation time lies at the left border
+     * state's timestamp, this routine computes the interpolated pose and
+     * velocity using boundary logic. Optionally returns Jacobian blocks and
+     * the interpolated covariance when the main-solve marginal is provided.
+     *
+     * @param poseVel_k Pose and velocity at the left border (local representation).
+     * @param H Optional output pointer to a vector of Jacobian blocks.
+     * @param mainSolveMarginalMatrix Optional shared pointer to the main-solve marginal covariance.
+     * @param covarianceOut Optional output pointer for the resulting covariance matrix.
+     * @return PoseVel Interpolated pose and velocity at the left boundary.
+     */
+    PoseVel interpolateBoundaryLeft(
+            const PoseVelocity<PoseType>& poseVel_k,
+            OptionalMatrixVecType H = nullptr,
+            const std::shared_ptr<Matrix>& mainSolveMarginalMatrix = nullptr,
+            Matrix* covarianceOut = nullptr) const;
 
-  // Interpoate pose and velocity at right boundary
+  /**
+   * @brief Interpolate pose and velocity at the right boundary.
+   *
+   * When the requested interpolation time lies at the right border
+   * state's timestamp, this routine computes the interpolated pose and
+   * velocity using boundary logic. Optionally returns Jacobian blocks and
+   * the interpolated covariance when the main-solve marginal is provided.
+   *
+   * @param poseVel_kp1 Pose and velocity at the right border (local representation).
+   * @param H Optional output pointer to a vector of Jacobian blocks.
+   * @param mainSolveMarginalMatrix Optional shared pointer to the main-solve marginal covariance.
+   * @param covarianceOut Optional output pointer for the resulting covariance matrix.
+   * @return PoseVel Interpolated pose and velocity at the right boundary.
+   */
   PoseVel interpolateBoundaryRight(
       const PoseVelocity<PoseType>& poseVel_kp1,
       OptionalMatrixVecType H = nullptr,
       const std::shared_ptr<Matrix>& mainSolveMarginalMatrix = nullptr,
       Matrix* covarianceOut = nullptr) const;
 
-  // Extrapolation case for pose and velocity
+  /**
+   * @brief Extrapolate pose and velocity from a border state.
+   *
+   * Performs extrapolation when the interpolation time lies outside the
+   * interval between bordering states. The input `t_diff` is the time
+   * difference between the target time and the provided state's timestamp.
+   * Optionally provides Jacobians and covariance output when requested.
+   *
+   * @param poseVel Pose and velocity at the source border.
+   * @param t_diff Time difference from source timestamp to interpolation time.
+   * @param H Optional output pointer to a vector of Jacobian blocks.
+   * @param mainSolveMarginalMatrix Optional shared pointer to the main-solve marginal covariance.
+   * @param covarianceOut Optional output pointer for the resulting covariance matrix.
+   * @return PoseVel Extrapolated pose and velocity at the requested time.
+   */
   PoseVel extrapolatePoseAndVelocity(
       const PoseVelocity<PoseType>& poseVel, double t_diff,
       OptionalMatrixVecType H = nullptr,
       const std::shared_ptr<Matrix>& mainSolveMarginalMatrix = nullptr,
       Matrix* covarianceOut = nullptr) const;
 
-  // Interpolate pose and velocity, Internal overload that actually does the
-  // work
+  /**
+   * @brief Internal implementation that performs interpolation between two bordering states.
+   *
+   * This internal overload implements the core interpolation algorithm for a
+   * pair of timestamped bordering states and a target interpolation time.
+   * It supports optional precomputed helpers (Lambda/Psi matrices and local
+   * state vectors/Jacobians) to avoid redundant work when called in tight loops.
+   *
+   * @param tPoseVel_k Timestamped pose/velocity at the left border.
+   * @param tPoseVel_kp1 Timestamped pose/velocity at the right border.
+   * @param t_tau Interpolation time.
+   * @param H Optional output pointer to a vector of Jacobian blocks.
+   * @param mainSolveMarginalMatrix Optional shared pointer to the main-solve marginal covariance.
+   * @param covarianceOut Optional output pointer for the resulting covariance matrix.
+   * @param LambdaPsiPreComp Optional precomputed Lambda/Psi matrices to reuse work.
+   * @param localStateVecsPreComp Optional precomputed local state vectors (xi, xi_dot).
+   * @param localGlobalStateJacsPreComp Optional precomputed local->global Jacobians.
+   * @return PoseVel Interpolated pose and velocity at `t_tau`.
+   */
   PoseVel interpolatePoseAndVelocity_(
       const TimestampedPoseVel& tPoseVel_k,
       const TimestampedPoseVel& tPoseVel_kp1, double t_tau,
@@ -219,7 +383,23 @@ class Interpolator {
       const std::shared_ptr<const LocalStateVecs>& localStateVecsPreComp = nullptr,
       const std::shared_ptr<const LocalGlobalStateJacs>& localGlobalStateJacsPreComp = nullptr) const;
   
-  // Fast version that makes small angle approximation.
+  /**
+   * @brief Fast interpolation using the small-angle approximation.
+   *
+   * For small rotational displacements this variant uses linearized/small-angle
+   * approximations to speed up computation while retaining reasonable
+   * accuracy. It supports optional Jacobian and covariance outputs and may
+   * accept precomputed Lambda/Psi for reuse.
+   *
+   * @param tPoseVel_k Timestamped pose/velocity at the left border.
+   * @param tPoseVel_kp1 Timestamped pose/velocity at the right border.
+   * @param t_tau Interpolation time.
+   * @param H Optional output pointer to a vector of Jacobian blocks.
+   * @param mainSolveMarginalMatrix Optional shared pointer to the main-solve marginal covariance.
+   * @param covarianceOut Optional output pointer for the resulting covariance matrix.
+   * @param LambdaPsiPreComp Optional precomputed Lambda/Psi matrices to reuse work.
+   * @return PoseVel Interpolated pose and velocity at `t_tau` using small-angle approx.
+   */
   PoseVel interpolatePoseAndVelocitySmallAngle(
       const TimestampedPoseVel& tPoseVel_k,
       const TimestampedPoseVel& tPoseVel_kp1, double t_tau,
@@ -228,19 +408,53 @@ class Interpolator {
       Matrix* covarianceOut = nullptr,
       const std::shared_ptr<const LambdaPsiMats>& LambdaPsiPreComp = nullptr) const;
 
-  static std::map<StateDataInterval, std::shared_ptr<Matrix>>
-  computeJointMarginals(
-    const std::map<StateDataInterval, std::vector<StateData>>& queryBuckets,
-    const std::unique_ptr<Marginals>& marginals);
+    /**
+     * @brief Compute joint marginal covariances for requested state intervals.
+     *
+     * Given a set of query buckets mapping intervals to the contained
+     * `StateData` entries, extract and assemble the joint marginal covariance
+     * matrices from the provided `Marginals` object. Returns a map from the
+     * interval to the joint marginal matrix (as a shared pointer).
+     *
+     * @param queryBuckets Mapping of `StateDataInterval` to a vector of `StateData` keys.
+     * @param marginals Unique pointer to a `Marginals` object computed from the main solve.
+     * @return std::map<StateDataInterval, std::shared_ptr<Matrix>> Map of joint marginal matrices.
+     */
+    static std::map<StateDataInterval, std::shared_ptr<Matrix>>
+    computeJointMarginals(
+        const std::map<StateDataInterval, std::vector<StateData>>& queryBuckets,
+        const std::unique_ptr<Marginals>& marginals);
 
-  // construct the full covariance matrix using the order given by keyVector
+  /**
+   * @brief Construct a full covariance matrix from a joint marginal block matrix.
+   *
+   * The `blockMatrix` argument contains the joint marginal arranged in a
+   * block structure. This helper reorders and flattens it into a full dense
+   * matrix according to `keyVector` and the specified `blockSize`.
+   *
+   * @param blockMatrix The joint marginal in block structure.
+   * @param keyVector Ordering of keys to determine row/column ordering.
+   * @param blockSize Size of each block (e.g., dimension of a single state block).
+   * @return Matrix Full covariance matrix assembled from the joint marginal.
+   */
   static Matrix constructMatrixFromJointMarginal(
       const JointMarginal& blockMatrix, const KeyVector& keyVector,
       size_t blockSize);
 
-  // Not used anymore, but may be useful in future
-  static Matrix reorderSymmetricMatrix(const Matrix& mat, size_t block_size,
-                                       const std::vector<size_t>& block_order);
+    /**
+     * @brief Reorder a symmetric block matrix according to a new block ordering.
+     *
+     * Utility helper to permute a symmetric matrix composed of square blocks
+     * into a new order. The function is currently unused but provided for
+     * potential future needs when reordering block-structured covariances.
+     *
+     * @param mat Input symmetric matrix composed of blocks of size `block_size`.
+     * @param block_size The size of each block.
+     * @param block_order Desired order of blocks (indices into the original order).
+     * @return Matrix Reordered symmetric matrix.
+     */
+    static Matrix reorderSymmetricMatrix(const Matrix& mat, size_t block_size,
+                                                                             const std::vector<size_t>& block_order);
 };
 
 }  // namespace gtsam
