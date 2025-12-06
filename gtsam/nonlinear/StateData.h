@@ -7,49 +7,87 @@
 
 namespace gtsam {
 
-/* @brief State data structure for keeping track of pose and velocity keys as
- * well as associated timestamp. Used in GP interpolation.*/
+/**
+ * @brief Lightweight container for states used for continuous-time estimation and interpolation.
+ *
+ * `StateData` stores the keys identifying the pose and velocity variables in
+ * a factor graph together with the associated timestamp. It is intentionally
+ * minimal and used primarily for ordering, lookup and grouping of states when
+ * constructing interpolation queries.
+ */
 struct StateData {
+  /// Key of the pose variable
   Key pose;
+
+  /// Key of the velocity variable
   Key vel;
+
+  /// Timestamp (seconds) associated with this state
   double time;
-  // Default constructor for easy init
+
+  /**
+   * @brief Default constructor (value-initialized members).
+   *
+   * Provided for convenience and to enable use in standard containers.
+   */
   StateData() = default;
-  // Constructor
+
+  /**
+   * @brief Construct a StateData from explicit keys and timestamp.
+   * @param pose_in Pose key
+   * @param vel_in Velocity key
+   * @param time_in Timestamp in seconds
+   */
   StateData(Key pose_in, Key vel_in, double time_in)
       : pose(pose_in), vel(vel_in), time(time_in) {};
 
-  // Less than operator to enable sorting
-  bool operator<(const StateData& other) const {
-    return this->time < other.time;
-  }
-  // Greater than operator to enable sorting
-  bool operator>(const StateData& other) const {
-    return this->time > other.time;
-  }
+  /**
+   * @brief Compare by timestamp (ascending).
+   *
+   * Useful to sort state lists in chronological order.
+   */
+  bool operator<(const StateData& other) const { return this->time < other.time; }
 
-  // less than operator to compare with other times
+  /**
+   * @brief Compare by timestamp (descending).
+   */
+  bool operator>(const StateData& other) const { return this->time > other.time; }
+
+  /**
+   * @brief Compare this state's timestamp with a raw time value.
+   * @param time Timestamp to compare against
+   * @return true if this->time < time
+   */
   bool operator<(double time) const { return this->time < time; }
-  
-  // greater than operator to compare with other times
+
+  /**
+   * @brief Compare this state's timestamp with a raw time value.
+   * @param time Timestamp to compare against
+   * @return true if this->time > time
+   */
   bool operator>(double time) const { return this->time > time; }
 
-  // equality operator for unordered sets and maps
+  /**
+   * @brief Equality compares the identifying keys (pose and vel).
+   *
+   * Two `StateData` objects are considered equal if they refer to the same
+   * pose and velocity keys. The timestamp is not used for equality to keep
+   * `StateData` usable as a simple identifier in unordered containers.
+   */
   bool operator==(const StateData& other) const {
-    if (this->pose == other.pose && this->vel == other.vel) {
-      // this assert fails for some reason?
-      // assert((this->time + 1e-9) < other.time); // ensure times are equal within tolerance
-      return true;
-    }
-    return false;
+    return (this->pose == other.pose) && (this->vel == other.vel);
   }
 };
 
 }  // namespace gtsam
 
-/* @brief Function to make StateData hashable via the pose key. This allows us
- * to make well-defined unordered sets and maps on StateData structs.
- * NOTE: hash function combines pose and vel.*/
+/**
+ * @brief Hash `StateData` using the pose and velocity keys.
+ *
+ * Combines the hash of the pose and velocity keys to produce a stable
+ * hash suitable for `unordered_map`/`unordered_set`. The timestamp is not
+ * included because `StateData` equality ignores time as well.
+ */
 namespace std {
 template <>
 struct hash<gtsam::StateData> {
