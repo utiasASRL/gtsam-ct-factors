@@ -4,10 +4,14 @@ noise:
 flags:
   perturb_meas: false
   fixed_noise: true
+  run_original: true
+  run_wrapper: true
+  run_wnoa_wrapper: true
+  print_timing: true
 params:
   vel_mean: [0.1, 0.0, 0.01]
   del_t: 0.1
   period_interp: 10
   n_points: 300
   n_runs: 1000
-  n_unary: 1
+  n_unary: 12

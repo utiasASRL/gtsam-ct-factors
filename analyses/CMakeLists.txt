@@ -16,6 +16,8 @@ add_executable(SimpleInterpExample simple_traj/SimpleInterpExample.cpp)
 add_executable(InterpSpeedTest simple_traj/InterpSpeedTest.cpp)
 add_executable(WNOAGraph wnoa_graph/WNOAGraph.cpp)
 add_executable(LostInTheWoods LostInTheWoods/LostInTheWoodsStudy.cpp)
+add_executable(WoodsTiming LostInTheWoods/WoodsTiming.cpp)
+add_executable(GiantGlassOfMilk GiantGlassOfMilk/MilkAnalysis.cpp)
 
 
 # By using CMake exported targets, a simple "link" dependency introduces the
@@ -25,3 +27,5 @@ target_link_libraries(SimpleInterpExample PRIVATE gtsam;yaml-cpp)
 target_link_libraries(InterpSpeedTest PRIVATE gtsam;yaml-cpp)
 target_link_libraries(WNOAGraph PRIVATE gtsam;yaml-cpp)
 target_link_libraries(LostInTheWoods PRIVATE gtsam;yaml-cpp)
+target_link_libraries(WoodsTiming PRIVATE gtsam;yaml-cpp)
+target_link_libraries(GiantGlassOfMilk PRIVATE gtsam;yaml-cpp)

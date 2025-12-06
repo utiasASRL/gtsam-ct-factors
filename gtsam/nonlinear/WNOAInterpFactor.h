@@ -17,6 +17,7 @@
 #include <gtsam/nonlinear/WNOAFactorGraph.h>
 
 #include <algorithm>
+#include <array>
 #include <stdexcept>
 #include <unordered_set>
 #include <utility>
@@ -59,10 +60,26 @@ class WNOAInterpFactor : public NoiseModelFactor {
   // vector of precomputed matrices for interpolation
   vector<std::shared_ptr<LambdaPsiMats>> lambda_psi_pre_comp;
 
+  // Cache inner key -> index mapping to avoid rebuilding in noise model calc
+  unordered_map<Key, int> inner_key_to_index_;
+
+  // Precomputed mapping per inner key to avoid repeated lookups
+  struct InnerKeyMapping {
+    bool isInterpolated = false;
+    // For non-interpolated keys
+    int directOuterIndex = -1;
+    // For interpolated keys: cached outer indices and keys
+    int idxPoseL = -1, idxVelL = -1, idxPoseR = -1, idxVelR = -1;
+    Key keyPoseL = 0, keyVelL = 0, keyPoseR = 0, keyVelR = 0;
+  };
+  std::vector<InnerKeyMapping> inner_key_mappings_;
+
+  // (No internal flattened Jacobian representation; we use nested maps unless passed externally)
+
  public:
   struct PassedInterpData {
     Values values;
-    unordered_map<Key, unordered_map<Key, Matrix>> jacobians;
+   unordered_map<Key, std::array<Matrix, 4>> jacobians; // flattened [LPose, LVel, RPose, RVel]
     unordered_map<StateData, Matrix2N> condCovs;
   };
 
@@ -144,6 +161,34 @@ class WNOAInterpFactor : public NoiseModelFactor {
     for (size_t i = 0; i < this->keys_.size(); i++) {
       outer_key_to_index[this->keys_[i]] = i;
     }
+
+    // Build inner key mappings once and cache inner key indices
+    const KeyVector& inner_keys_init = inner_factor_->keys();
+    inner_key_mappings_.resize(inner_keys_init.size());
+    inner_key_to_index_.reserve(inner_keys_init.size());
+    for (size_t i = 0; i < inner_keys_init.size(); ++i) {
+      Key ik = inner_keys_init[i];
+      inner_key_to_index_[ik] = static_cast<int>(i);
+      InnerKeyMapping mk;
+      auto itInterp = key_to_interp.find(ik);
+      if (itInterp == key_to_interp.end()) {
+        auto itOuter = outer_key_to_index.find(ik);
+        if (itOuter != outer_key_to_index.end()) mk.directOuterIndex = itOuter->second;
+      } else {
+        mk.isInterpolated = true;
+        const StateData &sd = itInterp->second;
+        const auto &br = interp_to_borders.at(sd);
+        const StateData &left = br.first; const StateData &right = br.second;
+        mk.idxPoseL = outer_key_to_index.at(left.pose);
+        mk.idxVelL  = outer_key_to_index.at(left.vel);
+        mk.idxPoseR = outer_key_to_index.at(right.pose);
+        mk.idxVelR  = outer_key_to_index.at(right.vel);
+        mk.keyPoseL = left.pose; mk.keyVelL = left.vel;
+        mk.keyPoseR = right.pose; mk.keyVelR = right.vel;
+      }
+      inner_key_mappings_[i] = mk;
+    }
+
   };
 
   ~WNOAInterpFactor() override {};
@@ -354,19 +399,16 @@ class WNOAInterpFactor : public NoiseModelFactor {
       unordered_map<StateData, Matrix2N>* InterpCondCovs = nullptr,
       PassedInterpData* passedInterpData = nullptr) const {
     // Top-level timing for entire function
-    gttic(WNOAInterpFactor_computeInterpolatedError);
+    // gttic(WNOAInterpFactor_computeInterpolatedError);
 
-    // Define mapping from interpolated keys to interpolation jacobians
-    // Nested Key: map[interp key][estimated key] = Jac
-    gttic(WNOAInterpFactor_computeInterpolatedError_set_up_vars);
-    unordered_map<Key, unordered_map<Key, Matrix>> interpJacobiansLocal;
+  // Interpolation Jacobians stored as flattened map: per interpolated key -> 4 blocks
+  unordered_map<Key, std::array<Matrix, 4>> interpJacobiansLocal;
     Values valuesInterpLocal;
 
-    unordered_map<Key, unordered_map<Key, Matrix>>* InterpJacobians = nullptr;
+  unordered_map<Key, std::array<Matrix, 4>>* InterpJacobians = nullptr;
     Values* values_interp = nullptr;
-    gttoc(WNOAInterpFactor_computeInterpolatedError_set_up_vars);
 
-    gttic(WNOAInterpFactor_computeInterpolatedError_interpolate_values);
+    // gttic(WNOAInterpFactor_computeInterpolatedError_interpolate_values);
 
     if (passedInterpData) {
       values_interp = &passedInterpData->values;
@@ -387,33 +429,37 @@ class WNOAInterpFactor : public NoiseModelFactor {
       }
     }
 
-    gttoc(WNOAInterpFactor_computeInterpolatedError_interpolate_values);
+    // gttoc(WNOAInterpFactor_computeInterpolatedError_interpolate_values);
 
-    gttic(WNOAInterpFactor_computeInterpolatedError_compute_error);
+    // gttic(WNOAInterpFactor_computeInterpolatedError_compute_error);
 
-    // construct values for inner factor
+    // cache inner keys once
+    const KeyVector& inner_keys = inner_factor_->keys();
+
+    // construct values for inner factor using mappings
     Values values_inner;
-    for (const auto& key : inner_factor_->keys()) {
-      auto it_interp = values_interp->find(key);
-      if (it_interp != values_interp->end()) {
+    for (size_t i = 0; i < inner_keys.size(); ++i) {
+      Key key = inner_keys[i];
+      if (inner_key_mappings_[i].isInterpolated) {
+        auto it_interp = values_interp->find(key);
+        if (it_interp == values_interp->end())
+          throw std::runtime_error("Interpolated key missing in values_interp");
         values_inner.insert(key, it_interp->value);
       } else {
         auto it_outer = values.find(key);
-        if (it_outer != values.end()) {
-          values_inner.insert(key, it_outer->value);
-        } else {
-          throw std::runtime_error("Key " + DefaultKeyFormatter(key) +
-                                   " not in interpolated states or outer keys");
-        }
+        if (it_outer == values.end())
+          throw std::runtime_error("Key " + DefaultKeyFormatter(key) + " not found in outer values");
+        values_inner.insert(key, it_outer->value);
       }
     }
 
     // Call inner factor error function with interpolated values.
+    std::vector<Matrix> H_inner_local;
     Vector error;
-    vector<Matrix> H_inner_(inner_factor_->size());
     if (!H_inner) {
       // if H_inner not passed in, use local variable.
-      H_inner = &H_inner_;
+      H_inner_local.resize(inner_keys.size());
+      H_inner = &H_inner_local;
     }
     if (H || !fixed_noise_model_) {
       error = inner_factor_->unwhitenedError(values_inner, H_inner);
@@ -421,49 +467,49 @@ class WNOAInterpFactor : public NoiseModelFactor {
       error = inner_factor_->unwhitenedError(values_inner);
     }
 
-    gttoc(WNOAInterpFactor_computeInterpolatedError_compute_error);
-    gttic(WNOAInterpFactor_computeInterpolatedError_compute_jacobians);
+    // gttoc(WNOAInterpFactor_computeInterpolatedError_compute_error);
+    // gttic(WNOAInterpFactor_computeInterpolatedError_compute_jacobians);
 
     // compute Jacobians for outer keys
     if (H) {
       // loop through inner keys and update outer keys via backpropagation
       // NOTE: it is possible for two inner keys to affect the same outer key
-      for (size_t i = 0; i < inner_factor_->keys().size(); i++) {
-        Key inner_key = inner_factor_->keys()[i];
-        auto it_interp = values_interp->find(inner_key);
-        if (it_interp != values_interp->end()) {
-          const StateData& interp = key_to_interp.at(inner_key);
-          const auto& [left, right] = interp_to_borders.at(interp);
-
-          auto& inner_map = InterpJacobians->at(inner_key);  // cache inner map
-
-          // Create vector of outer keys
-          KeyVector outer_keys = {left.pose, left.vel, right.pose, right.vel};
-          // Loop over keys and update Jacobian
-          for (Key& outer_key : outer_keys) {
-            // get position of outer key
-            int k = outer_key_to_index.at(outer_key);
-            // add to the outer jacobian
-            const Matrix& J = (*H_inner)[i] * inner_map.at(outer_key);
-            if ((*H)[k].size() == 0) {
-              (*H)[k] = J;
-            } else {
-              (*H)[k] += J;
-            }
+      for (size_t i = 0; i < inner_keys.size(); i++) {
+        const Key inner_key = inner_keys[i];
+        const Matrix &Jinner = (*H_inner)[i];
+        const InnerKeyMapping &mk = inner_key_mappings_[i];
+        if (mk.isInterpolated) {
+          const std::array<Matrix,4>& J4 = InterpJacobians->at(inner_key);
+          // Order: 0:LPose, 1:LVel, 2:RPose, 3:RVel
+          if (mk.idxPoseL >= 0) {
+            const Matrix &Jblock = J4[0];
+            if ((*H)[mk.idxPoseL].size() == 0) (*H)[mk.idxPoseL].setZero(Jinner.rows(), Jblock.cols());
+            (*H)[mk.idxPoseL].noalias() += Jinner * Jblock;
+          }
+          if (mk.idxVelL >= 0) {
+            const Matrix &Jblock = J4[1];
+            if ((*H)[mk.idxVelL].size() == 0) (*H)[mk.idxVelL].setZero(Jinner.rows(), Jblock.cols());
+            (*H)[mk.idxVelL].noalias() += Jinner * Jblock;
+          }
+          if (mk.idxPoseR >= 0) {
+            const Matrix &Jblock = J4[2];
+            if ((*H)[mk.idxPoseR].size() == 0) (*H)[mk.idxPoseR].setZero(Jinner.rows(), Jblock.cols());
+            (*H)[mk.idxPoseR].noalias() += Jinner * Jblock;
+          }
+          if (mk.idxVelR >= 0) {
+            const Matrix &Jblock = J4[3];
+            if ((*H)[mk.idxVelR].size() == 0) (*H)[mk.idxVelR].setZero(Jinner.rows(), Jblock.cols());
+            (*H)[mk.idxVelR].noalias() += Jinner * Jblock;
           }
         } else {
-          int k = outer_key_to_index.at(inner_key);
-          const Matrix& J = (*H_inner)[i];
-          if ((*H)[k].size() == 0) {
-            (*H)[k] = J;
-          } else {
-            (*H)[k] += J;
-          }
+          const int k = mk.directOuterIndex;
+          if ((*H)[k].size() == 0) (*H)[k].setZero(Jinner.rows(), Jinner.cols());
+          (*H)[k].noalias() += Jinner;
         }
       }
     }
 
-    gttoc(WNOAInterpFactor_computeInterpolatedError_compute_jacobians);
+    // gttoc(WNOAInterpFactor_computeInterpolatedError_compute_jacobians);
 
     return error;
   }
@@ -472,9 +518,10 @@ class WNOAInterpFactor : public NoiseModelFactor {
    * Put their values in a Values structure and compute their Jacobians.*/
   Values getInterpolatedValues(
       const Values& values,
-      unordered_map<Key, unordered_map<Key, Matrix>>* InterpJacobians = nullptr,
+  unordered_map<Key, std::array<Matrix, 4>>* InterpJacobians = nullptr,
       unordered_map<StateData, Matrix2N>* InterpCondCovs = nullptr) const {
     Values values_interp;  // interpolated values
+    
     // loop through interpolated state map and compute values
     uint interp_ind = 0;
     for (const auto& [interp_state, border_states] : interp_to_borders) {
@@ -491,8 +538,9 @@ class WNOAInterpFactor : public NoiseModelFactor {
 
       // Get interpolated state velocity pair
       PoseVelocity<PoseType> result;
-      vector<Matrix> H(8);
-      if (InterpJacobians) {
+      
+    vector<Matrix> H(8);
+    if (InterpJacobians) {
         result = interpolator_.interpolatePoseAndVelocity(
             state_left, state_right, interp_state.time, &H, nullptr, nullptr,
             lambda_psi_pre_comp.at(interp_ind));
@@ -506,16 +554,10 @@ class WNOAInterpFactor : public NoiseModelFactor {
       values_interp.insert(interp_state.pose, result.pose);
       values_interp.insert(interp_state.vel, result.vel);
 
-      // arrange jacobians in unordered map (for easy access later)
+      // arrange jacobians in flattened map (fixed order blocks)
       if (InterpJacobians) {
-        (*InterpJacobians)[interp_state.pose][left.pose] = H[0];
-        (*InterpJacobians)[interp_state.pose][left.vel] = H[1];
-        (*InterpJacobians)[interp_state.pose][right.pose] = H[2];
-        (*InterpJacobians)[interp_state.pose][right.vel] = H[3];
-        (*InterpJacobians)[interp_state.vel][left.pose] = H[4];
-        (*InterpJacobians)[interp_state.vel][left.vel] = H[5];
-        (*InterpJacobians)[interp_state.vel][right.pose] = H[6];
-        (*InterpJacobians)[interp_state.vel][right.vel] = H[7];
+        (*InterpJacobians)[interp_state.pose] = std::array<Matrix,4>{H[0], H[1], H[2], H[3]};
+        (*InterpJacobians)[interp_state.vel]  = std::array<Matrix,4>{H[4], H[5], H[6], H[7]};
       }
 
       // Conditional covariance of interpolated states for noise model update
@@ -553,13 +595,7 @@ class WNOAInterpFactor : public NoiseModelFactor {
     int err_dim = noise_model_ptr->dim();
     Matrix noise_cov = noise_model_ptr->covariance();
 
-    // Get mappings from inner keys to index, required to index into jacobian
-    // vector
-    KeyVector inner_keys = inner_factor_->keys();
-    unordered_map<Key, int> key_index;
-    for (size_t i = 0; i < inner_keys.size(); i++) {
-      key_index[inner_keys[i]] = i;
-    }
+    // Use cached mapping from inner keys to indices for Jacobian lookup
     // Compute the covariance update based on interpolated states
     // Note: Here, we leverage the block-diagonal approximation of the
     // interpolated covariances (i.e., independence approximation)
@@ -567,13 +603,15 @@ class WNOAInterpFactor : public NoiseModelFactor {
       // Retrieve Jacobians from inner factor
       Matrix G_pose(err_dim, dim);
       Matrix G_vel(err_dim, dim);
-      if (key_index.count(state.pose) > 0) {
-        G_pose = Jacobians[key_index[state.pose]];
+      auto itPose = inner_key_to_index_.find(state.pose);
+      if (itPose != inner_key_to_index_.end()) {
+        G_pose = Jacobians[itPose->second];
       } else {
         G_pose.setZero();
       }
-      if (key_index.count(state.vel) > 0) {
-        G_vel = Jacobians[key_index[state.vel]];
+      auto itVel = inner_key_to_index_.find(state.vel);
+      if (itVel != inner_key_to_index_.end()) {
+        G_vel = Jacobians[itVel->second];
       } else {
         G_vel.setZero();
       }
@@ -758,7 +796,6 @@ WNOAFactorGraph<PoseType> interpolateWNOAFactorGraph(
     iter_state++;
   }
   // loop through factors and wrap factors on interpolated states
-  unordered_set<size_t> wnoa_factor_indices;  // Store indices of WNOA factors
   for (auto& factor : graph) {
     // handle null factor
     if (!factor) continue;
@@ -793,11 +830,8 @@ WNOAFactorGraph<PoseType> interpolateWNOAFactorGraph(
           nmfactor, factor_estimated_states, factor_interp_states, Q_psd,
           fixed_noise);
       new_graph.add(wrapped_factor);
-      wnoa_factor_indices.insert(new_graph.size() -
-                                 1);  // Store index of added factor
     }
   }
-  new_graph.setWNOAInterpFactorIndices(wnoa_factor_indices);
 
   return new_graph;
 }

@@ -10,57 +10,129 @@
  * -------------------------------------------------------------------------- */
 
 /**
- * @file    WNOALevenbergMarquardtOptimizer.cpp
- * @brief   Template instantiations for WNOALevenbergMarquardtOptimizer
- * @author  Sven Lilge
- * @date    Sep 9, 2025
+ * @file    LevenbergMarquardtOptimizer.cpp
+ * @brief   A nonlinear optimizer that uses the Levenberg-Marquardt trust-region scheme
+ * @author  Richard Roberts
+ * @author  Frank Dellaert
+ * @author  Luca Carlone
+ * @date    Feb 26, 2012
  */
 
 #include <gtsam/nonlinear/WNOALevenbergMarquardtOptimizer.h>
 #include <gtsam/nonlinear/internal/LevenbergMarquardtState.h>
+#include <gtsam/nonlinear/NonlinearFactorGraph.h>
+#include <gtsam/nonlinear/Values.h>
+#include <gtsam/linear/GaussianFactorGraph.h>
 #include <gtsam/linear/linearExceptions.h>
-#include <iostream>
-#include <iomanip>
-#include <limits>
-#include <chrono>
-#include <fstream>
-
+#include <gtsam/inference/Ordering.h>
+#include <gtsam/base/Vector.h>
 #if GTSAM_USE_BOOST_FEATURES
 #include <gtsam/base/timing.h>
 #endif
 
+#include <cmath>
+#include <fstream>
+#include <iostream>
+#include <iomanip>
+#include <limits>
+#include <string>
+
+using namespace std;
+
 namespace gtsam {
 
 typedef internal::LevenbergMarquardtState State;
-using namespace std;
 
-// Constructor implementations  
+/* ************************************************************************* */
 template<typename PoseType>
-WNOALevenbergMarquardtOptimizer<PoseType>::WNOALevenbergMarquardtOptimizer(
-    const WNOAFactorGraph<PoseType>& graph, 
-    const Values& initialValues,
-    const LevenbergMarquardtParams& params)
-  : LevenbergMarquardtOptimizer(graph, initialValues, params), // TODO: Passing the graph normally for now
-    wnoa_graph_(const_cast<WNOAFactorGraph<PoseType>&>(graph)),
-    params_(LevenbergMarquardtParams::EnsureHasOrdering(params, graph)) {
+WNOALevenbergMarquardtOptimizer<PoseType>::WNOALevenbergMarquardtOptimizer(const WNOAFactorGraph<PoseType>& graph,
+                                                         const Values& initialValues,
+                                                         const LevenbergMarquardtParams& params)
+    : NonlinearOptimizer(
+          graph, std::unique_ptr<State>(new State(initialValues, graph.error(initialValues),
+                                                  params.lambdaInitial, params.lambdaFactor))),
+  wnoa_graph_(graph),
+  params_(LevenbergMarquardtParams::EnsureHasOrdering(params, graph)) {}
+
+
+template<typename PoseType>
+WNOALevenbergMarquardtOptimizer<PoseType>::WNOALevenbergMarquardtOptimizer(const WNOAFactorGraph<PoseType>& graph,
+                                                         const Values& initialValues,
+                                                         const Ordering& ordering,
+                                                         const LevenbergMarquardtParams& params)
+    : NonlinearOptimizer(
+          graph, std::unique_ptr<State>(new State(initialValues, graph.error(initialValues),
+                                                  params.lambdaInitial, params.lambdaFactor))),
+  wnoa_graph_(graph),
+  params_(LevenbergMarquardtParams::ReplaceOrdering(params, ordering)) {}
+
+/* ************************************************************************* */
+template<typename PoseType>
+void WNOALevenbergMarquardtOptimizer<PoseType>::initTime() {
+  // use chrono to measure time in microseconds
+  startTime_ = std::chrono::high_resolution_clock::now();
 }
 
+/* ************************************************************************* */
 template<typename PoseType>
-WNOALevenbergMarquardtOptimizer<PoseType>::WNOALevenbergMarquardtOptimizer(
-    const WNOAFactorGraph<PoseType>& graph, 
-    const Values& initialValues,
-    const Ordering& ordering,
-    const LevenbergMarquardtParams& params)
-  : LevenbergMarquardtOptimizer(graph, initialValues, ordering, params), // TODO: Passing the graph normally for now  
-    wnoa_graph_(const_cast<WNOAFactorGraph<PoseType>&>(graph)),
-    params_(LevenbergMarquardtParams::ReplaceOrdering(params, ordering)) {
+double WNOALevenbergMarquardtOptimizer<PoseType>::lambda() const {
+  auto currentState = static_cast<const State*>(state_.get());
+  return currentState->lambda;
 }
 
-// Implementation of tryLambda that uses WNOA graph for error calculation
+/* ************************************************************************* */
+template<typename PoseType>
+int WNOALevenbergMarquardtOptimizer<PoseType>::getInnerIterations() const {
+  auto currentState = static_cast<const State*>(state_.get());
+  return currentState->totalNumberInnerIterations;
+}
+
+/* ************************************************************************* */
+template<typename PoseType>
+GaussianFactorGraph::shared_ptr WNOALevenbergMarquardtOptimizer<PoseType>::linearize() const {
+  return wnoa_graph_.linearize(state_->values);
+}
+
+/* ************************************************************************* */
+template<typename PoseType>
+GaussianFactorGraph WNOALevenbergMarquardtOptimizer<PoseType>::buildDampedSystem(
+    const GaussianFactorGraph& linear, const VectorValues& sqrtHessianDiagonal) const {
+  gttic(damp);
+  auto currentState = static_cast<const State*>(state_.get());
+
+  if (params_.verbosityLM >= LevenbergMarquardtParams::DAMPED)
+    std::cout << "building damped system with lambda " << currentState->lambda << std::endl;
+
+  if (params_.diagonalDamping)
+    return currentState->buildDampedSystem(linear, sqrtHessianDiagonal);
+  else
+    return currentState->buildDampedSystem(linear);
+}
+
+/* ************************************************************************* */
+// Log current error/lambda to file
+template<typename PoseType>
+inline void WNOALevenbergMarquardtOptimizer<PoseType>::writeLogFile(double currentError){
+  auto currentState = static_cast<const State*>(state_.get());
+
+  if (!params_.logFile.empty()) {
+    ofstream os(params_.logFile.c_str(), ios::app);
+    // use chrono to measure time in microseconds
+    auto currentTime = std::chrono::high_resolution_clock::now();
+    // Get the time spent in seconds and print it
+    double timeSpent = std::chrono::duration_cast<std::chrono::microseconds>(currentTime - startTime_).count() / 1e6;
+    os << /*inner iterations*/ currentState->totalNumberInnerIterations << ","
+        << timeSpent << ","
+        << /*current error*/ currentError << "," << currentState->lambda << ","
+        << /*outer iterations*/ currentState->iterations << endl;
+  }
+}
+
+/* ************************************************************************* */
 template<typename PoseType>
 bool WNOALevenbergMarquardtOptimizer<PoseType>::tryLambda(const GaussianFactorGraph& linear,
                                             const VectorValues& sqrtHessianDiagonal) {
-  auto currentState = static_cast<const internal::LevenbergMarquardtState*>(this->state_.get());
+  auto currentState = static_cast<const State*>(state_.get());
   bool verbose = (params_.verbosityLM >= LevenbergMarquardtParams::TRYLAMBDA);
 
 #if GTSAM_USE_BOOST_FEATURES
@@ -76,16 +148,16 @@ bool WNOALevenbergMarquardtOptimizer<PoseType>::tryLambda(const GaussianFactorGr
 #endif
 
   if (verbose)
-    std::cout << "trying lambda = " << currentState->lambda << std::endl;
+    cout << "trying lambda = " << currentState->lambda << endl;
 
   // Build damped system for this lambda (adds prior factors that make it like gradient descent)
-  auto dampedSystem = this->buildDampedSystem(linear, sqrtHessianDiagonal);
+  auto dampedSystem = buildDampedSystem(linear, sqrtHessianDiagonal);
 
   // Try solving
   double modelFidelity = 0.0;
   bool step_is_successful = false;
   bool stopSearchingLambda = false;
-  double newError = std::numeric_limits<double>::infinity();
+  double newError = numeric_limits<double>::infinity();
   double costChange = 0.0;
   Values newValues;
   VectorValues delta;
@@ -101,7 +173,7 @@ bool WNOALevenbergMarquardtOptimizer<PoseType>::tryLambda(const GaussianFactorGr
 
   if (systemSolvedSuccessfully) {
     if (verbose)
-      std::cout << "linear delta norm = " << delta.norm() << std::endl;
+      cout << "linear delta norm = " << delta.norm() << endl;
     if (params_.verbosityLM >= LevenbergMarquardtParams::TRYDELTA)
       delta.print("delta");
 
@@ -113,8 +185,8 @@ bool WNOALevenbergMarquardtOptimizer<PoseType>::tryLambda(const GaussianFactorGr
     // cost change in the linearized system (old - new)
     double linearizedCostChange = oldLinearizedError - newlinearizedError;
     if (verbose)
-      std::cout << "newlinearizedError = " << newlinearizedError
-           << "  linearizedCostChange = " << linearizedCostChange << std::endl;
+      cout << "newlinearizedError = " << newlinearizedError
+           << "  linearizedCostChange = " << linearizedCostChange << endl;
 
     if (linearizedCostChange >= 0) {  // step is valid
       // update values
@@ -124,16 +196,16 @@ bool WNOALevenbergMarquardtOptimizer<PoseType>::tryLambda(const GaussianFactorGr
       // =======================================================================
       gttoc(retract);
 
-      // compute new error - THIS IS THE KEY LINE THAT USES OUR CUSTOM GRAPH
+      // compute new error
       gttic(compute_error);
       if (verbose)
-        std::cout << "calculating error:" << std::endl;
-      newError = wnoa_graph_.error(newValues); // Use WNOA graph instead of graph_
+        cout << "calculating error:" << endl;
+      newError = wnoa_graph_.error(newValues);
       gttoc(compute_error);
 
       if (verbose)
-        std::cout << "old error (" << currentState->error << ") new (tentative) error (" << newError
-             << ")" << std::endl;
+        cout << "old error (" << currentState->error << ") new (tentative) error (" << newError
+             << ")" << endl;
 
       // cost change in the original, nonlinear system (old - new)
       costChange = currentState->error - newError;
@@ -145,7 +217,7 @@ bool WNOALevenbergMarquardtOptimizer<PoseType>::tryLambda(const GaussianFactorGr
         // if we decrease the error in the nonlinear system and modelFidelity is above threshold
         step_is_successful = modelFidelity > params_.minModelFidelity;
         if (verbose)
-          std::cout << "modelFidelity: " << modelFidelity << std::endl;
+          cout << "modelFidelity: " << modelFidelity << endl;
       }  // else we consider the step non successful and we either increase lambda or stop if error
          // change is small
 
@@ -153,9 +225,9 @@ bool WNOALevenbergMarquardtOptimizer<PoseType>::tryLambda(const GaussianFactorGr
       // if the change is small we terminate
       if (std::abs(costChange) < minAbsoluteTolerance) {
         if (verbose)
-          std::cout << "abs(costChange)=" << std::abs(costChange)
+          cout << "abs(costChange)=" << std::abs(costChange)
                << "  minAbsoluteTolerance=" << minAbsoluteTolerance
-               << " (relativeErrorTol=" << params_.relativeErrorTol << ")" << std::endl;
+               << " (relativeErrorTol=" << params_.relativeErrorTol << ")" << endl;
         stopSearchingLambda = true;
       }
     }
@@ -174,58 +246,58 @@ bool WNOALevenbergMarquardtOptimizer<PoseType>::tryLambda(const GaussianFactorGr
     double iterationTime = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count() / 1e6;
 #endif
     if (currentState->iterations == 0) {
-      std::cout << "iter      cost      cost_change    lambda  success iter_time" << std::endl;
+      cout << "iter      cost      cost_change    lambda  success iter_time" << endl;
     }
-    std::cout << std::setw(4) << currentState->iterations << " " << std::setw(12) << newError << " " << std::setw(12) << std::setprecision(2)
-         << costChange << " " << std::setw(10) << std::setprecision(2) << currentState->lambda << " " << std::setw(6)
-         << systemSolvedSuccessfully << " " << std::setw(10) << std::setprecision(2) << iterationTime << std::endl;
+    cout << setw(4) << currentState->iterations << " " << setw(12) << newError << " " << setw(12) << setprecision(2)
+         << costChange << " " << setw(10) << setprecision(2) << currentState->lambda << " " << setw(6)
+         << systemSolvedSuccessfully << " " << setw(10) << setprecision(2) << iterationTime << endl;
   }
   if (step_is_successful) {
     // we have successfully decreased the cost and we have good modelFidelity
     // NOTE(frank): As we return immediately after this, we move the newValues
     // TODO(frank): make Values actually support move. Does not seem to happen now.
-    this->state_ = currentState->decreaseLambda(params_, modelFidelity, std::move(newValues), newError);
+    state_ = currentState->decreaseLambda(params_, modelFidelity, std::move(newValues), newError);
     return true;
   } else if (!stopSearchingLambda) {  // we failed to solved the system or had no decrease in cost
     if (verbose)
-      std::cout << "increasing lambda" << std::endl;
-    auto* modifiedState = static_cast<internal::LevenbergMarquardtState*>(this->state_.get());
+      cout << "increasing lambda" << endl;
+    State* modifiedState = static_cast<State*>(state_.get());
     modifiedState->increaseLambda(params_); // TODO(frank): make this functional with Values move
 
     // check if lambda is too big
     if (modifiedState->lambda >= params_.lambdaUpperBound) {
       if (params_.verbosity >= NonlinearOptimizerParams::TERMINATION ||
           params_.verbosityLM == LevenbergMarquardtParams::SUMMARY)
-        std::cout << "Warning:  Levenberg-Marquardt giving up because "
-                "cannot decrease error with maximum lambda" << std::endl;
+        cout << "Warning:  Levenberg-Marquardt giving up because "
+                "cannot decrease error with maximum lambda" << endl;
       return true;
     } else {
       return false;  // only case where we will keep trying
     }
   } else {  // the change in the cost is very small and it is not worth trying bigger lambdas
     if (verbose)
-      std::cout << "Levenberg-Marquardt: stopping as relative cost reduction is small" << std::endl;
+      cout << "Levenberg-Marquardt: stopping as relative cost reduction is small" << endl;
     return true;
   }
 }
 
-// Implementation of iterate that uses custom tryLambda
+/* ************************************************************************* */
 template<typename PoseType>
 GaussianFactorGraph::shared_ptr WNOALevenbergMarquardtOptimizer<PoseType>::iterate() {
-  auto currentState = static_cast<const State*>(this->state_.get());
+  auto currentState = static_cast<const State*>(state_.get());
 
   gttic(LM_iterate);
 
-  // Linearize graph - this will call our custom linearize() method
+  // Linearize graph
   if (params_.verbosityLM >= LevenbergMarquardtParams::DAMPED)
-    std::cout << "linearizing = " << std::endl;
-  GaussianFactorGraph::shared_ptr linear = this->linearize();
+    cout << "linearizing = " << endl;
+  GaussianFactorGraph::shared_ptr linear = linearize();
 
   if(currentState->totalNumberInnerIterations==0) { // write initial error
     writeLogFile(currentState->error);
 
     if (params_.verbosityLM == LevenbergMarquardtParams::SUMMARY) {
-      std::cout << "Initial error: " << currentState->error
+      cout << "Initial error: " << currentState->error
            << ", values: " << currentState->values.size() << std::endl;
     }
   }
@@ -239,31 +311,13 @@ GaussianFactorGraph::shared_ptr WNOALevenbergMarquardtOptimizer<PoseType>::itera
     }
   }
 
-  // Keep increasing lambda until we make make progress - this calls our custom tryLambda
+  // Keep increasing lambda until we make make progress
   while (!tryLambda(*linear, sqrtHessianDiagonal)) {
-    auto newState = static_cast<const State*>(this->state_.get());
+    auto newState = static_cast<const State*>(state_.get());
     writeLogFile(newState->error);
   }
 
   return linear;
-}
-
-// Helper method for logging
-template<typename PoseType>
-void WNOALevenbergMarquardtOptimizer<PoseType>::writeLogFile(double currentError) {
-  auto currentState = static_cast<const State*>(this->state_.get());
-
-  if (!params_.logFile.empty()) {
-    std::ofstream os(params_.logFile.c_str(), std::ios::app);
-    // use chrono to measure time in microseconds
-    auto currentTime = std::chrono::high_resolution_clock::now();
-    // Get the time spent in seconds and print it
-    double timeSpent = std::chrono::duration_cast<std::chrono::microseconds>(currentTime - this->startTime_).count() / 1e6;
-    os << /*inner iterations*/ currentState->totalNumberInnerIterations << ","
-        << timeSpent << ","
-        << /*current error*/ currentError << "," << currentState->lambda << ","
-        << /*outer iterations*/ currentState->iterations << std::endl;
-  }
 }
 
 // Explicit template instantiation to ensure the template gets compiled
@@ -273,4 +327,5 @@ template class WNOALevenbergMarquardtOptimizer<Point3>;
 template class WNOALevenbergMarquardtOptimizer<Pose2>;
 template class WNOALevenbergMarquardtOptimizer<Pose3>;
 
-} // namespace gtsam
+} /* namespace gtsam */
+

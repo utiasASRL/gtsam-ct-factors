@@ -1,0 +1,35 @@
+files:
+  input : "LostInTheWoods/LostInTheWoods.txt"
+  output : "results/lost.csv" 
+  gt_out : "results/lost_gt.csv"
+  interp_raw_file: "results/lost_interp_raw.csv"
+  interp_out : "results/lost_wrapper.csv" 
+  interp_graph_out : "results/default_graph.csv"
+params:
+  r_max: 10
+  del_t: 0.1
+  start: 6000
+  end: 7000
+  n_runs: 50
+flags:
+  prior: true
+  odom: false
+  wnoa: true
+  br: true
+  gt_init: false
+  solve_slam: true
+interp:
+  interp_period: 10
+  fixed_noise: true
+#noise: #loc
+  #prior: [1.0e1, 1.0e1, 1.0e0]
+  #odom_y: 1.0e-2
+  #wnoa: [1.0e0, 1.0e-1, 1.0e0]
+  #bearing:  10.0
+  #range: 10.0
+noise: #slam
+  prior: [1.0e-4, 1.0e-4, 1.0e-4]
+  odom_y: 1.0e-2
+  wnoa: [1.0e0, 1.0e-1, 1.0e0]
+  bearing:  1.0
+  range: 1.0

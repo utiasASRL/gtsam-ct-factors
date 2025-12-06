@@ -24,6 +24,8 @@
 #include <unordered_set>
 #include <gtsam/nonlinear/StateData.h>
 #include <gtsam/linear/GaussianFactorGraph.h>
+#include <array>
+#include <memory>
 
 using namespace std;
 
@@ -45,14 +47,25 @@ private:
   // Convenient matrices
   using Matrix2N = Eigen::Matrix<double, 2 * dim, 2 * dim>;
   using MatrixN = Eigen::Matrix<double, dim, dim>;
+  using VectorN = Eigen::Matrix<double, dim, 1>;
 
 
   // Interpolator class
   const Interpolator<PoseType> interpolator_;
 
+
+  using LambdaPsiMats = typename Interpolator<PoseType>::LambdaPsiMats;
+  using LocalStateVecs = typename Interpolator<PoseType>::LocalStateVecs;
+  using LocalGlobalStateJacs = typename Interpolator<PoseType>::LocalGlobalStateJacs;
+
   // map interpolated state to border states
   unordered_map<StateData, pair<StateData, StateData>> interp_to_borders_map_;
   std::vector<std::pair<StateData, std::pair<StateData, StateData>>> interp_to_borders_vec_;
+  std::vector<std::pair<StateData, std::shared_ptr<const LambdaPsiMats>>> interp_to_LambdaPsi_vec_;
+
+  // Precomputed batches of borders -> indices in interp_to_borders_vec_
+  // Each entry contains the border pair and the list of interp indices that share those borders.
+  std::vector<std::pair<std::pair<StateData, StateData>, std::vector<size_t>>> border_batches_;
 
   bool fixed_noise_model_ = false;
 
@@ -65,8 +78,8 @@ private:
 
   Values getInterpolatedValues(
       const Values& values,
-      unordered_map<Key, unordered_map<Key, Matrix>>* InterpJacobians,
-      unordered_map<StateData, Matrix2N>* InterpCondCovs = nullptr) const;
+    unordered_map<Key, std::array<Matrix, 4>>* InterpJacobians,
+    unordered_map<StateData, Matrix2N>* InterpCondCovs = nullptr) const;
 
 public:
     /// Linearize a nonlinear factor graph exploiting precomputation of interpolation data
@@ -75,14 +88,6 @@ public:
     /** unnormalized error, \f$ \sum_i 0.5 (h_i(X_i)-z)^2 / \sigma^2 \f$ in the most common case - exploiting precomputation of interpolation data*/
     double error(const Values& values) const;
 
-
-    void setWNOAInterpFactorIndices(const unordered_set<size_t>& indices) {
-      wnoa_interp_factor_indices_ = indices;
-    }
-
-    bool isWNOAInterpFactorIndex(size_t index) const {
-      return wnoa_interp_factor_indices_.count(index) > 0;
-    }
 
 
     // Constructor that initializes the interpolator and interp_to_borders_map_
@@ -99,11 +104,36 @@ public:
               const auto& right = border_states.second;
               border_pose_keys_.insert(left.pose);  border_pose_keys_.insert(right.pose);
               border_vel_keys_.insert(left.vel);    border_vel_keys_.insert(right.vel);
+
+              double tau = kv.first.time;
+              double t_k = left.time;
+              double t_kp1 = right.time;
+                interp_to_LambdaPsi_vec_.emplace_back(
+                  kv.first,
+                  std::make_shared<LambdaPsiMats>(interpolator_.getLambdaPsi(t_k, t_kp1, tau)));
             }
+
 
             // Convert map to vector for optimal parallel access patterns
             interp_to_borders_vec_ = std::vector<std::pair<StateData, std::pair<StateData, StateData>>>(
                 interp_to_borders_map_.begin(), interp_to_borders_map_.end());
+
+            // Build compact batch vector: for each unique border pair, list indices of interp states
+            struct LocalBorderHash {
+              size_t operator()(const std::pair<StateData, StateData>& p) const noexcept {
+                const size_t h1 = std::hash<StateData>{}(p.first);
+                const size_t h2 = std::hash<StateData>{}(p.second);
+                return h1 ^ (h2 + 0x9e3779b9 + (h1 << 6) + (h1 >> 2));
+              }
+            };
+            std::unordered_map<std::pair<StateData, StateData>, std::vector<size_t>, LocalBorderHash> tmp;
+            tmp.reserve(interp_to_borders_vec_.size());
+            for (size_t idx = 0; idx < interp_to_borders_vec_.size(); ++idx) {
+              const auto& borders = interp_to_borders_vec_[idx].second; // pair<StateData, StateData>
+              tmp[borders].push_back(idx);
+            }
+            border_batches_.clear(); border_batches_.reserve(tmp.size());
+            for (auto &kv : tmp) border_batches_.emplace_back(std::move(kv));
 
           }
 

@@ -126,6 +126,8 @@ class Interpolator {
   using PoseVel = PoseVelocity<PoseType>;
   using TimestampedPoseVel = TimestampedPoseVelocity<PoseType>;
   using LambdaPsiMats = std::pair<Matrix2N, Matrix2N>;
+  using LocalStateVecs = std::pair<VectorN, VectorN>;
+  using LocalGlobalStateJacs = std::vector<MatrixN>;
 
   // Maps a pose or velocity to their covariance matrix
   using CovarianceMap = std::map<Key, Matrix>;
@@ -153,7 +155,9 @@ class Interpolator {
       double t_tau, OptionalMatrixVecType H = nullptr,
       const std::shared_ptr<Matrix>& mainSolveMarginalMatrix = nullptr,
       Matrix* covarianceOut = nullptr,
-      const std::shared_ptr<const LambdaPsiMats>& LambdaPsiPreComp = nullptr) const;
+      const std::shared_ptr<const LambdaPsiMats>& LambdaPsiPreComp = nullptr,
+      const std::shared_ptr<const LocalStateVecs>& localStateVecsPreComp = nullptr,
+      const std::shared_ptr<const LocalGlobalStateJacs>& localGlobalStateJacsPreComp = nullptr) const;
 
   Values interpolatePosesAndVelocities(
       const NonlinearFactorGraph& mainSolveGraph,
@@ -175,6 +179,10 @@ class Interpolator {
   // Retrieve interpolation matrices. General implementation.
   std::pair<Matrix, Matrix> getLambdaPsiGeneral(double t_k, double t_kp1,
                                                 double t_tau) const;
+
+  LocalStateVecs computeLocalStateVecs(
+      const TimestampedPoseVel& pvk, const TimestampedPoseVel& pvkp1,
+      LocalGlobalStateJacs* jacs = nullptr) const;
 
 
  protected:
@@ -207,7 +215,9 @@ class Interpolator {
       OptionalMatrixVecType H = nullptr,
       const std::shared_ptr<Matrix>& mainSolveMarginalMatrix = nullptr,
       Matrix* covarianceOut = nullptr,
-      const std::shared_ptr<const LambdaPsiMats>& LambdaPsiPreComp = nullptr) const;
+      const std::shared_ptr<const LambdaPsiMats>& LambdaPsiPreComp = nullptr,
+      const std::shared_ptr<const LocalStateVecs>& localStateVecsPreComp = nullptr,
+      const std::shared_ptr<const LocalGlobalStateJacs>& localGlobalStateJacsPreComp = nullptr) const;
   
   // Fast version that makes small angle approximation.
   PoseVel interpolatePoseAndVelocitySmallAngle(
