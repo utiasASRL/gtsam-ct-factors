@@ -45,8 +45,8 @@ class ProductLieGroup : public std::pair<G, H> {
 
  protected:
   /// Dimensions of the two subgroups
-  constexpr static const size_t dimension1 = traits<G>::dimension;
-  constexpr static const size_t dimension2 = traits<H>::dimension;
+  static constexpr size_t dimension1 = traits<G>::dimension;
+  static constexpr size_t dimension2 = traits<H>::dimension;
 
  public:
   /// @name Standard Constructors
@@ -97,13 +97,13 @@ class ProductLieGroup : public std::pair<G, H> {
   /// @{
 
   /// Manifold dimension
-  inline constexpr static size_t dimension = dimension1 + dimension2;
+  static constexpr size_t dimension = dimension1 + dimension2;
 
   /// Return manifold dimension
-  inline static size_t Dim() { return dimension; }
+  static size_t Dim() { return dimension; }
 
   /// Return manifold dimension
-  inline size_t dim() const { return dimension; }
+  size_t dim() const { return dimension; }
 
   /// Tangent vector type
   using TangentVector = Eigen::Matrix<double, static_cast<int>(dimension), 1>;
