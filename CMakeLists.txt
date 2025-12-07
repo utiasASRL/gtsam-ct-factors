@@ -1,13 +1,13 @@
 cmake_minimum_required(VERSION 3.9...3.29)
 if (POLICY CMP0167)
-cmake_policy(SET CMP0167 OLD) # Don't complain about boost
+    cmake_policy(SET CMP0167 OLD) # Don't complain about boost
 endif()
 
 # Set the version number for the library
 set (GTSAM_VERSION_MAJOR 4)
 set (GTSAM_VERSION_MINOR 3)
 set (GTSAM_VERSION_PATCH 0)
-set (GTSAM_PRERELEASE_VERSION "a0")
+set (GTSAM_PRERELEASE_VERSION "a1")
 math (EXPR GTSAM_VERSION_NUMERIC "10000 * ${GTSAM_VERSION_MAJOR} + 100 * ${GTSAM_VERSION_MINOR} + ${GTSAM_VERSION_PATCH}")
 
 # Set the version string for the library. 
@@ -106,6 +106,15 @@ if(GTSAM_ENABLE_BOOST_SERIALIZATION OR GTSAM_USE_BOOST_FEATURES)
 include(cmake/HandleBoost.cmake)
 endif()
 ######################################################################
+
+# ############## Decide on GeographicLib ######################################
+# Enable or disable GeographicLib integration with GTSAM_ENABLE_GEOGRAPHICLIB
+option(GTSAM_ENABLE_GEOGRAPHICLIB "Enable Features that use GeographicLib" OFF)
+
+if (GTSAM_ENABLE_GEOGRAPHICLIB)
+  include(cmake/HandleGeographicLib.cmake)
+endif()
+# ##############################################################################
 
 # Other Libraries:
 include(cmake/HandleCCache.cmake)           # ccache

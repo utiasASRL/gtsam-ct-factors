@@ -45,8 +45,8 @@ class ProductLieGroup : public std::pair<G, H> {
 
  protected:
   /// Dimensions of the two subgroups
-  static constexpr size_t dimension1 = traits<G>::dimension;
-  static constexpr size_t dimension2 = traits<H>::dimension;
+  constexpr static const size_t dimension1 = traits<G>::dimension;
+  constexpr static const size_t dimension2 = traits<H>::dimension;
 
  public:
   /// @name Standard Constructors
@@ -97,19 +97,19 @@ class ProductLieGroup : public std::pair<G, H> {
   /// @{
 
   /// Manifold dimension
-  static constexpr size_t dimension = dimension1 + dimension2;
+  inline constexpr static size_t dimension = dimension1 + dimension2;
 
   /// Return manifold dimension
-  static size_t Dim() { return dimension; }
+  inline static size_t Dim() { return dimension; }
 
   /// Return manifold dimension
-  size_t dim() const { return dimension; }
+  inline size_t dim() const { return dimension; }
 
   /// Tangent vector type
-  typedef Eigen::Matrix<double, dimension, 1> TangentVector;
+  using TangentVector = Eigen::Matrix<double, static_cast<int>(dimension), 1>;
 
   /// Chart Jacobian type
-  typedef OptionalJacobian<dimension, dimension> ChartJacobian;
+  using ChartJacobian = OptionalJacobian<dimension, dimension>;
 
   /// Retract to manifold
   ProductLieGroup retract(const TangentVector& v, ChartJacobian H1 = {},
@@ -146,9 +146,9 @@ class ProductLieGroup : public std::pair<G, H> {
 
  protected:
   /// Jacobian types for internal use
-  typedef Eigen::Matrix<double, dimension, dimension> Jacobian;
-  typedef Eigen::Matrix<double, dimension1, dimension1> Jacobian1;
-  typedef Eigen::Matrix<double, dimension2, dimension2> Jacobian2;
+  using Jacobian = Eigen::Matrix<double, static_cast<int>(dimension), static_cast<int>(dimension)>;
+  using Jacobian1 = Eigen::Matrix<double, static_cast<int>(dimension1), static_cast<int>(dimension1)>;
+  using Jacobian2 = Eigen::Matrix<double, static_cast<int>(dimension2), static_cast<int>(dimension2)>;
 
  public:
   /// Compose with Jacobians
