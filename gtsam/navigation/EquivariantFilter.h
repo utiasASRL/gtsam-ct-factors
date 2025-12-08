@@ -210,82 +210,72 @@ class EquivariantFilter {
   /**
    * @brief Helper to compute the measurement matrix C for testing or analysis.
    *
-   * @param phi_y Output Orbit instance.
+   * @param innovation Innovation functor ν(ξ̂, H).
    * @param xi_hat Linearization point on the manifold.
    * @return The measurement Jacobian C (DimZ x DimM).
    */
-  template <typename OutputOrbit>
-  auto computeMeasurementMatrix(const OutputOrbit& phi_y,
+  template <typename Innovation>
+  auto computeMeasurementMatrix(const Innovation& innovation,
                                 const M& xi_hat) const {
-    using Measurement = typename OutputOrbit::Manifold;
-    static constexpr int DimZ = traits<Measurement>::dimension;
+    auto nu = innovation(xi_hat);
+    using VectorZ = decltype(nu);
+    static constexpr int DimZ = VectorZ::RowsAtCompileTime;
 
     if constexpr (DimZ == Eigen::Dynamic) {
-      auto innovation = phi_y.innovation(xi_hat);
-      const int m = innovation.rows();
+      const int m = nu.rows();
       Eigen::Matrix<double, Eigen::Dynamic, DimM> C(m, DimM);
-      phi_y.innovation(xi_hat, &C);
+      innovation(xi_hat, &C);
       return C;
     } else {
       Eigen::Matrix<double, DimZ, DimM> C;
-      phi_y.innovation(xi_hat, &C);
+      innovation(xi_hat, &C);
       return C;
     }
   }
 
   /**
-   * @brief Update with measurement (Automatic).
-   *
-   * Computes the measurement Jacobian C (H internally) automatically.
+   * @brief Update with measurement, using a standalone innovation functor.
    *
    * Concept requirements:
-   * - `OutputOrbit` must implement the group action on outputs via
-   *   `phi_y.innovation(xi_hat, H)`. No other methods are required.
+   * - `Innovation` must be callable as `innovation(xi_hat, H)` where H is an
+   *   OptionalJacobian (fixed-size) or MatrixXd* (dynamic-size).
    *
-   * @tparam OutputOrbit Functor for the output orbit ρ_y.
-   * @param phi_y Output Orbit instance.
+   * @tparam Innovation Functor computing ν(ξ̂) and its Jacobian.
+   * @param innovation Innovation functor.
    * @param R Measurement noise covariance.
    */
-  template <typename OutputOrbit>
-  void update(const OutputOrbit& phi_y, const Eigen::MatrixXd& R) {
-    M xi_hat = stateEstimate();
-
-    using Measurement = typename OutputOrbit::Manifold;
-    static constexpr int DimZ = traits<Measurement>::dimension;
+  template <typename Innovation>
+  void update(const Innovation& innovation, const Eigen::MatrixXd& R) {
+    const M xi_hat = stateEstimate();
+    auto nu = innovation(xi_hat);
+    using VectorZ = decltype(nu);
+    static constexpr int DimZ = VectorZ::RowsAtCompileTime;
 
     if constexpr (DimZ == Eigen::Dynamic) {
-      auto innovation = phi_y.innovation(xi_hat);
-      const int m = innovation.rows();
-      Eigen::Matrix<double, Eigen::Dynamic, DimM> H(m, DimM);
-      phi_y.innovation(xi_hat, &H);
-      updateInternal(innovation, H, R);
+      Eigen::Matrix<double, Eigen::Dynamic, DimM> H(nu.rows(), DimM);
+      innovation(xi_hat, &H);
+      updateInternal(nu, H, R);
     } else {
-      Eigen::Matrix<double, DimZ, 1> innovation;
       Eigen::Matrix<double, DimZ, DimM> H;
-      innovation = phi_y.innovation(xi_hat, &H);
-      updateInternal(innovation, H, R);
+      VectorZ nu_with = innovation(xi_hat, &H);
+      updateInternal(nu_with, H, R);
     }
   }
 
   /**
-   * @brief Update with measurement (Explicit).
+   * @brief Update with measurement, using provided measurement Jacobian C.
    *
-   * Uses the provided measurement Jacobian C.
-   *
-   * @tparam OutputOrbit Functor for the output orbit ρ_y.
-   * @param phi_y Output Orbit instance.
+   * @tparam Innovation Functor computing ν(ξ̂) without needing the action.
+   * @param innovation Innovation functor.
    * @param R Measurement noise covariance.
    * @param C Measurement Jacobian (DimZ x DimM).
    */
-  template <typename OutputOrbit>
-  void update(const OutputOrbit& phi_y, const Eigen::MatrixXd& R,
+  template <typename Innovation>
+  void update(const Innovation& innovation, const Eigen::MatrixXd& R,
               const Eigen::MatrixXd& C) {
-    // Compute innovation without Jacobian
-    M xi_hat = stateEstimate();
-    auto innovation = phi_y.innovation(xi_hat);
-
-    // Delegate using provided C as H
-    updateInternal(innovation, C, R);
+    const M xi_hat = stateEstimate();
+    auto nu = innovation(xi_hat);
+    updateInternal(nu, C, R);
   }
 
  protected:

@@ -90,15 +90,7 @@ struct Lift {
 };
 
 //---------------------------------------------------------------------------
-// InputOrbit: group action on the input + system matrices
-//
-// We take the input u as a body-frame angular velocity. For this example,
-// we don't use the group action on input in the prediction, but we still
-// provide a reasonable definition. The important parts for EqF are:
-//   - using Input = ...
-//   - processNoise(Sigma): returns Q in lifted coords
-//   - stateTransitionMatrix(X_hat, dt): Dim x Dim
-//   - inputMatrixB(X_hat): DimM x DimU
+// Input action: right action on the input omega.
 //---------------------------------------------------------------------------
 
 struct InputAction : public GroupAction<InputAction, G, Vector3> {
@@ -112,27 +104,22 @@ struct InputAction : public GroupAction<InputAction, G, Vector3> {
   }
 };
 
-struct InputOrbit : public InputAction::Orbit {
-  using Input = Vector3;
-  static constexpr int DimU = 3;
-  using MatrixMU = Matrix23;
+// Use the generated Orbit type directly for the pure group action.
+using InputOrbit = InputAction::Orbit;
 
-  explicit InputOrbit(const Input& u) : InputAction::Orbit(u) {}
+/// Embed process noise covariance into the lifted coordinates (identity for
+/// this simple example).
+inline Matrix3 processNoise(const Matrix3& Sigma) { return Sigma; }
 
-  /// Embed process noise covariance into the lifted coordinates (identity for
-  /// this simple example).
-  static Matrix3 processNoise(const Matrix3& Sigma) { return Sigma; }
+/// Derivative of the lifted dynamics wrt. local coordinates.
+inline Matrix2 stateMatrixA(const G& /*Q_hat*/) { return Matrix2::Zero(); }
 
-  /// Derivative of the lifted dynamics wrt. local coordinates.
-  Matrix2 stateMatrixA(const G& /*Q_hat*/) const { return Matrix2::Zero(); }
-
-  /// Input matrix B that maps process noise to manifold coordinates.
-  MatrixMU inputMatrixB(const G& /*Q_hat*/) const {
-    // TODO(Frank): suspect, should depend on eta? Or make sure it works for
-    // chosen reference direction.
-    return MatrixMU::Identity();
-  }
-};
+/// Input matrix B that maps process noise to manifold coordinates.
+inline Matrix23 inputMatrixB(const G& /*Q_hat*/) {
+  // TODO(Frank): suspect, should depend on eta? Or make sure it works for
+  // chosen reference direction.
+  return Matrix23::Identity();
+}
 
 //---------------------------------------------------------------------------
 // OutputOrbit: group action on the measurement + Jacobians
@@ -155,12 +142,27 @@ struct OutputAction : public GroupAction<OutputAction, G, Vector3> {
   }
 };
 
-struct OutputOrbit : public OutputAction::Orbit {
-  OutputOrbit(const Vector3& z_measured, double c_m)
-      : OutputAction::Orbit(z_measured), z_measured_(z_measured), c_m_(c_m) {}
+struct OutputOrbit {
+  using Manifold = Vector3;
+
+  explicit OutputOrbit(const Vector3& z_measured, double c_m)
+      : orbit_(z_measured), z_measured_(z_measured), c_m_(c_m) {}
+
+  Vector3 operator()(const G& Q, OptionalJacobian<3, 3> H_Q = {}) const {
+    return orbit_(Q, H_Q);
+  }
+
+  OutputAction::Orbit orbit_;
+  Vector3 z_measured_;  // measured output
+  double c_m_;          // measurement scale
+};
+
+struct Innovation {
+  Innovation(const Vector3& z_measured, double c_m)
+      : z_measured_(z_measured), c_m_(c_m) {}
 
   /// Innovation: ẑ - z_measured, with ẑ = c_m * η̂.
-  Vector3 innovation(const Unit3& eta_hat,
+  Vector3 operator()(const Unit3& eta_hat,
                      OptionalJacobian<3, 2> H = {}) const {
     // Predicted measurement.
     const Vector3 z_hat = c_m_ * eta_hat.point3();
@@ -370,8 +372,8 @@ TEST(EquivariantFilter_Attitude, Predict) {
   // --- Perform prediction through EqF ---
   InputOrbit psi_u(omega);
   Matrix3 Sigma_u = 0.1 * I_3x3;
-  Matrix3 Q = InputOrbit::processNoise(Sigma_u);
-  Matrix23 B = psi_u.inputMatrixB(Q0);
+  Matrix3 Q = processNoise(Sigma_u);
+  Matrix23 B = inputMatrixB(Q0);
   Matrix2 Qc = B * Q * B.transpose();  // manifold continuous-time covariance
   const double dt = 0.01;
   filter.predict(lift_omega, psi_u, Qc, dt);
@@ -406,8 +408,8 @@ TEST(EquivariantFilter_Attitude, Update) {
   // 2. Predict to move away from identity
   const double dt = 0.01;
   Matrix3 Sigma_u = 0.1 * I_3x3;
-  Matrix3 Q = InputOrbit::processNoise(Sigma_u);
-  Matrix23 B = psi_u.inputMatrixB(Q0);
+  Matrix3 Q = processNoise(Sigma_u);
+  Matrix23 B = inputMatrixB(Q0);
   Matrix2 Qc = B * Q * B.transpose();  // manifold continuous-time covariance
   filter.predict(lift_omega, psi_u, Qc, dt);
 
@@ -417,10 +419,10 @@ TEST(EquivariantFilter_Attitude, Update) {
   // 3. Setup Measurement
   const Vector3 y = c_m * eta_ref.point3();
   const Matrix3 R_meas = 0.01 * I_3x3;
-  OutputOrbit phi_y(y, c_m);
+  Innovation innovation(y, c_m);
 
   // 4. Run Filter Update
-  filter.update<OutputOrbit>(phi_y, R_meas);
+  filter.update(innovation, R_meas);
 
   const G Q_after = filter.groupEstimate();
   const Matrix2 P_after = filter.covariance();
@@ -435,17 +437,17 @@ TEST(EquivariantFilter_Attitude, Update) {
 
   // Re-calculate Measurement Matrix C using helper method
   const M eta_hat = phi_ref(Q_before);
-  Matrix C = filter.computeMeasurementMatrix(phi_y, eta_hat);
+  Matrix C = filter.computeMeasurementMatrix(innovation, eta_hat);
 
   // Calculate Gain K
   Matrix S = C * P_before * C.transpose() + R_meas;
   Matrix K = P_before * C.transpose() * S.inverse();
 
   // Calculate Innovation
-  Vector3 innovation = phi_y.innovation(eta_hat);
+  Vector3 innovation_vec = innovation(eta_hat);
 
   // Calculate Correction
-  Vector2 delta_xi = K * innovation;
+  Vector2 delta_xi = K * innovation_vec;
   Vector3 delta_x = InnovationLift * delta_xi;
 
   // Update State: X_new = Exp(delta_x) * X_old (Left Update)
@@ -479,17 +481,16 @@ TEST(EquivariantFilter_Attitude, CheckMatrices) {
   InputOrbit psi_u(omega);
   Matrix2 A_computed =
       filter.computeErrorDynamicsMatrix<Lift, InputOrbit>(psi_u);
-  Matrix2 A_provided = psi_u.stateMatrixA(Q0);
+  Matrix2 A_provided = stateMatrixA(Q0);
   EXPECT(assert_equal(A_provided, A_computed));
 
   // Check C matrix
   const Vector3 d(0, 0, 1);  // reference direction (z-axis)
   const Vector3 y =
       normalize(Point3(0, 1, 10));  // measured almost aligned with d
-  OutputOrbit phi_y(y, c_m);
-
   // Use the helper method for the check
-  Matrix C_computed = filter.computeMeasurementMatrix(phi_y, phi_ref(Q0));
+  Innovation innovation(y, c_m);
+  Matrix C_computed = filter.computeMeasurementMatrix(innovation, phi_ref(Q0));
   // Note: Since OutputOrbit doesn't have measurementMatrixC() in this test,
   // we check self-consistency or if we had a provided C.
   // Here we just verify it runs.

@@ -23,8 +23,9 @@ using State = abc::State<2>;
 using Group = abc::Group<2>;
 using Symmetry = abc::Symmetry<2>;
 using Lift = abc::Lift<2>;
-using InputOrbit = abc::InputOrbit<2>;
+using InputOrbit = abc::InputAction<2>::Orbit;
 using OutputOrbit = abc::OutputOrbit<2>;
+using Innovation = abc::Innovation<2>;
 using Calibrations = abc::Calibrations<2>;
 
 /* ************************************************************************* */
@@ -420,8 +421,7 @@ TEST(ABC, ComputeErrorDynamicsMatrixMatchesLegacy) {
   Matrix expected_A = abc::stateMatrixA(psi_u, X_hat);
 
   // A_computed is now computed on Manifold (D_act * D_lift)
-  Matrix A_computed =
-      filter.computeErrorDynamicsMatrix<Lift, InputOrbit>(psi_u);
+  Matrix A_computed = filter.computeErrorDynamicsMatrix<Lift>(psi_u);
 
   EXPECT(assert_equal(expected_A, A_computed, 1e-9));
 
@@ -487,8 +487,7 @@ TEST(ABC, ComputeErrorDynamicsMatrix) {
   Matrix initialSigma = Matrix::Identity(12, 12);
   EquivariantFilter<State, abc::Symmetry<2>> filter(xi_ref, initialSigma,
                                                     X_hat);
-  Matrix A_computed =
-      filter.computeErrorDynamicsMatrix<Lift, InputOrbit>(psi_u);
+  Matrix A_computed = filter.computeErrorDynamicsMatrix<Lift>(psi_u);
 
   EXPECT(assert_equal(A_numeric, A_computed, 1e-7));
 }
@@ -611,7 +610,7 @@ TEST(ABC, InputAction_processNoise) {
        0, 0, 4, 0, 0, 0, 0, 0, 0, 5, 0, 0, 0, 0, 0, 0, 6)
           .finished();
 
-  Matrix Q = InputOrbit::processNoise(Sigma6);
+  Matrix Q = abc::inputProcessNoise<2>(Sigma6);
 
   Matrix expected_Q = gtsam::diag({Sigma6, 1e-9 * I_3x3, 1e-9 * I_3x3});  // N=2
 
@@ -625,19 +624,19 @@ TEST(ABC, OutputOrbit) {
 
   // Test outputAction (calibrated sensor)
   int cal_idx = 0;
-  OutputOrbit phi_y(y, d, cal_idx);
+  OutputOrbit phi_y(y, cal_idx);
   Vector3 transformed_y_calibrated = phi_y(g1);
   EXPECT(assert_equal<Vector>(transformed_y_calibrated,
                               g1.calibrations()[0].unrotate(y.unitVector())));
 
   // Test outputAction (uncalibrated sensor)
   int uncalibrated_idx = -1;
-  OutputOrbit uncalibrated_phi_y(y, d, uncalibrated_idx);
+  OutputOrbit uncalibrated_phi_y(y, uncalibrated_idx);
   Vector3 transformed_y_uncalibrated = uncalibrated_phi_y(g1);
   EXPECT(assert_equal<Vector>(transformed_y_uncalibrated,
                               g1.A().unrotate(y.unitVector())));
 
-  CHECK_EXCEPTION(OutputOrbit(y, d, 2), std::out_of_range);
+  CHECK_EXCEPTION(OutputOrbit(y, 2), std::out_of_range);
 }
 
 /* ************************************************************************* */
@@ -657,8 +656,8 @@ TEST(ABC, OutputAction_measurementMatrixC) {
 
   // Test with calibrated sensor (idx = 0)
   int cal_idx = 0;
-  OutputOrbit phi_y(y, d, cal_idx);
-  Matrix C_cal = abc::measurementMatrixC<2>(phi_y.d_, phi_y.index_);
+  OutputOrbit phi_y(y, cal_idx);
+  Matrix C_cal = abc::measurementMatrixC<2>(d, cal_idx);
 
   Matrix expected_Cc_cal = Matrix::Zero(3, 3 * 2);
   expected_Cc_cal.block<3, 3>(0, 3 * cal_idx) = wedge_d;
@@ -683,9 +682,10 @@ TEST(ABC, ComputeMeasurementMatrix) {
   EquivariantFilter<State, abc::Symmetry<2>> filter(xi_ref, initialSigma);
 
   // Check C matrix
-  OutputOrbit phi_y(y, d, 0, xi_ref);
-  Matrix C_computed = filter.computeMeasurementMatrix(phi_y, xi_ref);
-  Matrix C_legacy = abc::measurementMatrixC<2>(phi_y.d_, phi_y.index_);
+  OutputOrbit phi_y(y, 0);
+  Innovation innovation(y, d, 0, xi_ref);
+  Matrix C_computed = filter.computeMeasurementMatrix(innovation, xi_ref);
+  Matrix C_legacy = abc::measurementMatrixC<2>(d, 0);
   EXPECT(assert_equal(C_legacy, C_computed, 1e-9));
 }
 
@@ -715,7 +715,7 @@ TEST(ABC, EqFilter) {
   // Perform a prediction step
   Matrix Sigma = I_6x6;
   double dt = 0.01;
-  Matrix Q = InputOrbit::processNoise(Sigma);
+  Matrix Q = abc::inputProcessNoise<2>(Sigma);
   Matrix B = abc::inputMatrixB(g_0);
   Matrix Qc = B * Q * B.transpose();  // manifold continuous-time covariance
   Lift lift_u(u2);
@@ -755,8 +755,8 @@ TEST(ABC, EqFilter) {
   // Perform an update step
   const int cal_idx = 0;
   const Matrix3 R = 0.01 * I_3x3;
-  OutputOrbit phi_y(y, d, cal_idx, xi_ref);
-  filter.update(phi_y, R);
+  Innovation innovation(y, d, cal_idx, xi_ref);
+  filter.update(innovation, R);
 
   // Regression
   Group expected_after_update({Rot3(0.995195, -0.097908, -0.000400003,  //

@@ -419,29 +419,18 @@ struct InputAction : public GroupAction<InputAction<N>, Group<N>, Vector6> {
   }
 };
 
+// Embed a 6x6 Sigma into full DimU by appending small calibration noise.
 template <size_t N>
-struct InputOrbit : public InputAction<N>::Orbit {
-  using G = Group<N>;
-  static constexpr int DimM = State<N>::dimension;
-  
-  // Input dimension U captures attitude, bias, and N calibration noise blocks.
-  static constexpr int DimU = 6 + 3 * N;
-  using MatrixGU = Eigen::Matrix<double, G::dimension, DimU>;
-  using MatrixMU = Eigen::Matrix<double, DimM, DimU>;
-
-  explicit InputOrbit(const Vector6& u) : InputAction<N>::Orbit(u) {}
-
-  // Embed a 6x6 Sigma into full DimU by appending small calibration noise.
-  static Matrix processNoise(const Matrix& Sigma6) {
-    std::vector<Matrix> blocks{Sigma6};
-    blocks.insert(blocks.end(), N, 1e-9 * I_3x3);
-    return gtsam::diag(blocks);
-  }
-};
+inline Matrix inputProcessNoise(const Matrix& Sigma6) {
+  std::vector<Matrix> blocks{Sigma6};
+  blocks.insert(blocks.end(), N, 1e-9 * I_3x3);
+  return gtsam::diag(blocks);
+}
 
 /// Compute the state matrix A(X_hat).
 template <size_t N>
-inline Matrix stateMatrixA(const InputOrbit<N>& psi_u, const Group<N>& X_hat) {
+inline Matrix stateMatrixA(const typename InputAction<N>::Orbit& psi_u,
+                           const Group<N>& X_hat) {
   const Vector6 u0 = psi_u(X_hat.inverse());  // ψ_u(X)^ω (omega, 0)
   Matrix3 W0 = Rot3::Hat(u0.template head<3>());
 
@@ -456,7 +445,8 @@ inline Matrix stateMatrixA(const InputOrbit<N>& psi_u, const Group<N>& X_hat) {
 
 /// Compute the input matrix B(X_hat).
 template <size_t N>
-inline typename InputOrbit<N>::MatrixMU inputMatrixB(const Group<N>& X_hat) {
+inline Eigen::Matrix<double, State<N>::dimension, 6 + 3 * N> inputMatrixB(
+    const Group<N>& X_hat) {
   const Matrix3 A_matrix = X_hat.A().matrix();
   Matrix B1 = gtsam::diag({A_matrix, A_matrix});
   Matrix B2(3 * N, 3 * N);
@@ -464,7 +454,12 @@ inline typename InputOrbit<N>::MatrixMU inputMatrixB(const Group<N>& X_hat) {
   for (size_t i = 0; i < N; ++i) {
     B2.block<3, 3>(3 * i, 3 * i) = X_hat.calibrations()[i].matrix();
   }
-  return gtsam::diag({B1, B2});
+  constexpr int DimM = State<N>::dimension;
+  constexpr int DimU = 6 + 3 * N;
+  using MatrixMU = Eigen::Matrix<double, DimM, DimU>;
+  MatrixMU result = MatrixMU::Zero();
+  result = gtsam::diag({B1, B2});
+  return result;
 }
 
 /**
@@ -501,35 +496,40 @@ struct OutputAction : public GroupAction<OutputAction<N>, Group<N>, Vector3> {
 };
 
 template <size_t N>
-struct OutputOrbit : public OutputAction<N>::Orbit {
+struct OutputOrbit {
   using G = Group<N>;
+  using Manifold = Vector3;
+  using Orbit = typename OutputAction<N>::Orbit;
+
+  OutputOrbit(const Unit3& y, int index)
+      : action_(index), orbit_(y.unitVector(), action_), y_(y), index_(index) {
+    if (index >= static_cast<int>(N)) {
+      throw std::out_of_range("OutputOrbit index out of range");
+    }
+  }
+
+  Vector3 operator()(const G& X,
+                     OptionalJacobian<3, G::dimension> H_X = {}) const {
+    return orbit_(X, H_X);
+  }
+
+  OutputAction<N> action_;
+  Orbit orbit_;
+  Unit3 y_;  // measured direction
+  int index_;
+};
+
+template <size_t N>
+struct Innovation {
   using M = State<N>;
 
-  Unit3 y_;   // measured direction
-  Unit3 d_;   // reference direction
-  M xi_ref_;  // reference state on the manifold
+  Innovation(const Unit3& y, const Unit3& d, int index)
+      : y_(y), d_(d), xi_ref_(M::identity()), index_(index) {}
 
-  OutputOrbit(const Unit3& y, const Unit3& d, int index)
-      : OutputAction<N>::Orbit(y.unitVector(), OutputAction<N>(index)),
-        y_(y),
-        d_(d),
-        xi_ref_(M::identity()) {
-    if (index >= static_cast<int>(N)) {
-      throw std::out_of_range("OutputOrbit index out of range");
-    }
-  }
+  Innovation(const Unit3& y, const Unit3& d, int index, const M& xi_ref)
+      : y_(y), d_(d), xi_ref_(xi_ref), index_(index) {}
 
-  OutputOrbit(const Unit3& y, const Unit3& d, int index, const M& xi_ref)
-      : OutputAction<N>::Orbit(y.unitVector(), OutputAction<N>(index)),
-        y_(y),
-        d_(d),
-        xi_ref_(xi_ref) {
-    if (index >= static_cast<int>(N)) {
-      throw std::out_of_range("OutputOrbit index out of range");
-    }
-  }
-
-  Vector3 innovation(const M& xi_hat,
+  Vector3 operator()(const M& xi_hat,
                      OptionalJacobian<3, M::dimension> H = {}) const {
     // Recover A and B_i from (xi_ref_, xi_hat) using the symmetry formulas:
     //   R_hat = R0 * A,   S_hat[i] = Aᵀ * S0[i] * B[i]
@@ -538,13 +538,13 @@ struct OutputOrbit : public OutputAction<N>::Orbit {
     const Rot3 A = R0.inverse() * Rhat;
 
     Vector3 transformed_y;
-    if (this->index_ == -1) {
+    if (index_ == -1) {
       // Uncalibrated sensor: transformed_y = A * y.
       transformed_y = A.rotate(y_.unitVector());
     } else {
       // Calibrated sensor i: B_i = S0[i]^{-1} * A * S_hat[i]
-      const Rot3& S0i = xi_ref_.S[this->index_];
-      const Rot3& Shati = xi_hat.S[this->index_];
+      const Rot3& S0i = xi_ref_.S[index_];
+      const Rot3& Shati = xi_hat.S[index_];
       const Rot3 Bi = S0i.inverse() * A * Shati;
       transformed_y = Bi.rotate(y_.unitVector());
     }
@@ -553,11 +553,15 @@ struct OutputOrbit : public OutputAction<N>::Orbit {
     const Vector3 nu = wedge_d * transformed_y;
 
     if (H) {
-      *H = measurementMatrixC<N>(d_, this->index_);
+      *H = measurementMatrixC<N>(d_, index_);
     }
     return nu;
   }
 
+  Unit3 y_;   // measured direction
+  Unit3 d_;   // reference direction
+  M xi_ref_;  // reference state on the manifold
+  int index_;
 };
 
 /// Compute the measurement matrix C(φ_y).

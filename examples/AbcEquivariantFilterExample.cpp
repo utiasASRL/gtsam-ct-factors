@@ -25,8 +25,9 @@ using G = abc::Group<n>;
 using Symmetry = abc::Symmetry<n>;
 using EqFilter = gtsam::EquivariantFilter<M, Symmetry>;
 using Lift = abc::Lift<n>;
-using InputOrbit = abc::InputOrbit<n>;
+using InputOrbit = typename abc::InputAction<n>::Orbit;
 using OutputOrbit = abc::OutputOrbit<n>;
+using Innovation = abc::Innovation<n>;
 
 /// Measurement struct
 struct Measurement {
@@ -267,7 +268,7 @@ void processDataWithEqF(EqFilter& filter, const std::vector<Data>& data_list,
 
   for (size_t i = 0; i < data_list.size(); i++) {
     const Data& data = data_list[i];
-    Matrix Q = InputOrbit::processNoise(data.inputCovariance);
+    Matrix Q = abc::inputProcessNoise<n>(data.inputCovariance);
     // Propagate filter with current input and time step
     Vector6 u = abc::toInputVector(data.omega);
     Lift lift_u(u);
@@ -294,11 +295,12 @@ void processDataWithEqF(EqFilter& filter, const std::vector<Data>& data_list,
       }
 
       try {
-        OutputOrbit phi_y(measurement.y, measurement.d, measurement.cal_idx);
+        Innovation innovation(measurement.y, measurement.d,
+                              measurement.cal_idx);
         // Use Explicit Matrices API
         Matrix C =
             abc::measurementMatrixC<n>(measurement.d, measurement.cal_idx);
-        filter.update(phi_y, measurement.R, C);
+        filter.update(innovation, measurement.R, C);
 
         validMeasurements++;
       } catch (const std::exception& e) {
