@@ -112,6 +112,7 @@ class LieGroupEKF : public ManifoldEKF<G> {
    * Compute the discrete-time transition matrix Φ corresponding to a
    * continuous-time linearization (Df) over time dt.
    *
+   * @tparam K Truncation order for expm (K=1 for first-order).
    * @param xi Tangent increment (used only for Lie groups).
    * @param Df Jacobian of dynamics w.r.t. local coordinates.
    * @param dt Time step.

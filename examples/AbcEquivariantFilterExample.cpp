@@ -277,7 +277,7 @@ void processDataWithEqF(EqFilter& filter, const std::vector<Data>& data_list,
     G X_hat = filter.groupEstimate();
     Matrix A = psi_u.stateMatrixA(X_hat);
     Matrix B = psi_u.inputMatrixB(X_hat);
-    filter.predict(lift_u, Q, data.dt, A, B);
+    filter.predict<2>(lift_u, Q, data.dt, A, B);
 
     // Process all measurements
     for (const auto& measurement : data.measurements) {

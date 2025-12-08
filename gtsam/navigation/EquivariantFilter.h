@@ -12,6 +12,7 @@
 #pragma once
 
 #include <gtsam/base/GroupAction.h>
+#include <gtsam/base/Lie.h>
 #include <gtsam/base/Matrix.h>
 #include <gtsam/base/Vector.h>
 #include <gtsam/geometry/Rot3.h>
@@ -132,11 +133,29 @@ class EquivariantFilter {
   }
 
   /**
+   * @brief Discretize continuous-time error dynamics δ̇ = A δ over dt.
+   *
+   * On manifolds (unlike Lie groups) the error stays in a fixed tangent space
+   * at the chosen origin, so discretization is just the matrix exponential of
+   * A. K mirrors LieGroupEKF: K=1 gives Euler, K>1 calls expm(A*dt, K).
+   */
+  template <size_t K = 1>
+  MatrixM transitionMatrix(const MatrixM& A, double dt) const {
+    if constexpr (K == 1) {
+      return MatrixM::Identity() + A * dt;
+    } else {
+      return MatrixM(expm(A * dt, K));
+    }
+  }
+
+  /**
    * @brief Propagate the filter state (Automatic).
    *
    * Automatically computes the error dynamics matrix A and asks `psi_u` for
    * the input noise matrix B.
    *
+   * @tparam K Truncation order for discretization (1 = first order Euler,
+   *         >1 uses matrix exponential expm(A*dt, K)).
    * @tparam Lift Functor for the lift Λ(ξ, u).
    * @tparam InputOrbit Functor for the input orbit ψ_u.
    * @param lift_u Lift functor for the current input.
@@ -144,7 +163,7 @@ class EquivariantFilter {
    * @param Q Process noise covariance in the Input space.
    * @param dt Time step.
    */
-  template <typename Lift, typename InputOrbit>
+  template <size_t K = 1, typename Lift, typename InputOrbit>
   void predict(const Lift& lift_u, const InputOrbit& psi_u, const Matrix& Q,
                double dt) {
     // 1. Compute A automatically
@@ -158,7 +177,7 @@ class EquivariantFilter {
     Matrix B = psi_u.inputMatrixB(X_);
 
     // 3. Delegate to explicit predict
-    predict(lift_u, Q, dt, A, B);
+    predict<K>(lift_u, Q, dt, A, B);
   }
 
   /**
@@ -174,7 +193,7 @@ class EquivariantFilter {
    * @param A Error dynamics matrix (DimM x DimM).
    * @param B Input noise mapping matrix (DimM x DimInput).
    */
-  template <typename Lift>
+  template <size_t K = 1, typename Lift>
   void predict(const Lift& lift_u, const Matrix& Q, double dt, const MatrixM& A,
                const Matrix& B) {
     // 1. Mean Propagation on Group
@@ -185,8 +204,7 @@ class EquivariantFilter {
     X_ = traits<G>::Compose(X_, traits<G>::Expmap(Lambda * dt));
 
     // 2. Covariance Propagation on Manifold
-    // Phi ≈ I + A * dt
-    MatrixM Phi = MatrixM::Identity() + A * dt;
+    MatrixM Phi = transitionMatrix<K>(A, dt);
 
     // Map noise: Q_M = B * Q * B^T * dt
     CovarianceM Q_manifold = B * Q * B.transpose() * dt;
