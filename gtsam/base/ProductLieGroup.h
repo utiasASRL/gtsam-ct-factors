@@ -554,7 +554,7 @@ struct traits<ProductLieGroup<G, H>>
     : internal::LieGroup<ProductLieGroup<G, H>> {};
 
 /// Traits specialization for PowerLieGroup
-template <typename G, int N>
+template <typename G, size_t N>
 struct traits<PowerLieGroup<G, N>> : internal::LieGroup<PowerLieGroup<G, N>> {};
 
 }  // namespace gtsam
