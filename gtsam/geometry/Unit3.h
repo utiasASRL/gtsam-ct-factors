@@ -215,16 +215,19 @@ public:
 };
 
 /// cross product Unit3 x Unit3
-Unit3 cross(const Unit3& p, const Unit3& q, OptionalJacobian<2, 2> H_p = {},
-            OptionalJacobian<2, 2> H_q = {});
+GTSAM_EXPORT Unit3 cross(const Unit3& p, const Unit3& q,
+                         OptionalJacobian<2, 2> H_p = {},
+                         OptionalJacobian<2, 2> H_q = {});
 
 /// cross product Unit3 x Point3
-Point3 cross(const Unit3& p, const Point3& q, OptionalJacobian<3, 2> H_p = {},
-              OptionalJacobian<3, 3> H_q = {});
+GTSAM_EXPORT Point3 cross(const Unit3& p, const Point3& q,
+                          OptionalJacobian<3, 2> H_p = {},
+                          OptionalJacobian<3, 3> H_q = {});
 
 /// cross product Point3 x Unit3
-Point3 cross(const Point3& p, const Unit3& q, OptionalJacobian<3, 3> H_p = {},
-              OptionalJacobian<3, 2> H_q = {});
+GTSAM_EXPORT Point3 cross(const Point3& p, const Unit3& q,
+                          OptionalJacobian<3, 3> H_p = {},
+                          OptionalJacobian<3, 2> H_q = {});
 
 /// Define GTSAM traits
 template<> struct traits<Unit3> : public internal::Manifold<Unit3> {
