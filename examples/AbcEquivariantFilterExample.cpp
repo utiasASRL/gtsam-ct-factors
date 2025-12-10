@@ -14,6 +14,7 @@
  * @date 2025
  */
 #include <gtsam/navigation/EquivariantFilter.h>
+#include <gtsam/slam/dataset.h>
 #include <gtsam_unstable/geometry/ABC.h>
 
 // Use namespace for convenience
@@ -21,11 +22,11 @@ using namespace gtsam;
 constexpr size_t n = 1;  // Number of calibration states
 using M = abc::State<n>;
 using G = abc::Group<n>;
-using StateAction = abc::StateAction<n>;
-using EqFilter = gtsam::EqF<M, StateAction>;
+using Symmetry = abc::Symmetry<n>;
+using EqFilter = gtsam::EquivariantFilter<M, Symmetry>;
 using Lift = abc::Lift<n>;
-using InputAction = abc::InputAction<n>;
-using OutputAction = abc::OutputAction<n>;
+using InputOrbit = typename abc::InputAction<n>::Orbit;
+using Innovation = abc::Innovation<n>;
 
 /// Measurement struct
 struct Measurement {
@@ -266,10 +267,18 @@ void processDataWithEqF(EqFilter& filter, const std::vector<Data>& data_list,
 
   for (size_t i = 0; i < data_list.size(); i++) {
     const Data& data = data_list[i];
-    Matrix Q = InputAction::processNoise(data.inputCovariance);
+    Matrix Q = abc::inputProcessNoise<n>(data.inputCovariance);
     // Propagate filter with current input and time step
     Vector6 u = abc::toInputVector(data.omega);
-    filter.predict<Lift, InputAction>(u, Q, data.dt);
+    Lift lift_u(u);
+    InputOrbit psi_u(u);
+
+    // Use Explicit Matrices API
+    G X_hat = filter.groupEstimate();
+    Matrix A = abc::stateMatrixA<n>(psi_u, X_hat);
+    Matrix B = abc::inputMatrixB<n>(X_hat);
+    Matrix Qc = B * Q * B.transpose();  // continuous-time manifold covariance
+    filter.predictWithJacobian<2>(lift_u, A, Qc, data.dt);
 
     // Process all measurements
     for (const auto& measurement : data.measurements) {
@@ -285,8 +294,13 @@ void processDataWithEqF(EqFilter& filter, const std::vector<Data>& data_list,
       }
 
       try {
-        OutputAction phi_y(measurement.y, measurement.d, measurement.cal_idx);
-        filter.update(phi_y, measurement.R);
+        Innovation innovation(measurement.y, measurement.d,
+                              measurement.cal_idx);
+        // Use Explicit Matrices API
+        Matrix C =
+            abc::measurementMatrixC<n>(measurement.d, measurement.cal_idx);
+        filter.update(innovation, measurement.R, C);
+
         validMeasurements++;
       } catch (const std::exception& e) {
         std::cerr << "Error updating at t=" << data.t << ": " << e.what()
@@ -295,7 +309,7 @@ void processDataWithEqF(EqFilter& filter, const std::vector<Data>& data_list,
     }
 
     // Get current state estimate
-    M estimate = filter.stateEstimate();
+    M estimate = filter.state();
 
     // Calculate errors
     Vector3 att_error = Rot3::Logmap(data.xi.R.between(estimate.R));
@@ -338,7 +352,7 @@ void processDataWithEqF(EqFilter& filter, const std::vector<Data>& data_list,
 
   // Calculate final errors from last data point
   const Data& final_data = data_list.back();
-  M final_estimate = filter.stateEstimate();
+  M final_estimate = filter.state();
   Vector3 final_att_error =
       Rot3::Logmap(final_data.xi.R.between(final_estimate.R));
   Vector3 final_bias_error = final_estimate.b - final_data.xi.b;
@@ -432,9 +446,6 @@ int main(int argc, char* argv[]) {
       return 1;
     }
 
-    // Initialize the EqF filter with one calibration state
-    int N = 2;  // number of sensors
-
     // Initial covariance - larger values allow faster convergence
     Matrix initialSigma = Matrix::Identity(6 + 3 * n, 6 + 3 * n);
     initialSigma.diagonal().head<3>() =
@@ -444,11 +455,10 @@ int main(int argc, char* argv[]) {
     initialSigma.diagonal().tail<3>() =
         Vector3::Constant(0.1);  // Calibration uncertainty
 
-    G initialGroup = gtsam::traits<G>::Identity();
     M initialState = M::identity();
 
     // Create filter
-    EqFilter filter(initialGroup, initialState, initialSigma, N);
+    EqFilter filter(initialState, initialSigma);
 
     // Process data
     processDataWithEqF(filter, data);

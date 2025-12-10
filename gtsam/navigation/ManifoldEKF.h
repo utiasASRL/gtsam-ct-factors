@@ -95,8 +95,10 @@ class ManifoldEKF {
             ") do not match state's tangent space dimension (" +
             std::to_string(n_) + ").");
       }
+      I_ = Jacobian::Identity(n_, n_);
     } else {
       n_ = Dim;
+      I_ = Jacobian::Identity();
     }
 
     P_ = P0;
@@ -114,8 +116,8 @@ class ManifoldEKF {
   int dimension() const { return n_; }
 
   /**
-   * Basic predict step: Updates state and covariance given the predicted
-   * next state and the state transition Jacobian F.
+   * Basic predict step: Updates state and covariance given the predicted next
+   * state and the state transition Jacobian F.
    * This overload expects a **discrete-time** process covariance Q already
    * scaled for the step being applied.
    *   X_{k+1} = X_next
@@ -142,6 +144,20 @@ class ManifoldEKF {
     P_ = F * P_ * F.transpose() + Q;
   }
 
+  /// Kalman gain K = P H^T S^-1.
+  template <typename HMatrix, typename RMatrix>
+  auto KalmanGain(const HMatrix& H, const RMatrix& R) const {
+    auto S = H * P_ * H.transpose() + R;  // Innovation covariance
+    return P_ * H.transpose() * S.inverse();
+  }
+
+  /// Joseph-form covariance update using a precomputed gain.
+  template <typename GainMatrix, typename HMatrix, typename RMatrix>
+  void JosephUpdate(const GainMatrix& K, const HMatrix& H, const RMatrix& R) {
+    Jacobian I_KH = I_ - K * H;
+    P_ = I_KH * P_ * I_KH.transpose() + K * R * K.transpose();
+  }
+
   /**
    * Measurement update: Corrects the state and covariance using a
    * pre-calculated predicted measurement and its Jacobian.
@@ -161,47 +177,15 @@ class ManifoldEKF {
       const Measurement& z,
       const Eigen::Matrix<double, traits<Measurement>::dimension,
                           traits<Measurement>::dimension>& R) {
-    static_assert(IsManifold<Measurement>::value,
-                  "Template parameter Measurement must be a GTSAM Manifold for "
-                  "LocalCoordinates.");
-
     static constexpr int MeasDim = traits<Measurement>::dimension;
-
-    if constexpr (MeasDim == Eigen::Dynamic) {
-      int m_runtime = traits<Measurement>::GetDimension(z);
-      if (traits<Measurement>::GetDimension(prediction) != m_runtime) {
-        throw std::invalid_argument(
-            "ManifoldEKF::update: Dynamic measurement 'prediction' and 'z' "
-            "have different dimensions.");
-      }
-      if (H.rows() != m_runtime || H.cols() != n_ || R.rows() != m_runtime ||
-          R.cols() != m_runtime) {
-        throw std::invalid_argument(
-            "ManifoldEKF::update: Jacobian H or Noise R dimensions mismatch "
-            "for dynamic measurement.");
-      }
-    } else {
-      if constexpr (Dim == Eigen::Dynamic) {
-        if (H.cols() != n_) {
-          throw std::invalid_argument(
-              "ManifoldEKF::update: Jacobian H columns must match state "
-              "dimension " +
-              std::to_string(n_) + ".");
-        }
-      }
-    }
 
     // Innovation: y = z - h(x_pred). In tangent space: local(h(x_pred), z)
     typename traits<Measurement>::TangentVector innovation =
         traits<Measurement>::Local(prediction, z);
 
-    // Innovation covariance: S = H P H^T + R
-    // S will be Eigen::Matrix<double, MeasDim, MeasDim>
-    Eigen::Matrix<double, MeasDim, MeasDim> S = H * P_ * H.transpose() + R;
-
     // Kalman Gain: K = P H^T S^-1
     // K will be Eigen::Matrix<double, Dim, MeasDim>
-    Eigen::Matrix<double, Dim, MeasDim> K = P_ * H.transpose() * S.inverse();
+    Eigen::Matrix<double, Dim, MeasDim> K = KalmanGain(H, R);
 
     // Correction vector in tangent space of M: delta_xi = K * innovation
     const TangentVector delta_xi =
@@ -210,17 +194,8 @@ class ManifoldEKF {
     // Update state using retract: X_new = retract(X_old, delta_xi)
     X_ = traits<M>::Retract(X_, delta_xi);
 
-    // Update covariance using Joseph form for numerical stability
-    Jacobian I_n;  // Eigen::Matrix<double, Dim, Dim>
-    if constexpr (Dim == Eigen::Dynamic) {
-      I_n = Jacobian::Identity(n_, n_);
-    } else {
-      I_n = Jacobian::Identity();
-    }
-
-    // I_KH will be Eigen::Matrix<double, Dim, Dim>
-    Jacobian I_KH = I_n - K * H;
-    P_ = I_KH * P_ * I_KH.transpose() + K * R * K.transpose();
+    // Update covariance using Joseph form
+    this->JosephUpdate(K, H, R);
   }
 
   /**
@@ -267,6 +242,8 @@ class ManifoldEKF {
                         const gtsam::Vector& z, const Matrix& R) {
     // Basic dimension checks for dynamic-sized measurement
     const int m = static_cast<int>(prediction.size());
+
+    // Validate sizes, as often called from wrapper.
     if (static_cast<int>(z.size()) != m) {
       throw std::invalid_argument(
           "ManifoldEKF::updateWithVector: prediction and z must have same "
@@ -290,6 +267,7 @@ class ManifoldEKF {
  protected:
   M X_;           ///< Manifold state estimate.
   Covariance P_;  ///< Covariance (Eigen::Matrix<double, Dim, Dim>).
+  Jacobian I_;    ///< Identity matrix sized to the state dimension.
   int n_;         ///< Runtime tangent space dimension of M.
 };
 

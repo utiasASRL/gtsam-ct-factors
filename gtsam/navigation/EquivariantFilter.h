@@ -11,150 +11,297 @@
 
 #pragma once
 
+#include <gtsam/base/GroupAction.h>
+#include <gtsam/base/Lie.h>
 #include <gtsam/base/Matrix.h>
 #include <gtsam/base/Vector.h>
 #include <gtsam/geometry/Rot3.h>
 #include <gtsam/geometry/Unit3.h>
 #include <gtsam/inference/Symbol.h>
 #include <gtsam/navigation/ImuBias.h>
-#include <gtsam/navigation/LieGroupEKF.h>
+#include <gtsam/navigation/ManifoldEKF.h>
 #include <gtsam/nonlinear/Values.h>
-#include <gtsam/slam/dataset.h>
 
-#include <chrono>
-#include <cmath>
-#include <fstream>
-#include <functional>
 #include <iostream>
-#include <numeric>  // For std::accumulate
-#include <string>
-#include <vector>
+#include <type_traits>
 
-// All implementations are wrapped in this namespace to avoid conflicts
 namespace gtsam {
 
-using namespace std;
-using namespace gtsam;
-
 /**
- * Equivariant Filter (EqF) for state estimation on Lie groups with states on
- * manifolds.
+ * Equivariant Filter (EqF) for state estimation on Lie groups.
+ *
+ * The EqF estimates a Lie group state X ∈ G and a manifold state ξ ∈ M.
+ * It uses a symmetry principle where the error dynamics are autonomous in a
+ * specific frame.
+ *
+ * This implementation supports two modes:
+ * 1. **Automatic**: The filter calculates Jacobian A using the input orbit.
+ * 2. **Explicit**: You provide the Jacobian A and the manifold covariance Qc
+ *    directly.
+ *
  * @tparam M Manifold type for the physical state.
- * @tparam StateAction Functor encoding the right group action on the state.
+ * @tparam Symmetry Functor encoding the group action on the state.
  */
-template <typename M, typename StateAction>
-class EqF : public LieGroupEKF<typename StateAction::G> {
- private:
-  using G = typename StateAction::G;
-  using Base = LieGroupEKF<G>;
-  using TangentVector = typename traits<G>::TangentVector;
+template <typename M, typename Symmetry>
+class EquivariantFilter : public ManifoldEKF<M> {
+ public:
+  using Base = ManifoldEKF<M>;
 
-  M xi_ref_;                // Origin (reference) state on the manifold
-  StateAction act_on_ref_;  // Group action on the reference state
-  Matrix InnovationLift_;   // Innovation lift matrix
+  // Manifold traits
+  static constexpr int DimM = Base::Dim;
+  using TangentM = typename Base::TangentVector;
+  using MatrixM = typename Base::Jacobian;
+  using CovarianceM = typename Base::Covariance;
+
+  // Group traits
+  using G = typename Symmetry::Group;
+  static constexpr int DimG = traits<G>::dimension;
+  using TangentG = typename traits<G>::TangentVector;
+
+  // Cross-dimension helpers
+  using MatrixMG = Eigen::Matrix<double, DimM, DimG>;
+  using MatrixGM = Eigen::Matrix<double, DimG, DimM>;
+
+ private:
+  M xi_ref_;  // Origin (reference) state on the manifold
+  typename Symmetry::Orbit act_on_ref_;  // Orbit of the reference state
+  MatrixMG Dphi0_;           // Differential of state action at identity
+  MatrixGM InnovationLift_;  // Innovation lift matrix ((Dphi0)^+)
+
+  G g_;  // Group element estimate
 
  public:
-  static constexpr int Dim = Base::Dim;  ///< Compile-time dimension of G.
+  /**
+   * @brief Initialize the Equivariant Filter.
+   *
+   * @param xi_ref Reference manifold state (origin of lifted coordinates).
+   * @param Sigma Initial covariance on the manifold.
+   * @param X0 Initial group estimate (default: Identity).
+   */
+  EquivariantFilter(const M& xi_ref, const CovarianceM& Sigma,
+                    const G& X0 = traits<G>::Identity())
+      : Base(xi_ref, Sigma), xi_ref_(xi_ref), act_on_ref_(xi_ref), g_(X0) {
+    // Compute differential of action phi at identity (Dphi0)
+    act_on_ref_(traits<G>::Identity(), &Dphi0_);
 
-  /// Number of calibration states (sensors), expected to be provided by G
-  static constexpr int n_cal = G::numSensors;
+    // Precompute the Innovation Lift matrix (pseudo-inverse of Dphi0)
+    InnovationLift_ = Dphi0_.completeOrthogonalDecomposition().pseudoInverse();
+    this->X_ = act_on_ref_(g_);
+  }
+
+  /// @return Current group estimate.
+  const G& groupEstimate() const { return g_; }
 
   /**
-   * Initialize EqF
-   * @param X0 Initial Lie group state
-   * @param x0 Reference manifold state (origin of the lifted coordinates)
-   * @param Sigma Initial covariance (Dim x Dim)
-   * @param m Number of direction sensors (must be at least 2)
+   * @brief Compute the error dynamics matrix A (Automatic).
+   *
+   * Calculates A = D_phi|_0 * D_lift|_u0, where u0 is the input mapped to the
+   * origin.
+   *
+   * Concept requirements:
+   * - `Lift` must be callable as `Lift(u_origin)(xi_ref, D_lift)` where
+   *   D_lift is an OptionalJacobian of shape DimM x DimG.
+   * - `InputOrbit` must be a group action on the input space with operator()
+   *   that accepts the current group estimate X and returns the mapped input
+   *   (no other methods are required by the filter).
+   *
+   * @tparam Lift Functor for the lift Λ(ξ, u).
+   * @tparam InputOrbit Functor for the input orbit ψ_u.
+   * @param psi_u Input Orbit instance.
+   * @return MatrixM The calculated error dynamics matrix A.
    */
-  EqF(const G& X0, const M& x0, const Matrix& Sigma, int m)
-      : Base(X0, Sigma), xi_ref_(x0), act_on_ref_(x0) {
-    if (Sigma.rows() != Dim || Sigma.cols() != Dim) {
-      throw std::invalid_argument(
-          "Initial covariance dimensions must match the degrees of freedom");
+  template <typename Lift, typename InputOrbit>
+  MatrixM computeErrorDynamicsMatrix(const InputOrbit& psi_u) const {
+    MatrixGM D_lift;
+    // Map current input to origin: u_origin = psi_u(X^-1)
+    auto u_origin = psi_u(g_.inverse());
+
+    // Lift at origin: D_lift = d(Lambda(xi_ref, u_origin))/dxi
+    Lift lift_u_origin(u_origin);
+    lift_u_origin(xi_ref_, &D_lift);
+
+    return Dphi0_ * D_lift;
+  }
+
+  /**
+   * @brief Discretize continuous-time error dynamics δ̇ = A δ over dt.
+   *
+   * On manifolds (unlike Lie groups) the error stays in a fixed tangent space
+   * at the chosen origin, so discretization is just the matrix exponential of
+   * A. K mirrors LieGroupEKF: K=1 gives Euler, K>1 calls expm(A*dt, K).
+   */
+  template <size_t K = 1>
+  MatrixM transitionMatrix(const MatrixM& A, double dt) const {
+    if constexpr (K == 1) {
+      return this->I_ + A * dt;
+    } else {
+      return MatrixM(expm(A * dt, K));
     }
+  }
 
-    if (m <= 1) {
-      throw std::invalid_argument(
-          "Number of direction sensors must be at least 2");
+  /**
+   * @brief Propagate the filter state (Automatic).
+   *
+   * Automatically computes the error dynamics matrix A.
+   *
+   * Concept requirements:
+   * - `Lift` is used as `Lift(u_origin)(xi_ref_, D_lift)` to obtain the lift
+   *   and its Jacobian w.r.t. the manifold state.
+   * - `InputOrbit` is only used via `psi_u(X_.inverse())` to map the current
+   *   input to the origin; no other methods are needed.
+   *
+   * @tparam K Truncation order for discretization (1 = first order Euler,
+   *         >1 uses matrix exponential expm(A*dt, K)).
+   * @tparam Lift Functor for the lift Λ(ξ, u).
+   * @tparam InputOrbit Functor for the input orbit ψ_u.
+   * @param lift_u Lift functor for the current input.
+   * @param psi_u Input Orbit for the current input.
+   * @param A Error dynamics matrix (DimM x DimM).
+   * @param Qc Process noise covariance on the manifold (continuous-time).
+   * @param dt Time step.
+   */
+  template <size_t K = 1, typename Lift, typename InputOrbit>
+  void predict(const Lift& lift_u, const InputOrbit& psi_u, const MatrixM& Qc,
+               double dt) {
+    // 1. Compute A automatically
+    MatrixM A = computeErrorDynamicsMatrix<Lift>(psi_u);
+
+    // 2. Delegate to explicit predict with manifold Qc
+    predictWithJacobian<K>(lift_u, A, Qc, dt);
+  }
+
+  /**
+   * @brief Propagate the filter state (Explicit).
+   *
+   * Uses provided Jacobian A and manifold covariance Qc. This allows `psi_u`
+   * to be a pure Orbit without needing to implement `inputMatrixB`.
+   *
+   * Concept requirements:
+   * - `Lift` is only used via `Lift(xi_est)` to produce a tangent vector.
+   *   No additional methods are needed for this overload.
+   *
+   * @tparam Lift Functor for the lift Λ(ξ, u).
+   * @param lift_u Lift functor for the current input.
+   * @param A Error dynamics matrix (DimM x DimM).
+   * @param Qc Process noise covariance on the manifold (continuous-time).
+   * @param dt Time step.
+   */
+  template <size_t K = 1, typename Lift>
+  void predictWithJacobian(const Lift& lift_u, const MatrixM& A,
+                           const MatrixM& Qc, double dt) {
+    // 1. Mean Propagation on Group
+    M xi_est = this->state();          // Pure action
+    TangentG Lambda = lift_u(xi_est);  // Pure lift
+
+    g_ = traits<G>::Compose(g_, traits<G>::Expmap(Lambda * dt));
+    M xi_next = act_on_ref_(g_);
+
+    // 2. Covariance Propagation on Manifold
+    MatrixM Phi = transitionMatrix<K>(A, dt);
+
+    // Qc is manifold continuous-time covariance: Q_M = Qc * dt
+    CovarianceM Q_manifold = Qc * dt;
+
+    Base::predict(xi_next, Phi, Q_manifold);
+  }
+
+  /**
+   * @brief Helper to compute the measurement matrix C for testing or analysis.
+   *
+   * @param innovation Innovation functor ν(ξ̂, H).
+   * @param xi_hat Linearization point on the manifold.
+   * @return The measurement Jacobian C (DimZ x DimM).
+   */
+  template <typename Innovation>
+  auto computeMeasurementMatrix(const Innovation& innovation,
+                                const M& xi_hat) const {
+    auto nu = innovation(xi_hat);
+    using VectorZ = decltype(nu);
+    static constexpr int DimZ = VectorZ::RowsAtCompileTime;
+
+    if constexpr (DimZ == Eigen::Dynamic) {
+      const int m = nu.rows();
+      Eigen::Matrix<double, Eigen::Dynamic, DimM> C(m, DimM);
+      innovation(xi_hat, &C);
+      return C;
+    } else {
+      Eigen::Matrix<double, DimZ, DimM> C;
+      innovation(xi_hat, &C);
+      return C;
     }
-
-    // Compute differential of action phi at origin
-
-    Matrix Dphi0 = act_on_ref_.jacobianAtIdentity();
-    InnovationLift_ = Dphi0.completeOrthogonalDecomposition().pseudoInverse();
   }
 
   /**
-   * Return estimated physical state on manifold M.
-   * Applies the group action of the current group estimate on the origin state.
+   * @brief Update with measurement, using a standalone innovation functor.
+   *
+   * Concept requirements:
+   * - `Innovation` must be callable as `innovation(xi_hat, H)` where H is an
+   *   OptionalJacobian (fixed-size) or MatrixXd* (dynamic-size).
+   *
+   * @tparam Innovation Functor computing ν(ξ̂) and its Jacobian.
+   * @param innovation Innovation functor.
+   * @param R Measurement noise covariance.
    */
-  M stateEstimate() const {
-    // Group action X * xi_ref (defined for ABC as Group * State).
-    return act_on_ref_(this->X_);
-  }
+  template <typename Innovation>
+  void update(const Innovation& innovation, const Eigen::MatrixXd& R) {
+    const M xi_hat = this->state();
+    auto nu = innovation(xi_hat);
+    using VectorZ = decltype(nu);
+    static constexpr int DimZ = VectorZ::RowsAtCompileTime;
 
-  /// Return the current group estimate.
-  const G& groupEstimate() const { return this->X_; }
-
-  /**
-   * Propagate the filter state.
-   * @tparam Lift Computes the lifted tangent vector.
-   * @tparam InputAction Provides system matrices derived from the input.
-   * @tparam u the input vector.
-   * @param Q Process noise covariance in lifted coordinates
-   * @param dt Time step
-   */
-  template <typename Lift, typename InputAction>
-  void predict(const Vector6& u, const Matrix& Q, double dt) {
-    // auto dynamics = [this](const G& X, const Vector6& u,
-    // OptionalJacobian<Dim, Dim> Df) {
-    //   M state_est = act_on_ref_(X);
-    //   return state_est.lift(u);
-    // };
-
-    // Map current group estimate to physical state on the manifold
-    M state_est = stateEstimate();
-
-    // Compute lifted tangent vector from state and input
-    Lift lift_u(u);
-    TangentVector xi = lift_u(state_est);
-
-    InputAction psi_u(u);
-    Matrix Phi = psi_u.stateTransitionMatrix(this->X_, dt);
-    Matrix Bt = psi_u.inputMatrixBt(this->X_);
-
-    G X_next = traits<G>::Compose(this->X_, traits<G>::Expmap(xi * dt));
-    Matrix Q_process = Bt * Q * Bt.transpose() * dt;
-    Base::predict(X_next, Phi, Q_process);
+    if constexpr (DimZ == Eigen::Dynamic) {
+      Eigen::Matrix<double, Eigen::Dynamic, DimM> H(nu.rows(), DimM);
+      innovation(xi_hat, &H);
+      updateInternal(nu, H, R);
+    } else {
+      Eigen::Matrix<double, DimZ, DimM> H;
+      VectorZ nu_with = innovation(xi_hat, &H);
+      updateInternal(nu_with, H, R);
+    }
   }
 
   /**
-   * Update the filter state with a direction measurement.
-   * @tparam OutputAction Functor encoding the action on the measurement.
-   * @tparam Measurement Measurement type carrying y, d, Sigma, and cal_idx.
-   * @param y Direction measurement
+   * @brief Update with measurement, using provided measurement Jacobian C.
+   *
+   * @tparam Innovation Functor computing ν(ξ̂) without needing the action.
+   * @param innovation Innovation functor.
+   * @param R Measurement noise covariance.
+   * @param C Measurement Jacobian (DimZ x DimM).
    */
-  template <typename OutputAction>
-  void update(const OutputAction& phi_y, const Matrix& R) {
-    Matrix Ct = phi_y.measurementMatrixC();
+  template <typename Innovation>
+  void update(const Innovation& innovation, const Eigen::MatrixXd& R,
+              const Eigen::MatrixXd& C) {
+    const M xi_hat = this->state();
+    auto nu = innovation(xi_hat);
+    updateInternal(nu, C, R);
+  }
 
-    // Kalman gain
-    Matrix Dt = phi_y.outputMatrixDt(this->X_);
-    Matrix S = Ct * this->P_ * Ct.transpose() + Dt * R * Dt.transpose();
-    Matrix K = this->P_ * Ct.transpose() * S.inverse();
+ protected:
+  /**
+   * @brief Internal update implementation.
+   *
+   * Uses standard EKF equations:
+   * K = P * H^T * (H * P * H^T + R)^-1
+   * P = (I - K * H) * P * (I - K * H)^T + K * R * K^T
+   */
+  template <typename VectorZ, typename MatrixZM, typename MatrixZ>
+  void updateInternal(const VectorZ& innovation, const MatrixZM& H,
+                      const MatrixZ& R) {
+    using MatrixMZ = Eigen::Matrix<double, DimM, VectorZ::RowsAtCompileTime>;
 
-    // Innovation lift
-    // TODO(Frank): Why inverse ????
-    Vector3 innovation = phi_y.innovation(this->X_.inverse());
-    TangentVector delta_xi = InnovationLift_ * (K * innovation);
+    MatrixMZ K = this->KalmanGain(H, R);
 
-    // Update state estimate (left-multiply by exp(delta_xi))
-    // TODO(Frank): try X_ = traits<M>::Retract(X_, delta_xi);
-    this->X_ = traits<G>::Compose(traits<G>::Expmap(delta_xi), this->X_);
+    // Correction in Manifold tangent space
+    // K matches dimensions with innovation, so result is TangentM
+    TangentM delta_xi = K * innovation;
 
-    // Update covariance
-    Matrix I_n = Matrix::Identity(this->P_.rows(), this->P_.cols());
-    this->P_ = (I_n - K * Ct) * this->P_;
+    // Lift correction to Group tangent space
+    TangentG delta_x = InnovationLift_ * delta_xi;
+    g_ = traits<G>::Compose(traits<G>::Expmap(delta_x), g_);
+    this->X_ = act_on_ref_(g_);
+
+    // Update covariance on Manifold using Joseph form
+    this->JosephUpdate(K, H, R);
   }
 };
 
