@@ -12,6 +12,19 @@
  * (23)–(24) in Fornasier et al. (2022) for the continuous-time dynamics, lift
  * Λ(ξ,u), output action, and EqF update.
  *
+ * This header is intentionally small so it can serve as a reference
+ * implementation for users who want to plug their own manifold into
+ * EquivariantFilter. Everything below is exercised by
+ * gtsam_unstable/geometry/tests/testABC.cpp and the
+ * examples/AbcEquivariantFilterExample.cpp demo:
+ *   1) a State manifold with retract/localCoordinates,
+ *   2) the symmetry Group and its action on the state,
+ *   3) lift/input/output actions needed by EquivariantFilter,
+ *   4) a handful of helpers for linearization (A/B/C matrices and process
+ *      noise embedding).
+ * If you copy this file as a template, avoid adding extra behaviour the tests
+ * do not cover, so the example remains trustworthy.
+ *
  * @author Darshan Rajasekaran
  * @author Jennifer Oum
  * @author Rohan Bansal
@@ -20,16 +33,6 @@
  */
 
 #pragma once
-
-/**
- * @file ABC.h
- * @brief Core components for Attitude-Bias-Calibration systems
- *
- * This file contains fundamental components and utilities for the ABC system
- * based on the paper "Overcoming Bias: Equivariant Filter Design for Biased
- * Attitude Estimation with Online Calibration" by Fornasier et al.
- * Authors: Darshan Rajasekaran & Jennifer Oum
- */
 
 #include <gtsam/base/GroupAction.h>
 #include <gtsam/base/Matrix.h>
@@ -52,7 +55,7 @@
 namespace gtsam {
 namespace abc {
 
-/// Convert angular velocity vector to mathematical input (ω, 0)
+/// Convert a measured angular velocity ω into the mathematical input (ω, 0).
 inline Vector6 toInputVector(const Vector3& w) {
   return (Vector6() << w, Z_3x1).finished();
 }
@@ -65,7 +68,10 @@ using Calibrations = PowerLieGroup<Rot3, N>;
 // State Manifold
 //========================================================================
 
-/// State class representing the state of the Biased Attitude System
+/**
+ * Minimal state manifold for the biased attitude system: ξ = (R, b, S).
+ * Template parameter N is the number of calibrated sensors.
+ */
 template <size_t N>
 struct State {
   Rot3 R;             // Attitude rotation matrix R
@@ -139,9 +145,8 @@ struct State {
 //========================================================================
 
 /**
- * Symmetry group defined as the product Pose3 x Calibrations<n>
- * The Pose3 component models the (SO(3) ⋉ R^3) part acting on attitude/bias,
- * while Calibrations<n> captures the N sensor calibration rotations.
+ * Symmetry group G = Pose3 × Calibrations<n>. Pose3 handles the SE(3)-like
+ * part acting on (R, b) and Calibrations<n> handles the N extrinsic rotations.
  */
 template <size_t n>
 struct Group : public ProductLieGroup<Pose3, Calibrations<n>> {
@@ -154,11 +159,9 @@ struct Group : public ProductLieGroup<Pose3, Calibrations<n>> {
   static constexpr size_t numSensors = n;
 
   Group() : Base() {}
-  Group(const Pose3& pose, const Calibrations<n>& calibrations)
-      : Base(pose, calibrations) {}
   Group(const Base& base) : Base(base) {}
-  Group(const Rot3& A, const Matrix3& a, const Calibrations<n>& B)
-      : Group(Pose3(A, Point3(Rot3::Vee(a))), B) {}
+  Group(const Rot3& A, const Vector3& a, const Calibrations<n>& B)
+      : Base(Pose3(A, a), B) {}
 
   static Group Identity() { return Group(); }
 
@@ -219,22 +222,6 @@ struct Group : public ProductLieGroup<Pose3, Calibrations<n>> {
   Rot3 A() const { return this->first.rotation(); }
   Vector3 a() const { return this->first.translation(); }
   const Calibrations<n>& calibrations() const { return this->second; }
-
-  void print(const std::string& s = "") const {
-    if (!s.empty()) std::cout << s << " ";
-    std::cout << "Group<" << n << ">" << std::endl;
-    pose().print("  Pose");
-    for (size_t i = 0; i < n; ++i) {
-      const std::string label = "  S[" + std::to_string(i) + "]";
-      calibrations()[i].print(label);
-    }
-  }
-
-  bool equals(const Group& other, double tol = 1e-9) const {
-    if (!pose().equals(other.pose(), tol)) return false;
-    return traits<Calibrations<n>>::Equals(calibrations(), other.calibrations(),
-                                           tol);
-  }
 };
 
 //========================================================================
@@ -242,12 +229,7 @@ struct Group : public ProductLieGroup<Pose3, Calibrations<n>> {
 //========================================================================
 
 /**
- * The symmetry group G is defined as the product Pose3 x Calibrations<n>.
- * The Pose3 component models the (SO(3) ⋉ R^3) part acting on attitude/bias,
- * while Calibrations<n> captures the N sensor calibration rotations.
- *
- * The group action is defined as a function object below,
- * applied to a given state x, specified in constructor.
+ * Right action φ_ξ(X) = (R A, Aᵀ(b − a), Aᵀ C B) on the state manifold.
  * Implements the right action φ_{ξ}(X) = (R A, Aᵀ(b − a), Aᵀ C B), where
  * ξ=(R,b,C). This is the discrete version of the homogeneous-space action in
  * Eq. (4) of Fornasier et al. (2022).
@@ -345,7 +327,7 @@ inline typename State<N>::TangentVector dynamics(const Vector3& omega,
 }
 
 /**
- * /// Implements the lift Λ(ξ,u) from the paper: Λ encodes the lifted dynamics
+ * Implements the lift Λ(ξ,u) from the paper: Λ encodes the lifted dynamics
  * on G induced by the biased gyroscope input u = (ω,0). Functor computing the
  * lifted tangent vector from a state and fixed input. In the notation of
  * Fornasier et al., this corresponds to Eq. (7), written in the so(3)≃ℝ³
@@ -394,7 +376,7 @@ struct Lift {
  * Encodes the partially applied input action ψ_u(X) = Aᵀ(ω − a), used to
  * compute A(X,u) and Φ(X,u). Functor encoding the right group action on the
  * mathematical input u. For a fixed u = (ω, 0), applying X = (A, a, B) ∈ G
- * yields φ_u(X) = (A^{-1}(ω - a), 0). The matrices A(X,u) and Φ(X,u) here match
+ * yields ψ_u(X) = (A^{-1}(ω - a), 0). The matrices A(X,u) and Φ(X,u) here match
  * the linearization in Eqs. (20) and (21), using ω̃ = Aᵀ(ω − a).
  */
 template <size_t N>
@@ -451,7 +433,8 @@ inline Matrix inputMatrixB(const Group<N>& X_hat) {
 
 /**
  * Functor encoding the right action ρ_y(X) on direction measurements y,
- * parameterized by the sensor index.
+ * parameterized by the sensor index. Use index = -1 for an uncalibrated
+ * sensor measured directly in the body frame.
  */
 template <size_t N>
 struct OutputAction : public GroupAction<OutputAction<N>, Group<N>, Vector3> {
@@ -503,6 +486,7 @@ template <size_t N>
 struct Innovation {
   using M = State<N>;
 
+  /// Innovation ν = d×(ŷ) where ŷ is the predicted measurement under φ/ρ.
   Innovation(const Unit3& y, const Unit3& d, int index)
       : y_(y), d_(d), xi_ref_(M::identity()), index_(index) {}
 
