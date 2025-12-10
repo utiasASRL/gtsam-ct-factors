@@ -34,13 +34,13 @@ const Rot3 A1 = Rot3::Rx(0.1);
 const Vector3 t1(0.01, 0.02, 0.03);
 const Calibrations B1{Rot3::Ry(0.05), Rot3::Rz(0.06)};
 const State xi1(A1, t1, B1);
-const Group g1(Pose3(A1, t1), B1);
+const Group g1(A1, t1, B1);
 
 const Rot3 A2 = Rot3::Ry(0.2);
 const Vector3 t2(0.04, 0.05, 0.06);
 const Calibrations B2{Rot3::Rz(0.07), Rot3::Rx(0.08)};
 const State xi2(A2, t2, B2);
-const Group g2(Pose3(A2, t2), B2);
+const Group g2(A2, t2, B2);
 
 const Vector3 omega(1, 2, 3);
 const Vector6 u = abc::toInputVector(omega);
@@ -689,10 +689,10 @@ TEST(ABC, ComputeMeasurementMatrix) {
 /* ************************************************************************* */
 // Regression expectations for EqFilter predict/update.
 namespace abc_eqf_regression {
-const Group expected_predict({Rot3(1, 0.00015, -0.0004,  //
-                                   -0.00015, 1, 3e-08,   //
-                                   0.0004, 3e-08, 1),
-                              Point3(9.00091e-06, 1.49932e-06, -3.9982e-06)},
+const Group expected_predict(Rot3(1, 0.00015, -0.0004,  //
+                                  -0.00015, 1, 3e-08,   //
+                                  0.0004, 3e-08, 1),
+                             Point3(9.00091e-06, 1.49932e-06, -3.9982e-06),
                              {Rot3(1, 0.000149811, -0.000400001,   //
                                    -0.000149814, 1, -7.46691e-06,  //
                                    0.000399999, 7.52684e-06, 1),
@@ -715,11 +715,10 @@ const Matrix expected_P_after_predict =
      0, 0, 0, 0, 0, 0, 0, 0, 0, -0, 0, 0.1)
         .finished();
 
-const Group expected_after_update({Rot3(0.995195, -0.097908, -0.000400003,  //
-                                        0.097908, 0.995195, 2.98008e-08,    //
-                                        0.000398078, -3.91931e-05, 1),
-                                   Point3(0.00201816, -0.000882995,
-                                          8.60911e-05)},
+const Group expected_after_update(Rot3(0.995195, -0.097908, -0.000400003,  //
+                                       0.097908, 0.995195, 2.98008e-08,    //
+                                       0.000398078, -3.91931e-05, 1),
+                                  Point3(0.00201816, -0.000882995, 8.60911e-05),
                                   {Rot3(0.548024, -0.836459, -0.00263326,  //
                                         0.83646, 0.548012, 0.00413976,     //
                                         -0.00201968, -0.0044713, 0.999988),
