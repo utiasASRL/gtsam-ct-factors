@@ -35,6 +35,13 @@ static const Vector15 xi2 =
      0.12, 0.11, 0.15, 0.13, 0.14)
         .finished();
 
+// define xi_large:
+static const Vector15 xi_large =
+    (Vector15() << -54.6068079, 10.92787436, -87.32378533, 65.59176063,
+     26.3592127, 51.66916557, -29.12390118, 94.23374448, 78.70284849,
+     55.73237611, -61.13333069, -6.66245505, -91.33048609, -69.21124369,
+     36.64640044)
+        .finished();
 // Create a SL4
 const Matrix4 T_matrix =
     (Matrix4() << 1, 0, 0, 1, 0, 1, 0, 2, 0, 0, 1, 3, 0, 0, 0, 1).finished();
@@ -60,6 +67,9 @@ TEST(SL4, Identity) {
 TEST(SL4, Expmap) {
   SL4 expected(SL4::Expmap(xi0));
   EXPECT(assert_equal(expected, SL4::Expmap(xi0), 1e-8));
+
+  // Make sure larger xi still works
+  (void)SL4::Expmap(xi_large);
 }
 
 /* ************************************************************************* */
@@ -74,6 +84,9 @@ TEST(SL4, Retract) {
   SL4 actual = SL4::Retract(xi);
   SL4 expected(I_4x4 + SL4::Hat(xi));
   EXPECT(assert_equal(expected, actual, 1e-8));
+
+  // Make sure larger xi still works
+  (void)SL4::Retract(xi_large);
 }
 
 /* ************************************************************************* */
