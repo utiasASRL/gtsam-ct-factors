@@ -72,7 +72,7 @@ public:
    * @param solution The solution point to compute Gaussian marginals.
    * @param factorization The linear decomposition mode - either Marginals::CHOLESKY (faster and suitable for most problems) or Marginals::QR (slower but more numerically stable for poorly-conditioned problems).
    */          
-  Marginals(const GaussianFactorGraph& graph, const Values& solution, Factorization factorization = QR);
+  Marginals(const GaussianFactorGraph& graph, const Values& solution, Factorization factorization = CHOLESKY);
 
   /** Construct a marginals class from a linear factor graph.
    * @param graph The factor graph defining the full joint density on all variables.
