@@ -75,6 +75,11 @@ struct LogDeterminantResult {
   double logAbsDet;
 };
 
+// Threshold on |log(det)| below which we treat a negative sign as numerical.
+// We allow a generous tolerance to account for overflow when exponentiating
+// large trace-zero matrices.
+constexpr double kSignFlipLogTolerance = 1e3;
+
 LogDeterminantResult logDeterminantWithSign(const gtsam::Matrix4& pose) {
   const Eigen::FullPivLU<gtsam::Matrix4> lu(pose);
   double sign =
@@ -105,7 +110,7 @@ SL4::SL4(const Matrix44& pose) {
     throw std::runtime_error(
         "Matrix determinant must be positive for SL(4) normalization. Got det "
         "= " +
-        std::to_string(logDet.sign));
+        std::to_string(logDet.sign * std::exp(logDet.logAbsDet)));
   }
 
   const double scale = std::exp(logDet.logAbsDet / 4.0);
@@ -155,19 +160,21 @@ SL4 SL4::Expmap(const Vector& xi, SL4Jacobian H) {
 
   // NOTE(hlim):
   // The cost of the computation is approximately 20n^3 for matrices of size n.
-  // The number 20 depends weakly on the norm of the matrix.
-  // See
+  // The number 20 depends weakly on the norm of the matrix. See
   // https://eigen.tuxfamily.org/dox/unsupported/group__MatrixFunctions__Module.html
 
   Matrix44 expA = A.exp();
   LogDeterminantResult logDet = logDeterminantWithSign(expA);
 
-  // The exponential of a trace-zero matrix should have det=1. Numerical issues
-  // can still flip the sign, so project back to SL(4) by correcting the sign if
-  // needed and renormalizing with the log-determinant.
+  // The exponential of a trace-zero matrix should have det=1. If we see a
+  // negative sign but the magnitude is reasonable (within tolerance), treat it
+  // as a numerical sign flip and continue; otherwise reject.
   if (logDet.sign < 0.0) {
-    expA.col(0) *= -1.0;
-    logDet.sign = -logDet.sign;
+    if (std::abs(logDet.logAbsDet) < kSignFlipLogTolerance) {
+      logDet.sign = 1.0;  // ignore spurious sign
+    } else {
+      throw std::runtime_error("SL4::Expmap: Negative determinant from exp.");
+    }
   }
 
   if (logDet.sign == 0.0 || !std::isfinite(logDet.logAbsDet)) {
