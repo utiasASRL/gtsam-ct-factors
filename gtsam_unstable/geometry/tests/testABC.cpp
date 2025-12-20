@@ -780,7 +780,8 @@ TEST(ABC, EqFilter) {
 
   // Regression
   EXPECT(assert_equal(expected_predict, filter.groupEstimate(), 1e-4));
-  EXPECT(assert_equal(expected_P_after_predict, filter.covariance(), 1e-4));
+  EXPECT(
+      assert_equal(expected_P_after_predict, filter.errorCovariance(), 1e-4));
 
   // Perform an update step
   const int cal_idx = 0;
@@ -790,7 +791,7 @@ TEST(ABC, EqFilter) {
 
   // Regression
   EXPECT(assert_equal(expected_after_update, filter.groupEstimate(), 1e-4));
-  EXPECT(assert_equal(expected_P_after_update, filter.covariance(), 1e-4));
+  EXPECT(assert_equal(expected_P_after_update, filter.errorCovariance(), 1e-4));
 }
 
 /* ************************************************************************* */
@@ -828,7 +829,8 @@ TEST(ABC, EqFilter_BespokeDynamics) {
   filter.predictWithJacobian<2>(lift_u, A, Qc, dt);
 
   EXPECT(assert_equal(expected_predict, filter.groupEstimate(), 1e-4));
-  EXPECT(assert_equal(expected_P_after_predict, filter.covariance(), 1e-4));
+  EXPECT(
+      assert_equal(expected_P_after_predict, filter.errorCovariance(), 1e-4));
 
   // Update
   const int cal_idx = 0;
@@ -837,7 +839,7 @@ TEST(ABC, EqFilter_BespokeDynamics) {
   filter.update(innovation, R);
 
   EXPECT(assert_equal(expected_after_update, filter.groupEstimate(), 1e-4));
-  EXPECT(assert_equal(expected_P_after_update, filter.covariance(), 1e-4));
+  EXPECT(assert_equal(expected_P_after_update, filter.errorCovariance(), 1e-4));
 }
 
 /* ************************************************************************* */

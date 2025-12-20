@@ -89,6 +89,23 @@ class EquivariantFilter : public ManifoldEKF<M> {
     this->X_ = act_on_ref_(g_);
   }
 
+  /// State on the manifold M is given by the base class
+  using Base::state;
+
+  /// errorCovariance that returns P_, on the equivariant filter error
+  Matrix errorCovariance() const { return this->P_; }
+
+  /// Covariance in the tangent space at the current state.
+  CovarianceM covariance() const {
+    MatrixM J;
+    if constexpr (MatrixM::RowsAtCompileTime == Eigen::Dynamic) {
+      J.resize(this->n_, this->n_);
+    }
+    const typename Symmetry::Diffeomorphism action_at_g(g_);
+    action_at_g(xi_ref_, &J);
+    return J.transpose() * this->P_ * J;
+  }
+
   /// @return Current group estimate.
   const G& groupEstimate() const { return g_; }
 

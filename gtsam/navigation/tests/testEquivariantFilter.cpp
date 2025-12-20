@@ -352,11 +352,35 @@ TEST(EquivariantFilter_Attitude, Predict) {
   // Qc is already on manifold, continuous-time.
   Matrix2 Q_process = Qc * dt;
   Matrix2 P_expected = Phi * Sigma0 * Phi.transpose() + Q_process;
-  EXPECT(assert_equal(P_expected, filter.covariance()));
+  EXPECT(assert_equal(P_expected, filter.errorCovariance()));
 
   // state() should be the rotated reference direction on S^2
   const Unit3 state_expected(X_expected.unrotate(eta_ref.point3()));
   EXPECT(assert_equal(state_expected, filter.state()));
+}
+
+//==============================================================================
+TEST(EquivariantFilter_Attitude, CovarianceRotation) {
+  using namespace attitude_example;
+
+  Matrix2 Sigma0 = 0.01 * I_2x2;
+  EquivariantFilter<M, Symmetry> filter(eta_ref, Sigma0);
+
+  // Move away from identity so the covariance needs to be rotated.
+  const double dt = 0.02;
+  Matrix3 Sigma_u = 0.1 * I_3x3;
+  Matrix3 Q = processNoise(Sigma_u);
+  Matrix23 B = inputMatrixB(Q0);
+  Matrix2 Qc = B * Q * B.transpose();
+  filter.predict(lift_omega, psi_u, Qc, dt);
+
+  Matrix2 P_error = filter.errorCovariance();
+  Matrix2 J;
+  const typename Symmetry::Diffeomorphism action_at_g(filter.groupEstimate());
+  action_at_g(eta_ref, &J);
+  Matrix2 P_expected = J.transpose() * P_error * J;
+
+  EXPECT(assert_equal(P_expected, filter.covariance(), 1e-9));
 }
 
 //==============================================================================
@@ -376,7 +400,7 @@ TEST(EquivariantFilter_Attitude, Update) {
   filter.predict(lift_omega, psi_u, Qc, dt);
 
   const G Q_before = filter.groupEstimate();
-  const Matrix2 P_before = filter.covariance();
+  const Matrix2 P_before = filter.errorCovariance();
 
   // 3. Setup Measurement
   const Vector3 y = c_m * eta_ref.point3();
@@ -387,7 +411,7 @@ TEST(EquivariantFilter_Attitude, Update) {
   filter.update(innovation, R_meas);
 
   const G Q_after = filter.groupEstimate();
-  const Matrix2 P_after = filter.covariance();
+  const Matrix2 P_after = filter.errorCovariance();
 
   // 5. Run Manual Update (Mirroring EquivariantFilter implementation)
 
