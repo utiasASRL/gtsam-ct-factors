@@ -260,21 +260,11 @@ class EquivariantFilter : public ManifoldEKF<M> {
    * @param R Measurement noise covariance.
    */
   template <typename Innovation>
-  void update(const Innovation& innovation, const Eigen::MatrixXd& R) {
+  void update(const Innovation& innovation, const Matrix& R) {
     const M xi_hat = this->state();
-    auto nu = innovation(xi_hat);
-    using VectorZ = decltype(nu);
-    static constexpr int DimZ = VectorZ::RowsAtCompileTime;
-
-    if constexpr (DimZ == Eigen::Dynamic) {
-      Eigen::Matrix<double, Eigen::Dynamic, DimM> H(nu.rows(), DimM);
-      innovation(xi_hat, &H);
-      updateInternal(nu, H, R);
-    } else {
-      Eigen::Matrix<double, DimZ, DimM> H;
-      VectorZ nu_with = innovation(xi_hat, &H);
-      updateInternal(nu_with, H, R);
-    }
+    Matrix H;
+    auto nu = innovation(xi_hat, &H);
+    updateInternal(nu, H, R);
   }
 
   /**
@@ -286,8 +276,7 @@ class EquivariantFilter : public ManifoldEKF<M> {
    * @param C Measurement Jacobian (DimZ x DimM).
    */
   template <typename Innovation>
-  void update(const Innovation& innovation, const Eigen::MatrixXd& R,
-              const Eigen::MatrixXd& C) {
+  void update(const Innovation& innovation, const Matrix& R, const Matrix& C) {
     const M xi_hat = this->state();
     auto nu = innovation(xi_hat);
     updateInternal(nu, C, R);
