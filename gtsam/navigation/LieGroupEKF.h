@@ -47,6 +47,9 @@ namespace gtsam {
  * For details on how static and dynamic dimensions are handled, please refer to
  * the `ManifoldEKF` class documentation.
  *
+ * Update API: inherited from ManifoldEKF (`update(prediction, H, z, R)`,
+ * `update(h, z, R)`, and `updateWithVector`).
+ *
  * Noise convention:
  * - Overloads **without** `dt` (e.g., `predict(X_next, F, Q)` inherited from
  *   ManifoldEKF) expect `Q` to be a *discrete* covariance already scaled for
@@ -303,6 +306,9 @@ class LieGroupEKF : public ManifoldEKF<G> {
     }
     this->P_ = A_local * this->P_ * A_local.transpose() + Q;
   }
+
+  /// Update overloads follow ManifoldEKF.
+  using Base::update;
 
 };  // LieGroupEKF
 
