@@ -223,83 +223,38 @@ class EquivariantFilter : public ManifoldEKF<M> {
   }
 
   /**
-   * @brief Helper to compute the measurement matrix C for testing or analysis.
+   * Measurement update: Corrects the state and covariance using a
+   * pre-calculated predicted measurement and its Jacobian.
    *
-   * @param innovation Innovation functor ν(ξ̂, H).
-   * @param xi_hat Linearization point on the manifold.
-   * @return The measurement Jacobian C (DimZ x DimM).
-   */
-  template <typename Innovation>
-  auto computeMeasurementMatrix(const Innovation& innovation,
-                                const M& xi_hat) const {
-    auto nu = innovation(xi_hat);
-    using VectorZ = decltype(nu);
-    static constexpr int DimZ = VectorZ::RowsAtCompileTime;
-
-    if constexpr (DimZ == Eigen::Dynamic) {
-      const int m = nu.rows();
-      Eigen::Matrix<double, Eigen::Dynamic, DimM> C(m, DimM);
-      innovation(xi_hat, &C);
-      return C;
-    } else {
-      Eigen::Matrix<double, DimZ, DimM> C;
-      innovation(xi_hat, &C);
-      return C;
-    }
-  }
-
-  /**
-   * @brief Update with measurement, using a standalone innovation functor.
+   * Overwrites ManifoldEKF::update to modify g_ as well.
    *
-   * Concept requirements:
-   * - `Innovation` must be callable as `innovation(xi_hat, H)` where H is an
-   *   OptionalJacobian (fixed-size) or MatrixXd* (dynamic-size).
-   *
-   * @tparam Innovation Functor computing ν(ξ̂) and its Jacobian.
-   * @param innovation Innovation functor.
+   * @tparam Measurement type of the measurement space.
+   * @param prediction Predicted measurement.
+   * @param H Jacobian of the measurement function h.
+   * @param z Observed measurement.
    * @param R Measurement noise covariance.
    */
-  template <typename Innovation>
-  void update(const Innovation& innovation, const Matrix& R) {
-    const M xi_hat = this->state();
-    Matrix H;
-    auto nu = innovation(xi_hat, &H);
-    updateInternal(nu, H, R);
-  }
+  template <typename Measurement>
+  void update(
+      const Measurement& prediction,
+      const Eigen::Matrix<double, traits<Measurement>::dimension, DimM>& H,
+      const Measurement& z,
+      const Eigen::Matrix<double, traits<Measurement>::dimension,
+                          traits<Measurement>::dimension>& R) {
+    static constexpr int MeasDim = traits<Measurement>::dimension;
 
-  /**
-   * @brief Update with measurement, using provided measurement Jacobian C.
-   *
-   * @tparam Innovation Functor computing ν(ξ̂) without needing the action.
-   * @param innovation Innovation functor.
-   * @param R Measurement noise covariance.
-   * @param C Measurement Jacobian (DimZ x DimM).
-   */
-  template <typename Innovation>
-  void update(const Innovation& innovation, const Matrix& R, const Matrix& C) {
-    const M xi_hat = this->state();
-    auto nu = innovation(xi_hat);
-    updateInternal(nu, C, R);
-  }
+    // Innovation: y = h(x_pred) - z. In tangent space: local(z, h(x_pred))
+    // NOTE: we use the `z_hat - z` sign convention, NOT `z - z_hat`.
+    typename traits<Measurement>::TangentVector innovation =
+        traits<Measurement>::Local(z, prediction);
 
- protected:
-  /**
-   * @brief Internal update implementation.
-   *
-   * Uses standard EKF equations:
-   * K = P * H^T * (H * P * H^T + R)^-1
-   * P = (I - K * H) * P * (I - K * H)^T + K * R * K^T
-   */
-  template <typename VectorZ, typename MatrixZM, typename MatrixZ>
-  void updateInternal(const VectorZ& innovation, const MatrixZM& H,
-                      const MatrixZ& R) {
-    using MatrixMZ = Eigen::Matrix<double, DimM, VectorZ::RowsAtCompileTime>;
-
-    MatrixMZ K = this->KalmanGain(H, R);
+    // Kalman Gain: K = P H^T S^-1
+    // K will be Eigen::Matrix<double, Dim, MeasDim>
+    Eigen::Matrix<double, DimM, MeasDim> K = this->KalmanGain(H, R);
 
     // Correction in Manifold tangent space
     // K matches dimensions with innovation, so result is TangentM
-    TangentM delta_xi = K * innovation;
+    TangentM delta_xi = -K * innovation;
 
     // Lift correction to Group tangent space
     TangentG delta_x = InnovationLift_ * delta_xi;
@@ -308,6 +263,26 @@ class EquivariantFilter : public ManifoldEKF<M> {
 
     // Update covariance on Manifold using Joseph form
     this->JosephUpdate(K, H, R);
+  }
+
+  /// Same API as ManifoldEKF for measurement update with model function.
+  template <typename Z, typename Func>
+  void update(Func&& h, const Z& z,
+              const Eigen::Matrix<double, traits<Z>::dimension,
+                                  traits<Z>::dimension>& R) {
+    static_assert(IsManifold<Z>::value,
+                  "Template parameter Z must be a GTSAM Manifold.");
+
+    Matrix H(traits<Z>::GetDimension(z), this->n_);
+    Z prediction = h(this->X_, H);
+    update<Z>(prediction, H, z, R);
+  }
+
+  /// Same API as ManifoldEKF for measurement update with vector inputs.
+  void updateWithVector(const gtsam::Vector& prediction, const Matrix& H,
+                        const gtsam::Vector& z, const Matrix& R) {
+    this->validateInputs(prediction, H, z, R);
+    update<Vector>(prediction, H, z, R);
   }
 };
 
