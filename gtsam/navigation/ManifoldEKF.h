@@ -179,9 +179,10 @@ class ManifoldEKF {
                           traits<Measurement>::dimension>& R) {
     static constexpr int MeasDim = traits<Measurement>::dimension;
 
-    // Innovation: y = z - h(x_pred). In tangent space: local(h(x_pred), z)
+    // Innovation: y = h(x_pred) - z. In tangent space: local(z, h(x_pred))
+    // NOTE: we use the `z_hat - z` sign convention, NOT `z - z_hat`.
     typename traits<Measurement>::TangentVector innovation =
-        traits<Measurement>::Local(prediction, z);
+        traits<Measurement>::Local(z, prediction);
 
     // Kalman Gain: K = P H^T S^-1
     // K will be Eigen::Matrix<double, Dim, MeasDim>
@@ -189,7 +190,7 @@ class ManifoldEKF {
 
     // Correction vector in tangent space of M: delta_xi = K * innovation
     const TangentVector delta_xi =
-        K * innovation;  // delta_xi is Dim x 1 (or n_ x 1 if dynamic)
+        -K * innovation;  // delta_xi is Dim x 1 (or n_ x 1 if dynamic)
 
     // Update state using retract: X_new = retract(X_old, delta_xi)
     X_ = traits<M>::Retract(X_, delta_xi);
