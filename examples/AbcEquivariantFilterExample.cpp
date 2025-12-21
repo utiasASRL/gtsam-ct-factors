@@ -295,14 +295,12 @@ void processDataWithEqF(EqFilter& filter, const std::vector<Data>& data_list,
 
       try {
         Innovation innovation(measurement.y, measurement.d,
-                              measurement.cal_idx);
+                               measurement.cal_idx);
         // Use Explicit Matrices API
-        Matrix C =
-            abc::measurementMatrixC<n>(measurement.d, measurement.cal_idx);
         X_hat = filter.groupEstimate();
         const Matrix3 D = abc::outputMatrixD<n>(X_hat, measurement.cal_idx);
         const Matrix3 R = D * measurement.R * D.transpose();
-        filter.update(innovation, R, C);
+        filter.update<Vector3>(innovation, Z_3x1, R);
 
         validMeasurements++;
       } catch (const std::exception& e) {

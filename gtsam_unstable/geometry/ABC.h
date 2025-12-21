@@ -440,7 +440,7 @@ struct Innovation {
     if (index_ == -1) {
       // Uncalibrated sensor: transformed_y = A * y.
       transformed_y = A.rotate(y_.unitVector());
-    } else {
+    } else 
       // Calibrated sensor i: B_i = S0[i]^{-1} * A * S_hat[i]
       const Rot3& S0i = xi_ref_.S[index_];
       const Rot3& Shati = xi_hat.S[index_];
@@ -448,13 +448,12 @@ struct Innovation {
       transformed_y = Bi.rotate(y_.unitVector());
     }
 
-    const Matrix3 wedge_d = Rot3::Hat(d_.unitVector());
-    const Vector3 nu = wedge_d * transformed_y;
-
     if (H) {
       *H = measurementMatrixC<N>(d_, index_);
     }
-    return nu;
+
+    const Matrix3 wedge_d = Rot3::Hat(d_.unitVector());
+    return -wedge_d * transformed_y;
   }
 
   Unit3 y_;   // measured direction

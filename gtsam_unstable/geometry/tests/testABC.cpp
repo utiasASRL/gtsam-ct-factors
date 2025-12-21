@@ -712,7 +712,8 @@ TEST(ABC, ComputeMeasurementMatrix) {
 
   // Check C matrix
   Innovation innovation(y, d, 0, xi_ref);
-  Matrix C_computed = filter.computeMeasurementMatrix(innovation, xi_ref);
+  Matrix C_computed;
+  (void)innovation(xi_ref, C_computed);  // to compute any internal values
   Matrix C_legacy = abc::measurementMatrixC<2>(d, 0);
   EXPECT(assert_equal(C_legacy, C_computed, 1e-9));
 }
@@ -819,7 +820,7 @@ TEST(ABC, EqFilter) {
   const int cal_idx = 0;
   const Matrix3 R = 0.01 * I_3x3;
   Innovation innovation(y, d, cal_idx, xi_ref);
-  filter.update(innovation, R);
+  filter.update<Vector3>(innovation, Z_3x1, R);
 
   // Regression
   EXPECT(assert_equal(expected_after_update, filter.groupEstimate(), 1e-4));
@@ -868,7 +869,7 @@ TEST(ABC, EqFilter_BespokeDynamics) {
   const int cal_idx = 0;
   const Matrix3 R = 0.01 * I_3x3;
   Innovation innovation(y, d, cal_idx, xi_ref);
-  filter.update(innovation, R);
+  filter.update<Vector3>(innovation, Z_3x1, R);
 
   EXPECT(assert_equal(expected_after_update, filter.groupEstimate(), 1e-4));
   EXPECT(assert_equal(expected_P_after_update, filter.errorCovariance(), 1e-4));
