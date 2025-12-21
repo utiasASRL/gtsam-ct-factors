@@ -440,7 +440,7 @@ struct Innovation {
     if (index_ == -1) {
       // Uncalibrated sensor: transformed_y = A * y.
       transformed_y = A.rotate(y_.unitVector());
-    } else 
+    } else {
       // Calibrated sensor i: B_i = S0[i]^{-1} * A * S_hat[i]
       const Rot3& S0i = xi_ref_.S[index_];
       const Rot3& Shati = xi_hat.S[index_];
