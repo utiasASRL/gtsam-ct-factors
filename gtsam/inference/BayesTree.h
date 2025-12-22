@@ -245,6 +245,15 @@ namespace gtsam {
     /** Add all cliques in this BayesTree to the specified factor graph */
     void addFactorsToGraph(FactorGraph<FactorType>* graph) const;
 
+    /**
+     * @brief Returns the set of keys in a "contaminated" part of the tree
+     * @param keys: The keys defining a "contaminated" part of the tree
+     * @returns The keys affected by the factor graph computed by removeTop
+     * @note Allows one step look-ahead for what removeTop will modify
+     */
+    gtsam::KeySet traverseTop(const gtsam::KeyVector& keys) const;
+  
+
   protected:
 
     /** private helper method for saving the Tree to a text file in GraphViz format */
@@ -259,6 +268,13 @@ namespace gtsam {
 
     /** Fill the nodes index for a subtree */
     void fillNodesIndex(const sharedClique& subtree);
+
+    /// @brief Traversal helper for a path used by traverseTop
+    void traversePath(gtsam::KeySet& traversedKeys,
+                      const sharedClique& clique) const;
+    /// @brief Traversal helper for clique used by traverseTop
+    void traverseClique(gtsam::KeySet& traversedKeys,
+                        const sharedClique& clique) const;
 
     // Friend JunctionTree because it directly fills roots and nodes index.
     template<class BAYESTREE, class GRAPH> friend class EliminatableClusterTree;

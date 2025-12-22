@@ -252,4 +252,119 @@ typename DoglegOptimizerImpl::IterationResult DoglegOptimizerImpl::Iterate(
   return result;
 }
 
+/** This class contains an extension of the Dogleg Algorithm where a line search
+ * is performed across the Dogleg arc (interpolation of gradient and
+ * Gauss-Newton directions). This algorithm is applicable to cases where the
+ * trust region is not correlated between algorithm iterations.
+ */
+struct GTSAM_EXPORT DoglegLineSearchImpl {
+  /**
+   * Compute the update point for one iteration of the Dogleg Line Search
+   * algorithm, starting with a trust region of |N| * min_delta the algorithm
+   * searches trust regions from |N| * min_delta to max_delta where |N| is the
+   * number of variables in the system. The algorithm returns the search point
+   * with minimum cost that meets the Wolfe Conditions. Evaluation points for
+   * the line search are computed according to a geometric series step_{k+1} =
+   * step_size * step_k.
+   *
+   *
+   * @tparam M The type of the Bayes' net or tree, currently
+   * either BayesNet<GaussianConditional> (or GaussianBayesNet) or
+   * BayesTree<GaussianConditional>.
+   * @tparam F For normal usage this will be NonlinearFactorGraph<VALUES>.
+   * @tparam VALUES The Values or TupleValues to pass to F::error() to evaluate
+   * the error function.
+   * @param min_delta The minimum trust region size (scaled by size of system)
+   * @param max_delta The maximum trust region size (scaled by size of system)
+   * @param step_size The multiplicative factor for the geometric series that
+   * defines the evaluation points for the line search
+   * @param sufficient_decrease_coeff The coefficient for sufficient decrease to
+   * ensure that the linesearch meets the Wolfe conditions
+   * @param Rd The Bayes' net or tree as described above.
+   * @param f The original nonlinear factor graph with which to evaluate the
+   * accuracy of \f$ M(\delta x) \f$ to adjust \f$ \delta \f$.
+   * @param x0 The linearization point about which \f$ \bayesNet \f$ was created
+   * @param verbose Flag to write debug information.
+   * @return A DoglegIterationResult containing the new \c delta, the linear
+   * update \c dx_d, and the resulting nonlinear error \c f_error.
+   */
+  template <class M, class F, class VALUES>
+  static DoglegOptimizerImpl::IterationResult Iterate(
+      const double min_delta, const double max_delta, const double step_size,
+      const double sufficient_decrease_coeff, const VectorValues& dx_u,
+      const VectorValues& dx_n, const M& Rd, const F& f, const VALUES& x0,
+      const bool verbose = false);
+};
+
+/* ************************************************************************* */
+template <class M, class F, class VALUES>
+typename DoglegOptimizerImpl::IterationResult DoglegLineSearchImpl::Iterate(
+    const double min_delta, const double max_delta, const double step_size,
+    const double sufficient_decrease_coeff, const VectorValues& dx_u,
+    const VectorValues& dx_n, const M& Rd, const F& f, const VALUES& x0,
+    const bool verbose) {
+  if (verbose)
+    std::cout << "DoglegLineSearch | minDelta: " << min_delta
+              << " maxDelta: " << max_delta << " stepSize: " << step_size
+              << std::endl;
+  const double F_init_error = f.error(x0);
+  const double gn_step = dx_n.norm();
+  const size_t num_vars = dx_n.size();
+
+  double max_step, step;
+  /// The search bounds are scaled by the number of variables in the system
+  max_step = std::min(max_delta * num_vars, gn_step);
+  step = std::min(min_delta * num_vars, gn_step);
+  step = std::min(step, max_step);  // Edge case min_step > max_step
+
+  if (verbose)
+    std::cout << "Search Region: [ " << step << " -> " << max_step << "]"
+              << std::endl;
+
+  DoglegOptimizerImpl::IterationResult result;
+  result.dx_d =
+      DoglegOptimizerImpl::ComputeDoglegPoint(step, dx_u, dx_n, verbose);
+  result.f_error = f.error(x0.retract(result.dx_d));
+  result.delta = step;
+  if (verbose)
+    std::cout << "Initial Step Error: " << result.f_error << std::endl;
+
+  // Search Increase delta
+  double eps = std::numeric_limits<double>::epsilon();
+  while (step < max_step - eps) {
+    // Compute the trust region for the evaluation point according to the
+    // Geometric Series
+    step = std::min(max_step, step * step_size);
+
+    // Compute the Evaluation Point and evaluate the error
+    VectorValues dx_d =
+        DoglegOptimizerImpl::ComputeDoglegPoint(step, dx_u, dx_n, verbose);
+    VALUES x_d(x0.retract(dx_d));
+    double new_F_error = f.error(x_d);
+
+    if (verbose)
+      std::cout << "Step: " << step << " | Error: " << new_F_error
+                << std::endl;
+
+    // Check step acceptance conditions
+    bool update_decreased_error = new_F_error < result.f_error;
+    bool update_has_sufficient_decrease =
+        new_F_error < (F_init_error - sufficient_decrease_coeff * step);
+
+    if (verbose)
+      std::cout << "Decrease Error: " << update_decreased_error
+                << " | Suff. Dec.: " << update_has_sufficient_decrease
+                << std::endl;
+
+    if (update_decreased_error && update_has_sufficient_decrease) {
+      result.f_error = new_F_error;
+      result.dx_d = dx_d;
+      result.delta = step;
+
+      if (verbose) std::cout << "Step Accepted" << std::endl;
+    }
+  }
+
+  return result;
+}
 }

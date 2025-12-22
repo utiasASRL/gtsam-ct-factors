@@ -128,15 +128,80 @@ struct GTSAM_EXPORT ISAM2DoglegParams {
 
 /**
  * @ingroup isam2
+ * Parameters for ISAM2 using Dogleg Line Search optimization.  Either this
+ * class, ISAM2GaussNewtonParams, or ISAM2DoglegParams should be specified as
+ * the optimizationParams in ISAM2Params, which should in turn be passed to
+ * ISAM2(const ISAM2Params&).
+ */
+struct GTSAM_EXPORT ISAM2DoglegLineSearchParams {
+  double _min_delta{0.02};  ///< Minimum allowed small delta
+  double _max_delta{0.5};   ///< Maximum allowed delta
+  double _step_size{1.5};   ///< Increase of trust region for outward steps
+  double _sufficient_decrease_coeff{
+      1e-4};  ///< Coefficient for sufficient decrease check
+  double _wildfire_threshold{
+      1e-3};             ///< Continue updating the linear delta only when
+                         ///< changes are above this threshold (default: 1e-3)
+  bool _verbose{false};  ///< Whether to print debug information
+
+  /** Specify parameters as constructor arguments */
+  ISAM2DoglegLineSearchParams(double min_delta, double max_delta,
+                              double step_size, double wildfire_threshold,
+                              double sufficient_decrease_coeff, bool verbose)
+      : _min_delta(min_delta),
+        _max_delta(max_delta),
+        _step_size(step_size),
+        _sufficient_decrease_coeff(sufficient_decrease_coeff),
+        _wildfire_threshold(wildfire_threshold),
+        _verbose(verbose) {}
+
+  void print(const std::string str = "") const {
+    using std::cout;
+    cout << str << "type:                      ISAM2DoglegLineSearchParams\n";
+    cout << str << "min_delta:                 " << _min_delta << "\n";
+    cout << str << "max_delta:                 " << _max_delta << "\n";
+    cout << str << "step_size:                 " << _step_size << "\n";
+    cout << str << "sufficient_decrease_coeff: " << _sufficient_decrease_coeff
+         << "\n";
+    cout << str << "wildfire_threshold:        " << _wildfire_threshold << "\n";
+    cout.flush();
+  }
+  /** Getters **/
+  double getMinDelta() const { return _min_delta; }
+  double getMaxDelta() const { return _max_delta; }
+  double getStepSize() const { return _step_size; }
+  double getSufficientDecreaseCoeff() const {
+    return _sufficient_decrease_coeff;
+  }
+  double getWildfireThreshold() const { return _wildfire_threshold; }
+  bool isVerbose() const { return _verbose; }
+
+  /** Setters */
+  void setMinDelta(double min_delta) { this->_min_delta = min_delta; }
+  void setMaxDelta(double max_delta) { this->_max_delta = max_delta; }
+  void setStepSize(double step_size) { this->_step_size = step_size; }
+  void setSufficientDecreaseCoeff(double sufficient_decrease_coeff) {
+    this->_sufficient_decrease_coeff = sufficient_decrease_coeff;
+  }
+  void setWildfireThreshold(double wildfire_threshold) {
+    this->_wildfire_threshold = wildfire_threshold;
+  }
+  void setVerbose(bool verbose) { this->_verbose = verbose; }
+};
+
+/**
+ * @ingroup isam2
  * Parameters for the ISAM2 algorithm.  Default parameter values are listed
  * below.
  */
 typedef FastMap<char, Vector> ISAM2ThresholdMap;
 typedef ISAM2ThresholdMap::value_type ISAM2ThresholdMapValue;
 struct GTSAM_EXPORT ISAM2Params {
-  typedef std::variant<ISAM2GaussNewtonParams, ISAM2DoglegParams>
+  typedef std::variant<ISAM2GaussNewtonParams, ISAM2DoglegParams,
+                       ISAM2DoglegLineSearchParams>
       OptimizationParams;  ///< Either ISAM2GaussNewtonParams or
-                           ///< ISAM2DoglegParams
+                           ///< ISAM2DoglegParams or
+                           ///< ISAM2DoglegLineSearchParams
   typedef std::variant<double, FastMap<char, Vector> >
       RelinearizationThreshold;  ///< Either a constant relinearization
                                  ///< threshold or a per-variable-type set of
