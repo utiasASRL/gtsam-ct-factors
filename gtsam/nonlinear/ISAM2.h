@@ -297,13 +297,18 @@ class GTSAM_EXPORT ISAM2 : public BayesTree<ISAM2Clique> {
    * @returns The set of all affected keys, and a flag indicating if this would
    * be a batch update
    *
-   * NOTE: Update does not mutate any internal iSAM2 state,
-   * this function simply provides a one-step look ahead to check the effect 
-   * of an update before it is applied.
+   * WARN: To be accurate the internal delta_ must be updated. This can be
+   * guaranteed if calculateEstimate is called first. While this is clunky, it
+   * is typical for users to calculateEstimate after every update. If the
+   * internal delta_ is not up-to-date this function may not return variables
+   * involved due to relinearization.
+   *
+   * NOTE: Update does not  mutate any internal iSAM2 state, this function
+   * simply provides a one-step look ahead to check the effect of an update
+   * before it is applied.
    */
   std::pair<KeySet, bool> predictUpdateInfo(
-      const NonlinearFactorGraph& newFactors,
-      const Values& newTheta,
+      const NonlinearFactorGraph& newFactors, const Values& newTheta,
       const ISAM2UpdateParams& updateParams) const;
 
   /// @}

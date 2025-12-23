@@ -164,6 +164,39 @@ TEST(DoglegOptimizer, Iterate) {
 }
 
 /* ************************************************************************* */
+TEST(DoglegOptimizer, IterateLineSearch) {
+  // really non-linear factor graph
+  NonlinearFactorGraph fg = example::createReallyNonlinearFactorGraph();
+
+  // config far from minimum
+  Point2 x0(3, 0);
+  Values config;
+  config.insert(X(1), x0);
+
+  for (size_t it = 0; it < 10; ++it) {
+    auto linearized = fg.linearize(config);
+
+    // Iterate assumes that linear error = nonlinear error at the linearization
+    // point, and this should be true
+    double nonlinearError = fg.error(config);
+    double linearError = linearized->error(config.zeroVectors());
+    DOUBLES_EQUAL(nonlinearError, linearError, 1e-5);
+
+    auto gbn = linearized->eliminateSequential();
+    VectorValues dx_u = gbn->optimizeGradientSearch();
+    VectorValues dx_n = gbn->optimize();
+    DoglegOptimizerImpl::IterationResult result = DoglegLineSearchImpl::Iterate(
+        0.02, 0.5, 1.5, 1e-3, dx_u, dx_n, *gbn, fg, config);
+    EXPECT(result.f_error < fg.error(config));  // Check that error decreases
+
+    Values newConfig(config.retract(result.dx_d));
+    config = newConfig;
+    DOUBLES_EQUAL(fg.error(config), result.f_error,
+                  1e-5);  // Check that error is correctly filled in
+  }
+}
+
+/* ************************************************************************* */
 TEST(DoglegOptimizer, Constraint) {
   // Create a pose-graph graph with a constraint on the first pose
   NonlinearFactorGraph graph;
