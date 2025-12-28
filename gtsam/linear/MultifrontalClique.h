@@ -72,6 +72,7 @@ class GTSAM_EXPORT MultifrontalClique {
 
   /// Compute parent indices for all children after separators are finalized.
   void assignParentIndicesForChildren();
+
   /// Cache pointers to frontal and separator update vectors.
   void cacheValuePointers(VectorValues* delta);
 
@@ -90,7 +91,7 @@ class GTSAM_EXPORT MultifrontalClique {
   void fillAb(const GaussianFactorGraph& graph);
   /// @}
 
-  /// @name Read-only accessors
+  /// @name Read-only methods
   /// @{
 
   /// Get the frontal keys for this clique.
@@ -120,40 +121,70 @@ class GTSAM_EXPORT MultifrontalClique {
   /// Get the symmetric block matrix (const).
   const SymmetricBlockMatrix& sbm() const { return sbm_; }
 
-  /// Get the parent indices for scatter operations.
-  const std::vector<size_t>& parentIndices() const { return parentIndices_; }
+
+  /**
+   * Compute block dimensions from variable dimensions (excluding RHS).
+   * @param dims Variable dimensions.
+   * @return Block dimensions for this clique.
+   */
+  std::vector<size_t> blockDims(const std::map<Key, size_t>& dims) const;
+
+  /**
+   * Count rows needed for the vertical block matrix.
+   * @param graph The factor graph.
+   * @return Total number of rows.
+   */
+  size_t countRows(const GaussianFactorGraph& graph) const;
+
+  /**
+   * Compute parent scatter indices for this clique.
+   * @param parent The parent clique.
+   * @return Parent indices for separator blocks (excluding RHS).
+   */
+  std::vector<size_t> parentIndicesFor(const MultifrontalClique& parent) const;
+
+  /**
+   * Print this clique.
+   * @param s Optional string prefix.
+   * @param keyFormatter Key formatter for printing.
+   */
+  void print(const std::string& s = "",
+             const KeyFormatter& keyFormatter = DefaultKeyFormatter) const;
+
   /// @}
 
   /// @name Solve (non-const)
   /// @{
 
-  /// Eliminate this clique and propagate to its parent.
-  void eliminateClique();
+  /**
+   * Eliminate this clique and propagate its separator contribution upward.
+   *
+   * Computes the local normal equations (SBM) from the stacked Jacobian (Ab),
+   * performs partial Cholesky on the frontal blocks, and then updates the
+   * parent's SBM using only the separator view (plus RHS) of this clique.
+   * Requires parent indices to be precomputed.
+   */
+  void eliminate();
 
-  /// Solve for the variables in this clique and update the solution vector.
-  void solveClique() const;
+  /**
+   * Update this clique using a child's contribution.
+   * @param separator Child clique's SBM restricted to its separator blocks,
+   * with the RHS block appended as the last block.
+   * @param indices Mapping from the child's separator blocks into this
+   * parent's SBM block indices (RHS is implicit).
+   */
+  void updateWith(const SymmetricBlockMatrix& separator,
+                  const std::vector<size_t>& indices);
+
+  /**
+   * Solve for this clique's frontal variables and write them back to the
+   * cached solution vectors.
+   *
+   * Uses block back-substitution using the upper triangular-part of the
+   * Cholesky-stored SBM, solving the triangular system for the frontal blocks.
+   */
+  void solve() const;
   /// @}
-
-  /// Compute block dimensions from variable dimensions (excluding RHS).
-  /// @param dims Variable dimensions.
-  /// @return Block dimensions for this clique.
-  std::vector<size_t> blockDims(const std::map<Key, size_t>& dims) const;
-
-  /// Count rows needed for the vertical block matrix.
-  /// @param graph The factor graph.
-  /// @return Total number of rows.
-  size_t countRows(const GaussianFactorGraph& graph) const;
-
-  /// Compute parent scatter indices for this clique.
-  /// @param parent The parent clique.
-  /// @return Parent indices for scatter operations.
-  std::vector<size_t> parentIndicesFor(const MultifrontalClique& parent) const;
-
-  /// Print this clique.
-  /// @param s Optional string prefix.
-  /// @param keyFormatter Key formatter for printing.
-  void print(const std::string& s = "",
-             const KeyFormatter& keyFormatter = DefaultKeyFormatter) const;
 
  private:
   void setParentIndices(const std::vector<size_t>& indices) {

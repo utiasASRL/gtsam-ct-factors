@@ -142,14 +142,14 @@ void MultifrontalSolver::load(const GaussianFactorGraph& graph) {
 /* ************************************************************************* */
 void MultifrontalSolver::eliminate() {
   for (auto& clique : postOrderCliques_) {
-    clique->eliminateClique();
+    clique->eliminate();
   }
 }
 
 /* ************************************************************************* */
 const VectorValues& MultifrontalSolver::solve() const {
   for (const auto& clique : cliques_) {
-    clique->solveClique();
+    clique->solve();
   }
   return solution_;
 }

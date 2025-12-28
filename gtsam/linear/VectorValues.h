@@ -289,11 +289,11 @@ namespace gtsam {
     Vector vector(const CONTAINER& keys) const {
       DenseIndex totalDim = 0;
       FastVector<const Vector*> items;
-      items.reserve(keys.end() - keys.begin());
+      items.reserve(keys.size());
       for (Key key : keys) {
         const Vector* v = &at(key);
         totalDim += v->size();
-        items.push_back(v);
+        items.emplace_back(v);
       }
 
       Vector result(totalDim);

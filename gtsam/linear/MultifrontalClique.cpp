@@ -20,6 +20,7 @@
 #include <gtsam/linear/MultifrontalClique.h>
 
 #include <algorithm>
+#include <cassert>
 #include <iostream>
 #include <set>
 #include <stdexcept>
@@ -172,7 +173,6 @@ std::vector<size_t> MultifrontalClique::parentIndicesFor(
     throw std::runtime_error(
         "MultifrontalSolver: separator key not found in parent clique");
   }
-  indices.push_back(parent.frontals().size() + parent.separatorKeys_.size());
   return indices;
 }
 
@@ -184,7 +184,6 @@ void MultifrontalClique::initializeMatrices(
 }
 
 void MultifrontalClique::fillAb(const GaussianFactorGraph& graph) {
-  sbm_.blockStart() = 0;
   sbm_.setZero();
 
   // We only overwrite the fixed sparsity pattern, so Ab must be zeroed once in
@@ -222,30 +221,40 @@ void MultifrontalClique::fillAb(const GaussianFactorGraph& graph) {
   }
 }
 
-void MultifrontalClique::eliminateClique() {
+void MultifrontalClique::eliminate() {
+  // Update SBM with the local factors, Ab^T * Ab
   sbm_.selfadjointView().rankUpdate(Ab_.matrix().transpose());
+  
+  // Form normal equations and factor the frontal block (Schur complement step).
   sbm_.choleskyPartial(frontals().size());
 
   auto parent = parent_.lock();
   if (!parent) return;
-  const size_t nFrontals = frontals().size();
-  const size_t nSeparatorBlocks = separatorKeys_.size();
-  for (size_t i = 0; i <= nSeparatorBlocks; ++i) {
-    size_t p_i = parentIndices_[i];
-    parent->sbm_.updateDiagonalBlock(p_i, sbm_.diagonalBlock(nFrontals + i));
-    for (size_t j = i + 1; j <= nSeparatorBlocks; ++j) {
-      size_t p_j = parentIndices_[j];
-      parent->sbm_.updateOffDiagonalBlock(
-          p_i, p_j, sbm_.aboveDiagonalBlock(nFrontals + i, nFrontals + j));
+  // Expose only the separator+RHS view when contributing to the parent.
+  sbm_.blockStart() = frontals().size();
+  parent->updateWith(sbm_, parentIndices_);
+  sbm_.blockStart() = 0;
+}
+
+void MultifrontalClique::updateWith(const SymmetricBlockMatrix& separator,
+                                    const std::vector<size_t>& indices) {
+  const size_t numBlocks = indices.size();
+  assert(separator.nBlocks() == numBlocks + 1);
+  const size_t rhsBlock = sbm_.nBlocks() - 1;
+
+  for (size_t i = 0; i <= numBlocks; ++i) {
+    const size_t p_i = (i < numBlocks) ? indices[i] : rhsBlock;
+    sbm_.updateDiagonalBlock(p_i, separator.diagonalBlock(i));
+    for (size_t j = i + 1; j <= numBlocks; ++j) {
+      const size_t p_j = (j < numBlocks) ? indices[j] : rhsBlock;
+      sbm_.updateOffDiagonalBlock(p_i, p_j, separator.aboveDiagonalBlock(i, j));
     }
   }
 }
 
-void MultifrontalClique::solveClique() const {
+void MultifrontalClique::solve() const {
   // Solve with block back-substitution on the Cholesky-stored SBM, avoiding
   // materializing an explicit R matrix or split representation.
-  const auto oldStart = sbm_.blockStart();
-  sbm_.blockStart() = 0;
   const size_t nFrontals = frontalPtrs_.size();
   const size_t nSeparators = separatorPtrs_.size();
 
@@ -280,7 +289,6 @@ void MultifrontalClique::solveClique() const {
     values->noalias() = rhsScratch_.segment(offset, dim);
     offset += dim;
   }
-  sbm_.blockStart() = oldStart;
 }
 
 void MultifrontalClique::print(const std::string& s,

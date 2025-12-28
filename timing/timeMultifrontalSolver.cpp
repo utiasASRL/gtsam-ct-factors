@@ -50,26 +50,28 @@ static void runMultifrontalSolver(const GaussianFactorGraph& smoother,
 }
 
 int main() {
-  const size_t T = 500;
-  GaussianFactorGraph smoother = createSmoother(T);
-  const Ordering ordering = Ordering::Metis(smoother);
+  const std::vector<size_t> T_values = {10, 50, 100, 500, 1000, 5000};
   const size_t iterations = 1000;
 
-  auto start = std::chrono::high_resolution_clock::now();
-  runStandardSolver(smoother, ordering, iterations);
-  auto end = std::chrono::high_resolution_clock::now();
-  std::chrono::duration<double> t_standard = end - start;
+  for (size_t T : T_values) {
+    GaussianFactorGraph smoother = createSmoother(T);
+    const Ordering ordering = Ordering::Metis(smoother);
 
-  start = std::chrono::high_resolution_clock::now();
-  runMultifrontalSolver(smoother, ordering, iterations);
-  end = std::chrono::high_resolution_clock::now();
-  std::chrono::duration<double> t_imperative = end - start;
+    auto start = std::chrono::high_resolution_clock::now();
+    runStandardSolver(smoother, ordering, iterations);
+    auto end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> t_standard = end - start;
 
-  cout << "\nBenchmark (T=" << T << ", iterations=" << iterations << "):\n";
-  cout << "  Standard GTSAM:     " << t_standard.count() << " s\n";
-  cout << "  MultifrontalSolver: " << t_imperative.count() << " s\n";
-  cout << "  Speedup:            " << t_standard.count() / t_imperative.count()
-       << "x\n";
+    start = std::chrono::high_resolution_clock::now();
+    runMultifrontalSolver(smoother, ordering, iterations);
+    end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> t_imperative = end - start;
 
+    cout << "\nBenchmark (T=" << T << ", iterations=" << iterations << "):\n";
+    cout << "  Standard GTSAM:     " << t_standard.count() << " s\n";
+    cout << "  MultifrontalSolver: " << t_imperative.count() << " s\n";
+    cout << "  Speedup:            "
+         << t_standard.count() / t_imperative.count() << "x\n";
+  }
   return 0;
 }
