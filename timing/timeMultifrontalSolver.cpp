@@ -24,6 +24,8 @@
 #include <chrono>
 #include <iostream>
 
+#include "timeSFMBAL.h"
+
 using namespace std;
 using namespace gtsam;
 using namespace example;
@@ -40,9 +42,9 @@ static void runStandardSolver(const GaussianFactorGraph& smoother,
 /// Run new MultifrontalSolver elimination and optimization.
 static void runMultifrontalSolver(const GaussianFactorGraph& smoother,
                                   const Ordering& ordering, size_t iterations) {
-  const size_t mergeFrontalsBelow = 10;
+  const size_t mergeFrontalsBelow = 5;
   std::cout << "\nMerging frontals below size " << mergeFrontalsBelow << "\n";
-  MultifrontalSolver solver(smoother, ordering, mergeFrontalsBelow);
+  MultifrontalSolver solver(smoother, ordering, mergeFrontalsBelow, &std::cout);
   for (size_t i = 0; i < iterations; ++i) {
     solver.load(smoother);
     solver.eliminate();
@@ -54,6 +56,43 @@ static void runMultifrontalSolver(const GaussianFactorGraph& smoother,
 int main() {
   const std::vector<size_t> T_values = {10, 50, 100, 500, 1000, 5000};
   const size_t iterations = 1000;
+
+  {
+    const size_t bal_iterations = 100;
+    const string filename = findExampleDataFile("dubrovnik-16-22106-pre");
+    const SfmData db = SfmData::FromBalFile(filename);
+    const NonlinearFactorGraph graph = buildGeneralSfmGraph(db);
+    const Values initial = buildGeneralSfmInitial(db);
+    const GaussianFactorGraph linear = *graph.linearize(initial);
+
+    const std::vector<std::pair<string, Ordering>> orderings = {
+        {"Schur", createSchurOrdering(db, false)},
+        {"Colamd", Ordering::Colamd(linear)},
+        {"Metis", Ordering::Metis(linear)},
+    };
+
+    for (const auto& entry : orderings) {
+      const string& label = entry.first;
+      const Ordering& ordering = entry.second;
+
+      auto start = std::chrono::high_resolution_clock::now();
+      runStandardSolver(linear, ordering, bal_iterations);
+      auto end = std::chrono::high_resolution_clock::now();
+      std::chrono::duration<double> t_standard = end - start;
+
+      start = std::chrono::high_resolution_clock::now();
+      runMultifrontalSolver(linear, ordering, bal_iterations);
+      end = std::chrono::high_resolution_clock::now();
+      std::chrono::duration<double> t_imperative = end - start;
+
+      cout << "\nBAL Benchmark (" << label << ", iterations=" << bal_iterations
+           << "):\n";
+      cout << "  Standard GTSAM:     " << t_standard.count() << " s\n";
+      cout << "  MultifrontalSolver: " << t_imperative.count() << " s\n";
+      cout << "  Speedup:            "
+           << t_standard.count() / t_imperative.count() << "x\n";
+    }
+  }
 
   for (size_t T : T_values) {
     GaussianFactorGraph smoother = createSmoother(T);
