@@ -56,9 +56,12 @@ class GTSAM_EXPORT MultifrontalSolver {
    * This builds the symbolic junction tree and pre-allocates all matrices.
    * @param graph The factor graph to solve.
    * @param ordering The variable ordering to use for elimination.
+   * @param mergeFrontalsBelow Merge children whose frontal dimension is below
+   * this threshold into the parent (0 disables merging).
    */
   MultifrontalSolver(const GaussianFactorGraph& graph,
-                     const Ordering& ordering);
+                     const Ordering& ordering,
+                     size_t mergeFrontalsBelow = 0);
 
   /**
    * Load new numerical values from the factor graph.

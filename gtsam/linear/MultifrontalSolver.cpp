@@ -68,11 +68,46 @@ SymbolicFactorGraph buildSymbolicGraph(const GaussianFactorGraph& graph) {
   return symbolicGraph;
 }
 
+size_t frontalDimForCluster(const SymbolicJunctionTree::sharedNode& cluster,
+                            const std::map<Key, size_t>& dims) {
+  size_t dim = 0;
+  for (Key key : cluster->orderedFrontalKeys) {
+    auto it = dims.find(key);
+    if (it != dims.end()) dim += it->second;
+  }
+  return dim;
+}
+
+void mergeSmallClusters(const SymbolicJunctionTree::sharedNode& cluster,
+                        const std::map<Key, size_t>& dims,
+                        size_t mergeFrontalsBelow) {
+  if (!cluster) return;
+  for (const auto& child : cluster->children) {
+    mergeSmallClusters(child, dims, mergeFrontalsBelow);
+  }
+  if (cluster->children.empty()) return;
+
+  std::vector<bool> merge(cluster->children.size(), false);
+  bool any = false;
+  for (size_t i = 0; i < cluster->children.size(); ++i) {
+    const auto& child = cluster->children[i];
+    if (!child) continue;
+    if (frontalDimForCluster(child, dims) < mergeFrontalsBelow) {
+      merge[i] = true;
+      any = true;
+    }
+  }
+  if (any) {
+    cluster->mergeChildren(merge);
+  }
+}
+
 }  // namespace
 
 /* ************************************************************************* */
 MultifrontalSolver::MultifrontalSolver(const GaussianFactorGraph& graph,
-                                       const Ordering& ordering) {
+                                       const Ordering& ordering,
+                                       size_t mergeFrontalsBelow) {
   // 0. Pre-compute variable dimensions
   dims_ = computeDims(graph);
   for (Key key : ordering) {
@@ -85,6 +120,12 @@ MultifrontalSolver::MultifrontalSolver(const GaussianFactorGraph& graph,
   // 2. Build SymbolicEliminationTree and then SymbolicJunctionTree
   SymbolicEliminationTree eliminationTree(symbolicGraph, ordering);
   SymbolicJunctionTree junctionTree(eliminationTree);
+
+  if (mergeFrontalsBelow > 0) {
+    for (const auto& rootCluster : junctionTree.roots()) {
+      mergeSmallClusters(rootCluster, dims_, mergeFrontalsBelow);
+    }
+  }
 
   // 3. Recursive function to build Clique hierarchy
   std::function<CliquePtr(const SymbolicJunctionTree::sharedNode&,

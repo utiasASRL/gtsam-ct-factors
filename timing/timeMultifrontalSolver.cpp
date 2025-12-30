@@ -40,7 +40,8 @@ static void runStandardSolver(const GaussianFactorGraph& smoother,
 /// Run new MultifrontalSolver elimination and optimization.
 static void runMultifrontalSolver(const GaussianFactorGraph& smoother,
                                   const Ordering& ordering, size_t iterations) {
-  MultifrontalSolver solver(smoother, ordering);
+  const size_t mergeFrontalsBelow = 10;
+  MultifrontalSolver solver(smoother, ordering, mergeFrontalsBelow);
   for (size_t i = 0; i < iterations; ++i) {
     solver.load(smoother);
     solver.eliminate();
