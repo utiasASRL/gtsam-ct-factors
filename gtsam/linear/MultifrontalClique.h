@@ -54,6 +54,10 @@ class IndexedSymbolicFactor : public SymbolicFactor {
 class GTSAM_EXPORT MultifrontalClique {
  public:
   using shared_ptr = std::shared_ptr<MultifrontalClique>;
+  using Children = std::vector<shared_ptr>;
+
+  /// Child cliques used for traversal.
+  Children children;
 
   /// Construct a clique from a symbolic junction tree node.
   /// @param cluster The symbolic junction tree node.
@@ -100,14 +104,17 @@ class GTSAM_EXPORT MultifrontalClique {
   /// Get the separator keys for this clique.
   const KeyVector& separatorKeys() const;
 
-  /// Get the children of this clique.
-  const std::vector<shared_ptr>& children() const;
-
   /// Get the parent of this clique.
   const std::weak_ptr<MultifrontalClique>& parent() const;
 
   /// Get the primary key of this clique (first frontal).
   Key key() const;
+
+  /// Get the cached problem size for traversal scheduling.
+  int problemSize() const { return problemSizeValue_; }
+
+  /// Set the cached problem size for traversal scheduling.
+  void setProblemSize(int problemSize) { problemSizeValue_ = problemSize; }
 
   /// Get the number of factors in this clique.
   size_t factorCount() const;
@@ -192,7 +199,7 @@ class GTSAM_EXPORT MultifrontalClique {
   }
   Key key_;
   std::weak_ptr<MultifrontalClique> parent_;
-  std::vector<shared_ptr> children_;
+  int problemSizeValue_ = 0;
 
   VerticalBlockMatrix Ab_;
   mutable SymmetricBlockMatrix sbm_;

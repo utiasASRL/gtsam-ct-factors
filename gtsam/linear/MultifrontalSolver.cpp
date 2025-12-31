@@ -275,6 +275,7 @@ MultifrontalSolver::MultifrontalSolver(const GaussianFactorGraph& graph,
       clique->addChild(childClique);
     }
 
+    clique->setProblemSize(static_cast<int>(clique->frontalDim(dims_)));
     clique->calculateSeparatorKeys();
     clique->cacheValuePointers(&solution_);
 
@@ -299,32 +300,6 @@ MultifrontalSolver::MultifrontalSolver(const GaussianFactorGraph& graph,
           buildRecursive(rootCluster, std::weak_ptr<MultifrontalClique>()));
     }
   }
-
-  // Build a lightweight traversal forest for DepthFirstForestParallel.
-  traversalRoots_.clear();
-  traversalRoots_.reserve(roots_.size());
-  for (const auto& root : roots_) {
-    auto node = buildTraversalNode(root, dims_);
-    if (node) traversalRoots_.push_back(node);
-  }
-}
-
-/* ************************************************************************* */
-std::shared_ptr<MultifrontalSolver::CliqueTraversalNode>
-MultifrontalSolver::buildTraversalNode(const CliquePtr& clique,
-                                       const std::map<Key, size_t>& dims) {
-  if (!clique) return nullptr;
-  auto node = std::make_shared<CliqueTraversalNode>();
-  node->clique = clique;
-  // Use frontal dimension as the traversal "problem size" for scheduling
-  // cutoff.
-  node->problemSizeValue = static_cast<int>(clique->frontalDim(dims));
-  node->children.reserve(clique->children().size());
-  for (const auto& child : clique->children()) {
-    auto childNode = buildTraversalNode(child, dims);
-    if (childNode) node->children.push_back(childNode);
-  }
-  return node;
 }
 
 /* ************************************************************************* */
@@ -341,29 +316,29 @@ void MultifrontalSolver::eliminateInPlace() {
   struct EliminateTraversalData {};
   struct EliminatePreVisitor {
     EliminateTraversalData operator()(
-        const std::shared_ptr<CliqueTraversalNode>&,
+        const std::shared_ptr<MultifrontalClique>&,
         const EliminateTraversalData&) const {
       return EliminateTraversalData();
     }
   };
   struct EliminatePostVisitor {
-    void operator()(const std::shared_ptr<CliqueTraversalNode>& node,
+    void operator()(const std::shared_ptr<MultifrontalClique>& node,
                     EliminateTraversalData&) const {
-      if (node && node->clique) node->clique->eliminateInPlace();
+      if (node) node->eliminateInPlace();
     }
   };
   struct CliqueForestView {
-    using Node = CliqueTraversalNode;
+    using Node = MultifrontalClique;
     explicit CliqueForestView(
-        const std::vector<std::shared_ptr<CliqueTraversalNode>>& roots)
+        const std::vector<std::shared_ptr<MultifrontalClique>>& roots)
         : roots_(roots) {}
-    const std::vector<std::shared_ptr<CliqueTraversalNode>>& roots() const {
+    const std::vector<std::shared_ptr<MultifrontalClique>>& roots() const {
       return roots_;
     }
-    const std::vector<std::shared_ptr<CliqueTraversalNode>>& roots_;
+    const std::vector<std::shared_ptr<MultifrontalClique>>& roots_;
   };
 
-  CliqueForestView forest(traversalRoots_);
+  CliqueForestView forest(roots_);
   EliminateTraversalData rootData;
   EliminatePreVisitor visitorPre;
   EliminatePostVisitor visitorPost;
@@ -390,7 +365,7 @@ std::ostream& operator<<(std::ostream& os, const MultifrontalSolver& solver) {
       [&](const MultifrontalSolver::CliquePtr& clique, int depth) {
         if (!clique) return;
         os << std::string(depth * 2, ' ') << *clique << "\n";
-        for (const auto& child : clique->children()) {
+        for (const auto& child : clique->children) {
           dump(child, depth + 1);
         }
       };

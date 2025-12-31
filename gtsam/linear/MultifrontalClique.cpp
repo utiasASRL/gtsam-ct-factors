@@ -68,16 +68,11 @@ void MultifrontalClique::setParent(
 }
 
 void MultifrontalClique::addChild(const shared_ptr& child) {
-  children_.push_back(child);
+  children.push_back(child);
 }
 
 const KeyVector& MultifrontalClique::frontals() const {
   return cluster_->orderedFrontalKeys;
-}
-
-const std::vector<MultifrontalClique::shared_ptr>&
-MultifrontalClique::children() const {
-  return children_;
 }
 
 const std::weak_ptr<MultifrontalClique>& MultifrontalClique::parent() const {
@@ -85,7 +80,7 @@ const std::weak_ptr<MultifrontalClique>& MultifrontalClique::parent() const {
 }
 
 void MultifrontalClique::assignParentIndicesForChildren() {
-  for (const auto& child : children_) {
+  for (const auto& child : children) {
     if (!child) continue;
     child->setParentIndices(child->parentIndicesFor(*this));
   }
@@ -123,7 +118,7 @@ void MultifrontalClique::calculateSeparatorKeys() {
     assert(factor);
     allKeys.insert(factor->begin(), factor->end());
   }
-  for (const auto& child : children_) {
+  for (const auto& child : children) {
     if (!child) continue;
     allKeys.insert(child->separatorKeys_.begin(), child->separatorKeys_.end());
   }
@@ -243,7 +238,7 @@ void MultifrontalClique::eliminateInPlace() {
   // Update SBM with the local factors, Ab^T * Ab
   sbm_.selfadjointView().rankUpdate(Ab_.matrix().transpose());
 
-  for (const auto& child : children_) {
+  for (const auto& child : children) {
     if (!child) continue;
     child->updateParent(*this);
   }
@@ -324,7 +319,7 @@ void MultifrontalClique::print(const std::string& s,
     if (i + 1 < separatorKeys_.size()) std::cout << ", ";
   }
   std::cout << "], factors=" << cluster_->factors.size()
-            << ", children=" << children_.size()
+            << ", children=" << children.size()
             << ", sbmBlocks=" << sbm_.nBlocks()
             << ", AbRows=" << Ab_.matrix().rows() << ")\n";
 
@@ -364,7 +359,7 @@ std::ostream& operator<<(std::ostream& os, const MultifrontalClique& clique) {
   os << ", separators=";
   printKeys(clique.separatorKeys());
   os << ", factors=" << clique.factorCount();
-  os << ", children=" << clique.children().size();
+  os << ", children=" << clique.children.size();
   os << ", sbmBlocks=" << clique.sbm().nBlocks();
   os << ", AbRows=" << clique.Ab().matrix().rows() << ")";
   return os;

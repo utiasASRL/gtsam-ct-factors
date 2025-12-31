@@ -41,30 +41,14 @@ class MultifrontalClique;
  */
 class GTSAM_EXPORT MultifrontalSolver {
  public:
-  /// Shared pointer to a MultifrontalClique.
+ /// Shared pointer to a MultifrontalClique.
   using CliquePtr = std::shared_ptr<MultifrontalClique>;
 
  private:
-  /// Node structure for clique traversal in the elimination tree.
-  struct CliqueTraversalNode {
-    CliquePtr clique;  ///< Pointer to the associated clique.
-    std::vector<std::shared_ptr<CliqueTraversalNode>>
-        children;              ///< Child traversal nodes.
-    int problemSizeValue = 0;  ///< Cached problem size for this node.
-    /// Get the problem size for this node.
-    int problemSize() const { return problemSizeValue; }
-  };
-
   std::vector<CliquePtr> roots_;    ///< Roots of the elimination tree.
   std::vector<CliquePtr> cliques_;  ///< All cliques in the solver.
   std::map<Key, size_t> dims_;      ///< Map from variable key to dimension.
-  std::vector<std::shared_ptr<CliqueTraversalNode>>
-      traversalRoots_;             ///< Roots of the traversal tree.
   mutable VectorValues solution_;  ///< Cached solution vector.
-
-  /// Build a traversal node for the clique tree.
-  static std::shared_ptr<CliqueTraversalNode> buildTraversalNode(
-      const CliquePtr& clique, const std::map<Key, size_t>& dims);
 
  public:
   /**

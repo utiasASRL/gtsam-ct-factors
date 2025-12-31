@@ -47,7 +47,7 @@ size_t countCliques(const MultifrontalSolver& solver) {
       [&](const MultifrontalSolver::CliquePtr& clique) {
         if (!clique) return;
         count += 1;
-        for (const auto& child : clique->children()) {
+        for (const auto& child : clique->children) {
           visit(child);
         }
       };
@@ -74,8 +74,8 @@ TEST(MultifrontalSolver, Constructor) {
   EXPECT_LONGS_EQUAL(x4, root->frontals()[1]);
 
   // Root should have 1 child {x2, x1}
-  EXPECT_LONGS_EQUAL(1, root->children().size());
-  auto childClique = root->children()[0];
+  EXPECT_LONGS_EQUAL(1, root->children.size());
+  auto childClique = root->children[0];
 
   // Verify matrices in leaf (childClique)
   EXPECT_LONGS_EQUAL(4, childClique->sbm().nBlocks());
@@ -112,7 +112,7 @@ TEST(MultifrontalSolver, Load) {
 
   // Verify values in childClique
   auto root = solver.roots()[0];
-  auto childClique = root->children()[0];
+  auto childClique = root->children[0];
 
   // Block 0 (x2) should now be 2.0
   Matrix A0 = childClique->Ab()(0);
@@ -168,7 +168,7 @@ TEST(MultifrontalSolver, BalancedSmoother) {
       [&](MultifrontalSolver::CliquePtr c) {
         for (Key k : c->frontals())
           if (k == X(1)) cX1 = c;
-        for (auto child : c->children()) findX1(child);
+        for (auto child : c->children) findX1(child);
       };
   findX1(root);
 
