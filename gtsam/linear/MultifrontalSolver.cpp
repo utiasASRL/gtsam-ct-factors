@@ -305,39 +305,22 @@ void MultifrontalSolver::load(const GaussianFactorGraph& graph) {
 
 /* ************************************************************************* */
 void MultifrontalSolver::eliminateInPlace() {
-  // Parallel elimination uses the same traversal as legacy GTSAM (TBB
-  // optional).
-  struct EliminateTraversalData {};
+  // Parallel elimination uses DepthFirstForestParallel, which will be
+  // multi-threaded if GTSAM was compiled with TBB. optional).
+  struct Dummy {};
   struct EliminatePreVisitor {
-    EliminateTraversalData operator()(
-        const std::shared_ptr<MultifrontalClique>&,
-        const EliminateTraversalData&) const {
-      return EliminateTraversalData();
-    }
+    Dummy operator()(const CliquePtr&, const Dummy&) const { return Dummy(); }
   };
   struct EliminatePostVisitor {
-    void operator()(const std::shared_ptr<MultifrontalClique>& node,
-                    EliminateTraversalData&) const {
+    void operator()(const CliquePtr& node, Dummy&) const {
       if (node) node->eliminateInPlace();
     }
   };
-  struct CliqueForestView {
-    using Node = MultifrontalClique;
-    explicit CliqueForestView(
-        const std::vector<std::shared_ptr<MultifrontalClique>>& roots)
-        : roots_(roots) {}
-    const std::vector<std::shared_ptr<MultifrontalClique>>& roots() const {
-      return roots_;
-    }
-    const std::vector<std::shared_ptr<MultifrontalClique>>& roots_;
-  };
-
-  CliqueForestView forest(roots_);
-  EliminateTraversalData rootData;
+  Dummy rootData;
   EliminatePreVisitor visitorPre;
   EliminatePostVisitor visitorPost;
   TbbOpenMPMixedScope threadLimiter;
-  treeTraversal::DepthFirstForestParallel(forest, rootData, visitorPre,
+  treeTraversal::DepthFirstForestParallel(*this, rootData, visitorPre,
                                           visitorPost, 10);
 }
 

@@ -41,8 +41,10 @@ class MultifrontalClique;
  */
 class GTSAM_EXPORT MultifrontalSolver {
  public:
- /// Shared pointer to a MultifrontalClique.
+  /// Shared pointer to a MultifrontalClique.
   using CliquePtr = std::shared_ptr<MultifrontalClique>;
+  /// Node type for tree traversal utilities.
+  using Node = MultifrontalClique;
 
  private:
   std::vector<CliquePtr> roots_;    ///< Roots of the elimination tree.
