@@ -305,23 +305,16 @@ void MultifrontalSolver::load(const GaussianFactorGraph& graph) {
 
 /* ************************************************************************* */
 void MultifrontalSolver::eliminateInPlace() {
-  // Parallel elimination uses DepthFirstForestParallel, which will be
-  // multi-threaded if GTSAM was compiled with TBB. optional).
-  struct Dummy {};
-  struct EliminatePreVisitor {
-    Dummy operator()(const CliquePtr&, const Dummy&) const { return Dummy(); }
-  };
+  // Parallel elimination uses PostOrderForestParallel, which will be
+  // multi-threaded if GTSAM was compiled with TBB.
   struct EliminatePostVisitor {
-    void operator()(const CliquePtr& node, Dummy&) const {
+    void operator()(const CliquePtr& node) const {
       if (node) node->eliminateInPlace();
     }
   };
-  Dummy rootData;
-  EliminatePreVisitor visitorPre;
   EliminatePostVisitor visitorPost;
   TbbOpenMPMixedScope threadLimiter;
-  treeTraversal::DepthFirstForestParallel(*this, rootData, visitorPre,
-                                          visitorPost, 10);
+  treeTraversal::PostOrderForestParallel(*this, visitorPost, 10);
 }
 
 /* ************************************************************************* */
