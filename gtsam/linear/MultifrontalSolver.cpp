@@ -127,42 +127,13 @@ size_t frontalDimForSymbolicCluster(
   return dim;
 }
 
-KeySet separatorKeysForSymbolicCluster(
-    const SymbolicJunctionTree::sharedNode& cluster,
-    std::map<const SymbolicJunctionTree::Node*, KeySet>* cache) {
-  if (!cluster) return KeySet();
-  if (cache) {
-    auto* raw = cluster.get();
-    auto it = cache->find(raw);
-    if (it != cache->end()) return it->second;
-  }
-
-  KeySet keys;
-  for (const auto& factor : cluster->factors) {
-    assert(factor);
-    keys.insert(factor->begin(), factor->end());
-  }
-  for (const auto& child : cluster->children) {
-    KeySet childSeparators = separatorKeysForSymbolicCluster(child, cache);
-    keys.insert(childSeparators.begin(), childSeparators.end());
-  }
-  for (Key key : cluster->orderedFrontalKeys) {
-    keys.erase(key);
-  }
-
-  if (cache) {
-    auto result = cache->emplace(cluster.get(), std::move(keys));
-    return result.first->second;
-  }
-  return keys;
-}
-
 size_t separatorDimForSymbolicCluster(
     const SymbolicJunctionTree::sharedNode& cluster,
     const std::map<Key, size_t>& dims,
-    std::map<const SymbolicJunctionTree::Node*, KeySet>* cache) {
+    SymbolicJunctionTree::Cluster::KeySetMap* cache) {
+  if (!cluster) return 0;
   size_t dim = 0;
-  const KeySet separatorKeys = separatorKeysForSymbolicCluster(cluster, cache);
+  const KeySet separatorKeys = cluster->separatorKeys(cache);
   for (Key key : separatorKeys) {
     auto it = dims.find(key);
     if (it != dims.end()) dim += it->second;
@@ -173,7 +144,7 @@ size_t separatorDimForSymbolicCluster(
 size_t totalDimForSymbolicCluster(
     const SymbolicJunctionTree::sharedNode& cluster,
     const std::map<Key, size_t>& dims,
-    std::map<const SymbolicJunctionTree::Node*, KeySet>* cache) {
+    SymbolicJunctionTree::Cluster::KeySetMap* cache) {
   return frontalDimForSymbolicCluster(cluster, dims) +
          separatorDimForSymbolicCluster(cluster, dims, cache);
 }
@@ -181,7 +152,7 @@ size_t totalDimForSymbolicCluster(
 void accumulateSymbolicStats(
     const SymbolicJunctionTree::sharedNode& cluster,
     const std::map<Key, size_t>& dims,
-    std::map<const SymbolicJunctionTree::Node*, KeySet>* cache,
+    SymbolicJunctionTree::Cluster::KeySetMap* cache,
     StructureStats* stats) {
   if (!cluster) return;
   const size_t frontalDim = frontalDimForSymbolicCluster(cluster, dims);
@@ -227,7 +198,7 @@ void reportStructure(const SymbolicJunctionTree& junctionTree,
   if (!reportStream) return;
   // Accumulate stats using cached separator keys.
   StructureStats stats;
-  std::map<const SymbolicJunctionTree::Node*, KeySet> separatorCache;
+  SymbolicJunctionTree::Cluster::KeySetMap separatorCache;
   for (const auto& rootCluster : junctionTree.roots()) {
     accumulateSymbolicStats(rootCluster, dims, &separatorCache, &stats);
   }
@@ -265,7 +236,7 @@ struct CliqueBuilder {
   const GaussianFactorGraph& graph;
   VectorValues* solution;
   std::vector<MultifrontalSolver::CliquePtr>* cliques;
-  std::map<const SymbolicJunctionTree::Node*, KeySet> separatorCache;
+  SymbolicJunctionTree::Cluster::KeySetMap separatorCache;
 
   BuiltClique build(const SymbolicJunctionTree::sharedNode& cluster,
                     std::weak_ptr<MultifrontalClique> parent) {
@@ -274,7 +245,7 @@ struct CliqueBuilder {
     // Gather symbolic metadata for this clique.
     const KeyVector& frontals = cluster->orderedFrontalKeys;
     KeyVector separatorKeys = keyVectorFromKeySet(
-        separatorKeysForSymbolicCluster(cluster, &separatorCache));
+        cluster->separatorKeys(&separatorCache));
 
     // Create the clique node and cache static structure.
     auto clique = std::make_shared<MultifrontalClique>(
