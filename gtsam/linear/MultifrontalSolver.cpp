@@ -238,8 +238,6 @@ void reportStructure(const SymbolicJunctionTree& junctionTree,
   stats.report(name, reportStream);
 }
 
-
-
 std::vector<size_t> factorIndicesForSymbolicCluster(
     const SymbolicJunctionTree::sharedNode& cluster) {
   std::vector<size_t> indices;
@@ -419,9 +417,22 @@ GaussianBayesTree MultifrontalSolver::computeBayesTree() const {
 
 /* ************************************************************************* */
 const VectorValues& MultifrontalSolver::updateSolution() const {
-  for (const auto& clique : cliques_) {
-    clique->updateSolution();
-  }
+  // Parallel solve uses treeTraversal::DepthFirstForestParallel (Pre-order /
+  // Top-Down).
+  TbbOpenMPMixedScope threadLimiter;
+  int rootData = 0;
+  auto visitorPre = [](const CliquePtr& node, int&) {
+    if (node) node->updateSolution();
+    return 0;
+  };
+  auto visitorPost = [](const CliquePtr&, int) {};
+
+  // Cast to non-const because treeTraversal expects a non-const reference,
+  // even though we are only calling const methods on the nodes.
+  treeTraversal::DepthFirstForestParallel(
+      const_cast<MultifrontalSolver&>(*this), rootData, visitorPre, visitorPost,
+      10);
+
   for (Key key : fixedKeys_) {
     solution_.at(key).setZero();
   }
