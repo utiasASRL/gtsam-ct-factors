@@ -20,6 +20,7 @@
 #include <gtsam/linear/HessianFactor.h>
 #include <gtsam/linear/JacobianFactor.h>
 #include <gtsam/linear/MultifrontalClique.h>
+#include <gtsam/linear/NoiseModel.h>
 
 #include <algorithm>
 #include <cassert>
@@ -322,8 +323,19 @@ std::shared_ptr<GaussianConditional> MultifrontalClique::conditional() const {
   SymmetricBlockMatrix& sbm = sbm_;
   VerticalBlockMatrix Ab = sbm.split(numFrontals());
   sbm.blockStart() = 0;  // Split sets it to numFrontals(), reset to 0.
+  SharedDiagonal model;  // defaults to empty
+  if (!fixedFrontals_.empty()) {
+    // Create a mixed sigmas model to represent constrained variables.
+    Vector sigmas = Vector::Ones(frontalDim);
+    for (size_t block : fixedFrontals_) {
+      const DenseIndex start = Ab.offset(static_cast<DenseIndex>(block));
+      const DenseIndex end = Ab.offset(static_cast<DenseIndex>(block + 1));
+      sigmas.segment(start, end - start).setZero();
+    }
+    model = noiseModel::Constrained::MixedSigmas(sigmas);
+  }
   return std::make_shared<GaussianConditional>(keys, numFrontals(),
-                                               std::move(Ab));
+                                               std::move(Ab), model);
 }
 
 // Solve with block back-substitution on the Cholesky-stored SBM.
