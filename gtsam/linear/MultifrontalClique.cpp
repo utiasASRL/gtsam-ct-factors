@@ -41,16 +41,6 @@ void printKeyRange(std::ostream& os, const KeyVector& keys, size_t start,
   os << "]";
 }
 
-// Sum variable dimensions for a key sequence, skipping unknown keys.
-size_t sumDims(const std::map<Key, size_t>& dims, const KeyVector& keys) {
-  size_t dim = 0;
-  for (Key key : keys) {
-    auto it = dims.find(key);
-    if (it != dims.end()) dim += it->second;
-  }
-  return dim;
-}
-
 // Build a stacked separator vector x_sep in the provided scratch buffer.
 Vector& buildSeparatorVector(const std::vector<const Vector*>& separatorPtrs,
                              Vector* scratch) {
@@ -91,7 +81,7 @@ bool validateFactorKeys(const GaussianFactorGraph& graph,
 MultifrontalClique::MultifrontalClique(
     std::vector<size_t> factorIndices,
     const std::weak_ptr<MultifrontalClique>& parent, const KeyVector& frontals,
-    const KeyVector& separatorKeys, const std::map<Key, size_t>& dims,
+    const KeyVector& separatorKeys, const KeyDimMap& dims,
     const GaussianFactorGraph& graph, VectorValues* solution,
     const std::unordered_set<Key>* fixedKeys) {
   factorIndices_ = std::move(factorIndices);
@@ -111,8 +101,8 @@ MultifrontalClique::MultifrontalClique(
                       separatorKeys.end());
 
   // Cache total frontal/separator dimensions for scheduling and sizing.
-  frontalDim = sumDims(dims, frontals);
-  separatorDim = sumDims(dims, separatorKeys);
+  frontalDim = internal::sumDims(dims, frontals);
+  separatorDim = internal::sumDims(dims, separatorKeys);
 
   rhsScratch_.resize(frontalDim);
   separatorScratch_.resize(separatorDim);
@@ -170,7 +160,7 @@ void MultifrontalClique::cacheSolutionPointers(VectorValues* solution,
 }
 
 std::vector<size_t> MultifrontalClique::blockDims(
-    const std::map<Key, size_t>& dims, const KeyVector& frontals,
+    const KeyDimMap& dims, const KeyVector& frontals,
     const KeyVector& separatorKeys) const {
   std::vector<size_t> blockDims;
   blockDims.reserve(frontals.size() + separatorKeys.size());

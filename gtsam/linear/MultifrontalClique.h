@@ -38,6 +38,9 @@ namespace gtsam {
 
 class GaussianConditional;
 
+/// Map from variable key to dimension.
+using KeyDimMap = std::map<Key, size_t>;
+
 namespace internal {
 
 /// Helper class to track original factor indices.
@@ -51,6 +54,17 @@ class IndexedSymbolicFactor : public SymbolicFactor {
   IndexedSymbolicFactor(const GaussianFactor& factor, size_t index)
       : SymbolicFactor(factor), index_(index) {}
 };
+
+/// Sum variable dimensions for a key range, skipping unknown keys.
+template <typename KeyRange>
+inline size_t sumDims(const KeyDimMap& dims, const KeyRange& keys) {
+  size_t dim = 0;
+  for (Key key : keys) {
+    auto it = dims.find(key);
+    if (it != dims.end()) dim += it->second;
+  }
+  return dim;
+}
 
 }  // namespace internal
 
@@ -84,7 +98,7 @@ class GTSAM_EXPORT MultifrontalClique {
                               const std::weak_ptr<MultifrontalClique>& parent,
                               const KeyVector& frontals,
                               const KeyVector& separatorKeys,
-                              const std::map<Key, size_t>& dims,
+                              const KeyDimMap& dims,
                               const GaussianFactorGraph& graph,
                               VectorValues* solution,
                               const std::unordered_set<Key>* fixedKeys);
@@ -181,7 +195,7 @@ class GTSAM_EXPORT MultifrontalClique {
   DenseIndex blockIndex(Key key) const;
 
   /// Compute block dimensions from variable dimensions (excluding RHS).
-  std::vector<size_t> blockDims(const std::map<Key, size_t>& dims,
+  std::vector<size_t> blockDims(const KeyDimMap& dims,
                                 const KeyVector& frontals,
                                 const KeyVector& separatorKeys) const;
 

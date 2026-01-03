@@ -88,26 +88,6 @@ struct StructureStats {
 constexpr double kConstraintSigmaTol = 1e-12;
 constexpr double kConstraintFeasibleTol = 1e-9;
 
-// Sum variable dimensions for a key container, skipping unknown keys.
-size_t sumDims(const std::map<Key, size_t>& dims, const KeyVector& keys) {
-  size_t dim = 0;
-  for (Key key : keys) {
-    auto it = dims.find(key);
-    if (it != dims.end()) dim += it->second;
-  }
-  return dim;
-}
-
-// Overload for key sets used by symbolic separator caches.
-size_t sumDims(const std::map<Key, size_t>& dims, const KeySet& keys) {
-  size_t dim = 0;
-  for (Key key : keys) {
-    auto it = dims.find(key);
-    if (it != dims.end()) dim += it->second;
-  }
-  return dim;
-}
-
 std::unordered_set<Key> collectFixedKeys(const GaussianFactorGraph& graph) {
   std::unordered_set<Key> fixedKeys;
   for (const auto& factor : graph) {
@@ -183,7 +163,7 @@ SymbolicFactorGraph buildSymbolicGraph(
 size_t frontalDimForSymbolicCluster(
     const SymbolicJunctionTree::sharedNode& cluster,
     const std::map<Key, size_t>& dims) {
-  return sumDims(dims, cluster->orderedFrontalKeys);
+  return internal::sumDims(dims, cluster->orderedFrontalKeys);
 }
 
 size_t separatorDimForSymbolicCluster(
@@ -192,7 +172,7 @@ size_t separatorDimForSymbolicCluster(
     SymbolicJunctionTree::Cluster::KeySetMap* cache) {
   if (!cluster) return 0;
   const KeySet separatorKeys = cluster->separatorKeys(cache);
-  return sumDims(dims, separatorKeys);
+  return internal::sumDims(dims, separatorKeys);
 }
 
 size_t totalDimForSymbolicCluster(
