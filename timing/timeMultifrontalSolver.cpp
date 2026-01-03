@@ -52,7 +52,7 @@ static void runMultifrontalSolver(MultifrontalSolver& solver,
                                   const GaussianFactorGraph& smoother,
                                   size_t iterations) {
   for (size_t i = 0; i < iterations; ++i) {
-    solver.load(smoother);
+    if (i > 0) solver.load(smoother);
     solver.eliminateInPlace();
     const VectorValues& solution = solver.updateSolution();
     (void)solution;
@@ -84,8 +84,8 @@ int main() {
         cout << "\nBAL Benchmark (" << label
              << ", iterations=" << bal_iterations << "):" << std::endl;
 
-        MultifrontalSolver solver(linear, ordering, kMergeDimCap, nullptr);
         auto start = std::chrono::high_resolution_clock::now();
+        MultifrontalSolver solver(linear, ordering, kMergeDimCap, nullptr);
         runMultifrontalSolver(solver, linear, bal_iterations);
         auto end = std::chrono::high_resolution_clock::now();
         std::chrono::duration<double> t_imperative = end - start;
@@ -114,8 +114,8 @@ int main() {
     GaussianFactorGraph smoother = createSmoother(T);
     const Ordering ordering = Ordering::Metis(smoother);
 
-    MultifrontalSolver solver(smoother, ordering, kMergeDimCap, &std::cout);
     auto start = std::chrono::high_resolution_clock::now();
+    MultifrontalSolver solver(smoother, ordering, kMergeDimCap, &std::cout);
     runMultifrontalSolver(solver, smoother, iterations);
     auto end = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> t_imperative = end - start;
