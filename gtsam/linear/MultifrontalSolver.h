@@ -61,6 +61,7 @@ class GTSAM_EXPORT MultifrontalSolver {
   std::map<Key, size_t> dims_;         ///< Map from variable key to dimension.
   mutable VectorValues solution_;      ///< Cached solution vector.
   std::unordered_set<Key> fixedKeys_;  ///< Keys fixed by constrained factors.
+  bool loaded_ = false;                ///< Whether load() has been called.
 
  public:
   /**

@@ -383,10 +383,16 @@ void MultifrontalSolver::load(const GaussianFactorGraph& graph) {
   for (auto& clique : cliques_) {
     clique->fillAb(graph);
   }
+  loaded_ = true;
 }
 
 /* ************************************************************************* */
 void MultifrontalSolver::eliminateInPlace() {
+  if (!loaded_) {
+    throw std::runtime_error(
+        "MultifrontalSolver::eliminateInPlace: load() must be called before "
+        "eliminating.");
+  }
   // Parallel elimination uses PostOrderForestParallel, which will be
   // multi-threaded if GTSAM was compiled with TBB.
   TbbOpenMPMixedScope threadLimiter;
