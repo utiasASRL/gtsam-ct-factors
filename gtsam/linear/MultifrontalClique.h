@@ -97,8 +97,7 @@ class GTSAM_EXPORT MultifrontalClique {
                               const std::weak_ptr<MultifrontalClique>& parent,
                               const KeyVector& frontals,
                               const KeySet& separatorKeys,
-                              const KeyDimMap& dims,
-                              size_t vbmRows,
+                              const KeyDimMap& dims, size_t vbmRows,
                               VectorValues* solution,
                               const std::unordered_set<Key>* fixedKeys);
 
@@ -223,6 +222,7 @@ class GTSAM_EXPORT MultifrontalClique {
   }
   VerticalBlockMatrix Ab_;
   mutable SymmetricBlockMatrix sbm_;
+  VerticalBlockMatrix RSd_;    ///< Cached [R S d] from the last elimination.
   mutable Vector rhsScratch_;  ///< Cached RHS workspace for back-substitution.
   mutable Vector
       separatorScratch_;  ///< Cached separator stack for back-substitution.

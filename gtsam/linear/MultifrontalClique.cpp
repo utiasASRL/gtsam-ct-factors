@@ -16,6 +16,7 @@
  * @date   December 2025
  */
 
+#include <gtsam/base/timing.h>
 #include <gtsam/linear/GaussianConditional.h>
 #include <gtsam/linear/HessianFactor.h>
 #include <gtsam/linear/JacobianFactor.h>
@@ -81,9 +82,8 @@ bool validateFactorKeys(const GaussianFactorGraph& graph,
 MultifrontalClique::MultifrontalClique(
     std::vector<size_t> factorIndices,
     const std::weak_ptr<MultifrontalClique>& parent, const KeyVector& frontals,
-    const KeySet& separatorKeys, const KeyDimMap& dims,
-    size_t vbmRows, VectorValues* solution,
-    const std::unordered_set<Key>* fixedKeys) {
+    const KeySet& separatorKeys, const KeyDimMap& dims, size_t vbmRows,
+    VectorValues* solution, const std::unordered_set<Key>* fixedKeys) {
   factorIndices_ = std::move(factorIndices);
   this->parent = parent;
   fixedKeys_ = fixedKeys;
@@ -252,7 +252,11 @@ void MultifrontalClique::prepareForElimination() {
   }
 }
 
-void MultifrontalClique::factorize() { sbm_.choleskyPartial(numFrontals()); }
+void MultifrontalClique::factorize() {
+  sbm_.choleskyPartial(numFrontals());
+  RSd_ = sbm_.split(numFrontals());
+  sbm_.blockStart() = 0;
+}
 
 void MultifrontalClique::addIdentityDamping(double lambda) {
   const size_t nf = numFrontals();
@@ -287,25 +291,23 @@ void MultifrontalClique::updateParent(MultifrontalClique& parent) const {
 }
 
 std::shared_ptr<GaussianConditional> MultifrontalClique::conditional() const {
-  const KeyVector& keys = orderedKeys_;
-  assert(sbm_.blockStart() == 0);
-  VerticalBlockMatrix Ab = sbm_.split(numFrontals());
-  sbm_.blockStart() = 0;  // Split sets it to numFrontals(), reset to 0.
-  return std::make_shared<GaussianConditional>(keys, numFrontals(),
-                                               std::move(Ab));
+  assert(RSd_.nBlocks() > 0);
+  return std::make_shared<GaussianConditional>(orderedKeys_, numFrontals(),
+                                               RSd_);
 }
 
 // Solve with block back-substitution on the Cholesky-stored SBM.
 void MultifrontalClique::updateSolution() const {
+  assert(RSd_.nBlocks() > 0);
   const size_t nf = numFrontals();
-  const size_t n = sbm_.nBlocks() - 1;  // # frontals + # separators
+  const size_t n = RSd_.nBlocks() - 1;  // # frontals + # separators
 
   // The in-place factorization yields an upper-triangular system [R S d]:
   //   R * x_f + S * x_s = d,
   // with x_f the frontals and x_s the separators.
-  const auto R = sbm_.triangularView(0, nf);
-  const auto S = sbm_.aboveDiagonalRange(0, nf, nf, n);
-  const auto d = sbm_.aboveDiagonalRange(0, nf, n, n + 1);
+  const auto R = RSd_.range(0, nf).triangularView<Eigen::Upper>();
+  const auto S = RSd_.range(nf, n);
+  const auto d = RSd_.range(n, n + 1);
 
   // We first solve rhs = d - S * x_s
   rhsScratch_.noalias() = d;
