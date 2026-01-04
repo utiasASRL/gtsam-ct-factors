@@ -384,6 +384,7 @@ void MultifrontalSolver::load(const GaussianFactorGraph& graph) {
     clique->fillAb(graph);
   }
   loaded_ = true;
+  eliminated_ = false;
 }
 
 /* ************************************************************************* */
@@ -393,6 +394,7 @@ void MultifrontalSolver::eliminateInPlace() {
         "MultifrontalSolver::eliminateInPlace: load() must be called before "
         "eliminating.");
   }
+  eliminated_ = false;
   // Parallel elimination uses PostOrderForestParallel, which will be
   // multi-threaded if GTSAM was compiled with TBB.
   TbbOpenMPMixedScope threadLimiter;
@@ -400,10 +402,12 @@ void MultifrontalSolver::eliminateInPlace() {
     if (node) node->eliminateInPlace();
   };
   treeTraversal::PostOrderForestParallel(*this, visitorPost, 10);
+  eliminated_ = true;
 }
 
 /* ************************************************************************* */
 GaussianBayesTree MultifrontalSolver::computeBayesTree() const {
+  assert(loaded_ && eliminated_);
   GaussianBayesTree bayesTree;
   using Clique = GaussianBayesTreeClique;
   using BayesCliquePtr = GaussianBayesTree::sharedClique;
@@ -445,6 +449,7 @@ GaussianBayesTree MultifrontalSolver::computeBayesTree() const {
 
 /* ************************************************************************* */
 const VectorValues& MultifrontalSolver::updateSolution() const {
+  assert(loaded_ && eliminated_);
   // Parallel solve uses treeTraversal::DepthFirstForestParallel (Pre-order /
   // Top-Down).
   TbbOpenMPMixedScope threadLimiter;

@@ -62,6 +62,7 @@ class GTSAM_EXPORT MultifrontalSolver {
   mutable VectorValues solution_;      ///< Cached solution vector.
   std::unordered_set<Key> fixedKeys_;  ///< Keys fixed by constrained factors.
   bool loaded_ = false;                ///< Whether load() has been called.
+  bool eliminated_ = false;            ///< Whether eliminateInPlace() ran.
 
  public:
   /**
