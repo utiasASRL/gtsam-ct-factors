@@ -234,6 +234,19 @@ namespace gtsam {
       }
     }
 
+    /// Add a vector to the diagonal entries of block I.
+    void addToDiagonalBlock(DenseIndex I, const Vector& deltaDiag) {
+      auto dest = block_(I, I);
+      assert(dest.rows() == deltaDiag.size());
+      dest.diagonal().array() += deltaDiag.array();
+    }
+
+    /// Add lambda * I to the diagonal block I.
+    void addScaledIdentity(DenseIndex I, double lambda) {
+      auto dest = block_(I, I);
+      dest.diagonal().array() += lambda;
+    }
+
     /// Update an off diagonal block.
     /// NOTE(emmett): This assumes noalias().
     template <typename XprType>

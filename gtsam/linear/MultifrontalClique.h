@@ -43,12 +43,13 @@ using KeyDimMap = std::map<Key, size_t>;
 
 namespace internal {
 
-/// Helper class to track original factor indices.
+/// Helper class to track original factor indices and row counts.
 class IndexedSymbolicFactor : public SymbolicFactor {
  public:
   size_t index_;
-  IndexedSymbolicFactor(const KeyVector& keys, size_t index)
-      : SymbolicFactor(), index_(index) {
+  size_t rows_;
+  IndexedSymbolicFactor(const KeyVector& keys, size_t index, size_t rows)
+      : SymbolicFactor(), index_(index), rows_(rows) {
     keys_ = keys;
   }
 };
@@ -89,7 +90,7 @@ class GTSAM_EXPORT MultifrontalClique {
   /// @param frontals Frontal keys for this clique.
   /// @param separatorKeys Separator keys for this clique.
   /// @param dims Key->dimension map.
-  /// @param graph Factor graph for sizing and constraints.
+  /// @param vbmRows Number of rows needed for the vertical block matrix.
   /// @param solution Solution storage for cached pointers.
   /// @param fixedKeys Keys fixed to zero by constraints (may be null).
   explicit MultifrontalClique(std::vector<size_t> factorIndices,
@@ -97,7 +98,7 @@ class GTSAM_EXPORT MultifrontalClique {
                               const KeyVector& frontals,
                               const KeySet& separatorKeys,
                               const KeyDimMap& dims,
-                              const GaussianFactorGraph& graph,
+                              size_t vbmRows,
                               VectorValues* solution,
                               const std::unordered_set<Key>* fixedKeys);
 
@@ -107,10 +108,23 @@ class GTSAM_EXPORT MultifrontalClique {
   /// Cache the children list and compute parent indices.
   void finalize(std::vector<ChildInfo> children);
 
-  /// Load factor values into the pre-allocated Ab matrix and Hessians into
-  /// sbm_.
+  /// Load factor values into the pre-allocated Ab matrix.
   /// @param graph The factor graph with updated values.
   void fillAb(const GaussianFactorGraph& graph);
+
+  /// Zero out sbm, re-add Hessians, accumulate Jacobians and children.
+  void prepareForElimination();
+
+  /// Perform Cholesky factorization on the frontal block.
+  void factorize();
+
+  /// Add identity damping to the frontal block.
+  void addIdentityDamping(double lambda);
+
+  /// Add diagonal damping to the frontal block, with clamping.
+  void addDiagonalDamping(double lambda, double minDiagonal,
+                          double maxDiagonal);
+
   /// @}
 
   /// @name Read-only methods
@@ -130,18 +144,8 @@ class GTSAM_EXPORT MultifrontalClique {
   /// Get the vertical block matrix Ab.
   const VerticalBlockMatrix& Ab() const { return Ab_; }
 
-  /// Get the symmetric block matrix (mutable).
-  SymmetricBlockMatrix& sbm() { return sbm_; }
-
   /// Get the symmetric block matrix (const).
   const SymmetricBlockMatrix& sbm() const { return sbm_; }
-
-  /**
-   * Count rows needed for the vertical block matrix.
-   * @param graph The factor graph.
-   * @return Total number of rows.
-   */
-  size_t countRows(const GaussianFactorGraph& graph) const;
 
   /**
    * Print this clique.
@@ -231,6 +235,7 @@ class GTSAM_EXPORT MultifrontalClique {
   std::vector<Vector*> frontalPtrs_;  ///< Pointers into solution frontals.
   std::vector<const Vector*>
       separatorPtrs_;  ///< Pointers into solution separator.
+  std::vector<HessianFactor::shared_ptr> hessianFactors_;  ///< Hessian factors.
 };
 
 std::ostream& operator<<(std::ostream& os, const MultifrontalClique& clique);

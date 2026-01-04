@@ -137,6 +137,15 @@ std::map<Key, size_t> computeDims(const GaussianFactorGraph& graph) {
   return dims;
 }
 
+size_t factorRowCount(const GaussianFactorGraph& graph, size_t index) {
+  if (index >= graph.size() || !graph[index]) return 0;
+  if (auto jacobianFactor =
+          std::dynamic_pointer_cast<JacobianFactor>(graph[index])) {
+    return jacobianFactor->rows();
+  }
+  return 0;
+}
+
 // Build SymbolicFactorGraph from GaussianFactorGraph
 SymbolicFactorGraph buildSymbolicGraph(
     const GaussianFactorGraph& graph,
@@ -154,7 +163,8 @@ SymbolicFactorGraph buildSymbolicGraph(
     }
     // Skip factors that are fully constrained away.
     if (keys.empty()) continue;
-    symbolicGraph.emplace_shared<internal::IndexedSymbolicFactor>(keys, i);
+    symbolicGraph.emplace_shared<internal::IndexedSymbolicFactor>(
+        keys, i, factorRowCount(graph, i));
   }
   return symbolicGraph;
 }
@@ -238,19 +248,6 @@ void reportStructure(const SymbolicJunctionTree& junctionTree,
   stats.report(name, reportStream);
 }
 
-std::vector<size_t> factorIndicesForSymbolicCluster(
-    const SymbolicJunctionTree::sharedNode& cluster) {
-  std::vector<size_t> indices;
-  indices.reserve(cluster->factors.size());
-  for (const auto& factor : cluster->factors) {
-    assert(factor);
-    auto indexed =
-        std::static_pointer_cast<internal::IndexedSymbolicFactor>(factor);
-    indices.push_back(indexed->index_);
-  }
-  return indices;
-}
-
 struct BuiltClique {
   MultifrontalSolver::CliquePtr clique;
   KeySet separatorKeys;
@@ -259,7 +256,6 @@ struct BuiltClique {
 // Build cliques from a symbolic junction tree and wire parent/child metadata.
 struct CliqueBuilder {
   const std::map<Key, size_t>& dims;
-  const GaussianFactorGraph& graph;
   VectorValues* solution;
   std::vector<MultifrontalSolver::CliquePtr>* cliques;
   const std::unordered_set<Key>* fixedKeys;
@@ -272,11 +268,21 @@ struct CliqueBuilder {
     // Gather symbolic metadata for this clique.
     const KeyVector& frontals = cluster->orderedFrontalKeys;
     const KeySet& separatorKeys = cluster->separatorKeys(&separatorCache);
+    std::vector<size_t> factorIndices;
+    factorIndices.reserve(cluster->factors.size());
+    size_t vbmRows = 0;
+    for (const auto& factor : cluster->factors) {
+      assert(factor);
+      auto indexed =
+          std::static_pointer_cast<internal::IndexedSymbolicFactor>(factor);
+      factorIndices.push_back(indexed->index_);
+      vbmRows += indexed->rows_;
+    }
 
     // Create the clique node and cache static structure.
     auto clique = std::make_shared<MultifrontalClique>(
-        factorIndicesForSymbolicCluster(cluster), parent, frontals,
-        separatorKeys, dims, graph, solution, fixedKeys);
+        std::move(factorIndices), parent, frontals, separatorKeys, dims,
+        vbmRows, solution, fixedKeys);
 
     // Build children and collect separator keys.
     std::vector<MultifrontalClique::ChildInfo> childInfos;
@@ -302,19 +308,21 @@ struct CliqueBuilder {
 MultifrontalSolver::MultifrontalSolver(const GaussianFactorGraph& graph,
                                        const Ordering& ordering,
                                        size_t mergeDimCap,
+                                       std::ostream* reportStream)
+    : MultifrontalSolver(Precompute(graph, ordering), ordering,
+                         mergeDimCap, reportStream) {}
+
+/* ************************************************************************* */
+MultifrontalSolver::MultifrontalSolver(PrecomputedData data,
+                                       const Ordering& ordering,
+                                       size_t mergeDimCap,
                                        std::ostream* reportStream) {
-  // Pre-compute variable dimensions and fixed keys.
-  dims_ = computeDims(graph);
-  fixedKeys_ = collectFixedKeys(graph);
+  dims_ = std::move(data.dims);
+  fixedKeys_ = std::move(data.fixedKeys);
 
   // Seed the cached solution with zero vectors for all variables.
-  Ordering reducedOrdering;
-  reducedOrdering.reserve(ordering.size());
   for (Key key : ordering) {
     solution_.insert(key, Vector::Zero(dims_.at(key)));
-    if (!fixedKeys_.count(key)) {
-      reducedOrdering.push_back(key);
-    }
   }
   for (Key key : fixedKeys_) {
     if (!solution_.exists(key)) {
@@ -322,29 +330,22 @@ MultifrontalSolver::MultifrontalSolver(const GaussianFactorGraph& graph,
     }
   }
 
-  // Convert to SymbolicFactorGraph to build the elimination tree
-  SymbolicFactorGraph symbolicGraph = buildSymbolicGraph(graph, fixedKeys_);
-
-  // Build SymbolicEliminationTree and then SymbolicJunctionTree
-  SymbolicEliminationTree eliminationTree(symbolicGraph, reducedOrdering);
-  SymbolicJunctionTree junctionTree(eliminationTree);
-
   // Report the symbolic structure before any merge.
-  reportStructure(junctionTree, dims_, "Symbolic cluster structure",
+  reportStructure(data.junctionTree, dims_, "Symbolic cluster structure",
                   reportStream);
 
   // If applicable, merge small child cliques bottom-up.
   if (mergeDimCap > 0) {
-    for (const auto& rootCluster : junctionTree.roots()) {
+    for (const auto& rootCluster : data.junctionTree.roots()) {
       mergeSmallClusters(rootCluster, dims_, mergeDimCap);
     }
-    reportStructure(junctionTree, dims_, "Clique structure after merge",
+    reportStructure(data.junctionTree, dims_, "Clique structure after merge",
                     reportStream);
   }
 
   // Build the actual MultifrontalClique structure.
-  CliqueBuilder builder{dims_, graph, &solution_, &cliques_, &fixedKeys_};
-  for (const auto& rootCluster : junctionTree.roots()) {
+  CliqueBuilder builder{dims_, &solution_, &cliques_, &fixedKeys_};
+  for (const auto& rootCluster : data.junctionTree.roots()) {
     if (rootCluster) {
       roots_.push_back(
           builder.build(rootCluster, std::weak_ptr<MultifrontalClique>())
@@ -352,8 +353,29 @@ MultifrontalSolver::MultifrontalSolver(const GaussianFactorGraph& graph,
     }
   }
 
-  // Load initial numerical values after the structure is built.
-  load(graph);
+  // Caller is responsible for loading numerical values via load().
+}
+
+/* ************************************************************************* */
+MultifrontalSolver::PrecomputedData MultifrontalSolver::Precompute(
+    const GaussianFactorGraph& graph, const Ordering& ordering) {
+  auto dims = computeDims(graph);
+  auto fixedKeys = collectFixedKeys(graph);
+
+  Ordering reducedOrdering;
+  reducedOrdering.reserve(ordering.size());
+  for (Key key : ordering) {
+    if (!fixedKeys.count(key)) {
+      reducedOrdering.push_back(key);
+    }
+  }
+
+  SymbolicFactorGraph symbolicGraph = buildSymbolicGraph(graph, fixedKeys);
+  SymbolicEliminationTree eliminationTree(symbolicGraph, reducedOrdering);
+  SymbolicJunctionTree junctionTree(eliminationTree);
+
+  return MultifrontalSolver::PrecomputedData{
+      std::move(dims), std::move(fixedKeys), std::move(junctionTree)};
 }
 
 /* ************************************************************************* */

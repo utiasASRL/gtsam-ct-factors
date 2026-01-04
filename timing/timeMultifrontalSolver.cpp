@@ -73,13 +73,7 @@ int main() {
       const Values initial = buildGeneralSfmInitial(db);
       const GaussianFactorGraph linear = *graph.linearize(initial);
 
-      const std::vector<std::pair<string, Ordering>> orderings = {
-          {"Burn", createSchurOrdering(db, false)},
-          {"Metis", Ordering::Metis(linear)},
-          {"Schur", createSchurOrdering(db, false)},
-          {"Colamd", Ordering::Colamd(linear)},
-      };
-
+      auto orderings = createOrderings(db, linear);
       for (const auto& [label, ordering] : orderings) {
         cout << "\nBAL Benchmark (" << label
              << ", iterations=" << bal_iterations << "):" << std::endl;

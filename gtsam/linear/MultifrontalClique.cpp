@@ -82,7 +82,7 @@ MultifrontalClique::MultifrontalClique(
     std::vector<size_t> factorIndices,
     const std::weak_ptr<MultifrontalClique>& parent, const KeyVector& frontals,
     const KeySet& separatorKeys, const KeyDimMap& dims,
-    const GaussianFactorGraph& graph, VectorValues* solution,
+    size_t vbmRows, VectorValues* solution,
     const std::unordered_set<Key>* fixedKeys) {
   factorIndices_ = std::move(factorIndices);
   this->parent = parent;
@@ -113,7 +113,6 @@ MultifrontalClique::MultifrontalClique(
   // Pre-allocate matrices once per structure.
   std::vector<size_t> blockDims =
       this->blockDims(dims, frontals, separatorKeys);
-  size_t vbmRows = countRows(graph);
   initializeMatrices(blockDims, vbmRows);
 }
 
@@ -169,18 +168,6 @@ std::vector<size_t> MultifrontalClique::blockDims(
   return blockDims;
 }
 
-size_t MultifrontalClique::countRows(const GaussianFactorGraph& graph) const {
-  size_t vbmRows = 0;
-  for (size_t index : factorIndices_) {
-    assert(index < graph.size());
-    if (auto jacobianFactor =
-            std::dynamic_pointer_cast<JacobianFactor>(graph[index])) {
-      vbmRows += jacobianFactor->rows();
-    }
-  }
-  return vbmRows;
-}
-
 void MultifrontalClique::initializeMatrices(
     const std::vector<size_t>& blockDims, size_t verticalBlockMatrixRows) {
   sbm_ = SymmetricBlockMatrix(blockDims, true);
@@ -233,8 +220,9 @@ void MultifrontalClique::addHessianFactor(const HessianFactor& hessianFactor) {
 
 void MultifrontalClique::fillAb(const GaussianFactorGraph& graph) {
   assert(validateFactorKeys(graph, factorIndices_, orderedKeys_, fixedKeys_));
-  sbm_.setZero();  // Zero the active SBM once before accumulating factors.
+  assert(validateFactorKeys(graph, factorIndices_, orderedKeys_, fixedKeys_));
 
+  hessianFactors_.clear();
   size_t rowOffset = 0;
   for (size_t index : factorIndices_) {
     assert(index < graph.size());
@@ -244,12 +232,17 @@ void MultifrontalClique::fillAb(const GaussianFactorGraph& graph) {
       rowOffset += addJacobianFactor(*jacobianFactor, rowOffset);
     } else if (auto hessianFactor =
                    std::dynamic_pointer_cast<HessianFactor>(gf)) {
-      addHessianFactor(*hessianFactor);
+      hessianFactors_.push_back(hessianFactor);
     }
   }
 }
 
-void MultifrontalClique::eliminateInPlace() {
+void MultifrontalClique::prepareForElimination() {
+  sbm_.setZero();
+  for (const auto& hf : hessianFactors_) {
+    addHessianFactor(*hf);
+  }
+
   // Update SBM with the local factors, Ab^T * Ab
   sbm_.selfadjointView().rankUpdate(Ab_.matrix().transpose());
 
@@ -257,9 +250,31 @@ void MultifrontalClique::eliminateInPlace() {
     if (!child) continue;
     child->updateParent(*this);
   }
+}
 
-  // Form normal equations and factor the frontal block (Schur complement step).
-  sbm_.choleskyPartial(numFrontals());
+void MultifrontalClique::factorize() { sbm_.choleskyPartial(numFrontals()); }
+
+void MultifrontalClique::addIdentityDamping(double lambda) {
+  const size_t nf = numFrontals();
+  for (size_t j = 0; j < nf; ++j) {
+    sbm_.addScaledIdentity(j, lambda);
+  }
+}
+
+void MultifrontalClique::addDiagonalDamping(double lambda, double minDiagonal,
+                                            double maxDiagonal) {
+  const size_t nf = numFrontals();
+  for (size_t j = 0; j < nf; ++j) {
+    Vector diag = sbm_.diagonal(j);
+    diag = diag.cwiseMax(minDiagonal).cwiseMin(maxDiagonal);
+    const Vector scaled = lambda * diag;
+    sbm_.addToDiagonalBlock(j, scaled);
+  }
+}
+
+void MultifrontalClique::eliminateInPlace() {
+  prepareForElimination();
+  factorize();
 }
 
 void MultifrontalClique::updateParent(MultifrontalClique& parent) const {
