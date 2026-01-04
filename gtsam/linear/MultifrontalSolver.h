@@ -113,6 +113,12 @@ class GTSAM_EXPORT MultifrontalSolver {
   void eliminateInPlace();
 
   /**
+   * Load and eliminate the graph in a single traversal.
+   * This calls fillAb() and eliminateInPlace() per clique in post-order.
+   */
+  void eliminateInPlace(const GaussianFactorGraph& graph);
+
+  /**
    * Compute a Bayes tree from the in-place Cholesky factorization.
    * Requires eliminateInPlace() to have been called beforehand.
    * @return A GaussianBayesTree representing the eliminated factor graph

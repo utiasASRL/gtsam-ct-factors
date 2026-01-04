@@ -151,6 +151,20 @@ TEST(MultifrontalSolver, Eliminate) {
 }
 
 /* ************************************************************************* */
+// Load + eliminate in one traversal matches standard elimination.
+TEST(MultifrontalSolver, EliminateWithLoad) {
+  MultifrontalSolver solver(chain, chainOrdering);
+  solver.eliminateInPlace(chain);
+
+  const VectorValues& actual = solver.updateSolution();
+
+  GaussianBayesTree expectedBT = *chain.eliminateMultifrontal(chainOrdering);
+  VectorValues expected = expectedBT.optimize();
+
+  EXPECT(assert_equal(expected, actual, 1e-9));
+}
+
+/* ************************************************************************* */
 // Compare marginals from in-place Bayes tree against standard elimination.
 TEST(MultifrontalSolver, ComputeBayesTreeMarginals) {
   MultifrontalSolver solver(chain, chainOrdering);

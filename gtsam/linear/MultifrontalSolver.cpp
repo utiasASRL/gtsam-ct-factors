@@ -406,6 +406,20 @@ void MultifrontalSolver::eliminateInPlace() {
 }
 
 /* ************************************************************************* */
+void MultifrontalSolver::eliminateInPlace(const GaussianFactorGraph& graph) {
+  // Combine load + eliminate in one post-order traversal to improve locality.
+  TbbOpenMPMixedScope threadLimiter;
+  auto visitorPost = [&graph](const CliquePtr& node) {
+    if (!node) return;
+    node->fillAb(graph);
+    node->eliminateInPlace();
+  };
+  treeTraversal::PostOrderForestParallel(*this, visitorPost, 10);
+  loaded_ = true;
+  eliminated_ = true;
+}
+
+/* ************************************************************************* */
 GaussianBayesTree MultifrontalSolver::computeBayesTree() const {
   assert(loaded_ && eliminated_);
   GaussianBayesTree bayesTree;

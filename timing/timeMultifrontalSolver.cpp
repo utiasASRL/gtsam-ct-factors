@@ -52,8 +52,7 @@ static void runMultifrontalSolver(MultifrontalSolver& solver,
                                   const GaussianFactorGraph& smoother,
                                   size_t iterations) {
   for (size_t i = 0; i < iterations; ++i) {
-    solver.load(smoother);
-    solver.eliminateInPlace();
+    solver.eliminateInPlace(smoother);
     const VectorValues& solution = solver.updateSolution();
     (void)solution;
   }
@@ -151,7 +150,7 @@ void runChainBenchmark() {
 int main() {
   cout << "Merging dim cap " << kMergeDimCap << std::endl;
 
-  // runBAL135Benchmark();
+  runBAL135Benchmark();
   runBALBenchmark();
   runChainBenchmark();
   return 0;
