@@ -89,20 +89,30 @@ void SymmetricBlockMatrix::choleskyPartial(DenseIndex nFrontals) {
 }
 
 /* ************************************************************************* */
-VerticalBlockMatrix SymmetricBlockMatrix::split(DenseIndex nFrontals) {
+void SymmetricBlockMatrix::split(DenseIndex nFrontals,
+                                 VerticalBlockMatrix* RSd) {
   gttic(VerticalBlockMatrix_split);
+  assert(RSd);
 
   // Construct a VerticalBlockMatrix that contains [R Sd]
-  const size_t n1 = offset(nFrontals);
-  VerticalBlockMatrix RSd = VerticalBlockMatrix::LikeActiveViewOf(*this, n1);
+  const DenseIndex n1 = offset(nFrontals);
+  assert(RSd->rows() == n1);
+  assert(RSd->cols() == cols());
+  assert(RSd->nBlocks() == nBlocks());
 
   // Copy into it.
-  RSd.full() = matrix_.topRows(n1);
-  RSd.full().triangularView<Eigen::StrictlyLower>().setZero();
+  RSd->full() = matrix_.topRows(n1);
+  RSd->full().triangularView<Eigen::StrictlyLower>().setZero();
 
   // Take lower-right block of Ab_ to get the remaining factor
   blockStart() = nFrontals;
+}
 
+VerticalBlockMatrix SymmetricBlockMatrix::split(DenseIndex nFrontals) {
+  // Construct a VerticalBlockMatrix that contains [R Sd]
+  const DenseIndex n1 = offset(nFrontals);
+  VerticalBlockMatrix RSd = VerticalBlockMatrix::LikeActiveViewOf(*this, n1);
+  split(nFrontals, &RSd);
   return RSd;
 }
 

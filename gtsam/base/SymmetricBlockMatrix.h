@@ -336,6 +336,9 @@ namespace gtsam {
      */
     VerticalBlockMatrix split(DenseIndex nFrontals);
 
+    /// I n-place version of split.
+    void split(DenseIndex nFrontals, VerticalBlockMatrix* RSd);
+
   protected:
 
     /// Number of offsets in the full matrix.
