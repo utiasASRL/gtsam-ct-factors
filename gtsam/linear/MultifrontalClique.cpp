@@ -254,74 +254,60 @@ void MultifrontalClique::prepareForElimination() {
     sbm_.selfadjointView().rankUpdate(Ab_.matrix().transpose());
   }
 
+  size_t numThreads = std::thread::hardware_concurrency();
+  if (numThreads == 0) {
+    numThreads = 1;
+  }
+  numThreads = std::min(numThreads, children.size());
+  const size_t minChildren =
+      std::max<size_t>(1024, 4 * static_cast<size_t>(sbm_.rows()));
+  if (children.size() >= minChildren && numThreads > 1) {
 #ifdef GTSAM_USE_TBB
-  constexpr size_t kParallelChildThreshold = 1024;
-  if (children.size() >= kParallelChildThreshold) {
-    tbb::enumerable_thread_specific<SymmetricBlockMatrix> accumulators(
-        [this]() {
-          SymmetricBlockMatrix local(blockDims_, true);
-          local.setZero();
-          return local;
-        });
+    tbb::enumerable_thread_specific<SymmetricBlockMatrix> locals([this]() {
+      SymmetricBlockMatrix local(blockDims_, true);
+      local.setZero();
+      return local;
+    });
     tbb::parallel_for(tbb::blocked_range<size_t>(0, children.size()),
                       [&](const tbb::blocked_range<size_t>& range) {
-                        auto& local = accumulators.local();
+                        auto& local = locals.local();
                         for (size_t i = range.begin(); i < range.end(); ++i) {
-                          const auto& child = children[i];
-                          if (!child) continue;
-                          child->updateParentSbm(local);
+                          children[i]->updateParentSbm(local);
                         }
                       });
-    for (auto& local : accumulators) {
+#else
+    std::vector<SymmetricBlockMatrix> locals;
+    locals.reserve(numThreads);
+    for (size_t i = 0; i < numThreads; ++i) {
+      locals.emplace_back(blockDims_, true);
+      locals.back().setZero();
+    }
+    std::vector<std::thread> threads;
+    threads.reserve(numThreads);
+    const size_t chunk = (children.size() + numThreads - 1) / numThreads;
+    for (size_t t = 0; t < numThreads; ++t) {
+      const size_t start = t * chunk;
+      const size_t end = std::min(start + chunk, children.size());
+      if (start >= end) break;
+      threads.emplace_back([this, start, end, &locals, t]() {
+        auto& local = locals[t];
+        for (size_t i = start; i < end; ++i) {
+          children[i]->updateParentSbm(local);
+        }
+      });
+    }
+    for (auto& thread : threads) {
+      thread.join();
+    }
+#endif
+    for (auto& local : locals) {
       sbm_.addUpperTriangular(local);
     }
-    return;
-  }
-#else
-  constexpr size_t kParallelChildThreshold = 1024;
-  if (children.size() >= kParallelChildThreshold) {
-    size_t numThreads = std::thread::hardware_concurrency();
-    if (numThreads == 0) {
-      numThreads = 1;
+  } else {
+    for (const auto& child : children) {
+      assert(child);
+      child->updateParentSbm(sbm_);
     }
-    numThreads = std::min(numThreads, children.size());
-    if (numThreads > 1) {
-      std::vector<SymmetricBlockMatrix> locals;
-      locals.reserve(numThreads);
-      for (size_t i = 0; i < numThreads; ++i) {
-        locals.emplace_back(blockDims_, true);
-        locals.back().setZero();
-      }
-      std::vector<std::thread> threads;
-      threads.reserve(numThreads);
-      const size_t chunk =
-          (children.size() + numThreads - 1) / numThreads;
-      for (size_t t = 0; t < numThreads; ++t) {
-        const size_t start = t * chunk;
-        const size_t end = std::min(start + chunk, children.size());
-        if (start >= end) break;
-        threads.emplace_back([this, start, end, &locals, t]() {
-          auto& local = locals[t];
-          for (size_t i = start; i < end; ++i) {
-            const auto& child = children[i];
-            if (!child) continue;
-            child->updateParentSbm(local);
-          }
-        });
-      }
-      for (auto& thread : threads) {
-        thread.join();
-      }
-      for (auto& local : locals) {
-        sbm_.addUpperTriangular(local);
-      }
-      return;
-    }
-  }
-#endif
-  for (const auto& child : children) {
-    if (!child) continue;
-    child->updateParentSbm(sbm_);
   }
 }
 
