@@ -117,10 +117,18 @@ class GTSAM_EXPORT MultifrontalClique {
   /// Perform Cholesky factorization on the frontal block.
   void factorize();
 
-  /// Add identity damping to the frontal block.
+  /**
+   * Add identity damping to the frontal block.
+   * @param lambda Damping factor
+   */
   void addIdentityDamping(double lambda);
 
-  /// Add diagonal damping to the frontal block, with clamping.
+  /**
+   * Add diagonal damping to the frontal block.
+   * @param lambda Damping factor
+   * @param minDiagonal Minimum diagonal value
+   * @param maxDiagonal Maximum diagonal value
+   */
   void addDiagonalDamping(double lambda, double minDiagonal,
                           double maxDiagonal);
 
@@ -145,6 +153,9 @@ class GTSAM_EXPORT MultifrontalClique {
 
   /// Get the symmetric block matrix (const).
   const SymmetricBlockMatrix& sbm() const { return sbm_; }
+
+  /// Check if this clique is using QR elimination.
+  bool useQR() const { return solveMode_ == SolveMode::QrLeaf; }
 
   /**
    * Print this clique.
@@ -215,8 +226,6 @@ class GTSAM_EXPORT MultifrontalClique {
 
   /// Allocate the separator-only SBM used for QR leaf updates.
   void allocateSeparatorSbm();
-
-  bool useQr() const { return solveMode_ == SolveMode::QrLeaf; }
 
   /**
    * Add a Jacobian factor's contributions into the Ab matrix.

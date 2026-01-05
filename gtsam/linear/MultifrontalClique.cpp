@@ -17,7 +17,6 @@
  */
 
 #include <gtsam/base/Matrix.h>
-#include <gtsam/base/timing.h>
 #include <gtsam/linear/GaussianConditional.h>
 #include <gtsam/linear/HessianFactor.h>
 #include <gtsam/linear/JacobianFactor.h>
@@ -233,7 +232,6 @@ void MultifrontalClique::addHessianFactor(const HessianFactor& hessianFactor) {
 
 void MultifrontalClique::fillAb(const GaussianFactorGraph& graph) {
   assert(validateFactorKeys(graph, factorIndices_, orderedKeys_, fixedKeys_));
-  assert(validateFactorKeys(graph, factorIndices_, orderedKeys_, fixedKeys_));
 
   hessianFactors_.clear();
   size_t rowOffset = 0;
@@ -251,12 +249,12 @@ void MultifrontalClique::fillAb(const GaussianFactorGraph& graph) {
 
   // Lock in QR only for leaf cliques with no Hessian factors.
   const bool isLeaf = children.empty();
-  const bool useQr =
+  const bool useQR =
       isLeaf && hessianFactors_.empty() && (frontalDim > 0) &&
       (frontalDim + separatorDim > kQrAspectRatio * frontalDim) &&
       (Ab_.matrix().rows() >= static_cast<DenseIndex>(frontalDim));
-  solveMode_ = useQr ? SolveMode::QrLeaf : SolveMode::Cholesky;
-  if (useQr) {
+  solveMode_ = useQR ? SolveMode::QrLeaf : SolveMode::Cholesky;
+  if (useQR) {
     allocateSeparatorSbm();  // QR only needs separator updates for the parent.
   } else {
     allocateSbm();
@@ -265,7 +263,7 @@ void MultifrontalClique::fillAb(const GaussianFactorGraph& graph) {
 
 void MultifrontalClique::prepareForElimination() {
   // QR leaf cliques skip SBM assembly entirely.
-  if (useQr()) return;
+  if (useQR()) return;
   assert(sbm_.nBlocks() > 0);
   sbm_.setZero();
   for (const auto& hf : hessianFactors_) {
@@ -283,7 +281,7 @@ void MultifrontalClique::prepareForElimination() {
 }
 
 void MultifrontalClique::factorize() {
-  if (useQr()) {
+  if (useQR()) {
     const DenseIndex nfRows = static_cast<DenseIndex>(frontalDim);
     assert(Ab_.matrix().rows() >= nfRows);
     // Copy Ab_ to preserve its invariant; QR writes in place.
@@ -309,9 +307,8 @@ void MultifrontalClique::addDiagonalDamping(double lambda, double minDiagonal,
                                             double maxDiagonal) {
   const size_t nf = numFrontals();
   for (size_t j = 0; j < nf; ++j) {
-    Vector diag = sbm_.diagonal(j);
-    diag = diag.cwiseMax(minDiagonal).cwiseMin(maxDiagonal);
-    const Vector scaled = lambda * diag;
+    const Vector scaled =
+        lambda * sbm_.diagonal(j).cwiseMax(minDiagonal).cwiseMin(maxDiagonal);
     sbm_.addToDiagonalBlock(j, scaled);
   }
 }
@@ -322,7 +319,7 @@ void MultifrontalClique::eliminateInPlace() {
 }
 
 void MultifrontalClique::updateParent(MultifrontalClique& parent) const {
-  if (useQr()) {
+  if (useQR()) {
     assert(separatorSbm_.nBlocks() > 0);
     const DenseIndex nfBlocks = static_cast<DenseIndex>(numFrontals());
     const DenseIndex totalBlocks = RSd_.nBlocks();
@@ -334,8 +331,7 @@ void MultifrontalClique::updateParent(MultifrontalClique& parent) const {
     return;
   }
   // Expose only the separator+RHS view when contributing to the parent.
-  assert(sbmAllocated_);
-  assert(sbm_.blockStart() == 0);
+  assert(sbm_.nBlocks() > 0 && sbm_.blockStart() == 0);
   sbm_.blockStart() = numFrontals();
   assert(sbm_.nBlocks() == parentIndices_.size());
   parent.sbm_.updateFromMappedBlocks(sbm_, parentIndices_);

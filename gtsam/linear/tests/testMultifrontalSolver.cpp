@@ -96,6 +96,7 @@ TEST(MultifrontalSolver, ConstructorPrecomputed) {
   auto childClique = root->children[0];
 
   // Verify matrices in leaf (childClique)
+  CHECK(childClique->useQR() == false);
   EXPECT_LONGS_EQUAL(4, childClique->sbm().nBlocks());
   EXPECT_LONGS_EQUAL(2, childClique->Ab().rows());
   EXPECT_LONGS_EQUAL(4, childClique->Ab().nBlocks());

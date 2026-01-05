@@ -45,9 +45,9 @@ class MultifrontalClique;
 class GTSAM_EXPORT MultifrontalSolver {
  public:
   struct PrecomputedData {
-    std::map<Key, size_t> dims;
-    std::unordered_set<Key> fixedKeys;
-    SymbolicJunctionTree junctionTree;
+    std::map<Key, size_t> dims;         ///< Map from variable key to dimension.
+    std::unordered_set<Key> fixedKeys;  ///< Keys fixed by constrained factors.
+    SymbolicJunctionTree junctionTree;  ///< Precomputed symbolic junction tree.
   };
 
   /// Shared pointer to a MultifrontalClique.

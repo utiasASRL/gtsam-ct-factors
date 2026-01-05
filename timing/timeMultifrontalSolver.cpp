@@ -49,10 +49,10 @@ static void runStandardSolver(const GaussianFactorGraph& smoother,
 
 /// Run new MultifrontalSolver elimination and optimization.
 static void runMultifrontalSolver(MultifrontalSolver& solver,
-                                  const GaussianFactorGraph& smoother,
+                                  const GaussianFactorGraph& graph,
                                   size_t iterations) {
   for (size_t i = 0; i < iterations; ++i) {
-    solver.eliminateInPlace(smoother);
+    solver.eliminateInPlace(graph);
     const VectorValues& solution = solver.updateSolution();
     (void)solution;
   }
