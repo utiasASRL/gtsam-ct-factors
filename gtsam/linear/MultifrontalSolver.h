@@ -42,12 +42,21 @@ class MultifrontalClique;
  * This class pre-allocates all necessary memory for the elimination tree and
  * provides efficient methods for loading new factors, eliminating the graph,
  * and solving for the update vector.
+ *
+ * @note Clique merging has two optional phases: an initial leaf-merge pass
+ * (leafMergeDimCap) that merges multiple leaf children into a common parent
+ * while the parent's total dimension plus merged frontal dimensions stays
+ * below the cap, followed by a bottom-up pass (mergeDimCap) that merges any
+ * remaining small child cliques into their parent. Both phases run before
+ * numeric elimination and can reduce tiny cliques and improve cache locality.
+ * Defaults are conservative and may need tuning per machine or dataset.
  */
 class GTSAM_EXPORT MultifrontalSolver
     : public TaskMixin<MultifrontalSolver, MultifrontalClique> {
  public:
   /// Tuning parameters for traversal and reporting.
   struct Parameters {
+    size_t leafMergeDimCap = 256;           ///< Leaf-merge cap (0 disables).
     size_t mergeDimCap = 16;                ///< Merge threshold (0 disables).
     std::ostream* reportStream = nullptr;   ///< Optional structure reporting.
     int eliminationParallelThreshold = 10;  ///< Post-order task threshold.

@@ -18,6 +18,7 @@
 
 #include <gtsam/base/treeTraversal-inst.h>
 #include <gtsam/base/types.h>
+#include <gtsam/base/FastMap.h>
 #include <gtsam/config.h>
 #include <gtsam/inference/Key.h>
 #include <gtsam/linear/GaussianBayesTree.h>
@@ -194,6 +195,100 @@ size_t totalDimForSymbolicCluster(
          separatorDimForSymbolicCluster(cluster, dims, cache);
 }
 
+struct LeafInfo {
+  SymbolicJunctionTree::sharedNode child;
+  size_t totalDim = 0;
+  size_t index = 0;
+};
+
+struct LeafGroup {
+  std::vector<LeafInfo> leaves;
+  size_t firstIndex = 0;
+};
+
+struct LeafBatch {
+  SymbolicJunctionTree::Cluster::Children leaves;
+  size_t firstIndex = 0;
+};
+
+std::vector<LeafGroup> collectLeafGroups(
+    const SymbolicJunctionTree::sharedNode& cluster,
+    const std::map<Key, size_t>& dims,
+    SymbolicJunctionTree::Cluster::KeySetMap* separatorCache) {
+  // Group leaf children by identical separators, keeping first-seen order.
+  FastMap<KeySet, size_t> groupIndexBySeparator;
+  std::vector<LeafGroup> groups;
+
+  for (size_t i = 0; i < cluster->children.size(); ++i) {
+    const auto& child = cluster->children[i];
+    if (!child || !child->children.empty()) continue;
+
+    child->separatorKeys(separatorCache);
+    const KeySet& separatorKeys = separatorCache->at(child.get());
+    auto it = groupIndexBySeparator.find(separatorKeys);
+    size_t groupIndex = 0;
+    if (it == groupIndexBySeparator.end()) {
+      groupIndex = groups.size();
+      groupIndexBySeparator.emplace(separatorKeys, groupIndex);
+      groups.push_back(LeafGroup{{}, i});
+    } else {
+      groupIndex = it->second;
+    }
+
+    const size_t totalDim =
+        totalDimForSymbolicCluster(child, dims, separatorCache);
+    groups[groupIndex].leaves.push_back({child, totalDim, i});
+  }
+
+  return groups;
+}
+
+std::vector<LeafBatch> buildLeafBatches(const std::vector<LeafGroup>& groups,
+                                        size_t leafMergeDimCap) {
+  // Pack each group into batches capped by total dimension.
+  std::vector<LeafBatch> batches;
+  for (const auto& group : groups) {
+    size_t currentTotalDim = 0;
+    LeafBatch batch;
+    batch.firstIndex = group.firstIndex;
+    for (const auto& leaf : group.leaves) {
+      if (!batch.leaves.empty() &&
+          currentTotalDim + leaf.totalDim > leafMergeDimCap) {
+        batches.push_back(batch);
+        batch.leaves.clear();
+        currentTotalDim = 0;
+        batch.firstIndex = leaf.index;
+      }
+      if (batch.leaves.empty()) {
+        batch.firstIndex = leaf.index;
+      }
+      batch.leaves.push_back(leaf.child);
+      currentTotalDim += leaf.totalDim;
+    }
+    if (!batch.leaves.empty()) {
+      batches.push_back(batch);
+    }
+  }
+
+  std::sort(batches.begin(), batches.end(),
+            [](const LeafBatch& a, const LeafBatch& b) {
+              return a.firstIndex < b.firstIndex;
+            });
+  return batches;
+}
+
+bool mergeLeafBatches(const SymbolicJunctionTree::sharedNode& cluster,
+                      const std::vector<LeafBatch>& batches) {
+  // Merge each batch of siblings into a super-leaf in-place.
+  bool anyMerged = false;
+  for (const auto& batch : batches) {
+    if (batch.leaves.size() <= 1) continue;
+    cluster->mergeChildrenSiblings(batch.leaves);
+    anyMerged = true;
+  }
+  return anyMerged;
+}
+
 void accumulateSymbolicStats(const SymbolicJunctionTree::sharedNode& cluster,
                              const std::map<Key, size_t>& dims,
                              SymbolicJunctionTree::Cluster::KeySetMap* cache,
@@ -206,6 +301,49 @@ void accumulateSymbolicStats(const SymbolicJunctionTree::sharedNode& cluster,
   for (const auto& child : cluster->children) {
     accumulateSymbolicStats(child, dims, cache, stats);
   }
+}
+
+/**
+ * @brief Recursively groups leaf children into super-leaves capped by total
+ * dimension.
+ *
+ * This function traverses the symbolic junction tree rooted at the given
+ * cluster node. For each cluster, it gathers direct leaf children (i.e.,
+ * children with no further descendants) and groups those with identical
+ * separators into new super-leaves until the running total dimension reaches
+ * the specified leafMergeDimCap, then starts a new group.
+ *
+ * The merging process works as follows:
+ * - Recursively process all children clusters first.
+ * - Identify all direct leaf children of the current cluster and collect their
+ * total dimensions (separator + frontal) and separator keys.
+ * - Group leaf children by identical separator keys, preserving first-seen
+ * order for each separator.
+ * - Build super-leaves by accumulating leaf children until the total dimension
+ * hits the cap, then start a new super-leaf.
+ * - Replace leaf children with the new super-leaves (non-leaf children keep
+ * their relative order and grouped leaves appear at the first leaf location
+ * for that separator).
+ *
+ * @param cluster         The current symbolic junction tree node (cluster) to
+ * process.
+ * @param dims            A map from variable keys to their dimensions.
+ * @param leafMergeDimCap The maximum allowed dimension for a merged cluster.
+ */
+void mergeLeafChildren(const SymbolicJunctionTree::sharedNode& cluster,
+                       const std::map<Key, size_t>& dims,
+                       size_t leafMergeDimCap) {
+  if (!cluster || cluster->children.empty()) return;
+  for (const auto& child : cluster->children) {
+    mergeLeafChildren(child, dims, leafMergeDimCap);
+  }
+
+  SymbolicJunctionTree::Cluster::KeySetMap separatorCache;
+  const std::vector<LeafGroup> groups =
+      collectLeafGroups(cluster, dims, &separatorCache);
+  const std::vector<LeafBatch> batches =
+      buildLeafBatches(groups, leafMergeDimCap);
+  if (!mergeLeafBatches(cluster, batches)) return;
 }
 
 // Bottom-up merge of child clusters whose merged total dimension stays below
@@ -316,7 +454,6 @@ MultifrontalSolver::MultifrontalSolver(const GaussianFactorGraph& graph,
                                        const Ordering& ordering)
     : MultifrontalSolver(graph, ordering, Parameters{}) {}
 
-
 /* ************************************************************************* */
 MultifrontalSolver::MultifrontalSolver(PrecomputedData data,
                                        const Ordering& ordering,
@@ -338,6 +475,15 @@ MultifrontalSolver::MultifrontalSolver(PrecomputedData data,
   // Report the symbolic structure before any merge.
   reportStructure(data.junctionTree, dims_, "Symbolic cluster structure",
                   params_.reportStream);
+
+  // If applicable, merge leaf children by a separate cap first.
+  if (params_.leafMergeDimCap > 0) {
+    for (const auto& rootCluster : data.junctionTree.roots()) {
+      mergeLeafChildren(rootCluster, dims_, params_.leafMergeDimCap);
+    }
+    reportStructure(data.junctionTree, dims_,
+                    "Clique structure after leaf merge", params_.reportStream);
+  }
 
   // If applicable, merge small child cliques bottom-up.
   if (params_.mergeDimCap > 0) {
@@ -365,7 +511,6 @@ MultifrontalSolver::MultifrontalSolver(PrecomputedData data,
 MultifrontalSolver::MultifrontalSolver(PrecomputedData data,
                                        const Ordering& ordering)
     : MultifrontalSolver(std::move(data), ordering, Parameters{}) {}
-
 
 /* ************************************************************************* */
 MultifrontalSolver::PrecomputedData MultifrontalSolver::Precompute(
@@ -413,8 +558,8 @@ void MultifrontalSolver::eliminateInPlace() {
   auto visitorPost = [](const CliquePtr& node) {
     if (node) node->eliminateInPlace();
   };
-  treeTraversal::PostOrderForestParallel(
-      *this, visitorPost, params_.eliminationParallelThreshold);
+  treeTraversal::PostOrderForestParallel(*this, visitorPost,
+                                         params_.eliminationParallelThreshold);
 #else
   runBottomUp([](MultifrontalClique& node) { node.eliminateInPlace(); });
 #endif
@@ -431,8 +576,8 @@ void MultifrontalSolver::eliminateInPlace(const GaussianFactorGraph& graph) {
     node->fillAb(graph);
     node->eliminateInPlace();
   };
-  treeTraversal::PostOrderForestParallel(
-      *this, visitorPost, params_.eliminationParallelThreshold);
+  treeTraversal::PostOrderForestParallel(*this, visitorPost,
+                                         params_.eliminationParallelThreshold);
 #else
   runBottomUp([&graph](MultifrontalClique& node) {
     node.fillAb(graph);

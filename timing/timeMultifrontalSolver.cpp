@@ -60,7 +60,9 @@ static void runMultifrontalSolver(MultifrontalSolver& solver,
 
 namespace {
 const std::string bal135 = findExampleDataFile("dubrovnik-135-90642-pre.txt");
-}
+const string bal16 = findExampleDataFile("dubrovnik-16-22106-pre");
+const string bal88 = findExampleDataFile("dubrovnik-88-64298-pre");
+}  // namespace
 
 void runBAL135Benchmark() {
   const size_t iterations = 1;
@@ -86,8 +88,6 @@ void runBAL135Benchmark() {
 
 void runBALBenchmark() {
   const size_t bal_iterations = 2;
-  const string bal16 = findExampleDataFile("dubrovnik-16-22106-pre");
-  const string bal88 = findExampleDataFile("dubrovnik-88-64298-pre");
   for (const auto& filename : {bal16, bal88, bal135}) {
     cout << "\nProcessing BAL file: " << filename << std::endl;
     const SfmData db = SfmData::FromBalFile(filename);
@@ -101,6 +101,7 @@ void runBALBenchmark() {
 
     MultifrontalSolver::Parameters params;
     params.mergeDimCap = kMergeDimCap;
+    params.reportStream = &std::cout;
     MultifrontalSolver solver(linear, ordering, params);
     solver.eliminateInPlace(linear);  // Warm up cache.
     auto start = std::chrono::high_resolution_clock::now();
@@ -120,6 +121,7 @@ void runBALBenchmark() {
          << t_standard.count() / t_imperative.count() << "x" << std::endl;
   }
 }
+
 void runChainBenchmark() {
   const std::vector<size_t> T_values = {10, 50, 100, 500, 1000, 5000};
   const size_t iterations = 500;
@@ -152,11 +154,99 @@ void runChainBenchmark() {
          << t_standard.count() / t_imperative.count() << "x" << std::endl;
   }
 }
+
+void tuneMergingBAL() {
+  const size_t iterations = 2;
+  const std::vector<std::string> balFiles = {bal16, bal88, bal135};
+  cout << "\nTune leaf merging (BAL, iterations=" << iterations << ")"
+       << std::endl;
+
+  const std::vector<size_t> caps = {0, 64, 128, 256, 512, 1024, 2048};
+  std::vector<std::vector<double>> results(
+      caps.size(), std::vector<double>(balFiles.size(), 0.0));
+
+  for (size_t fileIndex = 0; fileIndex < balFiles.size(); ++fileIndex) {
+    const std::string& filename = balFiles[fileIndex];
+    cout << "\n  BAL file: " << filename << std::endl;
+    const SfmData db = SfmData::FromBalFile(filename);
+    const NonlinearFactorGraph graph = buildGeneralSfmGraph(db, 0.1);
+    const Values initial = buildGeneralSfmInitial(db);
+    const GaussianFactorGraph linear = *graph.linearize(initial);
+    const Ordering ordering = createSchurOrdering(db, false);
+
+    MultifrontalSolver::Parameters params;
+    params.mergeDimCap = 0;
+    params.reportStream = &std::cout;
+    for (size_t capIndex = 0; capIndex < caps.size(); ++capIndex) {
+      const size_t cap = caps[capIndex];
+      params.leafMergeDimCap = cap;
+
+      MultifrontalSolver solver(linear, ordering, params);
+      solver.eliminateInPlace(linear);  // Warm up cache.
+      auto start = std::chrono::high_resolution_clock::now();
+      runMultifrontalSolver(solver, linear, iterations);
+      auto end = std::chrono::high_resolution_clock::now();
+      std::chrono::duration<double> t_imperative = end - start;
+      results[capIndex][fileIndex] = t_imperative.count();
+      cout << "  leafMergeDimCap=" << cap << " -> " << t_imperative.count()
+           << " s\n"
+           << std::endl;
+    }
+  }
+
+  cout << "\n| LeafMergeDimCap | BAL16 | BAL88 | BAL135 |\n";
+  cout << "| --- | --- | --- | --- |\n";
+  for (size_t capIndex = 0; capIndex < caps.size(); ++capIndex) {
+    cout << "| " << caps[capIndex];
+    for (size_t fileIndex = 0; fileIndex < balFiles.size(); ++fileIndex) {
+      cout << " | " << results[capIndex][fileIndex];
+    }
+    cout << " |\n";
+  }
+}
+
+void tuneMergeChain() {
+  const size_t iterations = 100;
+  const size_t T = 5000;
+  cout << "\nTune mergeDimCap (chain T=" << T << ", iterations=" << iterations
+       << ")" << std::endl;
+
+  GaussianFactorGraph smoother = createSmoother(T);
+  const Ordering ordering = Ordering::Metis(smoother);
+
+  const std::vector<size_t> caps = {0, 16, 32, 64, 128, 256, 512};
+  std::vector<std::pair<size_t, double>> results;
+  MultifrontalSolver::Parameters params;
+  params.leafMergeDimCap = 0;
+  params.reportStream = &std::cout;
+  for (size_t cap : caps) {
+    params.mergeDimCap = cap;
+    MultifrontalSolver solver(smoother, ordering, params);
+
+    auto start = std::chrono::high_resolution_clock::now();
+    runMultifrontalSolver(solver, smoother, iterations);
+    auto end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> t_imperative = end - start;
+    results.emplace_back(cap, t_imperative.count());
+    cout << "  mergeDimCap=" << cap << " -> " << t_imperative.count() << " s\n"
+         << std::endl;
+  }
+
+  cout << "\n| Phase | Cap | Seconds |\n";
+  cout << "| --- | --- | --- |\n";
+  for (const auto& result : results) {
+    cout << "| mergeDimCap | " << result.first << " | " << result.second
+         << " |\n";
+  }
+}
+
 int main() {
   cout << "Merging dim cap " << kMergeDimCap << std::endl;
 
   runBAL135Benchmark();
   runBALBenchmark();
   runChainBenchmark();
+  // tuneMergingBAL();
+  // tuneMergeChain();
   return 0;
 }

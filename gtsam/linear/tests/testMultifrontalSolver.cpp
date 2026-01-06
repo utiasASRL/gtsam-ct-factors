@@ -47,12 +47,19 @@ const GaussianFactorGraph chain = {
     std::make_shared<JacobianFactor>(x4, I_1x1, I_1x1, chainNoise4)};
 const Ordering chainOrdering{x2, x1, x3, x4};
 
+MultifrontalSolver::Parameters noMergeParams() {
+  MultifrontalSolver::Parameters params;
+  params.mergeDimCap = 0;
+  params.leafMergeDimCap = 0;
+  return params;
+}
+
 }  // namespace
 
 /* ************************************************************************* */
 // Build the solver and validate initial structure and explicit load.
 TEST(MultifrontalSolver, Constructor) {
-  MultifrontalSolver solver(chain, chainOrdering);
+  MultifrontalSolver solver(chain, chainOrdering, noMergeParams());
   solver.load(chain);
 
   // Verify roots
@@ -83,7 +90,7 @@ TEST(MultifrontalSolver, Constructor) {
 // Build the solver from precomputed data and validate structure and load.
 TEST(MultifrontalSolver, ConstructorPrecomputed) {
   auto data = MultifrontalSolver::Precompute(chain, chainOrdering);
-  MultifrontalSolver solver(std::move(data), chainOrdering);
+  MultifrontalSolver solver(std::move(data), chainOrdering, noMergeParams());
   solver.load(chain);
 
   // Verify roots
@@ -109,7 +116,7 @@ TEST(MultifrontalSolver, ConstructorPrecomputed) {
 /* ************************************************************************* */
 // Reload numerical values and ensure Ab updates match whitening.
 TEST(MultifrontalSolver, Load) {
-  MultifrontalSolver solver(chain, chainOrdering);
+  MultifrontalSolver solver(chain, chainOrdering, noMergeParams());
 
   // Create a new graph with doubled values
   GaussianFactorGraph chain2;
@@ -137,7 +144,7 @@ TEST(MultifrontalSolver, Load) {
 /* ************************************************************************* */
 // Compare solver output against multifrontal elimination baseline.
 TEST(MultifrontalSolver, Eliminate) {
-  MultifrontalSolver solver(chain, chainOrdering);
+  MultifrontalSolver solver(chain, chainOrdering, noMergeParams());
   solver.load(chain);
   solver.eliminateInPlace();
 
@@ -154,7 +161,7 @@ TEST(MultifrontalSolver, Eliminate) {
 /* ************************************************************************* */
 // Load + eliminate in one traversal matches standard elimination.
 TEST(MultifrontalSolver, EliminateWithLoad) {
-  MultifrontalSolver solver(chain, chainOrdering);
+  MultifrontalSolver solver(chain, chainOrdering, noMergeParams());
   solver.eliminateInPlace(chain);
 
   const VectorValues& actual = solver.updateSolution();
@@ -168,7 +175,7 @@ TEST(MultifrontalSolver, EliminateWithLoad) {
 /* ************************************************************************* */
 // Compare marginals from in-place Bayes tree against standard elimination.
 TEST(MultifrontalSolver, ComputeBayesTreeMarginals) {
-  MultifrontalSolver solver(chain, chainOrdering);
+  MultifrontalSolver solver(chain, chainOrdering, noMergeParams());
   solver.load(chain);
   solver.eliminateInPlace();
 
@@ -204,7 +211,7 @@ TEST(MultifrontalSolver, ComputeBayesTreeMarginalsConstrainedChain) {
   constrainedChain.emplace_shared<JacobianFactor>(
       x2, I_1x1, (Vector(1) << 0.0).finished(), hardConstraint);
 
-  MultifrontalSolver solver(constrainedChain, chainOrdering);
+  MultifrontalSolver solver(constrainedChain, chainOrdering, noMergeParams());
   solver.load(constrainedChain);
   solver.eliminateInPlace();
 
@@ -233,7 +240,7 @@ TEST(MultifrontalSolver, ConstrainedNoiseFeasible) {
       x1, I_1x1, (Vector(1) << 100.0).finished(), softNoise);
   const Ordering ordering{x1};
 
-  MultifrontalSolver solver(graph, ordering);
+  MultifrontalSolver solver(graph, ordering, noMergeParams());
   solver.load(graph);
   solver.eliminateInPlace();
   const VectorValues& actual = solver.updateSolution();
@@ -255,7 +262,8 @@ TEST(MultifrontalSolver, ConstrainedNoiseUnsupported) {
   const Ordering ordering{x1};
 
   CHECK_EXCEPTION(
-      { MultifrontalSolver solver(graph, ordering); }, std::runtime_error);
+      { MultifrontalSolver solver(graph, ordering, noMergeParams()); },
+      std::runtime_error);
 }
 
 /* ************************************************************************* */
@@ -270,7 +278,7 @@ TEST(MultifrontalSolver, ConstrainedNoiseUnaryFeasible) {
                                        softNoise);
   const Ordering ordering{x1};
 
-  MultifrontalSolver solver(graph, ordering);
+  MultifrontalSolver solver(graph, ordering, noMergeParams());
   solver.load(graph);
   solver.eliminateInPlace();
   const VectorValues& actual = solver.updateSolution();
@@ -288,7 +296,8 @@ TEST(MultifrontalSolver, ConstrainedNoiseMixedKeysUnsupported) {
   const Ordering ordering{x1, x2};
 
   CHECK_EXCEPTION(
-      { MultifrontalSolver solver(graph, ordering); }, std::runtime_error);
+      { MultifrontalSolver solver(graph, ordering, noMergeParams()); },
+      std::runtime_error);
 }
 
 /* ************************************************************************* */
@@ -307,7 +316,7 @@ TEST(MultifrontalSolver, WeightedScalarMeasurements) {
                                        noiseModel::Isotropic::Sigma(1, sigma2));
 
   const Ordering ordering{x1};
-  MultifrontalSolver solver(graph, ordering);
+  MultifrontalSolver solver(graph, ordering, noMergeParams());
   solver.load(graph);
   solver.eliminateInPlace();
   const VectorValues& actual = solver.updateSolution();
@@ -323,7 +332,7 @@ TEST(MultifrontalSolver, HessianFactors) {
                                       (Vector(1) << 8.0).finished(), 0.0);
 
   const Ordering ordering{x1};
-  MultifrontalSolver solver(graph, ordering);
+  MultifrontalSolver solver(graph, ordering, noMergeParams());
   solver.load(graph);
   solver.eliminateInPlace();
   const VectorValues& actual = solver.updateSolution();
@@ -334,13 +343,13 @@ TEST(MultifrontalSolver, HessianFactors) {
 /* ************************************************************************* */
 // Merge threshold changes the clique count.
 TEST(MultifrontalSolver, MergeDimCap) {
-  MultifrontalSolver::Parameters noMergeParams;
-  MultifrontalSolver solverNoMerge(chain, chainOrdering, noMergeParams);
+  MultifrontalSolver::Parameters noMerge = noMergeParams();
+  MultifrontalSolver solverNoMerge(chain, chainOrdering, noMerge);
   EXPECT_LONGS_EQUAL(2, solverNoMerge.cliqueCount());
 
-  MultifrontalSolver::Parameters mergeParams;
-  mergeParams.mergeDimCap = 1000;
-  MultifrontalSolver solverMerge(chain, chainOrdering, mergeParams);
+  MultifrontalSolver::Parameters merge = noMergeParams();
+  merge.mergeDimCap = 1000;
+  MultifrontalSolver solverMerge(chain, chainOrdering, merge);
   EXPECT_LONGS_EQUAL(1, solverMerge.cliqueCount());
 }
 
@@ -355,7 +364,7 @@ TEST(MultifrontalSolver, BalancedSmoother) {
   // Create the Bayes tree ordering
   const Ordering ordering{X(1), X(3), X(5), X(7), X(2), X(6), X(4)};
 
-  MultifrontalSolver solver(smoother, ordering);
+  MultifrontalSolver solver(smoother, ordering, noMergeParams());
   solver.load(smoother);
 
   // Verify roots
