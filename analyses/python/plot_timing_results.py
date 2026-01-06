@@ -39,7 +39,7 @@ nees_inter_est = df.iloc[:, 12].to_numpy()
 
 
 plt.figure(figsize=(7, 6))
-plt.xlabel("Frequency of Non-Interpolated States")
+plt.xlabel("Interval of Non-Interpolated States")
 
 #Name of plot
 plt.title("Localization w/ Simplified Noise Model")
@@ -49,8 +49,6 @@ plt.plot(interp_period, solve_time_full, label="Full Graph Solve Time", linestyl
 plt.plot(interp_period, solve_time_inter, label="Inter. Graph Solve Time", marker='o', color='blue')
 
 #Plot full vs interpolated solve time per iteration
-plt.plot(interp_period, solve_time_full_iter, label="Full Graph Iter. Time", linestyle='--', marker=None, color='orange')
-plt.plot(interp_period, solve_time_inter_iter, label="Inter. Graph Iter. Time", marker='o', color='orange')
 plt.plot(interp_period, solve_time_full_iter, label="Full Graph Iter. Time", linestyle='--', marker=None, color='lightblue')
 plt.plot(interp_period, solve_time_inter_iter, label="Inter. Graph Iter. Time", marker='o', color='lightblue')
 
@@ -99,7 +97,7 @@ nees_inter_est = df.iloc[:, 12].to_numpy()
 
 
 plt.figure(figsize=(7, 6))
-plt.xlabel("Frequency of Non-Interpolated States")
+plt.xlabel("Interval of Non-Interpolated States")
 
 #Name of plot
 plt.title("Localization w/ Full Noise Model")
@@ -109,8 +107,6 @@ plt.plot(interp_period, solve_time_full, label="Full Graph Solve Time", linestyl
 plt.plot(interp_period, solve_time_inter, label="Inter. Graph Solve Time", marker='o', color='blue')
 
 #Plot full vs interpolated solve time per iteration
-plt.plot(interp_period, solve_time_full_iter, label="Full Graph Iter. Time", linestyle='--', marker=None, color='orange')
-plt.plot(interp_period, solve_time_inter_iter, label="Inter. Graph Iter. Time", marker='o', color='orange')
 plt.plot(interp_period, solve_time_full_iter, label="Full Graph Iter. Time", linestyle='--', marker=None, color='lightblue')
 plt.plot(interp_period, solve_time_inter_iter, label="Inter. Graph Iter. Time", marker='o', color='lightblue')
 
@@ -170,7 +166,7 @@ nees_inter_est = df.iloc[:, 12].to_numpy()
 
 
 plt.figure(figsize=(7, 6))
-plt.xlabel("Frequency of Non-Interpolated States")
+plt.xlabel("Interval of Non-Interpolated States")
 
 #Name of plot
 plt.title("SLAM w/ Simplified Noise Model")
@@ -180,8 +176,6 @@ plt.plot(interp_period, solve_time_full, label="Full Graph Solve Time", linestyl
 plt.plot(interp_period, solve_time_inter, label="Inter. Graph Solve Time", marker='o', color='blue')
 
 #Plot full vs interpolated solve time per iteration
-plt.plot(interp_period, solve_time_full_iter, label="Full Graph Iter. Time", linestyle='--', marker=None, color='orange')
-plt.plot(interp_period, solve_time_inter_iter, label="Inter. Graph Iter. Time", marker='o', color='orange')
 plt.plot(interp_period, solve_time_full_iter, label="Full Graph Iter. Time", linestyle='--', marker=None, color='lightblue')
 plt.plot(interp_period, solve_time_inter_iter, label="Inter. Graph Iter. Time", marker='o', color='lightblue')
 
@@ -230,7 +224,7 @@ nees_inter_est = df.iloc[:, 12].to_numpy()
 
 
 plt.figure(figsize=(7, 6))
-plt.xlabel("Frequency of Non-Interpolated States")
+plt.xlabel("Interval of Non-Interpolated States")
 
 #Name of plot
 plt.title("SLAM w/ Full Noise Model")
@@ -284,7 +278,7 @@ nees_inter_est_non_fixed = df_non_fixed_loc.iloc[:, 12].to_numpy()
 
 plt.figure(figsize=(7, 6))
 plt.title("Localization NEES: Simplified vs Full Noise Model")
-plt.xlabel("Frequency of Non-Interpolated States")
+plt.xlabel("Interval of Non-Interpolated States")
 plt.ylabel("NEES")
 
 # Simplified noise model
@@ -315,7 +309,7 @@ nees_inter_est_non_fixed = df_non_fixed_loc.iloc[:, 12].to_numpy()
 
 plt.figure(figsize=(7, 6))
 plt.title("SLAM NEES: Simplified vs Full Noise Model")
-plt.xlabel("Frequency of Non-Interpolated States")
+plt.xlabel("Interval of Non-Interpolated States")
 plt.ylabel("NEES")
 
 # Simplified noise model
