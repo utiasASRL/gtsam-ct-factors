@@ -491,10 +491,10 @@ bool JacobianFactor::equals(const GaussianFactor& f_, double tol) const {
 
 /* ************************************************************************* */
 Vector JacobianFactor::unweighted_error(const VectorValues& c) const {
-  const Vector v = c.vector(keys_);
-  Vector w(v.size() + 1);
-  w.segment(0, v.size()) = v;
-  w(v.size()) = -1.0;
+  const DenseIndex totalDim = c.totalDim(keys_);
+  Vector w(totalDim + 1);
+  c.fillVector(keys_, w);
+  w(totalDim) = -1.0;
   // Fast path when the active view is the full matrix (no row/column offsets).
   if (Ab_.firstBlock() == 0 && Ab_.rowStart() == 0 &&
       Ab_.rowEnd() == Ab_.matrix().rows()) {

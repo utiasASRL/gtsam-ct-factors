@@ -280,6 +280,29 @@ namespace gtsam {
     /** Retrieve the entire solution as a single vector */
     Vector vector() const;
 
+    /** Compute the total dimension of a subset of relevant keys. */
+    template <typename CONTAINER>
+    DenseIndex totalDim(const CONTAINER& keys) const {
+      DenseIndex totalDim = 0;
+      for (Key key : keys) {
+        totalDim += static_cast<DenseIndex>(at(key).size());
+      }
+      return totalDim;
+    }
+
+    /** Fill a preallocated Eigen vector expression with a subset of relevant keys. */
+    template <typename CONTAINER, typename Derived>
+    void fillVector(const CONTAINER& keys,
+                    const Eigen::MatrixBase<Derived>& result) const {
+      auto& writable = const_cast<Eigen::MatrixBase<Derived>&>(result);
+      DenseIndex pos = 0;
+      for (Key key : keys) {
+        const Vector& v = at(key);
+        writable.segment(pos, v.size()) = v;
+        pos += v.size();
+      }
+    }
+
     /** Access a vector that is a subset of relevant keys. */
     template <typename CONTAINER>
     Vector vector(const CONTAINER& keys) const {
