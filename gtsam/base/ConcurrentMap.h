@@ -19,7 +19,7 @@
 #pragma once
 
 #include <gtsam/global_includes.h>
-#include "gtsam/base/FastMap.h"
+#include <gtsam/base/FastMap.h>
 
 // Change class depending on whether we are using TBB
 #ifdef GTSAM_USE_TBB
