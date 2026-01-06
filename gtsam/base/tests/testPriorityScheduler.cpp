@@ -8,7 +8,7 @@
 
 /**
  * @file testPriorityScheduler.cpp
- * @brief Unit tests for PriorityScheduler with simplified recursive API.
+ * @brief Unit tests for PriorityScheduler with forest TaskMixin helpers.
  * @author Frank Dellaert
  * @date May, 2025
  */
@@ -16,105 +16,168 @@
 #include <CppUnitLite/TestHarness.h>
 #include <gtsam/base/PriorityScheduler.h>
 
-#include <atomic>  // For void test counter
-#include <functional>
-#include <map>  // For A* closed set
+#include <iostream>
 #include <memory>
-#include <optional>  // For A* result
 #include <vector>
 
 using namespace gtsam;
 
-// Common TreeNode definition (using shared_ptr)
+/* ************************************************************************* */
+// Compose child return values inside a parent task
+TEST(PriorityScheduler, ReturnValueComposition) {
+  // Use multiple workers so parent tasks can wait without stalling the pool.
+  PriorityScheduler<size_t> scheduler(2);
+
+  // Schedule leaves first with higher priority (lower numeric value).
+  auto left = scheduler.schedule(0.0, [] { return size_t{3}; }).share();
+  auto right = scheduler.schedule(0.0, [] { return size_t{4}; }).share();
+
+  // Parent task waits on the child futures and combines their values.
+  auto parent = scheduler.schedule(
+      10.0, [left, right]() mutable { return left.get() + right.get(); });
+
+  const size_t expectedSum = 7;
+  EXPECT_LONGS_EQUAL(expectedSum, parent.get());
+}
+
+/* ************************************************************************* */
+// Forest mixin tests
+/* ************************************************************************* */
+
+/// Common TreeNode definition (using shared_ptr).
 struct TreeNode {
   int value;
-  std::vector<std::shared_ptr<TreeNode>> children;
-  TreeNode(int v) : value(v) {}
-  void addChild(std::shared_ptr<TreeNode> child) { children.push_back(child); }
+  explicit TreeNode(int v) : value(v) {}
 };
 
 namespace {
-std::shared_ptr<TreeNode> createSimpleTree() {
-  auto n5 = std::make_shared<TreeNode>(5);
-  auto n3 = std::make_shared<TreeNode>(3);
-  auto n8 = std::make_shared<TreeNode>(8);
-  auto n2 = std::make_shared<TreeNode>(2);
-  auto n1 = std::make_shared<TreeNode>(1);
-  auto n4 = std::make_shared<TreeNode>(4);
-  auto n7 = std::make_shared<TreeNode>(7);
-  n5->children = {n3, n8, n2};
-  n3->children = {n1, n4};
-  n2->children = {n7};
-  return n5;
+/// Build a small tree for tests.
+template <typename NodeT>
+std::shared_ptr<NodeT> createSimpleTree() {
+  auto n1 = std::make_shared<NodeT>(1);
+  auto n2 = std::make_shared<NodeT>(2);
+  auto n3 = std::make_shared<NodeT>(3);
+  auto n4 = std::make_shared<NodeT>(4);
+  auto n5 = std::make_shared<NodeT>(5);
+  auto n6 = std::make_shared<NodeT>(6);
+  auto n7 = std::make_shared<NodeT>(7);
+  n1->children() = {n2, n3, n4};
+  n2->children() = {n5, n6};
+  n6->children() = {n7};
+  return n1;
 }
+
 }  // namespace
 
 /* ************************************************************************* */
-// Test 1: Recursive Node Counting (returns size_t)
+// Test 1: Bottom-up traversal
 /* ************************************************************************* */
-namespace {
-size_t countNodesRecursive(
-    std::shared_ptr<TreeNode> node,
-    RecursiveTaskContext<size_t, std::shared_ptr<TreeNode>> context) {
-  if (!node) return 0;
-  size_t count = 1;
-  double childPriorityBase = static_cast<double>(node->value);
+/// TreeNode specialization for bottom-up test.
+struct TestNode1 : public TreeNode {
+  using TreeNode::TreeNode;
+  std::vector<std::shared_ptr<TestNode1>> children_;
+  size_t subtreeCount{0};
 
-  for (const auto& child : node->children) {
-    count += context.processChild(child, childPriorityBase - 1.0,
-                                  countNodesRecursive);
+  /// Return child list for traversal.
+  std::vector<std::shared_ptr<TestNode1>>& children() { return children_; }
+
+  /// Bottom-up payload for tests.
+  void bottomUpValue() {
+    // Each node stores 1 plus the sum of its children's results.
+    size_t sum = 1;
+    for (const auto& child : children()) {
+      sum += child->subtreeCount;
+    }
+    subtreeCount = sum;
   }
-  return count;
-}
-}  // namespace
+};
 
-TEST(PriorityScheduler, RecursiveNodeCounting) {
-  std::shared_ptr<TreeNode> root = createSimpleTree();
-  PriorityScheduler<size_t> scheduler(std::thread::hardware_concurrency());
+/// Forest wrapper for bottom-up traversal.
+struct TestForest1 : public TaskMixin<TestForest1, TestNode1> {
+  std::vector<std::shared_ptr<TestNode1>> roots_;
 
-  std::function<size_t(std::shared_ptr<TreeNode>,
-                       RecursiveTaskContext<size_t, std::shared_ptr<TreeNode>>)>
-      countFunc = countNodesRecursive;
-  size_t totalCount = scheduler.runRecursive(root, 0.0, countFunc);
+  const std::vector<std::shared_ptr<TestNode1>>& roots() const {
+    return roots_;
+  }
+
+  /// Count nodes using a bottom-up traversal.
+  size_t countNodes() {
+    runBottomUp(&TestNode1::bottomUpValue);
+    size_t total = 0;
+    for (const auto& root : roots_) {
+      total += root->subtreeCount;
+    }
+    return total;
+  }
+};
+
+TEST(PriorityScheduler, TaskMixinBottomUpCounting) {
+  std::shared_ptr<TestNode1> root = createSimpleTree<TestNode1>();
+  TestForest1 forest;
+  forest.roots_.push_back(root);
+  size_t rootValue = forest.countNodes();
 
   const size_t expectedTotalNodes = 7;
-  EXPECT_LONGS_EQUAL(expectedTotalNodes, totalCount);
+  EXPECT_LONGS_EQUAL(expectedTotalNodes, rootValue);
 }
 
 /* ************************************************************************* */
-// Test 2: Recursive Void Tasks
+// Test 2: Top-down traversal
 /* ************************************************************************* */
-namespace {
-std::atomic<size_t> globalVoidTaskCounter{0};
+/// TreeNode specialization for top-down test.
+struct TestNode2 : public TreeNode {
+  using TreeNode::TreeNode;
+  std::vector<std::shared_ptr<TestNode2>> children_;
+  bool visited{false};
+  size_t subtreeCount{0};
 
-void processNodeVoid(
-    std::shared_ptr<TreeNode> node,
-    RecursiveTaskContext<void, std::shared_ptr<TreeNode>> context) {
-  if (!node) {
-    return;
+  /// Return child list for traversal.
+  std::vector<std::shared_ptr<TestNode2>>& children() { return children_; }
+
+  /// Top-down payload for tests.
+  void topDownTouch() { visited = true; }
+
+  /// Bottom-up payload for tests.
+  void bottomUpVisitedCount() {
+    // Each node stores 1 if visited plus the sum of its children.
+    size_t sum = visited ? 1 : 0;
+    for (const auto& child : children()) {
+      sum += child->subtreeCount;
+    }
+    subtreeCount = sum;
   }
-  globalVoidTaskCounter.fetch_add(1, std::memory_order_relaxed);
-  double childPriorityBase = static_cast<double>(node->value);
+};
 
-  for (const auto& child : node->children) {
-    context.processChild(child, childPriorityBase - 1.0, processNodeVoid);
+/// Forest wrapper for top-down traversal.
+struct TestForest2 : public TaskMixin<TestForest2, TestNode2> {
+  std::vector<std::shared_ptr<TestNode2>> roots_;
+
+  const std::vector<std::shared_ptr<TestNode2>>& roots() const {
+    return roots_;
   }
-}
-}  // namespace
 
-TEST(PriorityScheduler, testSimplifiedRecursiveVoidTasks) {
-  std::shared_ptr<TreeNode> root = createSimpleTree();
-  PriorityScheduler<void> scheduler(std::thread::hardware_concurrency());
-  globalVoidTaskCounter.store(0);
+  /// Touch all nodes using a top-down traversal.
+  void touchAll() { runTopDown(&TestNode2::topDownTouch); }
 
-  // FIX: Wrap the function pointer in std::function
-  std::function<void(std::shared_ptr<TreeNode>,
-                     RecursiveTaskContext<void, std::shared_ptr<TreeNode>>)>
-      processFunc = processNodeVoid;
-  scheduler.runRecursive(root, 0.0, processFunc);
+  /// Count visited nodes using a bottom-up traversal.
+  size_t countVisited() {
+    runBottomUp(&TestNode2::bottomUpVisitedCount);
+    size_t total = 0;
+    for (const auto& root : roots_) {
+      total += root->subtreeCount;
+    }
+    return total;
+  }
+};
+
+TEST(PriorityScheduler, TaskMixinTopDown) {
+  std::shared_ptr<TestNode2> root = createSimpleTree<TestNode2>();
+  TestForest2 forest;
+  forest.roots_.push_back(root);
+  forest.touchAll();
 
   const size_t expectedTotalNodes = 7;
-  EXPECT_LONGS_EQUAL(expectedTotalNodes, globalVoidTaskCounter.load());
+  EXPECT_LONGS_EQUAL(expectedTotalNodes, forest.countVisited());
 }
 
 /* ************************************************************************* */
