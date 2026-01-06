@@ -8,15 +8,13 @@
  * See LICENSE for the license information
 
  * -------------------------------------------------------------------------- */
-
 /**
- * @file    LevenbergMarquardtOptimizer.cpp
- * @brief   A nonlinear optimizer that uses the Levenberg-Marquardt trust-region scheme
- * @author  Richard Roberts
- * @author  Frank Dellaert
- * @author  Luca Carlone
- * @date    Feb 26, 2012
+ * @file    WNOALevenbergMarquardtOptimizer.cpp
+ * @brief   A nonlinear optimizer that uses the Levenberg-Marquardt trust-region scheme for WNOAFactorGraphs (derived from standard LevenbergMarquardtOptimizer)
+ * @author  Sven Lilge
+ * @date    Dec 6, 2012
  */
+
 
 #include <gtsam/nonlinear/WNOALevenbergMarquardtOptimizer.h>
 #include <gtsam/nonlinear/internal/LevenbergMarquardtState.h>
