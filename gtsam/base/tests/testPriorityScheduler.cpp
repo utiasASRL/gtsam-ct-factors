@@ -29,12 +29,12 @@ TEST(PriorityScheduler, ReturnValueComposition) {
   PriorityScheduler<size_t> scheduler(2);
 
   // Schedule leaves first with higher priority (lower numeric value).
-  auto left = scheduler.schedule(0.0, [] { return size_t{3}; }).share();
-  auto right = scheduler.schedule(0.0, [] { return size_t{4}; }).share();
+  auto left = scheduler.schedule(0, [] { return size_t{3}; }).share();
+  auto right = scheduler.schedule(0, [] { return size_t{4}; }).share();
 
   // Parent task waits on the child futures and combines their values.
-  auto parent = scheduler.schedule(
-      10.0, [left, right]() mutable { return left.get() + right.get(); });
+  auto parent =
+      scheduler.schedule(10, [left, right]() mutable { return left.get() + right.get(); });
 
   const size_t expectedSum = 7;
   EXPECT_LONGS_EQUAL(expectedSum, parent.get());
