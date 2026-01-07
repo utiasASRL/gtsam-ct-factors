@@ -31,10 +31,16 @@ using namespace gtsam;
 using namespace example;
 
 namespace {
-// Threshold chosen empirically for these timing experiments: merging small
+// Thresholds chosen empirically for these timing experiments: merging small
 // frontal cliques tends to improve performance without materially affecting
 // numerical behavior for the tested problems.
-constexpr size_t kMergeDimCap = 16;
+MultifrontalSolver::Parameters makeDefaultParams() {
+  MultifrontalSolver::Parameters params;
+  params.mergeDimCap = 32;
+  params.reportStream = &std::cout;
+  return params;
+}
+
 }  // namespace
 
 /// Run standard GTSAM multifrontal elimination and optimization.
@@ -64,7 +70,7 @@ const string bal16 = findExampleDataFile("dubrovnik-16-22106-pre");
 const string bal88 = findExampleDataFile("dubrovnik-88-64298-pre");
 }  // namespace
 
-void runBAL135Benchmark() {
+void runBAL135Benchmark(MultifrontalSolver::Parameters params) {
   const size_t iterations = 1;
   cout << "\nSingle MFS test: " << bal135 << " (iterations=" << iterations
        << ")" << std::endl;
@@ -75,8 +81,6 @@ void runBAL135Benchmark() {
   const GaussianFactorGraph linear = *graph.linearize(initial);
   const Ordering ordering = createSchurOrdering(db, false);
 
-  MultifrontalSolver::Parameters params;
-  params.mergeDimCap = kMergeDimCap;
   MultifrontalSolver solver(linear, ordering, params);
   auto start = std::chrono::high_resolution_clock::now();
   runMultifrontalSolver(solver, linear, iterations);
@@ -86,7 +90,7 @@ void runBAL135Benchmark() {
   tictoc_print();
 }
 
-void runBALBenchmark() {
+void runBALBenchmark(MultifrontalSolver::Parameters params) {
   const size_t bal_iterations = 2;
   for (const auto& filename : {bal16, bal88, bal135}) {
     cout << "\nProcessing BAL file: " << filename << std::endl;
@@ -99,9 +103,6 @@ void runBALBenchmark() {
     cout << "\nBAL Benchmark (" << filename << ", iterations=" << bal_iterations
          << "):" << std::endl;
 
-    MultifrontalSolver::Parameters params;
-    params.mergeDimCap = kMergeDimCap;
-    params.reportStream = &std::cout;
     MultifrontalSolver solver(linear, ordering, params);
     solver.eliminateInPlace(linear);  // Warm up cache.
     auto start = std::chrono::high_resolution_clock::now();
@@ -122,7 +123,7 @@ void runBALBenchmark() {
   }
 }
 
-void runChainBenchmark() {
+void runChainBenchmark(MultifrontalSolver::Parameters params) {
   const std::vector<size_t> T_values = {10, 50, 100, 500, 1000, 5000};
   const size_t iterations = 500;
 
@@ -133,9 +134,6 @@ void runChainBenchmark() {
     const Ordering ordering = Ordering::Metis(smoother);
 
     auto start = std::chrono::high_resolution_clock::now();
-    MultifrontalSolver::Parameters params;
-    params.mergeDimCap = kMergeDimCap;
-    params.reportStream = &std::cout;
     MultifrontalSolver solver(smoother, ordering, params);
     runMultifrontalSolver(solver, smoother, iterations);
     auto end = std::chrono::high_resolution_clock::now();
@@ -155,15 +153,33 @@ void runChainBenchmark() {
   }
 }
 
-void tuneMergingBAL() {
+void runChain5000(MultifrontalSolver::Parameters params) {
+  const size_t iterations = 5000;
+
+  const size_t T = 5000;
+  cout << "\nBenchmark (T=" << T << ", iterations=" << iterations
+       << "):" << std::endl;
+  GaussianFactorGraph smoother = createSmoother(T);
+  const Ordering ordering = Ordering::Metis(smoother);
+
+  auto start = std::chrono::high_resolution_clock::now();
+  MultifrontalSolver solver(smoother, ordering, params);
+  runMultifrontalSolver(solver, smoother, iterations);
+  auto end = std::chrono::high_resolution_clock::now();
+  std::chrono::duration<double> t_imperative = end - start;
+  cout << "\nTiming results:\n";
+  cout << "  MultifrontalSolver: " << t_imperative.count() << " s" << std::endl;
+}
+
+void tuneMergingBAL(MultifrontalSolver::Parameters params) {
   const size_t iterations = 2;
   const std::vector<std::string> balFiles = {bal16, bal88, bal135};
   cout << "\nTune leaf merging (BAL, iterations=" << iterations << ")"
        << std::endl;
 
-  const std::vector<size_t> caps = {0, 64, 128, 256, 512, 1024, 2048};
+  const std::vector<size_t> sweep = {0, 64, 128, 256, 512, 1024, 2048};
   std::vector<std::vector<double>> results(
-      caps.size(), std::vector<double>(balFiles.size(), 0.0));
+      sweep.size(), std::vector<double>(balFiles.size(), 0.0));
 
   for (size_t fileIndex = 0; fileIndex < balFiles.size(); ++fileIndex) {
     const std::string& filename = balFiles[fileIndex];
@@ -174,12 +190,9 @@ void tuneMergingBAL() {
     const GaussianFactorGraph linear = *graph.linearize(initial);
     const Ordering ordering = createSchurOrdering(db, false);
 
-    MultifrontalSolver::Parameters params;
-    params.mergeDimCap = 0;
-    params.reportStream = &std::cout;
-    for (size_t capIndex = 0; capIndex < caps.size(); ++capIndex) {
-      const size_t cap = caps[capIndex];
-      params.leafMergeDimCap = cap;
+    for (size_t i = 0; i < sweep.size(); ++i) {
+      const size_t parameter = sweep[i];
+      params.leafMergeDimCap = parameter;
 
       MultifrontalSolver solver(linear, ordering, params);
       solver.eliminateInPlace(linear);  // Warm up cache.
@@ -187,25 +200,25 @@ void tuneMergingBAL() {
       runMultifrontalSolver(solver, linear, iterations);
       auto end = std::chrono::high_resolution_clock::now();
       std::chrono::duration<double> t_imperative = end - start;
-      results[capIndex][fileIndex] = t_imperative.count();
-      cout << "  leafMergeDimCap=" << cap << " -> " << t_imperative.count()
-           << " s\n"
+      results[i][fileIndex] = t_imperative.count();
+      cout << "  leafMergeDimCap=" << parameter << " -> "
+           << t_imperative.count() << " s\n"
            << std::endl;
     }
   }
 
   cout << "\n| LeafMergeDimCap | BAL16 | BAL88 | BAL135 |\n";
   cout << "| --- | --- | --- | --- |\n";
-  for (size_t capIndex = 0; capIndex < caps.size(); ++capIndex) {
-    cout << "| " << caps[capIndex];
+  for (size_t i = 0; i < sweep.size(); ++i) {
+    cout << "| " << sweep[i];
     for (size_t fileIndex = 0; fileIndex < balFiles.size(); ++fileIndex) {
-      cout << " | " << results[capIndex][fileIndex];
+      cout << " | " << results[i][fileIndex];
     }
     cout << " |\n";
   }
 }
 
-void tuneMergeChain() {
+void tuneMergeChain(MultifrontalSolver::Parameters params) {
   const size_t iterations = 100;
   const size_t T = 5000;
   cout << "\nTune mergeDimCap (chain T=" << T << ", iterations=" << iterations
@@ -214,21 +227,19 @@ void tuneMergeChain() {
   GaussianFactorGraph smoother = createSmoother(T);
   const Ordering ordering = Ordering::Metis(smoother);
 
-  const std::vector<size_t> caps = {0, 16, 32, 64, 128, 256, 512};
+  const std::vector<size_t> sweep = {0, 16, 32, 64, 128, 256, 512};
   std::vector<std::pair<size_t, double>> results;
-  MultifrontalSolver::Parameters params;
-  params.leafMergeDimCap = 0;
-  params.reportStream = &std::cout;
-  for (size_t cap : caps) {
-    params.mergeDimCap = cap;
+  for (size_t parameter : sweep) {
+    params.mergeDimCap = parameter;
     MultifrontalSolver solver(smoother, ordering, params);
 
     auto start = std::chrono::high_resolution_clock::now();
     runMultifrontalSolver(solver, smoother, iterations);
     auto end = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> t_imperative = end - start;
-    results.emplace_back(cap, t_imperative.count());
-    cout << "  mergeDimCap=" << cap << " -> " << t_imperative.count() << " s\n"
+    results.emplace_back(parameter, t_imperative.count());
+    cout << "  mergeDimCap=" << parameter << " -> " << t_imperative.count()
+         << " s\n"
          << std::endl;
   }
 
@@ -241,12 +252,14 @@ void tuneMergeChain() {
 }
 
 int main() {
-  cout << "Merging dim cap " << kMergeDimCap << std::endl;
+  auto params = makeDefaultParams();
+  cout << "Merging dim parameter " << params.mergeDimCap << std::endl;
 
-  runBAL135Benchmark();
-  runBALBenchmark();
-  runChainBenchmark();
-  // tuneMergingBAL();
-  // tuneMergeChain();
+  // runBAL135Benchmark(params);
+  runBALBenchmark(params);
+  runChainBenchmark(params);
+  // runChain5000(params);
+  // tuneMergingBAL(params);
+  // tuneMergeChain(params);
   return 0;
 }

@@ -325,19 +325,16 @@ TEST(MultifrontalSolver, WeightedScalarMeasurements) {
 }
 
 /* ************************************************************************* */
-// Hessian factors contribute directly to the augmented normal equations.
+// Hessian factors are rejected by the multifrontal solver.
 TEST(MultifrontalSolver, HessianFactors) {
   GaussianFactorGraph graph;
   graph.emplace_shared<HessianFactor>(x1, (Matrix(1, 1) << 4.0).finished(),
                                       (Vector(1) << 8.0).finished(), 0.0);
 
   const Ordering ordering{x1};
-  MultifrontalSolver solver(graph, ordering, noMergeParams());
-  solver.load(graph);
-  solver.eliminateInPlace();
-  const VectorValues& actual = solver.updateSolution();
-
-  EXPECT_DOUBLES_EQUAL(2.0, actual.at(x1)(0), 1e-9);
+  CHECK_EXCEPTION(
+      { MultifrontalSolver solver(graph, ordering, noMergeParams()); },
+      std::runtime_error);
 }
 
 /* ************************************************************************* */

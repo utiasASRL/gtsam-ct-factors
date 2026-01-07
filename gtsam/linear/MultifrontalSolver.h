@@ -18,7 +18,6 @@
 
 #pragma once
 
-#include <gtsam/base/PriorityScheduler.h>
 #include <gtsam/inference/Key.h>
 #include <gtsam/inference/Ordering.h>
 #include <gtsam/linear/GaussianFactorGraph.h>
@@ -31,10 +30,27 @@
 #include <unordered_set>
 #include <vector>
 
+#ifndef GTSAM_USE_TBB
+#include <gtsam/base/PriorityScheduler.h>
+#endif
+
 namespace gtsam {
 
 class GaussianBayesTree;
 class MultifrontalClique;
+
+template <typename Forest, typename Node>
+struct EmptyTaskMixin {
+  explicit EmptyTaskMixin(size_t = 0) {}
+};
+
+#ifdef GTSAM_USE_TBB
+template <typename Forest, typename Node>
+using SolverTaskMixin = EmptyTaskMixin<Forest, Node>;
+#else
+template <typename Forest, typename Node>
+using SolverTaskMixin = TaskMixin<Forest, Node>;
+#endif
 
 /**
  * Imperative-style multifrontal solver for Gaussian factor graphs.
@@ -42,6 +58,9 @@ class MultifrontalClique;
  * This class pre-allocates all necessary memory for the elimination tree and
  * provides efficient methods for loading new factors, eliminating the graph,
  * and solving for the update vector.
+ *
+ * @note Only JacobianFactor inputs are supported. Any non-Jacobian factors
+ * will throw during construction/precompute or load.
  *
  * @note Clique merging has two optional phases: an initial leaf-merge pass
  * (leafMergeDimCap) that merges multiple leaf children into a common parent
@@ -52,15 +71,16 @@ class MultifrontalClique;
  * Defaults are conservative and may need tuning per machine or dataset.
  */
 class GTSAM_EXPORT MultifrontalSolver
-    : public TaskMixin<MultifrontalSolver, MultifrontalClique> {
+    : public SolverTaskMixin<MultifrontalSolver, MultifrontalClique> {
  public:
   /// Tuning parameters for traversal and reporting.
   struct Parameters {
     size_t leafMergeDimCap = 256;           ///< Leaf-merge cap (0 disables).
-    size_t mergeDimCap = 16;                ///< Merge threshold (0 disables).
+    size_t mergeDimCap = 32;                ///< Merge threshold (0 disables).
     std::ostream* reportStream = nullptr;   ///< Optional structure reporting.
     int eliminationParallelThreshold = 10;  ///< Post-order task threshold.
     int solutionParallelThreshold = 4096;   ///< Pre-order task threshold.
+    size_t numThreads = 0;  ///< Worker count (0 uses 0.75 * hw threads).
   };
 
   struct PrecomputedData {
@@ -83,6 +103,7 @@ class GTSAM_EXPORT MultifrontalSolver
   bool loaded_ = false;                ///< Whether load() has been called.
   bool eliminated_ = false;            ///< Whether eliminateInPlace() ran.
   Parameters params_;                  ///< Tunable solver parameters.
+  size_t numThreads_ = 0;              ///< Resolved thread count for traversal.
 
  public:
   /**
@@ -90,6 +111,7 @@ class GTSAM_EXPORT MultifrontalSolver
    * This builds the symbolic junction tree and pre-allocates all matrices.
    * Call load() before eliminating to populate numerical values.
    * @param graph The factor graph to solve.
+   *              Must contain only JacobianFactor instances.
    * @param ordering The variable ordering to use for elimination.
    * @param params Tunable parameters for traversal and reporting.
    */
@@ -114,6 +136,7 @@ class GTSAM_EXPORT MultifrontalSolver
   MultifrontalSolver(PrecomputedData data, const Ordering& ordering);
 
   /// Precompute symbolic structure and sizing data from a factor graph.
+  /// Only JacobianFactor inputs are supported.
   static PrecomputedData Precompute(const GaussianFactorGraph& graph,
                                     const Ordering& ordering);
 
@@ -121,7 +144,9 @@ class GTSAM_EXPORT MultifrontalSolver
    * Load new numerical values from the factor graph.
    * This overwrites the values in the pre-allocated matrices.
    *
-   * @param graph The factor graph with updated values (structure must match).
+   * @param graph The factor graph with updated values (structure must match
+   *              the graph used to construct/precompute this solver, apart
+   *              from updated numerical values).
    */
   void load(const GaussianFactorGraph& graph);
 

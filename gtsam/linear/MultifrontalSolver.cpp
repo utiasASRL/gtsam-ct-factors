@@ -16,15 +16,14 @@
  * @date   December 2025
  */
 
+#include <gtsam/base/FastMap.h>
 #include <gtsam/base/treeTraversal-inst.h>
 #include <gtsam/base/types.h>
-#include <gtsam/base/FastMap.h>
 #include <gtsam/config.h>
 #include <gtsam/inference/Key.h>
 #include <gtsam/linear/GaussianBayesTree.h>
 #include <gtsam/linear/GaussianConditional.h>
 #include <gtsam/linear/GaussianFactor.h>
-#include <gtsam/linear/HessianFactor.h>
 #include <gtsam/linear/JacobianFactor.h>
 #include <gtsam/linear/MultifrontalClique.h>
 #include <gtsam/linear/MultifrontalSolver.h>
@@ -40,6 +39,11 @@
 #include <ostream>
 #include <stdexcept>
 #include <string>
+#include <thread>
+
+#ifdef GTSAM_USE_TBB
+#include <tbb/global_control.h>
+#endif
 
 namespace gtsam {
 
@@ -94,8 +98,11 @@ std::unordered_set<Key> collectFixedKeys(const GaussianFactorGraph& graph) {
   std::unordered_set<Key> fixedKeys;
   for (const auto& factor : graph) {
     if (!factor) continue;
-    auto jacobianFactor = std::dynamic_pointer_cast<JacobianFactor>(factor);
-    if (!jacobianFactor) continue;
+    if (!factor->isJacobian()) {
+      throw std::runtime_error(
+          "MultifrontalSolver: only JacobianFactor inputs are supported.");
+    }
+    auto jacobianFactor = std::static_pointer_cast<JacobianFactor>(factor);
     auto model = jacobianFactor->get_model();
     if (!model || !model->isConstrained()) continue;
     // Only accept fully constrained unary factors with zero residuals.
@@ -123,17 +130,13 @@ std::map<Key, size_t> computeDims(const GaussianFactorGraph& graph) {
   std::map<Key, size_t> dims;
   for (const auto& factor : graph) {
     if (!factor) continue;
-    if (auto jacobianFactor =
-            std::dynamic_pointer_cast<JacobianFactor>(factor)) {
-      for (auto it = jacobianFactor->begin(); it != jacobianFactor->end();
-           ++it) {
-        dims[*it] = jacobianFactor->getDim(it);
-      }
-    } else if (auto hessianFactor =
-                   std::dynamic_pointer_cast<HessianFactor>(factor)) {
-      for (auto it = hessianFactor->begin(); it != hessianFactor->end(); ++it) {
-        dims[*it] = hessianFactor->getDim(it);
-      }
+    if (!factor->isJacobian()) {
+      throw std::runtime_error(
+          "MultifrontalSolver: only JacobianFactor inputs are supported.");
+    }
+    auto jacobianFactor = std::static_pointer_cast<JacobianFactor>(factor);
+    for (auto it = jacobianFactor->begin(); it != jacobianFactor->end(); ++it) {
+      dims[*it] = jacobianFactor->getDim(it);
     }
   }
   return dims;
@@ -141,11 +144,12 @@ std::map<Key, size_t> computeDims(const GaussianFactorGraph& graph) {
 
 size_t factorRowCount(const GaussianFactorGraph& graph, size_t index) {
   if (index >= graph.size() || !graph[index]) return 0;
-  if (auto jacobianFactor =
-          std::dynamic_pointer_cast<JacobianFactor>(graph[index])) {
-    return jacobianFactor->rows();
+  if (!graph[index]->isJacobian()) {
+    throw std::runtime_error(
+        "MultifrontalSolver: only JacobianFactor inputs are supported.");
   }
-  return 0;
+  auto jacobianFactor = std::static_pointer_cast<JacobianFactor>(graph[index]);
+  return jacobianFactor->rows();
 }
 
 // Build SymbolicFactorGraph from GaussianFactorGraph
@@ -441,6 +445,14 @@ struct CliqueBuilder {
   }
 };
 
+size_t resolveThreadCount(size_t requested) {
+  if (requested != 0) return requested;
+  unsigned int hardwareThreads = std::thread::hardware_concurrency();
+  if (hardwareThreads == 0) hardwareThreads = 1;
+  size_t threads = (hardwareThreads * 3) / 4;
+  return threads == 0 ? 1 : threads;
+}
+
 }  // namespace
 
 /* ************************************************************************* */
@@ -458,7 +470,10 @@ MultifrontalSolver::MultifrontalSolver(const GaussianFactorGraph& graph,
 MultifrontalSolver::MultifrontalSolver(PrecomputedData data,
                                        const Ordering& ordering,
                                        const Parameters& params)
-    : TaskMixin<MultifrontalSolver, MultifrontalClique>(), params_(params) {
+    : SolverTaskMixin<MultifrontalSolver, MultifrontalClique>(
+          resolveThreadCount(params.numThreads)),
+      params_(params),
+      numThreads_(resolveThreadCount(params.numThreads)) {
   dims_ = std::move(data.dims);
   fixedKeys_ = std::move(data.fixedKeys);
 
@@ -552,6 +567,8 @@ void MultifrontalSolver::eliminateInPlace() {
   }
   eliminated_ = false;
 #ifdef GTSAM_USE_TBB
+  tbb::global_control tbbControl(tbb::global_control::max_allowed_parallelism,
+                                 static_cast<int>(numThreads_));
   // Parallel elimination uses PostOrderForestParallel, which will be
   // multi-threaded if GTSAM was compiled with TBB.
   TbbOpenMPMixedScope threadLimiter;
@@ -570,6 +587,8 @@ void MultifrontalSolver::eliminateInPlace() {
 void MultifrontalSolver::eliminateInPlace(const GaussianFactorGraph& graph) {
   // Combine load + eliminate in one post-order traversal to improve locality.
 #ifdef GTSAM_USE_TBB
+  tbb::global_control tbbControl(tbb::global_control::max_allowed_parallelism,
+                                 static_cast<int>(numThreads_));
   TbbOpenMPMixedScope threadLimiter;
   auto visitorPost = [&graph](const CliquePtr& node) {
     if (!node) return;
@@ -633,9 +652,13 @@ GaussianBayesTree MultifrontalSolver::computeBayesTree() const {
 /* ************************************************************************* */
 const VectorValues& MultifrontalSolver::updateSolution() const {
   assert(loaded_ && eliminated_);
+#ifdef GTSAM_USE_TBB
+  tbb::global_control tbbControl(tbb::global_control::max_allowed_parallelism,
+                                 static_cast<int>(numThreads_));
+  TbbOpenMPMixedScope threadLimiter;
+#endif
   // Parallel solve uses treeTraversal::DepthFirstForestParallel (Pre-order /
   // Top-Down).
-  TbbOpenMPMixedScope threadLimiter;
   int rootData = 0;
   auto visitorPre = [](const CliquePtr& node, int&) {
     if (node) node->updateSolution();
