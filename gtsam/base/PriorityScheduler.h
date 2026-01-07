@@ -63,10 +63,6 @@
 
 namespace gtsam {
 
-/// Forward declaration for the scheduler.
-template <typename Y>
-class PriorityScheduler;
-
 /**
  * @brief Thread pool scheduler that prioritizes tasks by numeric priority.
  *
@@ -74,7 +70,6 @@ class PriorityScheduler;
  * - Lower numeric values are executed first.
  * - Tasks are executed by worker threads created at construction.
  * - `schedule` returns a `std::future<Y>` for the task result.
- * - `TaskMixin` offers recursive traversal helpers without manual priorities.
  * - Per-thread queues reduce contention; workers steal from peers when idle.
  * - External submissions are round-robin distributed across worker queues.
  * - A condition variable parks workers when no work is available.
@@ -131,11 +126,11 @@ class PriorityScheduler {
       if (!tryPopTask(index, task)) {
         std::unique_lock<std::mutex> lock(waitMutex_);
         condition_.wait(lock, [this] {
-          return stop_.load(std::memory_order_relaxed) ||
-                 queuedTasks_.load(std::memory_order_relaxed) > 0;
+          return stop_.load(std::memory_order_acquire) ||
+                 queuedTasks_.load(std::memory_order_acquire) > 0;
         });
-        if (stop_.load(std::memory_order_relaxed) &&
-            queuedTasks_.load(std::memory_order_relaxed) == 0) {
+        if (stop_.load(std::memory_order_acquire) &&
+            queuedTasks_.load(std::memory_order_acquire) == 0) {
           currentScheduler_ = nullptr;
           workerIndex_ = -1;
           return;
@@ -160,7 +155,7 @@ class PriorityScheduler {
       }
 
       // Decrement active task count and notify waiters.
-      activeTasks_.fetch_sub(1, std::memory_order_relaxed);
+      activeTasks_.fetch_sub(1, std::memory_order_release);
       condition_.notify_all();
     }
   }
@@ -180,7 +175,7 @@ class PriorityScheduler {
     if (queue.queue.empty()) return false;
     task = queue.queue.top();
     queue.queue.pop();
-    queuedTasks_.fetch_sub(1, std::memory_order_relaxed);
+    queuedTasks_.fetch_sub(1, std::memory_order_release);
     return true;
   }
 
@@ -196,7 +191,7 @@ class PriorityScheduler {
       if (!lock.owns_lock() || queue.queue.empty()) continue;
       task = queue.queue.top();
       queue.queue.pop();
-      queuedTasks_.fetch_sub(1, std::memory_order_relaxed);
+      queuedTasks_.fetch_sub(1, std::memory_order_release);
       return true;
     }
     return false;
@@ -232,7 +227,7 @@ class PriorityScheduler {
   /// Wait for tasks and join worker threads on destruction.
   ~PriorityScheduler() {
     waitForAllTasks();
-    stop_.store(true, std::memory_order_relaxed);
+    stop_.store(true, std::memory_order_release);
     condition_.notify_all();
     for (std::thread& worker : workers_) {
       if (worker.joinable()) {
@@ -250,7 +245,7 @@ class PriorityScheduler {
    */
   /// Enqueue a task for execution and return its future.
   std::future<Y> schedule(int priority, std::function<Y()> job) {
-    if (stop_.load(std::memory_order_relaxed)) {
+    if (stop_.load(std::memory_order_acquire)) {
       std::promise<Y> err_promise;
       err_promise.set_exception(std::make_exception_ptr(
           std::runtime_error("Scheduler is stopping or stopped.")));
@@ -277,9 +272,9 @@ class PriorityScheduler {
       std::lock_guard<std::mutex> lock(queue.mutex);
       queue.queue.push(task);
     }
-    queuedTasks_.fetch_add(1, std::memory_order_relaxed);
+    queuedTasks_.fetch_add(1, std::memory_order_release);
     // Track in-flight tasks for waiters.
-    activeTasks_.fetch_add(1, std::memory_order_relaxed);
+    activeTasks_.fetch_add(1, std::memory_order_release);
     condition_.notify_one();
     return future;
   }
@@ -299,12 +294,12 @@ class PriorityScheduler {
     }
 
     // Inline execution fuses continuations and avoids re-queueing.
-    activeTasks_.fetch_add(1, std::memory_order_relaxed);
+    activeTasks_.fetch_add(1, std::memory_order_release);
     try {
       job();
     } catch (...) { /* ignore */
     }
-    activeTasks_.fetch_sub(1, std::memory_order_relaxed);
+    activeTasks_.fetch_sub(1, std::memory_order_release);
     condition_.notify_all();
   }
 
@@ -317,9 +312,9 @@ class PriorityScheduler {
   void waitForAllTasks() {
     std::unique_lock<std::mutex> lock(waitMutex_);
     condition_.wait(lock, [this] {
-      return stop_.load(std::memory_order_relaxed) ||
-             (activeTasks_.load(std::memory_order_relaxed) == 0 &&
-              queuedTasks_.load(std::memory_order_relaxed) == 0);
+      return stop_.load(std::memory_order_acquire) ||
+             (activeTasks_.load(std::memory_order_acquire) == 0 &&
+              queuedTasks_.load(std::memory_order_acquire) == 0);
     });
   }
 };
@@ -404,6 +399,7 @@ class TaskMixin {
   /// Shared traversal state across scheduled tasks.
   struct TraversalState {
     std::atomic<int> pending{0};
+    std::atomic_flag exceptionClaim = ATOMIC_FLAG_INIT;
     std::atomic<bool> hasException{false};
     std::exception_ptr exception;
     std::promise<void> done;
@@ -426,7 +422,7 @@ class TaskMixin {
       } catch (...) {
         recordException(state, std::current_exception());
         finishTraversal(state);
-        throw;
+        return;
       }
     };
 
@@ -449,7 +445,7 @@ class TaskMixin {
                                        remaining]() {
       if (remaining->fetch_sub(1, std::memory_order_relaxed) == 1) {
         // If a child failed, skip this node and just unwind.
-        if (state->hasException.load(std::memory_order_relaxed)) {
+        if (state->hasException.load(std::memory_order_acquire)) {
           onDone();
           return;
         }
@@ -476,7 +472,7 @@ class TaskMixin {
         recordException(state, std::current_exception());
         onDone();
         finishTraversal(state);
-        throw;
+        return;
       }
     };
 
@@ -499,17 +495,16 @@ class TaskMixin {
   /// Record the first exception and keep the traversal draining.
   void recordException(const StatePtr& state, std::exception_ptr exception) {
     // Record the first exception and let the traversal finish.
-    bool expected = false;
-    if (state->hasException.compare_exchange_strong(
-            expected, true, std::memory_order_relaxed)) {
+    if (!state->exceptionClaim.test_and_set(std::memory_order_acq_rel)) {
       state->exception = exception;
+      state->hasException.store(true, std::memory_order_release);
     }
   }
 
   /// Resolve traversal completion once pending reaches zero.
   void finishTraversal(const StatePtr& state) {
     if (state->pending.fetch_sub(1, std::memory_order_relaxed) == 1) {
-      if (state->hasException.load(std::memory_order_relaxed)) {
+      if (state->hasException.load(std::memory_order_acquire)) {
         try {
           state->done.set_exception(state->exception);
         } catch (...) { /* ignore */
