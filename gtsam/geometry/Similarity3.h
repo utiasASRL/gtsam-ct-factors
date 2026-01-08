@@ -118,7 +118,9 @@ class GTSAM_EXPORT Similarity3 : public MatrixLieGroup<Similarity3, 7, 4> {
    * This group action satisfies the compatibility condition.
    * For more details, refer to: https://en.wikipedia.org/wiki/Group_action
    */
-  Pose3 transformFrom(const Pose3& T) const;
+  Pose3 transformFrom(const Pose3& T, 
+    OptionalJacobian<6, 7> H1 = {},  //
+    OptionalJacobian<6, 6> H2 = {}) const;
 
   /** syntactic sugar for transformFrom */
   Point3 operator*(const Point3& p) const;
@@ -191,14 +193,31 @@ class GTSAM_EXPORT Similarity3 : public MatrixLieGroup<Similarity3, 7, 4> {
   /// Calculate 4*4 matrix group equivalent
   Matrix4 matrix() const;
 
-  /// Return a GTSAM rotation
-  Rot3 rotation() const { return R_; }
+  /// Return a rotation
+  Rot3 rotation(OptionalJacobian<3, 7> Hself = {}) const { 
+    if (Hself) {
+      Hself->setZero();
+      Hself->block<3, 3>(0, 0) = I_3x3;
+    }
+    return R_;
+  }
 
-  /// Return a GTSAM translation
-  Point3 translation() const { return t_; }
+  /// Return a translation with pushforward
+  Point3 translation(OptionalJacobian<3, 7> Hself = {}) const {
+    if (Hself) {
+    *Hself << Z_3x3, rotation().matrix(), -t_; 
+    }
+    return t_;
+  }
 
   /// Return the scale
-  double scale() const { return s_; }
+  double scale(OptionalJacobian<1, 7> Hself = {}) const { 
+    if (Hself) {
+      Hself->setZero();
+      (*Hself)(0, 6) = s_; 
+    }
+    return s_;
+  }
 
   /// @}
   /// @name Deprecated
