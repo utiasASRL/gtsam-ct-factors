@@ -71,23 +71,21 @@ class ForestTraversal {
   {
   }
 
-  /// Run a top-down traversal (root first).
   template <typename Fn>
   void runTopDown(Fn fn, int parallelThreshold = 10) {
 #ifdef GTSAM_USE_TBB
     runTopDownTreeTraversal(fn, parallelThreshold);
 #else
-    runTopDownPriorityScheduler(fn);
+    runTopDownPriorityScheduler(fn, parallelThreshold);
 #endif
   }
 
-  /// Run a bottom-up traversal (leaves first).
   template <typename Fn>
   void runBottomUp(Fn fn, int parallelThreshold = 10) {
 #ifdef GTSAM_USE_TBB
     runBottomUpTreeTraversal(fn, parallelThreshold);
 #else
-    runBottomUpPriorityScheduler(fn);
+    runBottomUpPriorityScheduler(fn, parallelThreshold);
 #endif
   }
 
@@ -97,44 +95,49 @@ class ForestTraversal {
 #ifdef GTSAM_USE_TBB
   using SharedNode = std::shared_ptr<Node>;
 
-  template <typename Fn>
-  void runTopDownTreeTraversal(Fn fn, int parallelThreshold) {
+  /// Run a traversal with TBB and OpenMP concurrency limited to `threadCount_`.
+  template <typename Body>
+  void withTbbTraversalControl(Body&& body) {
     tbb::global_control control(tbb::global_control::max_allowed_parallelism,
                                 static_cast<int>(threadCount_));
     TbbOpenMPMixedScope threadLimiter;
+    std::forward<Body>(body)();
+  }
 
-    struct VisitorPre {
-      Fn* fn;
-      int operator()(const SharedNode& node, int&) const {
-        if (node) std::invoke(*fn, *node);
-        return 0;
-      }
-    };
+  template <typename Fn>
+  void runTopDownTreeTraversal(Fn fn, int parallelThreshold) {
+    withTbbTraversalControl([&] {
+      struct VisitorPre {
+        Fn* fn;
+        int operator()(const SharedNode& node, int&) const {
+          if (node) std::invoke(*fn, *node);
+          return 0;
+        }
+      };
 
-    int rootData = 0;
-    VisitorPre visitor{&fn};
-    auto visitorPost = [](const SharedNode&, int) {};
-    treeTraversal::DepthFirstForestParallel(static_cast<Forest&>(*this),
-                                            rootData, visitor, visitorPost,
-                                            parallelThreshold);
+      int rootData = 0;
+      VisitorPre visitor{&fn};
+      auto visitorPost = [](const SharedNode&, int) {};
+      treeTraversal::DepthFirstForestParallel(static_cast<Forest&>(*this),
+                                              rootData, visitor, visitorPost,
+                                              parallelThreshold);
+    });
   }
 
   template <typename Fn>
   void runBottomUpTreeTraversal(Fn fn, int parallelThreshold) {
-    tbb::global_control control(tbb::global_control::max_allowed_parallelism,
-                                static_cast<int>(threadCount_));
-    TbbOpenMPMixedScope threadLimiter;
+    withTbbTraversalControl([&] {
+      struct VisitorPost {
+        Fn* fn;
+        void operator()(const SharedNode& node) const {
+          if (node) std::invoke(*fn, *node);
+        }
+      };
 
-    struct VisitorPost {
-      Fn* fn;
-      void operator()(const SharedNode& node) const {
-        if (node) std::invoke(*fn, *node);
-      }
-    };
-
-    VisitorPost visitor{&fn};
-    treeTraversal::PostOrderForestParallel(static_cast<Forest&>(*this), visitor,
-                                           parallelThreshold);
+      VisitorPost visitor{&fn};
+      treeTraversal::PostOrderForestParallel(static_cast<Forest&>(*this),
+                                             visitor, parallelThreshold);
+    });
   }
 #else
   PriorityScheduler<void> scheduler_;
@@ -148,103 +151,196 @@ class ForestTraversal {
     std::promise<void> done;
   };
   using StatePtr = std::shared_ptr<TraversalState>;
+  using DoneFn = std::function<void()>;
 
-  template <typename Fn>
-  void runTopDownPriorityScheduler(Fn fn) {
+  /// RAII guard that decrements the pending counter on scope exit.
+  struct FinishTraversalOnExit {
+    ForestTraversal* owner;
+    StatePtr state;
+    ~FinishTraversalOnExit() { owner->finishTraversal(state); }
+  };
+
+  /// Return true iff node should be processed as a scheduled "parallel" task.
+  static bool shouldParallelize(const Node& node, int parallelThreshold) {
+    if (parallelThreshold <= 0) {
+      return true;
+    } else {
+      return static_cast<int>(node.problemSize()) >= parallelThreshold;
+    }
+  }
+
+  /// Run a scheduler-based traversal with a fresh state and roots.
+  template <typename Body>
+  void runWithTraversalState(Body&& body) {
     auto state = std::make_shared<TraversalState>();
     std::future<void> done = state->done.get_future();
     Forest& forest = static_cast<Forest&>(*this);
     const auto& roots = rootsOf(forest);
     if (roots.empty()) {
       state->done.set_value();
-      return;
+    } else {
+      state->pending.fetch_add(1, std::memory_order_relaxed);
+      std::forward<Body>(body)(state, roots);
+      finishTraversal(state);
     }
-    state->pending.fetch_add(1, std::memory_order_relaxed);
-    for (const auto& root : roots) {
-      topDownAsync(*root, 0, fn, state);
-    }
-    finishTraversal(state);
     done.get();
   }
 
+  /// Start a top-down visit (schedule vs inline based on threshold).
   template <typename Fn>
-  void runBottomUpPriorityScheduler(Fn fn) {
-    auto state = std::make_shared<TraversalState>();
-    std::future<void> done = state->done.get_future();
-    Forest& forest = static_cast<Forest&>(*this);
-    const auto& roots = rootsOf(forest);
-    if (roots.empty()) {
-      state->done.set_value();
-      return;
+  void dispatchTopDown(Node& node, int depth, const Fn& fn,
+                       int parallelThreshold, const StatePtr& state) {
+    if (shouldParallelize(node, parallelThreshold)) {
+      topDownAsync(node, depth, fn, parallelThreshold, state);
+    } else {
+      topDownTraverse(node, depth, fn, parallelThreshold, state);
     }
-    state->pending.fetch_add(1, std::memory_order_relaxed);
-    for (const auto& root : roots) {
-      bottomUpAsync(*root, 0, fn, state, [] {});
-    }
-    finishTraversal(state);
-    done.get();
   }
 
+  /// Dispatch all children of a node in a top-down traversal.
   template <typename Fn>
-  void topDownAsync(Node& node, int depth, const Fn& fn,
+  void dispatchTopDownChildren(Node& node, int depth, const Fn& fn,
+                               int parallelThreshold, const StatePtr& state) {
+    auto&& children = childrenOf(node);
+    for (const auto& child : children) {
+      if (!child) continue;
+      dispatchTopDown(*child, depth + 1, fn, parallelThreshold, state);
+    }
+  }
+
+  /// Invoke an `onDone` callback and record any exception it throws.
+  void callOnDone(const DoneFn& onDone, const StatePtr& state) {
+    try {
+      onDone();
+    } catch (...) {
+      recordException(state, std::current_exception());
+    }
+  }
+
+  /// Scheduler-based top-down traversal with problem-size thresholding.
+  template <typename Fn>
+  void runTopDownPriorityScheduler(Fn fn, int parallelThreshold) {
+    runWithTraversalState([&](const StatePtr& state, const auto& roots) {
+      for (const auto& root : roots) {
+        if (!root) continue;
+        dispatchTopDown(*root, 0, fn, parallelThreshold, state);
+      }
+    });
+  }
+
+  /// Scheduler-based bottom-up traversal with problem-size thresholding.
+  template <typename Fn>
+  void runBottomUpPriorityScheduler(Fn fn, int parallelThreshold) {
+    runWithTraversalState([&](const StatePtr& state, const auto& roots) {
+      for (const auto& root : roots) {
+        if (!root) continue;
+        bottomUpAsync(*root, 0, fn, parallelThreshold, state, [] {});
+      }
+    });
+  }
+
+  /// Scheduled top-down work for a node (spawns children tasks above
+  /// threshold).
+  template <typename Fn>
+  void topDownAsync(Node& node, int depth, const Fn& fn, int parallelThreshold,
                     const StatePtr& state) {
-    auto task = [this, &node, depth, &fn, state]() {
-      try {
-        std::invoke(fn, node);
-        auto&& children = childrenOf(node);
-        for (const auto& child : children) {
-          topDownAsync(*child, depth + 1, fn, state);
+    auto task = [this, &node, depth, &fn, parallelThreshold, state]() {
+      FinishTraversalOnExit finish{this, state};
+      if (state->hasException.load(std::memory_order_acquire)) {
+        // Keep draining without doing new work.
+      } else {
+        try {
+          std::invoke(fn, node);
+          dispatchTopDownChildren(node, depth, fn, parallelThreshold, state);
+        } catch (...) {
+          recordException(state, std::current_exception());
         }
-        finishTraversal(state);
-      } catch (...) {
-        recordException(state, std::current_exception());
-        finishTraversal(state);
-        return;
       }
     };
     scheduleTask(topDownPriority(depth), state, std::move(task));
   }
 
+  /// Inline top-down traversal for a subtree (still spawns large children).
   template <typename Fn>
-  void bottomUpAsync(Node& node, int depth, const Fn& fn, const StatePtr& state,
-                     const std::function<void()>& onDone) {
+  void topDownTraverse(Node& node, int depth, const Fn& fn,
+                       int parallelThreshold, const StatePtr& state) {
+    if (state->hasException.load(std::memory_order_acquire)) {
+      // Keep draining without doing new work.
+    } else {
+      try {
+        std::invoke(fn, node);
+        if (!state->hasException.load(std::memory_order_acquire)) {
+          dispatchTopDownChildren(node, depth, fn, parallelThreshold, state);
+        }
+      } catch (...) {
+        recordException(state, std::current_exception());
+      }
+    }
+  }
+
+  /// Complete a bottom-up node after its children have finished.
+  template <typename Fn>
+  void completeBottomUpNode(Node& node, int depth, const Fn& fn,
+                            int parallelThreshold, const StatePtr& state,
+                            const DoneFn& onDone) {
+    if (state->hasException.load(std::memory_order_acquire)) {
+      callOnDone(onDone, state);
+    } else if (shouldParallelize(node, parallelThreshold)) {
+      scheduleBottomUpNode(node, depth, fn, state, onDone);
+    } else {
+      try {
+        std::invoke(fn, node);
+      } catch (...) {
+        recordException(state, std::current_exception());
+      }
+      callOnDone(onDone, state);
+    }
+  }
+
+  /// Bottom-up traversal that runs `fn(node)` after children; schedules only
+  /// above threshold.
+  template <typename Fn>
+  void bottomUpAsync(Node& node, int depth, const Fn& fn, int parallelThreshold,
+                     const StatePtr& state, const DoneFn& onDone) {
     auto&& children = childrenOf(node);
     if (children.empty()) {
-      scheduleBottomUpNode(node, depth, fn, state, onDone);
-      return;
-    }
-    auto remaining =
-        std::make_shared<std::atomic<int>>(static_cast<int>(children.size()));
-    std::function<void()> childDone = [this, &node, depth, &fn, state, onDone,
-                                       remaining]() {
-      if (remaining->fetch_sub(1, std::memory_order_relaxed) == 1) {
-        if (state->hasException.load(std::memory_order_acquire)) {
-          onDone();
-          return;
+      completeBottomUpNode(node, depth, fn, parallelThreshold, state, onDone);
+    } else {
+      auto remaining =
+          std::make_shared<std::atomic<int>>(static_cast<int>(children.size()));
+      std::function<void()> childDone = [this, &node, depth, &fn, state, onDone,
+                                         remaining, parallelThreshold]() {
+        if (remaining->fetch_sub(1, std::memory_order_relaxed) == 1) {
+          this->completeBottomUpNode(node, depth, fn, parallelThreshold, state,
+                                     onDone);
         }
-        scheduleBottomUpNode(node, depth, fn, state, onDone);
-      }
-    };
+      };
 
-    for (const auto& child : children) {
-      bottomUpAsync(*child, depth + 1, fn, state, childDone);
+      for (const auto& child : children) {
+        if (!child) {
+          childDone();
+        } else {
+          bottomUpAsync(*child, depth + 1, fn, parallelThreshold, state,
+                        childDone);
+        }
+      }
     }
   }
 
   template <typename Fn>
   void scheduleBottomUpNode(Node& node, int depth, const Fn& fn,
-                            const StatePtr& state,
-                            const std::function<void()>& onDone) {
+                            const StatePtr& state, const DoneFn& onDone) {
     auto task = [this, &node, &fn, state, onDone]() {
-      try {
-        std::invoke(fn, node);
-        onDone();
-        finishTraversal(state);
-      } catch (...) {
-        recordException(state, std::current_exception());
-        onDone();
-        finishTraversal(state);
-        return;
+      FinishTraversalOnExit finish{this, state};
+      if (state->hasException.load(std::memory_order_acquire)) {
+        callOnDone(onDone, state);
+      } else {
+        try {
+          std::invoke(fn, node);
+        } catch (...) {
+          recordException(state, std::current_exception());
+        }
+        callOnDone(onDone, state);
       }
     };
 
