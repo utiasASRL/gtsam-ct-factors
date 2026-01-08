@@ -37,7 +37,7 @@ namespace {
 MultifrontalSolver::Parameters makeDefaultParams() {
   MultifrontalSolver::Parameters params;
   params.mergeDimCap = 32;
-  params.reportStream = &std::cout;
+  // params.reportStream = &std::cout;
   return params;
 }
 

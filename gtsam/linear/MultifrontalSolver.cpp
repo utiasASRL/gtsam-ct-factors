@@ -17,8 +17,6 @@
  */
 
 #include <gtsam/base/FastMap.h>
-#include <gtsam/base/treeTraversal-inst.h>
-#include <gtsam/base/types.h>
 #include <gtsam/config.h>
 #include <gtsam/inference/Key.h>
 #include <gtsam/linear/GaussianBayesTree.h>
@@ -40,10 +38,6 @@
 #include <stdexcept>
 #include <string>
 #include <thread>
-
-#ifdef GTSAM_USE_TBB
-#include <tbb/global_control.h>
-#endif
 
 namespace gtsam {
 
@@ -470,7 +464,7 @@ MultifrontalSolver::MultifrontalSolver(const GaussianFactorGraph& graph,
 MultifrontalSolver::MultifrontalSolver(PrecomputedData data,
                                        const Ordering& ordering,
                                        const Parameters& params)
-    : SolverTaskMixin<MultifrontalSolver, MultifrontalClique>(
+    : ForestTraversal<MultifrontalSolver, MultifrontalClique>(
           resolveThreadCount(params.numThreads)),
       params_(params),
       numThreads_(resolveThreadCount(params.numThreads)) {
@@ -566,43 +560,20 @@ void MultifrontalSolver::eliminateInPlace() {
         "eliminating.");
   }
   eliminated_ = false;
-#ifdef GTSAM_USE_TBB
-  tbb::global_control tbbControl(tbb::global_control::max_allowed_parallelism,
-                                 static_cast<int>(numThreads_));
-  // Parallel elimination uses PostOrderForestParallel, which will be
-  // multi-threaded if GTSAM was compiled with TBB.
-  TbbOpenMPMixedScope threadLimiter;
-  auto visitorPost = [](const CliquePtr& node) {
-    if (node) node->eliminateInPlace();
-  };
-  treeTraversal::PostOrderForestParallel(*this, visitorPost,
-                                         params_.eliminationParallelThreshold);
-#else
-  runBottomUp([](MultifrontalClique& node) { node.eliminateInPlace(); });
-#endif
+  runBottomUp([](MultifrontalClique& node) { node.eliminateInPlace(); },
+              params_.eliminationParallelThreshold);
   eliminated_ = true;
 }
 
 /* ************************************************************************* */
 void MultifrontalSolver::eliminateInPlace(const GaussianFactorGraph& graph) {
   // Combine load + eliminate in one post-order traversal to improve locality.
-#ifdef GTSAM_USE_TBB
-  tbb::global_control tbbControl(tbb::global_control::max_allowed_parallelism,
-                                 static_cast<int>(numThreads_));
-  TbbOpenMPMixedScope threadLimiter;
-  auto visitorPost = [&graph](const CliquePtr& node) {
-    if (!node) return;
-    node->fillAb(graph);
-    node->eliminateInPlace();
-  };
-  treeTraversal::PostOrderForestParallel(*this, visitorPost,
-                                         params_.eliminationParallelThreshold);
-#else
-  runBottomUp([&graph](MultifrontalClique& node) {
-    node.fillAb(graph);
-    node.eliminateInPlace();
-  });
-#endif
+  runBottomUp(
+      [&graph](MultifrontalClique& node) {
+        node.fillAb(graph);
+        node.eliminateInPlace();
+      },
+      params_.eliminationParallelThreshold);
   loaded_ = true;
   eliminated_ = true;
 }
@@ -650,30 +621,10 @@ GaussianBayesTree MultifrontalSolver::computeBayesTree() const {
 }
 
 /* ************************************************************************* */
-const VectorValues& MultifrontalSolver::updateSolution() const {
+const VectorValues& MultifrontalSolver::updateSolution() {
   assert(loaded_ && eliminated_);
-#ifdef GTSAM_USE_TBB
-  tbb::global_control tbbControl(tbb::global_control::max_allowed_parallelism,
-                                 static_cast<int>(numThreads_));
-  TbbOpenMPMixedScope threadLimiter;
-#endif
-  // Parallel solve uses treeTraversal::DepthFirstForestParallel (Pre-order /
-  // Top-Down).
-  int rootData = 0;
-  auto visitorPre = [](const CliquePtr& node, int&) {
-    if (node) node->updateSolution();
-    return 0;
-  };
-  auto visitorPost = [](const CliquePtr&, int) {};
-
-  // Threshold chosen to balance task overhead vs parallelism. Small cliques
-  // (like points in SFM) are better handled sequentially within larger tasks
-  // to minimize scheduling overhead and maximize cache locality.
-  // Cast to non-const because treeTraversal expects a non-const reference,
-  // even though we are only calling const methods on the nodes.
-  treeTraversal::DepthFirstForestParallel(
-      const_cast<MultifrontalSolver&>(*this), rootData, visitorPre, visitorPost,
-      params_.solutionParallelThreshold);
+  runTopDown([](MultifrontalClique& node) { node.updateSolution(); },
+             params_.solutionParallelThreshold);
 
   for (Key key : fixedKeys_) {
     solution_.at(key).setZero();

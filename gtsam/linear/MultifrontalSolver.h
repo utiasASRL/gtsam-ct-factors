@@ -18,6 +18,7 @@
 
 #pragma once
 
+#include <gtsam/base/ForestTraversal.h>
 #include <gtsam/inference/Key.h>
 #include <gtsam/inference/Ordering.h>
 #include <gtsam/linear/GaussianFactorGraph.h>
@@ -30,27 +31,10 @@
 #include <unordered_set>
 #include <vector>
 
-#ifndef GTSAM_USE_TBB
-#include <gtsam/base/PriorityScheduler.h>
-#endif
-
 namespace gtsam {
 
 class GaussianBayesTree;
 class MultifrontalClique;
-
-template <typename Forest, typename Node>
-struct EmptyTaskMixin {
-  explicit EmptyTaskMixin(size_t = 0) {}
-};
-
-#ifdef GTSAM_USE_TBB
-template <typename Forest, typename Node>
-using SolverTaskMixin = EmptyTaskMixin<Forest, Node>;
-#else
-template <typename Forest, typename Node>
-using SolverTaskMixin = TaskMixin<Forest, Node>;
-#endif
 
 /**
  * Imperative-style multifrontal solver for Gaussian factor graphs.
@@ -71,7 +55,7 @@ using SolverTaskMixin = TaskMixin<Forest, Node>;
  * Defaults are conservative and may need tuning per machine or dataset.
  */
 class GTSAM_EXPORT MultifrontalSolver
-    : public SolverTaskMixin<MultifrontalSolver, MultifrontalClique> {
+    : public ForestTraversal<MultifrontalSolver, MultifrontalClique> {
  public:
   /// Tuning parameters for traversal and reporting.
   struct Parameters {
@@ -175,7 +159,7 @@ class GTSAM_EXPORT MultifrontalSolver
    *
    * @return Reference to the internally cached solution vector.
    */
-  const VectorValues& updateSolution() const;
+  const VectorValues& updateSolution();
 
   /// Accessor for the roots of the elimination tree.
   const std::vector<CliquePtr>& roots() const { return roots_; }
