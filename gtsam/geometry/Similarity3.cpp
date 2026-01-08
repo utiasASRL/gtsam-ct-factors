@@ -147,42 +147,36 @@ Point3 Similarity3::transformFrom(const Point3& p, //
 
 Pose3 Similarity3::transformFrom(const Pose3& bTi, 
   OptionalJacobian<6, 7> Hself, OptionalJacobian<6, 6> H_bTi) const {
+  if (!Hself && !H_bTi) {
+    return Pose3(R_ * bTi.rotation(), transformFrom(bTi.translation()));
+  }
 
-  // Similarity3 components and their derivatives with respect to the Similarity3.
-  Matrix37 DSimR_dSim;
-  const Rot3 Sim_R = this->rotation(Hself ? &DSimR_dSim : nullptr);
+  // Jacobian of the .rotation() is identity wrt rotation, so delegate jacobians to Rot3.
+  Matrix33 DR_dsimR, DR_dTR;
+  const Rot3 R = R_.compose(bTi.rotation(), Hself ? &DR_dsimR : nullptr, H_bTi ? &DR_dTR : nullptr);
 
-  // Pose3 components and their derivatives with respect to the Pose3.
-  Matrix36 Dp_dT, DTR_dT;
-  const Rot3 TR = bTi.rotation(H_bTi ? &DTR_dT : nullptr);
-  const Point3 p = bTi.translation(H_bTi ? &Dp_dT : nullptr);
+  // Delegate the translation component jacobians to the point3 transformFrom.
+  Matrix37 Dt_dsim;
+  Matrix3 Dt_dp;
+  Matrix36 Dp_dT;
+  const Point3 p = bTi.translation(&Dp_dT);  
+  const Point3 t = this->transformFrom(p, Hself ? &Dt_dsim : nullptr, H_bTi ? &Dt_dp : nullptr);
 
-  // Rotation component of the result.
-  Matrix3 DR_dSimR, DR_dTR;
-  const Rot3 R = Sim_R.compose(TR, Hself ? &DR_dSimR : nullptr, H_bTi ? &DR_dTR : nullptr);
-
-  Matrix37 Dt_sim;
-  Matrix3 Dt_p;
-  const Point3 t = this->transformFrom(p, Hself ? &Dt_sim : nullptr, H_bTi ? &Dt_p : nullptr);
-
-  Matrix63 Dresult_t; 
-  // Dresult_R is identity subblock of R, so ignoring. 
-  const Pose3 result = Pose3::Create(R, t, nullptr, Hself ? &Dresult_t : nullptr);
+  Matrix63 Dresult_t;
+  const Pose3 result = Pose3::Create(R, t, nullptr, &Dresult_t);
 
   if (Hself) {
     Hself->setZero();
-    // Rotation component.
-    Hself->block<3, 7>(0, 0) = DR_dSimR * DSimR_dSim;
-
-    // Translation component.
-    Hself->block<3, 7>(3, 0) = (Dresult_t * Dt_sim).block<3, 7>(3, 0);
+    Hself->block<3, 3>(0, 0) = DR_dsimR;
+    // Chain D_result_t (3x3) * D_t_sim (3x7).
+    Hself->block<3, 7>(3, 0) = Dresult_t.block<3, 3>(3, 0) * Dt_dsim;
   }
 
   if (H_bTi) {
     H_bTi->setZero();
-    // Rotation component.
-    H_bTi->block<3, 6>(0, 0) = DR_dTR * DTR_dT;
-    H_bTi->block<3, 6>(3, 0) = (Dresult_t * (Dt_p * Dp_dT)).block<3, 6>(3, 0); 
+    H_bTi->block<3, 3>(0, 0) = DR_dTR;
+    // Chain D_result_t (3x3) * D_t_p (3x3) * D_p_bTi (3x6).
+    H_bTi->block<3, 6>(3, 0) = Dresult_t.block<3, 3>(3, 0) * Dt_dp * Dp_dT;
   }
   return result;
 }
