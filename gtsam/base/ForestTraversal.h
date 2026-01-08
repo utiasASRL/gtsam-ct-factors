@@ -48,8 +48,7 @@
 namespace gtsam {
 
 /**
- * @brief Mixin that provides depth-based top-down or bottom-up traversal
- * helpers on a forest owner.
+ * @brief Mixin that provides depth-based top-down or bottom-up traversal.
  *
  * @details
  * When TBB is present, the traversal delegates directly to
@@ -138,11 +137,15 @@ class ForestTraversal {
   template <typename Fn>
   /// Kick off top-down traversal from all roots using the scheduler backend.
   void runTopDown(Fn fn, int parallelThreshold = 10) {
-    runTraversal([&](const StatePtr& state, const auto& roots) {
+    const auto& roots = getRoots();
+    if (roots.empty()) return;
+    // Create shared traversal state and run from all roots.
+    State state;
+    state.runTraversal([&]() {
       for (const auto& root : roots) {
         assert(root);
-        Frame<Fn> rootFrame{this, *root, 0, fn, parallelThreshold, state};
-        rootFrame.topDownDispatch();
+        Frame<Fn> frame{&scheduler_, *root, 0, fn, parallelThreshold, &state};
+        frame.topDownDispatch();
       }
     });
   }
@@ -151,16 +154,32 @@ class ForestTraversal {
   template <typename Fn>
   /// Kick off bottom-up traversal from all roots using the scheduler backend.
   void runBottomUp(Fn fn, int parallelThreshold = 10) {
-    runTraversal([&](const StatePtr& state, const auto& roots) {
+    const auto& roots = getRoots();
+    if (roots.empty()) return;
+    // Create shared traversal state and run from all roots.
+    State state;
+    state.runTraversal([&]() {
       for (const auto& root : roots) {
         assert(root);
-        Frame<Fn> rootFrame{this, *root, 0, fn, parallelThreshold, state};
-        rootFrame.bottomUpAsync([] {});
+        Frame<Fn> frame{&scheduler_, *root, 0, fn, parallelThreshold, &state};
+        frame.bottomUpAsync([] {});
       }
     });
   }
 
  private:
+  PriorityScheduler<void> scheduler_;
+
+  /// Return forest roots via method or field.
+  decltype(auto) getRoots() const {
+    const Forest& forest = static_cast<const Forest&>(*this);
+    if constexpr (std::is_member_function_pointer_v<decltype(&Forest::roots)>) {
+      return forest.roots();
+    } else {
+      return (forest.roots);
+    }
+  }
+
   /// Shared traversal state across scheduled tasks.
   struct State {
     std::atomic<int> pending{0};
@@ -168,56 +187,84 @@ class ForestTraversal {
     std::atomic<bool> hasException{false};
     std::exception_ptr exception;
     std::promise<void> done;
-  };
-  using StatePtr = std::shared_ptr<State>;
-  using DoneFn = std::function<void()>;
 
-  /// RAII guard that decrements the pending counter on scope exit.
-  struct FinishTraversalOnExit {
-    ForestTraversal* owner;
-    StatePtr state;
-    ~FinishTraversalOnExit() { owner->finishTraversal(state); }
-  };
+    /// Increment the pending counter.
+    inline int incrementPending() {
+      return pending.fetch_add(1, std::memory_order_relaxed);
+    }
 
-  /// Run a scheduler-based traversal with a fresh state and roots.
-  /// Initializes shared state, kick off work, and wait for completion.
-  template <typename Body>
-  void runTraversal(Body&& body) {
-    // Create shared traversal state and obtain a future for completion.
-    auto state = std::make_shared<State>();
-    std::future<void> done = state->done.get_future();
-    Forest& forest = static_cast<Forest&>(*this);
-    const auto& roots = rootsOf(forest);
-    if (roots.empty()) {
-      // No work: fulfill promise immediately.
-      state->done.set_value();
-    } else {
+    /// Decrement the pending counter.
+    inline int decrementPending() {
+      return pending.fetch_sub(1, std::memory_order_relaxed);
+    }
+
+    /// Run a scheduler-based traversal with a fresh state and roots.
+    template <typename Body>
+    void runTraversal(Body&& body) {
+      std::future<void> future = done.get_future();
+
       // Seed pending count for the overall traversal scope, invoke body,
       // then mark this seed work item as finished.
-      state->pending.fetch_add(1, std::memory_order_relaxed);
-      std::forward<Body>(body)(state, roots);
-      finishTraversal(state);
+      incrementPending();
+      std::forward<Body>(body)();
+      maybeFinish();
+
+      // Block until traversal resolves (success or exception propagation).
+      future.get();
     }
-    // Block until traversal resolves (success or exception propagation).
-    done.get();
-  }
+
+    /// Record the first exception.
+    /// Uses an atomic flag to win a single claim and set shared exception.
+    void recordException(std::exception_ptr e) {
+      if (!exceptionClaim.test_and_set(std::memory_order_acq_rel)) {
+        exception = e;
+        hasException.store(true, std::memory_order_release);
+      }
+    }
+
+    /// Resolve traversal completion once pending reaches zero.
+    /// When the last task finishes, fulfill the promise or set the exception.
+    void maybeFinish() {
+      if (decrementPending() == 1) {
+        if (hasException.load(std::memory_order_acquire)) {
+          try {
+            done.set_exception(exception);
+          } catch (...) { /* ignore */
+          }
+        } else {
+          try {
+            done.set_value();
+          } catch (...) { /* ignore */
+          }
+        }
+      }
+    }
+  };
+  using DoneFn = std::function<void()>;
+
+  /// RAII guard: marks one scheduled task as finished on scope exit.
+  struct MaybeFinish {
+    State* state;
+    ~MaybeFinish() { state->maybeFinish(); }
+  };
 
   /// Per-node traversal frame to avoid threading many parameters.
   template <typename Fn>
   struct Frame {
-    ForestTraversal* owner;
+    PriorityScheduler<void>* scheduler;
     Node& node;
     int depth;
     const Fn& fn;
     int threshold;
-    StatePtr state;
+    State* state;
 
-    /// Top-down dispatch: choose async or inline based on threshold.
-    inline void topDownDispatch() const {
-      if (shouldParallelize()) {
-        topDownAsync();
+    /// Return node children via method or field.
+    auto& getChildren() const {
+      if constexpr (std::is_member_function_pointer<
+                        decltype(&Node::children)>::value) {
+        return node.children();
       } else {
-        topDownTraverse();
+        return node.children;
       }
     }
 
@@ -231,14 +278,26 @@ class ForestTraversal {
       }
     }
 
+    /// Top-down dispatch: choose async or inline based on threshold.
+    inline void topDownDispatch() const {
+      if (shouldParallelize()) {
+        topDownAsync();
+      } else {
+        topDownTraverse();
+      }
+    }
+
     /// Enqueue node work; upon completion, dispatch children traversal.
     inline void topDownAsync() const {
       auto task = [frame = *this]() {
-        FinishTraversalOnExit finish{frame.owner, frame.state};
+        MaybeFinish finish{frame.state};
         frame.topDownTraverse();
       };
       const int topDownPriority = depth;  // Shallower nodes = higher priority
-      owner->scheduleTask(topDownPriority, state, std::move(task));
+      /// Schedule a task and increment the pending counter.
+      state->incrementPending();
+      scheduler->schedule(topDownPriority,
+                          std::function<void()>(std::move(task)));
     }
 
     /// Inline node work followed by traversal of children.
@@ -248,21 +307,22 @@ class ForestTraversal {
       try {
         std::invoke(fn, node);
         if (!state->hasException.load(std::memory_order_acquire)) {
-          auto&& children = ForestTraversal::childrenOf(node);
+          auto&& children = getChildren();
           for (const auto& child : children) {
             assert(child);
-            Frame childFrame{owner, *child, depth + 1, fn, threshold, state};
+            Frame childFrame{scheduler, *child,    depth + 1,
+                             fn,        threshold, state};
             childFrame.topDownDispatch();
           }
         }
       } catch (...) {
-        owner->recordException(state, std::current_exception());
+        state->recordException(std::current_exception());
       }
     }
 
     /// Recurse children; complete this node after the last child finishes.
     inline void bottomUpAsync(const DoneFn& onDone) const {
-      auto&& children = ForestTraversal::childrenOf(node);
+      auto&& children = getChildren();
       if (children.empty()) {
         completeBottomUpNode(onDone);
       } else {
@@ -277,7 +337,7 @@ class ForestTraversal {
 
         for (const auto& child : children) {
           assert(child);
-          Frame childFrame{owner, *child, depth + 1, fn, threshold, state};
+          Frame childFrame{scheduler, *child, depth + 1, fn, threshold, state};
           childFrame.bottomUpAsync(childDone);
         }
       }
@@ -297,7 +357,7 @@ class ForestTraversal {
     /// Enqueue bottom-up node work, then invoke the continuation.
     inline void scheduleBottomUpNode(const DoneFn& onDone) const {
       auto task = [frame = *this, onDone]() mutable {
-        FinishTraversalOnExit finish{frame.owner, frame.state};
+        MaybeFinish finish{frame.state};
         if (frame.state->hasException.load(std::memory_order_acquire)) {
           frame.callOnDone(onDone);
         } else {
@@ -306,12 +366,12 @@ class ForestTraversal {
       };
 
       // Each scheduled task increments the pending counter.
-      state->pending.fetch_add(1, std::memory_order_relaxed);
+      state->incrementPending();
 
       // Schedule a continuation or run it inline if already on a worker thread.
       const int bottomUpPriority = -depth;  // Deeper nodes = higher priority
-      owner->scheduler_.scheduleOrRunInline(
-          bottomUpPriority, std::function<void()>(std::move(task)));
+      scheduler->scheduleOrRunInline(bottomUpPriority,
+                                     std::function<void()>(std::move(task)));
     }
 
     /// Do bottom-up node work, then invoke the continuation.
@@ -319,7 +379,7 @@ class ForestTraversal {
       try {
         std::invoke(fn, node);
       } catch (...) {
-        owner->recordException(state, std::current_exception());
+        state->recordException(std::current_exception());
       }
       callOnDone(onDone);
     }
@@ -330,70 +390,12 @@ class ForestTraversal {
       try {
         onDone();
       } catch (...) {
-        owner->recordException(state, std::current_exception());
+        state->recordException(std::current_exception());
       }
     }
 
   };  // end Frame
 
-  /// Schedule a task and increment the pending counter.
-  template <typename F>
-  /// Increment pending and schedule the given job with the provided priority.
-  void scheduleTask(int priority, const StatePtr& state, F&& job) {
-    // Each scheduled task increments the pending counter.
-    state->pending.fetch_add(1, std::memory_order_relaxed);
-    scheduler_.schedule(priority, std::function<void()>(std::forward<F>(job)));
-  }
-
-  /// Record the first exception and keep the traversal draining.
-  /// Uses an atomic flag to win a single claim and set shared exception.
-  void recordException(const StatePtr& state, std::exception_ptr exception) {
-    if (!state->exceptionClaim.test_and_set(std::memory_order_acq_rel)) {
-      state->exception = exception;
-      state->hasException.store(true, std::memory_order_release);
-    }
-  }
-
-  /// Resolve traversal completion once pending reaches zero.
-  /// When the last task finishes, fulfill the promise or set the exception.
-  void finishTraversal(const StatePtr& state) {
-    if (state->pending.fetch_sub(1, std::memory_order_relaxed) == 1) {
-      if (state->hasException.load(std::memory_order_acquire)) {
-        try {
-          state->done.set_exception(state->exception);
-        } catch (...) { /* ignore */
-        }
-      } else {
-        try {
-          state->done.set_value();
-        } catch (...) { /* ignore */
-        }
-      }
-    }
-  }
-
-  PriorityScheduler<void> scheduler_;
-
-  /// Return node children via method or field.
-  template <typename T>
-  static auto& childrenOf(T& node) {
-    if constexpr (std::is_member_function_pointer<
-                      decltype(&T::children)>::value) {
-      return node.children();
-    } else {
-      return node.children;
-    }
-  }
-
-  /// Return forest roots via method or field.
-  template <typename T>
-  static auto& rootsOf(T& forest) {
-    if constexpr (std::is_member_function_pointer<decltype(&T::roots)>::value) {
-      return forest.roots();
-    } else {
-      return forest.roots;
-    }
-  }
 #endif
 };
 
