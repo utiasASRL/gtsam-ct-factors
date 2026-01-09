@@ -53,6 +53,8 @@ template<typename VALUE>
 class FastSet: public std::set<VALUE, std::less<VALUE>,
     typename internal::FastDefaultAllocator<VALUE>::type> {
 
+  GTSAM_CONCEPT_ASSERT(IsTestable<VALUE>);
+
 public:
 
   typedef std::set<VALUE, std::less<VALUE>,

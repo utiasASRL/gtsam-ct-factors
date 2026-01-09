@@ -59,7 +59,7 @@ namespace gtsam {
  * @tparam Y Result type returned by tasks. Use `void` for no return value.
  */
 template <typename Y>
-class GTSAM_EXPORT PriorityScheduler {
+class PriorityScheduler {
   struct Task {
     int priority;
     std::function<Y()> job;

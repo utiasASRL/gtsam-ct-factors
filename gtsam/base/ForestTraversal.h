@@ -58,7 +58,7 @@ namespace gtsam {
  * that mirrors `TaskMixin`.
  */
 template <typename Forest, typename Node>
-class GTSAM_EXPORT ForestTraversal {
+class ForestTraversal {
  private:
   size_t threadCount_;
   using SharedNode = std::shared_ptr<Node>;
