@@ -64,7 +64,7 @@ class ForestTraversal {
   using SharedNode = std::shared_ptr<Node>;
 
  public:
-  /** Construct a helper with a fixed thread budget (used by TBB when enabled). */
+  /// Construct a helper with a fixed thread budget (used by TBB when enabled).
   explicit ForestTraversal(
       size_t numThreads = std::thread::hardware_concurrency())
       : threadCount_(numThreads == 0 ? 1 : numThreads)
@@ -76,10 +76,8 @@ class ForestTraversal {
   }
 
 #ifdef GTSAM_USE_TBB
-  /**
-   * @brief Depth-first traversal using a pre-order visitor (TBB path).
-   */
   template <typename Fn>
+  /// Depth-first traversal using a pre-order visitor (TBB path).
   void runTopDown(Fn fn, int parallelThreshold = 10) {
     withTbbTraversalControl([&] {
       // The pre-order visitor runs before visiting children; parallel task
@@ -101,10 +99,8 @@ class ForestTraversal {
     });
   }
 
-  /**
-   * @brief Post-order traversal using a bottom-up visitor (TBB path).
-   */
   template <typename Fn>
+  /// Post-order traversal using a bottom-up visitor (TBB path).
   void runBottomUp(Fn fn, int parallelThreshold = 10) {
     withTbbTraversalControl([&] {
       // The bottom-up visitor runs after all children are processed;
@@ -123,9 +119,7 @@ class ForestTraversal {
   }
 
  private:
-  /**
-   * @brief Run a traversal with TBB and OpenMP concurrency limited to `threadCount_`.
-   */
+  /// Run a traversal with TBB and OpenMP concurrency limited to `threadCount_`.
   template <typename Body>
   void withTbbTraversalControl(Body&& body) {
     // Set a cap on TBB threads and enter an OpenMP-compatible scope,
@@ -138,9 +132,7 @@ class ForestTraversal {
 
 #else
 
-  /**
-   * @brief Scheduler-based top-down traversal.
-   */
+  /// Scheduler-based top-down traversal.
   template <typename Fn>
   void runTopDown(Fn fn, int parallelThreshold = 10) {
     const auto& roots = getRoots();
@@ -156,9 +148,7 @@ class ForestTraversal {
     });
   }
 
-  /**
-   * @brief Scheduler-based bottom-up traversal.
-   */
+  /// Scheduler-based bottom-up traversal.
   template <typename Fn>
   void runBottomUp(Fn fn, int parallelThreshold = 10) {
     const auto& roots = getRoots();
@@ -391,9 +381,7 @@ class ForestTraversal {
       callOnDone(onDone);
     }
 
-    /**
-     * @brief Invoke an `onDone` callback and record any exception it throws.
-     */
+    /// Invoke an `onDone` callback and record any exception it throws.
     void callOnDone(const DoneFn& onDone) const {
       try {
         onDone();
