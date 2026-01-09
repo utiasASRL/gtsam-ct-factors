@@ -170,38 +170,33 @@ Point3 Similarity3::transformFrom(const Point3& p, //
 
 Pose3 Similarity3::transformFrom(const Pose3& bTi, 
   OptionalJacobian<6, 7> Hself, OptionalJacobian<6, 6> H_bTi) const {
+  const Rot3& bRi = bTi.rotation();
+  const Point3& bti = bTi.translation();
   if (!Hself && !H_bTi) {
-    return Pose3(R_ * bTi.rotation(), transformFrom(bTi.translation()));
+    return Pose3(R_ * bRi, transformFrom(bti));
   }
 
-  // Jacobian of the .rotation() is identity wrt rotation, so delegate jacobians to Rot3.
-  Matrix33 DR_dsimR, DR_dTR;
-  const Rot3 R = R_.compose(bTi.rotation(), Hself ? &DR_dsimR : nullptr, H_bTi ? &DR_dTR : nullptr);
+  const Rot3 R = R_ * bRi;
 
-  // Delegate the translation component jacobians to the point3 transformFrom.
+  // Delegate the translation jacobians to the point3 transformFrom.
   Matrix37 Dt_dsim;
   Matrix3 Dt_dp;
-  Matrix36 Dp_dT;
-  const Point3 p = bTi.translation(&Dp_dT);  
-  const Point3 t = this->transformFrom(p, Hself ? &Dt_dsim : nullptr, H_bTi ? &Dt_dp : nullptr);
-
-  Matrix63 Dresult_t;
-  const Pose3 result = Pose3::Create(R, t, nullptr, &Dresult_t);
+  const Point3 t = transformFrom(bti, Hself ? &Dt_dsim : nullptr, H_bTi ? &Dt_dp : nullptr);
 
   if (Hself) {
     Hself->setZero();
-    Hself->block<3, 3>(0, 0) = DR_dsimR;
-    // Chain D_result_t (3x3) * D_t_sim (3x7).
-    Hself->block<3, 7>(3, 0) = Dresult_t.block<3, 3>(3, 0) * Dt_dsim;
+    Hself->block<3, 3>(0, 0) = bRi.transpose(); // DR_dsimR
+    // Chain D_result_t (ie R.T) * D_t_sim (3x7).
+    Hself->block<3, 7>(3, 0) = R.transpose() * Dt_dsim;
   }
 
   if (H_bTi) {
     H_bTi->setZero();
-    H_bTi->block<3, 3>(0, 0) = DR_dTR;
-    // Chain D_result_t (3x3) * D_t_p (3x3) * D_p_bTi (3x6).
-    H_bTi->block<3, 6>(3, 0) = Dresult_t.block<3, 3>(3, 0) * Dt_dp * Dp_dT;
+    H_bTi->block<3, 3>(0, 0) = I_3x3; // DR_dTR = I_3x3
+    // Chain D_result_t * D_t_p * D_p_bTi (ie [Z_3x3, bRi]) .
+    H_bTi->block<3, 3>(3, 3) = R.transpose() * Dt_dp * bRi.matrix();
   }
-  return result;
+  return Pose3(R, t);
 }
 
 Point3 Similarity3::operator*(const Point3& p) const {
