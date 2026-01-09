@@ -32,7 +32,7 @@
 #include <gtsam/base/types.h>
 #include <tbb/global_control.h>
 #else
-#include <gtsam/base/PriorityScheduler.h>
+#include <gtsam/base/TaskScheduler.h>
 #endif
 
 #include <atomic>
