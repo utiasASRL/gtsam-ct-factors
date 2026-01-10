@@ -120,9 +120,10 @@ class Scheduler {
         /* ignore */
       }
 
-      // Decrement active task count and notify waiters.
-      activeTasks_.fetch_sub(1, std::memory_order_release);
-      condition_.notify_all();
+      // Notify waiters only when work transitions to "done".
+      if (activeTasks_.fetch_sub(1, std::memory_order_release) == 1) {
+        condition_.notify_all();
+      }
     }
   }
 
@@ -199,8 +200,9 @@ class Scheduler {
       job();
     } catch (...) { /* ignore */
     }
-    activeTasks_.fetch_sub(1, std::memory_order_release);
-    condition_.notify_all();
+    if (activeTasks_.fetch_sub(1, std::memory_order_release) == 1) {
+      condition_.notify_all();
+    }
   }
 
  public:
