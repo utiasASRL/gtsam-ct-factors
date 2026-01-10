@@ -50,7 +50,7 @@ struct TaskSchedulerPolicy {
   template <typename TaskPtr>
   static bool popLocal(Container<TaskPtr>& container, TaskPtr& out) {
     if (container.empty()) return false;
-    out = container.back();
+    out = std::move(container.back());
     container.pop_back();
     return true;
   }
@@ -58,7 +58,7 @@ struct TaskSchedulerPolicy {
   template <typename TaskPtr>
   static bool popSteal(Container<TaskPtr>& container, TaskPtr& out) {
     if (container.empty()) return false;
-    out = container.front();
+    out = std::move(container.front());
     container.pop_front();
     return true;
   }

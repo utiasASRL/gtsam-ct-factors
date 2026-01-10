@@ -65,19 +65,12 @@ template <typename Y, typename Policy>
 class Scheduler {
   using Metadata = typename Policy::Metadata;
 
-  struct Task {
-    Metadata metadata;
-    std::function<Y()> job;
-    std::promise<Y> promise;
-
-    Task(Metadata m, std::function<Y()> j, std::promise<Y> p_out)
-        : metadata(std::move(m)),
-          job(std::move(j)),
-          promise(std::move(p_out)) {}
+  struct WorkItem {
+    Metadata metadata{};
+    std::function<void()> run;
   };
 
-  using TaskPtr = std::shared_ptr<Task>;
-  using Container = typename Policy::template Container<TaskPtr>;
+  using Container = typename Policy::template Container<WorkItem>;
 
   struct WorkerQueue {
     std::mutex mutex;
@@ -105,8 +98,8 @@ class Scheduler {
     currentScheduler_ = this;
     workerIndex_ = static_cast<int>(index);
     while (true) {
-      TaskPtr task;
-      if (!tryPopTask(index, task)) {
+      WorkItem item;
+      if (!tryPopTask(index, item)) {
         std::unique_lock<std::mutex> lock(waitMutex_);
         condition_.wait(lock, [this] {
           return stop_.load(std::memory_order_acquire) ||
@@ -122,19 +115,9 @@ class Scheduler {
       }
 
       try {
-        // Execute the task and set the promise value:
-        if constexpr (std::is_void_v<Y>) {
-          task->job();
-          task->promise.set_value();
-        } else {
-          task->promise.set_value(task->job());
-        }
+        item.run();
       } catch (...) {
-        // On exception, set the exception on the promise:
-        try {
-          task->promise.set_exception(std::current_exception());
-        } catch (...) { /* ignore */
-        }
+        /* ignore */
       }
 
       // Decrement active task count and notify waiters.
@@ -144,24 +127,24 @@ class Scheduler {
   }
 
   /// Attempt to get a task from local or stolen queues.
-  bool tryPopTask(size_t index, TaskPtr& task) {
+  bool tryPopTask(size_t index, WorkItem& item) {
     // Prefer local queue, then steal to keep workers busy.
-    if (tryPopLocal(index, task)) return true;
-    if (trySteal(index, task)) return true;
+    if (tryPopLocal(index, item)) return true;
+    if (trySteal(index, item)) return true;
     return false;
   }
 
   /// Try to pop a task from the current worker queue.
-  bool tryPopLocal(size_t index, TaskPtr& task) {
+  bool tryPopLocal(size_t index, WorkItem& item) {
     WorkerQueue& queue = *queues_[index];
     std::lock_guard<std::mutex> lock(queue.mutex);
-    if (!Policy::template popLocal<TaskPtr>(queue.queue, task)) return false;
+    if (!Policy::template popLocal<WorkItem>(queue.queue, item)) return false;
     queuedTasks_.fetch_sub(1, std::memory_order_release);
     return true;
   }
 
   /// Try to steal a task from another worker queue.
-  bool trySteal(size_t index, TaskPtr& task) {
+  bool trySteal(size_t index, WorkItem& item) {
     const size_t workerCount = queues_.size();
     if (workerCount <= 1) return false;
     // Steal from other workers if local queue is empty.
@@ -170,7 +153,7 @@ class Scheduler {
       WorkerQueue& queue = *queues_[target];
       std::unique_lock<std::mutex> lock(queue.mutex, std::try_to_lock);
       if (!lock.owns_lock()) continue;
-      if (!Policy::template popSteal<TaskPtr>(queue.queue, task)) continue;
+      if (!Policy::template popSteal<WorkItem>(queue.queue, item)) continue;
       queuedTasks_.fetch_sub(1, std::memory_order_release);
       return true;
     }
@@ -180,19 +163,8 @@ class Scheduler {
   /// Return true if called on a scheduler worker thread.
   bool isWorkerThread() const { return currentScheduler_ == this; }
 
-  std::future<Y> scheduleImpl(Metadata metadata, std::function<Y()> job) {
-    if (stop_.load(std::memory_order_acquire)) {
-      std::promise<Y> err_promise;
-      err_promise.set_exception(std::make_exception_ptr(
-          std::runtime_error("Scheduler is stopping or stopped.")));
-      return err_promise.get_future();
-    }
-
-    std::promise<Y> promise;
-    std::future<Y> future = promise.get_future();
-    auto task = std::make_shared<Task>(std::move(metadata), std::move(job),
-                                       std::move(promise));
-
+  bool enqueueImpl(Metadata metadata, std::function<void()> work) {
+    if (stop_.load(std::memory_order_acquire)) return false;
     WorkerQueue* targetQueue = nullptr;
     if (isWorkerThread()) {
       targetQueue = queues_[static_cast<size_t>(workerIndex_)].get();
@@ -204,20 +176,21 @@ class Scheduler {
 
     {
       std::lock_guard<std::mutex> lock(targetQueue->mutex);
-      Policy::template push<TaskPtr>(targetQueue->queue, std::move(task));
+      Policy::template push<WorkItem>(
+          targetQueue->queue, WorkItem{std::move(metadata), std::move(work)});
     }
 
     queuedTasks_.fetch_add(1, std::memory_order_release);
     activeTasks_.fetch_add(1, std::memory_order_release);
     condition_.notify_one();
-    return future;
+    return true;
   }
 
   template <typename T = Y, typename = std::enable_if_t<std::is_void_v<T>>>
   void scheduleOrRunInlineImpl(Metadata metadata, std::function<void()> job) {
     if (stop_.load(std::memory_order_relaxed)) return;
     if (!isWorkerThread()) {
-      scheduleImpl(std::move(metadata), std::move(job));
+      enqueueImpl(std::move(metadata), std::move(job));
       return;
     }
 
@@ -273,7 +246,40 @@ class Scheduler {
   template <typename P = Policy, typename = std::enable_if_t<std::is_same_v<
                                      typename P::Metadata, std::monostate>>>
   std::future<Y> schedule(std::function<Y()> job) {
-    return scheduleImpl(Metadata{}, std::move(job));
+    if (stop_.load(std::memory_order_acquire)) {
+      std::promise<Y> err_promise;
+      err_promise.set_exception(std::make_exception_ptr(
+          std::runtime_error("Scheduler is stopping or stopped.")));
+      return err_promise.get_future();
+    }
+
+    auto promise = std::make_shared<std::promise<Y>>();
+    std::future<Y> future = promise->get_future();
+
+    auto work = [promise, job = std::move(job)]() mutable {
+      try {
+        if constexpr (std::is_void_v<Y>) {
+          job();
+          promise->set_value();
+        } else {
+          promise->set_value(job());
+        }
+      } catch (...) {
+        try {
+          promise->set_exception(std::current_exception());
+        } catch (...) { /* ignore */
+        }
+      }
+    };
+
+    if (!enqueueImpl(Metadata{}, std::move(work))) {
+      try {
+        promise->set_exception(std::make_exception_ptr(
+            std::runtime_error("Scheduler is stopping or stopped.")));
+      } catch (...) { /* ignore */
+      }
+    }
+    return future;
   }
 
   /**
@@ -288,7 +294,40 @@ class Scheduler {
   template <typename P = Policy, typename = std::enable_if_t<!std::is_same_v<
                                      typename P::Metadata, std::monostate>>>
   std::future<Y> schedule(Metadata metadata, std::function<Y()> job) {
-    return scheduleImpl(std::move(metadata), std::move(job));
+    if (stop_.load(std::memory_order_acquire)) {
+      std::promise<Y> err_promise;
+      err_promise.set_exception(std::make_exception_ptr(
+          std::runtime_error("Scheduler is stopping or stopped.")));
+      return err_promise.get_future();
+    }
+
+    auto promise = std::make_shared<std::promise<Y>>();
+    std::future<Y> future = promise->get_future();
+
+    auto work = [promise, job = std::move(job)]() mutable {
+      try {
+        if constexpr (std::is_void_v<Y>) {
+          job();
+          promise->set_value();
+        } else {
+          promise->set_value(job());
+        }
+      } catch (...) {
+        try {
+          promise->set_exception(std::current_exception());
+        } catch (...) { /* ignore */
+        }
+      }
+    };
+
+    if (!enqueueImpl(std::move(metadata), std::move(work))) {
+      try {
+        promise->set_exception(std::make_exception_ptr(
+            std::runtime_error("Scheduler is stopping or stopped.")));
+      } catch (...) { /* ignore */
+      }
+    }
+    return future;
   }
 
   /**
@@ -313,6 +352,30 @@ class Scheduler {
                 std::is_void_v<T> && !std::is_same_v<Metadata, std::monostate>>>
   void scheduleOrRunInline(Metadata metadata, std::function<void()> job) {
     scheduleOrRunInlineImpl(std::move(metadata), std::move(job));
+  }
+
+  /**
+   * @brief Enqueue a fire-and-forget task for execution.
+   *
+   * Enabled only for `TaskScheduler<void>` (i.e., `Y = void` and no metadata).
+   */
+  template <typename T = Y,
+            typename = std::enable_if_t<
+                std::is_void_v<T> && std::is_same_v<Metadata, std::monostate>>>
+  void enqueue(std::function<void()> job) {
+    enqueueImpl(Metadata{}, std::move(job));
+  }
+
+  /**
+   * @brief Enqueue a fire-and-forget task or run it inline on worker threads.
+   *
+   * Enabled only for `TaskScheduler<void>` (i.e., `Y = void` and no metadata).
+   */
+  template <typename T = Y,
+            typename = std::enable_if_t<
+                std::is_void_v<T> && std::is_same_v<Metadata, std::monostate>>>
+  void enqueueOrRunInline(std::function<void()> job) {
+    scheduleOrRunInlineImpl(Metadata{}, std::move(job));
   }
 
   /**

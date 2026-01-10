@@ -45,7 +45,7 @@ struct PrioritySchedulerPolicy {
   template <typename TaskPtr>
   struct Compare {
     bool operator()(const TaskPtr& a, const TaskPtr& b) const {
-      return a->metadata > b->metadata;
+      return a.metadata > b.metadata;
     }
   };
 

@@ -295,7 +295,7 @@ class ForestTraversal {
       };
       /// Schedule a task and increment the pending counter.
       state->incrementPending();
-      scheduler->schedule(std::function<void()>(std::move(task)));
+      scheduler->enqueue(std::function<void()>(std::move(task)));
     }
 
     /// Inline node work followed by traversal of children.
@@ -367,7 +367,7 @@ class ForestTraversal {
       state->incrementPending();
 
       // Schedule a continuation or run it inline if already on a worker thread.
-      scheduler->scheduleOrRunInline(std::function<void()>(std::move(task)));
+      scheduler->enqueueOrRunInline(std::function<void()>(std::move(task)));
     }
 
     /// Do bottom-up node work, then invoke the continuation.
