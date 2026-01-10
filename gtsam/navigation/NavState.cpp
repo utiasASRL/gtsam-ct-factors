@@ -77,6 +77,34 @@ Vector3 NavState::bodyVelocity(OptionalJacobian<3, 9> H) const {
 }
 
 //------------------------------------------------------------------------------
+double NavState::range(const Point3& point, OptionalJacobian<1, 9> Hself,
+                       OptionalJacobian<1, 3> Hpoint) const {
+  Matrix16 Hpose;
+  OptionalJacobian<1, 6> HposeOptional(Hself ? &Hpose : nullptr);
+  const double r = pose().range(point, HposeOptional, Hpoint);
+
+  if (Hself) {
+    Hself->setZero();
+    Hself->block<1, 6>(0, 0) = Hpose;
+  }
+  return r;
+}
+
+//------------------------------------------------------------------------------
+Unit3 NavState::bearing(const Point3& point, OptionalJacobian<2, 9> Hself,
+                        OptionalJacobian<2, 3> Hpoint) const {
+  Matrix26 Hpose;
+  OptionalJacobian<2, 6> HposeOptional(Hself ? &Hpose : nullptr);
+  const Unit3 b = pose().bearing(point, HposeOptional, Hpoint);
+
+  if (Hself) {
+    Hself->setZero();
+    Hself->block<2, 6>(0, 0) = Hpose;
+  }
+  return b;
+}
+
+//------------------------------------------------------------------------------
 Matrix5 NavState::matrix() const {
   Matrix3 R = this->R();
 
