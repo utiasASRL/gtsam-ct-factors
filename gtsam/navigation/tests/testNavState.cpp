@@ -133,6 +133,22 @@ TEST( NavState, Velocity) {
 }
 
 /* ************************************************************************* */
+TEST(NavState, PoseJacobian) {
+  // NavState::pose() should be a pure projection onto the (R,t) components.
+  std::function<Pose3(const NavState&)> f = [](const NavState& s) {
+    return s.pose();
+  };
+
+  const Matrix69 actualH = numericalDerivative11<Pose3, NavState>(f, kState1);
+
+  Matrix69 expectedH = Matrix69::Zero();
+  expectedH.block<3, 3>(0, 0) = I_3x3;
+  expectedH.block<3, 3>(3, 3) = I_3x3;
+
+  EXPECT(assert_equal(expectedH, actualH, 1e-6));
+}
+
+/* ************************************************************************* */
 TEST( NavState, BodyVelocity) {
   Matrix39 aH, eH;
   Velocity3 actual = kState1.bodyVelocity(aH);
