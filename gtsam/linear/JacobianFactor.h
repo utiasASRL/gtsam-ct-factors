@@ -198,6 +198,9 @@ namespace gtsam {
           std::make_shared<JacobianFactor>(*this));
     }
 
+    /// Identify JacobianFactor-based types.
+    bool isJacobian() const override { return true; }
+
     // Implementing Testable interface
     void print(const std::string& s = "",
       const KeyFormatter& formatter = DefaultKeyFormatter) const override;
@@ -209,7 +212,7 @@ namespace gtsam {
     /// HybridValues simply extracts the \class VectorValues and calls error.
     using GaussianFactor::error;
 
-    //// 0.5*(A*x-b)'*D*(A*x-b).
+    /// 0.5*(A*x-b)'*D*(A*x-b).
     double error(const VectorValues& c) const override; 
 
     /** Return the augmented information matrix represented by this GaussianFactor.
@@ -483,5 +486,4 @@ BOOST_CLASS_VERSION(gtsam::JacobianFactor, 1)
 #endif
 
 #include <gtsam/linear/JacobianFactor-inl.h>
-
 
