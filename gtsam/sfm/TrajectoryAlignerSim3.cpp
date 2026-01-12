@@ -16,19 +16,14 @@ namespace {
 
 using namespace gtsam;
 
-SharedNoiseModel chooseNoise(const SharedNoiseModel &noise, double sigma) {
-  if (noise) return noise;
-  return noiseModel::Isotropic::Sigma(6, sigma);
-}
-
-using PoseMeasurements = std::vector<UnaryMeasurement<Pose3>>;
 struct MeasurementPair {
   const UnaryMeasurement<Pose3> &first;
   const UnaryMeasurement<Pose3> &second;
 };
 
 std::vector<MeasurementPair> overlappingMeasurementPairs(
-    const PoseMeasurements &first, const PoseMeasurements &second) {
+    const std::vector<UnaryMeasurement<Pose3>> &first, 
+    const std::vector<UnaryMeasurement<Pose3>> &second) {
   std::unordered_map<Key, size_t> indexLookup;
   indexLookup.reserve(second.size());
   for (size_t i = 0; i < second.size(); ++i) {
@@ -66,7 +61,8 @@ Similarity3 estimateInitialSim3(const std::vector<MeasurementPair> &overlapPairs
 
 namespace gtsam {
 TrajectoryAlignerSim3::TrajectoryAlignerSim3(
-    const PoseMeasurements &aTi, const ChildrenPoses &bTi_all,
+    const std::vector<UnaryMeasurement<Pose3>> &aTi, 
+    const std::vector<std::vector<UnaryMeasurement<Pose3>>> &bTi_all,
     const std::vector<Similarity3> &bSa_all) {
   const size_t childCount = bTi_all.size();
   if (!bSa_all.empty() && bSa_all.size() != childCount) {
@@ -74,18 +70,19 @@ TrajectoryAlignerSim3::TrajectoryAlignerSim3(
         "TrajectoryAlignerSim3: bSa_all and bTi_all sizes differ");
   }
 
-  // Add priors for all parent poses up front.
+  // Add measurement factors for all parent poses.
   for (const auto &meas : aTi) {
     initial_.insert(meas.key(), meas.measured());
-    graph_.addExpressionFactor(Pose3_(meas.key()), meas.measured(),
-                               chooseNoise(meas.noiseModel(), 1e-2));
+    graph_.addPrior(meas.key(), meas.measured(), meas.noiseModel());
   }
 
-  // Parent-child constraints (only where camera exists in parent).
+  // Measurement factors in child frame (only where camera exists in parent).
   for (size_t childIdx = 0; childIdx < childCount; ++childIdx) {
     const auto &bTi = bTi_all[childIdx];
 
     const Key simKey = Symbol('S', childIdx);
+
+    // If initial Sim3 estimates are provided, use them.
     if (!bSa_all.empty()) {
       initial_.insert(simKey, bSa_all[childIdx]);
     } else {
@@ -114,4 +111,3 @@ Values TrajectoryAlignerSim3::solve() const {
 }
 
 }  // namespace gtsam
-

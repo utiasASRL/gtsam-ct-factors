@@ -1,3 +1,18 @@
+/* ----------------------------------------------------------------------------
+ * GTSAM Copyright 2010-2020, Georgia Tech Research Corporation,
+ * Atlanta, Georgia 30332-0415
+ * All Rights Reserved
+ * Authors: Frank Dellaert, et al. (see THANKS for the full author list)
+ * See LICENSE for the license information
+ * -------------------------------------------------------------------------- */
+
+/**
+ * @file testTrajectoryAlignerSim3.cpp
+ * @author Akshay Krishnan
+ * @date January 2026
+ * @brief Unit tests for the TrajectoryAlignerSim3 class.
+ */
+
 #include <CppUnitLite/TestHarness.h>
 
 #include <gtsam/geometry/Pose3.h>
@@ -12,32 +27,31 @@
 #include <vector>
 
 using namespace gtsam;
-using PoseMeasurements = TrajectoryAlignerSim3::PoseMeasurements;
-using ChildrenPoses = TrajectoryAlignerSim3::ChildrenPoses;
+using PoseMeasurements = std::vector<UnaryMeasurement<Pose3>>;
+using ChildrenPoses = std::vector<std::vector<UnaryMeasurement<Pose3>>>;
 
 namespace {
 
-Pose3 makePose(double x, double y, double z, const Rot3& R = Rot3()) {
-  return Pose3(R, Point3(x, y, z));
-}
-
 std::vector<Pose3> makeParentPoses() {
   return {
-      makePose(0.0, 0.0, 0.0),
-      makePose(1.0, 0.1, 0.0, Rot3::RzRyRx(0.15, -0.2, 0.1)),
-      makePose(2.0, 0.4, 0.1, Rot3::RzRyRx(0.1, 0.05, -0.03))};
+      Pose3::Identity(),
+      Pose3(Rot3::RzRyRx(0.15, -0.2, 0.1), Point3(1.0, 0.1, 0.0)),
+      Pose3(Rot3::RzRyRx(0.1, 0.05, -0.03), Point3(2.0, 0.4, 0.1))};
 }
 
+// Makes a vector of unary measurements from a vector of poses.
+// Does not add measurement noise, only creates measurement objects.
 PoseMeasurements makeMeasurements(const std::vector<Pose3>& poses,
                                   double noiseSigma = 1e-3) {
   PoseMeasurements m;
   auto noise = noiseModel::Isotropic::Sigma(6, noiseSigma);
   for (size_t i = 0; i < poses.size(); ++i) {
-    m.emplace_back(static_cast<Key>(i), poses[i], noise);
+    m.emplace_back(i, poses[i], noise);
   }
   return m;
 }
 
+// Transforms a vector of poses by a similarity transform.
 std::vector<Pose3> transformPoses(const Similarity3& sim,
                                   const std::vector<Pose3>& poses) {
   std::vector<Pose3> out;
@@ -46,6 +60,7 @@ std::vector<Pose3> transformPoses(const Similarity3& sim,
   return out;
 }
 
+// Perturbs a pose by a small random rotation and translation.
 Pose3 perturbPose(const Pose3& p) {
   static thread_local std::mt19937 rng(42);
   std::normal_distribution<double> noise(0.0, 0.01);
@@ -54,6 +69,7 @@ Pose3 perturbPose(const Pose3& p) {
   return p.compose(Pose3(dR, dt));
 }
 
+// Perturbs a vector of poses independently.
 std::vector<Pose3> perturbPoses(const std::vector<Pose3>& poses) {
   std::vector<Pose3> out;
   out.reserve(poses.size());
@@ -61,12 +77,14 @@ std::vector<Pose3> perturbPoses(const std::vector<Pose3>& poses) {
   return out;
 }
 
+// Perturbs a similarity transform by a small noise.
 Similarity3 perturbSim3(const Similarity3& sim) {
   Similarity3 delta(Rot3::RzRyRx(0.2, -0.25, 0.1), Point3(2, 3, -1),
                     2.3);
   return sim * delta;
 }
 
+// Ground truth similarity transforms for the tests.
 const Similarity3 gtSim1(Rot3::RzRyRx(0.2, 0.1, -0.05), Point3(0.3, -0.1, 0.2),
                          1.5);
 const Similarity3 gtSim2(Rot3::RzRyRx(-0.15, 0.05, 0.08),
@@ -74,6 +92,7 @@ const Similarity3 gtSim2(Rot3::RzRyRx(-0.15, 0.05, 0.08),
 const Similarity3 gtSim3(Rot3::RzRyRx(0.05, -0.08, 0.12),
                           Point3(0.15, 0.05, -0.1), 1.1);
 
+// Helper function to check if two similarity transforms are close.
 bool simClose(const Similarity3& expected, const Similarity3& actual,
               double tol) {
   return assert_equal<Similarity3>(expected, actual, tol);
@@ -148,8 +167,8 @@ TEST(TrajectoryAlignerSim3, SingleChildWithExtraNonOverlap) {
   PoseMeasurements aTi = makeMeasurements(parent, /*noiseSigma=*/1e-2);
   PoseMeasurements bTi = makeMeasurements(perturbPoses(child), 1e-1);
   // Add a non-overlapping camera in the child frame.
-  bTi.emplace_back(static_cast<Key>(10),
-                   gtSim1.transformFrom(makePose(4.0, -1.0, 0.5)),
+  bTi.emplace_back(10,
+                   gtSim1.transformFrom(Pose3(Rot3(), Point3(4.0, -1.0, 0.5))),
                    noiseModel::Isotropic::Sigma(6, 1e-2));
 
   ChildrenPoses bTi_all{bTi};

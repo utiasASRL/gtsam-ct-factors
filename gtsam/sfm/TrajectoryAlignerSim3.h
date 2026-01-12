@@ -49,18 +49,10 @@ namespace gtsam {
  * - Optimized Sim3 transforms (with Symbol keys 'S' and index for each child)
  */
 class GTSAM_EXPORT TrajectoryAlignerSim3 {
- public:
-  using PoseMeasurements = std::vector<UnaryMeasurement<Pose3>>;
-  using ChildrenPoses = std::vector<PoseMeasurements>;
-
  private:
   // Data members.
   ExpressionFactorGraph graph_;
   Values initial_;
-  PoseMeasurements parentPoses_;
-  ChildrenPoses childrenPoses_;
-  std::vector<Similarity3> initialBSa_;
-  std::vector<Key> simKeys_;
 
  public:
   /**
@@ -70,7 +62,10 @@ class GTSAM_EXPORT TrajectoryAlignerSim3 {
    * @param bSa_all Initial Sim3 estimates transforming from parent to each child.
    *                If empty, initial estimates are computed automatically.
    */
-  TrajectoryAlignerSim3(const PoseMeasurements &aTi, const ChildrenPoses &bTi_all, const std::vector<Similarity3> &bSa_all);
+  TrajectoryAlignerSim3(
+    const std::vector<UnaryMeasurement<Pose3>> &aTi, 
+    const std::vector<std::vector<UnaryMeasurement<Pose3>>> &bTi_all, 
+    const std::vector<Similarity3> &bSa_all = {});
 
   /// Solves the optimization problem and returns optimized poses and transforms.
   Values solve() const;
