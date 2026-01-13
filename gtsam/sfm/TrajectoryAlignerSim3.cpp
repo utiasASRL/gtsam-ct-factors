@@ -110,4 +110,10 @@ Values TrajectoryAlignerSim3::solve() const {
   return optimizer.optimize();
 }
 
+Marginals TrajectoryAlignerSim3::marginalize(
+  const Values& solution, const Ordering::OrderingType ordering_type) const {
+  Ordering ordering = Ordering::Create(ordering_type, graph_);
+  return Marginals(graph_, solution, ordering);
+}
+
 }  // namespace gtsam

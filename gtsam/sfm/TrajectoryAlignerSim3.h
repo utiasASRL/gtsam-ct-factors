@@ -22,6 +22,7 @@
 #include <gtsam/geometry/Similarity3.h>
 #include <gtsam/nonlinear/ExpressionFactorGraph.h>
 #include <gtsam/nonlinear/LevenbergMarquardtOptimizer.h>
+#include <gtsam/nonlinear/Marginals.h>
 #include <gtsam/nonlinear/Values.h>
 #include <gtsam/sfm/UnaryMeasurement.h>
 
@@ -70,5 +71,8 @@ class GTSAM_EXPORT TrajectoryAlignerSim3 {
   /// Solves the optimization problem and returns optimized poses and transforms.
   Values solve() const;
 
+  Marginals marginalize(
+    const Values& solution, 
+    const Ordering::OrderingType ordering_type = Ordering::COLAMD) const;
 };
 }  // namespace gtsam

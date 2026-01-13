@@ -179,6 +179,9 @@ class TrajectoryAlignerSim3 {
       const std::vector<gtsam::Similarity3>& bSa_all);
 
   gtsam::Values solve() const;
+  gtsam::Marginals marginalize(
+    const gtsam::Values& solution, 
+    const gtsam::Ordering::OrderingType ordering_type = gtsam::Ordering::COLAMD) const;
 };
 
 #include <gtsam/slam/dataset.h>

@@ -82,6 +82,9 @@ class TestTrajectoryAlignerSim3(GtsamTestCase):
         recovered = result.atSimilarity3(gtsam.Symbol("S", 0).key())
         self.assertTrue(gt_bSa.equals(recovered, 1e-2))
 
+        marginals = aligner.marginalize(result)
+        self.assertTrue(marginals.marginalInformation(gtsam.Symbol("S", 0).key()).size > 0)
+
 
 if __name__ == "__main__":
     unittest.main()
