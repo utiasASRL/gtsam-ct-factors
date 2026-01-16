@@ -24,6 +24,7 @@
 namespace gtsam {
 
 namespace internal { struct NonlinearOptimizerState; }
+class NonlinearMultifrontalSolver;
 
 /**
  * This is the abstract interface for classes that can optimize for the
@@ -78,6 +79,9 @@ protected:
   NonlinearFactorGraph graph_; ///< The graph with nonlinear factors
 
   std::unique_ptr<internal::NonlinearOptimizerState> state_; ///< PIMPL'd state
+  
+  /// Solver for multifrontal Cholesky, lazily created
+  mutable std::unique_ptr<NonlinearMultifrontalSolver> nonlinearMultifrontalSolver_;
 
 public:
   /** A shared pointer to this class */
@@ -145,20 +149,31 @@ protected:
 
   virtual const NonlinearOptimizerParams& _params() const = 0;
 
+  /**
+   * Ensure that the nonlinearMultifrontalSolver_ is populated if the params
+   * request multifrontal Cholesky. Returns true if the solver is available and
+   * ready. If constraints are present or initialization fails, returns false
+   * (and user should fall back to legacy solver).
+   */
+  bool ensureMultifrontalSolver(const NonlinearOptimizerParams& params,
+                                const Values& values) const;
+
   /** Constructor for initial construction of base classes. Takes ownership of state. */
   NonlinearOptimizer(const NonlinearFactorGraph& graph,
                      std::unique_ptr<internal::NonlinearOptimizerState> state);
 };
 
-/** Check whether the relative error decrease is less than relativeErrorTreshold,
- * the absolute error decrease is less than absoluteErrorTreshold, <em>or</em>
+/** Check whether the relative error decrease is less than relativeErrorThreshold,
+ * the absolute error decrease is less than absoluteErrorThreshold, <em>or</em>
  * the error itself is less than errorThreshold.
  */
-GTSAM_EXPORT bool checkConvergence(double relativeErrorTreshold,
-    double absoluteErrorTreshold, double errorThreshold,
-    double currentError, double newError, NonlinearOptimizerParams::Verbosity verbosity = NonlinearOptimizerParams::SILENT);
+GTSAM_EXPORT bool checkConvergence(
+    double relativeErrorThreshold, double absoluteErrorThreshold,
+    double errorThreshold, double currentError, double newError,
+    NonlinearOptimizerParams::Verbosity verbosity =
+        NonlinearOptimizerParams::SILENT);
 
-GTSAM_EXPORT bool checkConvergence(const NonlinearOptimizerParams& params, double currentError,
-                                   double newError);
+GTSAM_EXPORT bool checkConvergence(const NonlinearOptimizerParams& params,
+                                   double currentError, double newError);
 
 } // gtsam
