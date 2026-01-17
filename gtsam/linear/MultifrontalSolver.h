@@ -81,6 +81,9 @@ class GTSAM_EXPORT MultifrontalSolver
   bool loaded_ = false;                ///< Whether load() has been called.
   bool eliminated_ = false;            ///< Whether eliminateInPlace() ran.
   Parameters params_;                  ///< Tunable solver parameters.
+  double lastOldError_ = 0.0;          ///< Cached old linearized error.
+  double lastNewError_ = 0.0;          ///< Cached new linearized error.
+  bool hasDeltaError_ = false;         ///< Whether updateSolution computed it.
 
  public:
   /**
@@ -167,6 +170,13 @@ class GTSAM_EXPORT MultifrontalSolver
    * @return Reference to the internally cached solution vector.
    */
   const VectorValues& updateSolution();
+
+  /**
+   * Return the linearized delta error from the last updateSolution() call.
+   * Optionally returns the old and new linearized errors.
+   */
+  double deltaError(double* oldError = nullptr,
+                    double* newError = nullptr) const;
 
   /// Accessor for the roots of the elimination tree.
   const std::vector<CliquePtr>& roots() const { return roots_; }

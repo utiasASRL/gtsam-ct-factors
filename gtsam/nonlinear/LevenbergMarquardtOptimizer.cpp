@@ -177,8 +177,14 @@ bool LevenbergMarquardtOptimizer::tryLambda(const GaussianFactorGraph& linear,
     // as the nonlinear error when robust noise models are used.
     double oldLinearizedError = 0.0;
     double newLinearizedError = 0.0;
-    double linearizedCostChange =
-        linear.deltaError(delta, &oldLinearizedError, &newLinearizedError);
+    double linearizedCostChange = 0.0;
+    if (nonlinearMultifrontalSolver_) {
+      linearizedCostChange = nonlinearMultifrontalSolver_->deltaError(
+          &oldLinearizedError, &newLinearizedError);
+    } else {
+      linearizedCostChange =
+          linear.deltaError(delta, &oldLinearizedError, &newLinearizedError);
+    }
 
     // cost change in the linearized system (old - new)
     if (verbose)

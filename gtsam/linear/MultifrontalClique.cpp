@@ -552,6 +552,45 @@ void MultifrontalClique::updateSolution() const {
     values->noalias() = x_f.segment(offset, dim);
     offset += dim;
   }
+
+  lastOldError_ = 0.0;
+  lastNewError_ = 0.0;
+  if (frontalDim > 0) {
+    lastOldError_ = 0.5 * d.squaredNorm();
+    Vector residual = R * x_f;
+    if (!separatorPtrs_.empty()) {
+      const Vector& x_s =
+          buildSeparatorVector(separatorPtrs_, &separatorScratch_);
+      residual.noalias() += S * x_s;
+    }
+    residual.noalias() -= d;
+    lastNewError_ = 0.5 * residual.squaredNorm();
+  }
+
+}
+
+double MultifrontalClique::constantTermError() const {
+  if (!RSdReady_) {
+    return 0.0;
+  }
+  double constantError = 0.0;
+  if (useQR()) {
+    const DenseIndex extraRows =
+        RSd_.matrix().rows() - static_cast<DenseIndex>(frontalDim);
+    if (extraRows > 0) {
+      const DenseIndex lastCol =
+          static_cast<DenseIndex>(RSd_.matrix().cols() - 1);
+      constantError =
+          0.5 * RSd_.matrix().bottomRows(extraRows).col(lastCol).squaredNorm();
+    }
+  } else {
+    const DenseIndex rhsIndex = static_cast<DenseIndex>(
+        info_.nBlocks() - info_.blockStart() - 1);
+    if (rhsIndex >= 0) {
+      constantError = 0.5 * info_.diagonalBlock(rhsIndex)(0, 0);
+    }
+  }
+  return constantError;
 }
 
 void MultifrontalClique::print(const std::string& s,

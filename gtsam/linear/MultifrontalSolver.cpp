@@ -603,6 +603,7 @@ void MultifrontalSolver::load(const GaussianFactorGraph& graph) {
   }
   loaded_ = true;
   eliminated_ = false;
+  hasDeltaError_ = false;
 }
 
 /* ************************************************************************* */
@@ -613,6 +614,7 @@ void MultifrontalSolver::eliminateInPlace() {
         "eliminating.");
   }
   eliminated_ = false;
+  hasDeltaError_ = false;
   runBottomUp([](MultifrontalClique& node) { node.eliminateInPlace(); },
               params_.eliminationParallelThreshold);
   eliminated_ = true;
@@ -629,6 +631,7 @@ void MultifrontalSolver::eliminateInPlace(const GaussianFactorGraph& graph) {
       params_.eliminationParallelThreshold);
   loaded_ = true;
   eliminated_ = true;
+  hasDeltaError_ = false;
 }
 
 /* ************************************************************************* */
@@ -676,13 +679,52 @@ GaussianBayesTree MultifrontalSolver::computeBayesTree() const {
 /* ************************************************************************* */
 const VectorValues& MultifrontalSolver::updateSolution() {
   assert(loaded_ && eliminated_);
+
+  // Back-substitute the solution with a top-down pass through the cliques.
   runTopDown([](MultifrontalClique& node) { node.updateSolution(); },
              params_.solutionParallelThreshold);
 
+  // Enforce constrained keys as zero in the final solution.
   for (Key key : fixedKeys_) {
     solution_.at(key).setZero();
   }
+
+  // Aggregate per-clique linearized errors from the latest solution.
+  lastOldError_ = 0.0;
+  lastNewError_ = 0.0;
+  for (const auto& clique : cliques_) {
+    if (!clique) continue;
+    lastOldError_ += clique->lastOldError();
+    lastNewError_ += clique->lastNewError();
+  }
+
+  // Add the constant term once from the root cliques.
+  double constantError = 0.0;
+  for (const auto& root : roots_) {
+    if (!root) continue;
+    constantError += root->constantTermError();
+  }
+  lastOldError_ += constantError;
+  lastNewError_ += constantError;
+
+  // Mark delta error as valid for subsequent deltaError() calls.
+  hasDeltaError_ = true;
   return solution_;
+}
+
+double MultifrontalSolver::deltaError(double* oldError,
+                                      double* newError) const {
+  if (!hasDeltaError_) {
+    throw std::runtime_error(
+        "MultifrontalSolver::deltaError requires updateSolution().");
+  }
+  if (oldError) {
+    *oldError = lastOldError_;
+  }
+  if (newError) {
+    *newError = lastNewError_;
+  }
+  return lastOldError_ - lastNewError_;
 }
 
 /* ************************************************************************* */

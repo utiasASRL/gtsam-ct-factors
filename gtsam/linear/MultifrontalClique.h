@@ -241,6 +241,15 @@ class GTSAM_EXPORT MultifrontalClique {
    * frontal blocks.
    */
   void updateSolution() const;
+
+  /// Access the last old error computed during updateSolution().
+  double lastOldError() const { return lastOldError_; }
+
+  /// Access the last new error computed during updateSolution().
+  double lastNewError() const { return lastNewError_; }
+
+  /// Return the constant error term for this clique (nonzero for roots).
+  double constantTermError() const;
   /// @}
 
   friend std::ostream& operator<<(std::ostream& os,
@@ -317,6 +326,10 @@ class GTSAM_EXPORT MultifrontalClique {
   mutable Vector rhsScratch_;  ///< Cached RHS workspace for back-substitution.
   mutable Vector
       separatorScratch_;  ///< Cached separator stack for back-substitution.
+
+  // Solve-time cached error contributions.
+  mutable double lastOldError_ = 0.0;
+  mutable double lastNewError_ = 0.0;
 };
 
 std::ostream& operator<<(std::ostream& os, const MultifrontalClique& clique);
