@@ -57,7 +57,7 @@ MultifrontalSolver::Parameters noMergeParams() {
 }  // namespace
 
 /* ************************************************************************* */
-/// Build the solver and validate initial structure and explicit load.
+// Build the solver and validate initial structure and explicit load.
 TEST(MultifrontalSolver, Constructor) {
   MultifrontalSolver solver(chain, chainOrdering, noMergeParams());
   solver.load(chain);
@@ -87,7 +87,7 @@ TEST(MultifrontalSolver, Constructor) {
 }
 
 /* ************************************************************************* */
-/// Build the solver from precomputed data and validate structure and load.
+// Build the solver from precomputed data and validate structure and load.
 TEST(MultifrontalSolver, ConstructorPrecomputed) {
   auto data = MultifrontalSolver::Precompute(chain, chainOrdering);
   MultifrontalSolver solver(std::move(data), chainOrdering, noMergeParams());
@@ -114,7 +114,7 @@ TEST(MultifrontalSolver, ConstructorPrecomputed) {
 }
 
 /* ************************************************************************* */
-/// Reload numerical values and ensure Ab updates match whitening.
+// Reload numerical values and ensure Ab updates match whitening.
 TEST(MultifrontalSolver, Load) {
   MultifrontalSolver solver(chain, chainOrdering, noMergeParams());
 
@@ -142,7 +142,7 @@ TEST(MultifrontalSolver, Load) {
 }
 
 /* ************************************************************************* */
-/// Compare solver output against multifrontal elimination baseline.
+// Compare solver output against multifrontal elimination baseline.
 TEST(MultifrontalSolver, Eliminate) {
   MultifrontalSolver solver(chain, chainOrdering, noMergeParams());
   solver.load(chain);
@@ -159,8 +159,8 @@ TEST(MultifrontalSolver, Eliminate) {
 }
 
 /* ************************************************************************* */
-/// deltaError from the solver matches GaussianFactorGraph for the
-/// solver-produced (optimal) delta.
+// deltaError from the solver matches GaussianFactorGraph for the
+// solver-produced (optimal) delta.
 TEST(MultifrontalSolver, DeltaErrorMatchesGraph) {
   MultifrontalSolver solver(chain, chainOrdering, noMergeParams());
   solver.eliminateInPlace(chain);
@@ -181,8 +181,8 @@ TEST(MultifrontalSolver, DeltaErrorMatchesGraph) {
 }
 
 /* ************************************************************************* */
-/// deltaError from the solver matches GaussianFactorGraph on an
-/// overdetermined system with nonzero residual at the solution.
+// deltaError from the solver matches GaussianFactorGraph on an
+// overdetermined system with nonzero residual at the solution.
 TEST(MultifrontalSolver, DeltaErrorMatchesGraphInconsistent) {
   const SharedDiagonal noise = noiseModel::Isotropic::Sigma(1, 1.0);
   GaussianFactorGraph graph;
@@ -210,7 +210,7 @@ TEST(MultifrontalSolver, DeltaErrorMatchesGraphInconsistent) {
 }
 
 /* ************************************************************************* */
-/// Load + eliminate in one traversal matches standard elimination.
+// Load + eliminate in one traversal matches standard elimination.
 TEST(MultifrontalSolver, EliminateWithLoad) {
   MultifrontalSolver solver(chain, chainOrdering, noMergeParams());
   solver.eliminateInPlace(chain);
@@ -224,7 +224,7 @@ TEST(MultifrontalSolver, EliminateWithLoad) {
 }
 
 /* ************************************************************************* */
-/// deltaError match when QR is forced, exercising the QR leaf RSd_ path.
+// deltaError match when QR is forced, exercising the QR leaf RSd_ path.
 TEST(MultifrontalSolver, DeltaErrorMatchesGraphQR) {
   auto qrParams = noMergeParams();
   qrParams.qrMode = MultifrontalParameters::QRMode::Force;
@@ -247,7 +247,7 @@ TEST(MultifrontalSolver, DeltaErrorMatchesGraphQR) {
 }
 
 /* ************************************************************************* */
-/// Forcing QR enables QR on all leaves and matches legacy QR elimination.
+// Forcing QR enables QR on all leaves and matches legacy QR elimination.
 TEST(MultifrontalSolver, ForceQRMatchesDenseQR) {
   auto qrParams = noMergeParams();
   qrParams.qrMode = MultifrontalParameters::QRMode::Force;
@@ -275,7 +275,7 @@ TEST(MultifrontalSolver, ForceQRMatchesDenseQR) {
 }
 
 /* ************************************************************************* */
-/// Compare marginals from in-place Bayes tree against standard elimination.
+// Compare marginals from in-place Bayes tree against standard elimination.
 TEST(MultifrontalSolver, ComputeBayesTreeMarginals) {
   MultifrontalSolver solver(chain, chainOrdering, noMergeParams());
   solver.load(chain);
@@ -305,7 +305,7 @@ TEST(MultifrontalSolver, ComputeBayesTreeMarginals) {
 }
 
 /* ************************************************************************* */
-/// Compare marginals on a constrained chain against legacy marginals.
+// Compare marginals on a constrained chain against legacy marginals.
 TEST(MultifrontalSolver, ComputeBayesTreeMarginalsConstrainedChain) {
   const SharedDiagonal hardConstraint =
       noiseModel::Constrained::MixedSigmas((Vector(1) << 0.0).finished());
@@ -329,7 +329,7 @@ TEST(MultifrontalSolver, ComputeBayesTreeMarginalsConstrainedChain) {
 }
 
 /* ************************************************************************* */
-/// Verify feasible unary constrained factor clamps the update to zero.
+// Verify feasible unary constrained factor clamps the update to zero.
 TEST(MultifrontalSolver, ConstrainedNoiseFeasible) {
   const SharedDiagonal hardConstraint =
       noiseModel::Constrained::MixedSigmas((Vector(1) << 0.0).finished());
@@ -351,7 +351,7 @@ TEST(MultifrontalSolver, ConstrainedNoiseFeasible) {
 }
 
 /* ************************************************************************* */
-/// Infeasible unary constrained factor is rejected.
+// Infeasible unary constrained factor is rejected.
 TEST(MultifrontalSolver, ConstrainedNoiseUnsupported) {
   const SharedDiagonal hardConstraint =
       noiseModel::Constrained::MixedSigmas((Vector(1) << 0.0).finished());
@@ -369,7 +369,7 @@ TEST(MultifrontalSolver, ConstrainedNoiseUnsupported) {
 }
 
 /* ************************************************************************* */
-/// Fully constrained unary factor with All() keeps delta fixed at zero.
+// Fully constrained unary factor with All() keeps delta fixed at zero.
 TEST(MultifrontalSolver, ConstrainedNoiseUnaryFeasible) {
   const SharedDiagonal hardConstraint = noiseModel::Constrained::All(1);
   const SharedDiagonal softNoise = noiseModel::Isotropic::Sigma(1, 1.0);
@@ -389,7 +389,7 @@ TEST(MultifrontalSolver, ConstrainedNoiseUnaryFeasible) {
 }
 
 /* ************************************************************************* */
-/// Mixed-key constrained factor is not supported.
+// Mixed-key constrained factor is not supported.
 TEST(MultifrontalSolver, ConstrainedNoiseMixedKeysUnsupported) {
   const SharedDiagonal hardConstraint = noiseModel::Constrained::All(1);
   GaussianFactorGraph graph;
@@ -403,7 +403,7 @@ TEST(MultifrontalSolver, ConstrainedNoiseMixedKeysUnsupported) {
 }
 
 /* ************************************************************************* */
-/// Weighted scalar measurements produce the expected weighted estimate.
+// Weighted scalar measurements produce the expected weighted estimate.
 TEST(MultifrontalSolver, WeightedScalarMeasurements) {
   const double w1 = 0.2;
   const double w2 = 0.8;
@@ -427,7 +427,7 @@ TEST(MultifrontalSolver, WeightedScalarMeasurements) {
 }
 
 /* ************************************************************************* */
-/// Hessian factors are rejected by the multifrontal solver.
+// Hessian factors are rejected by the multifrontal solver.
 TEST(MultifrontalSolver, HessianFactors) {
   GaussianFactorGraph graph;
   graph.emplace_shared<HessianFactor>(x1, (Matrix(1, 1) << 4.0).finished(),
@@ -440,7 +440,7 @@ TEST(MultifrontalSolver, HessianFactors) {
 }
 
 /* ************************************************************************* */
-/// Merge threshold changes the clique count.
+// Merge threshold changes the clique count.
 TEST(MultifrontalSolver, MergeDimCap) {
   MultifrontalSolver::Parameters noMerge = noMergeParams();
   MultifrontalSolver solverNoMerge(chain, chainOrdering, noMerge);
@@ -453,7 +453,7 @@ TEST(MultifrontalSolver, MergeDimCap) {
 }
 
 /* ************************************************************************* */
-/// End-to-end balanced smoother test with reload.
+// End-to-end balanced smoother test with reload.
 TEST(MultifrontalSolver, BalancedSmoother) {
   // Create smoother with 7 nodes
   auto [nlfg, poses] = example::createNonlinearSmoother(7);

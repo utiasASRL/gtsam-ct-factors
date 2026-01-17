@@ -121,20 +121,6 @@ class GTSAM_EXPORT MultifrontalSolver
                                     const Ordering& ordering);
 
   /**
-   * Construct the solver from precomputed symbolic data.
-   * Call load() before eliminating to populate numerical values.
-   * @param data Precomputed symbolic structure and sizing data.
-   * @param ordering The variable ordering to use for seeding solution storage.
-   * @param mergeDimCap Merge a child if its frontal dimension plus the
-   * parent's total dimension is below this threshold (0 disables merging).
-   * @param reportStream Optional stream to report clique structure stats
-   * (frontals, separators, total dims, and children).
-   */
-  MultifrontalSolver(PrecomputedData data, const Ordering& ordering,
-                     size_t mergeDimCap = 0,
-                     std::ostream* reportStream = nullptr);
-
-  /**
    * Load new numerical values from the factor graph.
    * This overwrites the values in the pre-allocated matrices.
    *

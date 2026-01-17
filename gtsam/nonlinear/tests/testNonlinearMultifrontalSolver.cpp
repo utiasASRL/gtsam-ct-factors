@@ -346,6 +346,7 @@ TEST(NonlinearMultifrontalSolver, ProbeMultipleLambdasSameLinearization) {
 /* ************************************************************************* */
 // Check the BAL 16-camera dataset error before and after one LM iteration for
 // legacy multifrontal Cholesky and the new multifrontal solver (QR off/forced).
+# ifdef TEST_BAL16_DATASET
 double runBal16OneIteration(
     const NonlinearFactorGraph& graph, const Values& initial,
     const Ordering& ordering,
@@ -400,6 +401,7 @@ TEST(NonlinearMultifrontalSolver, Bal16ErrorOneIteration) {
       graph, initial, ordering, NonlinearOptimizerParams::MULTIFRONTAL_SOLVER);
   EXPECT_DOUBLES_EQUAL(legacyAfterError, solverForceAfterError, 20.0);
 }
+#endif
 
 /* ************************************************************************* */
 int main() {

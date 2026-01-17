@@ -204,11 +204,6 @@ struct LeafGroup {
   size_t firstIndex = 0;
 };
 
-struct LeafBatch {
-  SymbolicJunctionTree::Cluster::Children leaves;
-  size_t firstIndex = 0;
-};
-
 std::vector<LeafGroup> collectLeafGroups(
     const SymbolicJunctionTree::sharedNode& cluster,
     const std::map<Key, size_t>& dims,
@@ -240,6 +235,11 @@ std::vector<LeafGroup> collectLeafGroups(
 
   return groups;
 }
+
+struct LeafBatch {
+  SymbolicJunctionTree::Cluster::Children leaves;
+  size_t firstIndex = 0;
+};
 
 std::vector<LeafBatch> buildLeafBatches(const std::vector<LeafGroup>& groups,
                                         size_t leafMergeDimCap) {
@@ -275,45 +275,48 @@ std::vector<LeafBatch> buildLeafBatches(const std::vector<LeafGroup>& groups,
   return batches;
 }
 
-bool mergeLeafBatches(const SymbolicJunctionTree::sharedNode& cluster,
-                      const std::vector<LeafBatch>& batches) {
-  if (batches.empty()) return false;
+struct MergedClusters {
+  FastMap<const SymbolicJunctionTree::Cluster*, size_t> indexByChild;
+  std::vector<SymbolicJunctionTree::sharedNode> clusters;
+  size_t count = 0;
+  size_t numSelectedLeaves = 0;
+};
 
-  // Merge in a single pass to avoid repeated scans of large child lists.
-  FastMap<const SymbolicJunctionTree::Cluster*, size_t> batchIndexByChild;
-  std::vector<SymbolicJunctionTree::sharedNode> mergedBatches(batches.size(),
-                                                              nullptr);
-  size_t mergeBatchCount = 0;
-  size_t selectedLeafCount = 0;
+MergedClusters buildMergedClusters(const std::vector<LeafBatch>& clusters) {
+  MergedClusters merged;
+  merged.clusters.assign(clusters.size(), nullptr);
 
-  for (size_t batchIndex = 0; batchIndex < batches.size(); ++batchIndex) {
-    const auto& batch = batches[batchIndex];
+  for (size_t i = 0; i < clusters.size(); ++i) {
+    const auto& batch = clusters[i];
     if (batch.leaves.size() <= 1) continue;
 
-    selectedLeafCount += batch.leaves.size();
+    merged.numSelectedLeaves += batch.leaves.size();
+    // Map each leaf pointer to its batch index so we can skip and insert in
+    // O(1) when scanning the original children list.
     for (const auto& leaf : batch.leaves) {
-      if (leaf) {
-        batchIndexByChild.emplace(leaf.get(), batchIndex);
-      }
+      if (leaf) merged.indexByChild.emplace(leaf.get(), i);
     }
 
-    auto merged = std::make_shared<SymbolicJunctionTree::Cluster>();
+    // Build the merged batch once so insertion is just pointer replacement.
+    auto mergedCluster = std::make_shared<SymbolicJunctionTree::Cluster>();
     for (const auto& leaf : batch.leaves) {
-      if (leaf) {
-        merged->merge(leaf);
-      }
+      if (leaf) mergedCluster->merge(leaf);
     }
-    std::reverse(merged->orderedFrontalKeys.begin(),
-                 merged->orderedFrontalKeys.end());
-    mergedBatches[batchIndex] = merged;
-    mergeBatchCount += 1;
+    std::reverse(mergedCluster->orderedFrontalKeys.begin(),
+                 mergedCluster->orderedFrontalKeys.end());
+    merged.clusters[i] = mergedCluster;
+    merged.count += 1;
   }
 
-  if (mergeBatchCount == 0) return false;
+  return merged;
+}
 
-  auto oldChildren = cluster->children;
+SymbolicJunctionTree::Cluster::Children buildMergedChildren(
+    const SymbolicJunctionTree::Cluster::Children& oldChildren,
+    const std::vector<LeafBatch>& batches, const MergedClusters& merged) {
   SymbolicJunctionTree::Cluster::Children newChildren;
-  newChildren.reserve(oldChildren.size() - selectedLeafCount + mergeBatchCount);
+  newChildren.reserve(oldChildren.size() - merged.numSelectedLeaves +
+                      merged.count);
   std::vector<bool> inserted(batches.size(), false);
 
   for (size_t i = 0; i < oldChildren.size(); ++i) {
@@ -323,19 +326,35 @@ bool mergeLeafBatches(const SymbolicJunctionTree::sharedNode& cluster,
       continue;
     }
 
-    auto it = batchIndexByChild.find(child.get());
-    if (it == batchIndexByChild.end()) {
+    auto it = merged.indexByChild.find(child.get());
+    if (it == merged.indexByChild.end()) {
       newChildren.push_back(child);
       continue;
     }
 
     const size_t batchIndex = it->second;
+    // Insert the merged cluster exactly once, at the first original index where
+    // that cluster appeared. All other leaves in the cluster are skipped.
     if (!inserted[batchIndex] && i == batches[batchIndex].firstIndex) {
-      newChildren.push_back(mergedBatches[batchIndex]);
+      newChildren.push_back(merged.clusters[batchIndex]);
       inserted[batchIndex] = true;
     }
   }
 
+  return newChildren;
+}
+
+bool mergeLeafBatches(const SymbolicJunctionTree::sharedNode& cluster,
+                      const std::vector<LeafBatch>& batches) {
+  if (batches.empty()) return false;
+
+  // Merge in a single pass to avoid repeated scans of large child lists.
+  const MergedClusters merged = buildMergedClusters(batches);
+  if (merged.count == 0) return false;
+
+  auto oldChildren = cluster->children;
+  SymbolicJunctionTree::Cluster::Children newChildren =
+      buildMergedChildren(oldChildren, batches, merged);
   cluster->children.swap(newChildren);
   return true;
 }

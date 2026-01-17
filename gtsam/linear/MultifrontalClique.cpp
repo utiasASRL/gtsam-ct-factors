@@ -171,7 +171,7 @@ void MultifrontalClique::finalize(std::vector<ChildInfo> children,
   solveMode_ = useQR ? SolveMode::QrLeaf : SolveMode::Cholesky;
   RSdReady_ = false;
 
-  // If using QR, also a reserve room for optional damping rows.
+  // If using QR, also reserve room for optional damping rows.
   const DenseIndex baseRows = static_cast<DenseIndex>(factorRows_);
   const DenseIndex totalRows =
       baseRows + (useQR ? static_cast<DenseIndex>(frontalDim) : 0);
@@ -319,21 +319,20 @@ void MultifrontalClique::factorize() {
 }
 
 void MultifrontalClique::eliminateInPlace(
-    double lambda, const LMDampingParams* dampingParams,
-    const VectorValues* exactHessianDiagonal) {
-  assert(dampingParams != nullptr);
+    double lambda, const LMDampingParams& dampingParams,
+    const VectorValues& exactHessianDiagonal) {
   prepareForElimination();
   if (useQR()) {
-    applyDampingQR(lambda, *dampingParams, exactHessianDiagonal);
+    applyDampingQR(lambda, dampingParams, exactHessianDiagonal);
   } else {
-    applyDampingCholesky(lambda, *dampingParams, exactHessianDiagonal);
+    applyDampingCholesky(lambda, dampingParams, exactHessianDiagonal);
   }
   factorize();
 }
 
 void MultifrontalClique::applyDampingQR(
     double lambda, const LMDampingParams& dampingParams,
-    const VectorValues* exactHessianDiagonal) {
+    const VectorValues& exactHessianDiagonal) {
   if (lambda <= 0.0) return;
   const DenseIndex baseRows = static_cast<DenseIndex>(factorRows_);
   const DenseIndex dampRows = static_cast<DenseIndex>(frontalDim);
@@ -347,9 +346,8 @@ void MultifrontalClique::applyDampingQR(
     if (dampingParams.diagonalDamping) {
       Vector diag;
       if (dampingParams.exactHessianDiagonal) {
-        assert(exactHessianDiagonal != nullptr);
         const Key key = orderedKeys_.at(j);
-        diag = exactHessianDiagonal->at(key)
+        diag = exactHessianDiagonal.at(key)
                    .cwiseMax(dampingParams.minDiagonal)
                    .cwiseMin(dampingParams.maxDiagonal);
       } else {
@@ -373,12 +371,11 @@ void MultifrontalClique::applyDampingQR(
 
 void MultifrontalClique::applyDampingCholesky(
     double lambda, const LMDampingParams& dampingParams,
-    const VectorValues* exactHessianDiagonal) {
+    const VectorValues& exactHessianDiagonal) {
   if (lambda <= 0.0) return;
   if (dampingParams.diagonalDamping) {
     if (dampingParams.exactHessianDiagonal) {
-      assert(exactHessianDiagonal != nullptr);
-      addExactDiagonalDamping(lambda, *exactHessianDiagonal,
+      addExactDiagonalDamping(lambda, exactHessianDiagonal,
                               dampingParams.minDiagonal,
                               dampingParams.maxDiagonal);
     } else {
@@ -442,10 +439,6 @@ void MultifrontalClique::updateParentInfo(
     parentInfo.updateFromMappedBlocks(info_, parentIndices_);
     info_.blockStart() = 0;
   }
-}
-
-void MultifrontalClique::updateParent(MultifrontalClique& parent) const {
-  updateParentInfo(parent.info_);
 }
 
 void MultifrontalClique::gatherUpdatesSequential() {
@@ -518,7 +511,7 @@ std::shared_ptr<GaussianConditional> MultifrontalClique::conditional() const {
 }
 
 // Solve with block back-substitution on the Cholesky-stored info matrix.
-void MultifrontalClique::updateSolution() const {
+void MultifrontalClique::updateSolution() {
   assert(RSdReady_);
   assert(RSd_.rowStart() == 0);
   // Use cached [R S d] for fast back-substitution.
@@ -534,10 +527,10 @@ void MultifrontalClique::updateSolution() const {
 
   // We first solve rhs = d - S * x_s
   rhsScratch_.noalias() = d;
+  const Vector* x_s = nullptr;
   if (!separatorPtrs_.empty()) {
-    const Vector& x_s =
-        buildSeparatorVector(separatorPtrs_, &separatorScratch_);
-    rhsScratch_.noalias() -= S * x_s;
+    x_s = &buildSeparatorVector(separatorPtrs_, &separatorScratch_);
+    rhsScratch_.noalias() -= S * (*x_s);
   }
 
   // Then solve for x_f, our solution, via R * x_f = rhs
@@ -558,15 +551,12 @@ void MultifrontalClique::updateSolution() const {
   if (frontalDim > 0) {
     lastOldError_ = 0.5 * d.squaredNorm();
     Vector residual = R * x_f;
-    if (!separatorPtrs_.empty()) {
-      const Vector& x_s =
-          buildSeparatorVector(separatorPtrs_, &separatorScratch_);
-      residual.noalias() += S * x_s;
+    if (x_s != nullptr) {
+      residual.noalias() += S * (*x_s);
     }
     residual.noalias() -= d;
     lastNewError_ = 0.5 * residual.squaredNorm();
   }
-
 }
 
 double MultifrontalClique::constantTermError() const {
@@ -584,8 +574,8 @@ double MultifrontalClique::constantTermError() const {
           0.5 * RSd_.matrix().bottomRows(extraRows).col(lastCol).squaredNorm();
     }
   } else {
-    const DenseIndex rhsIndex = static_cast<DenseIndex>(
-        info_.nBlocks() - info_.blockStart() - 1);
+    const DenseIndex rhsIndex =
+        static_cast<DenseIndex>(info_.nBlocks() - info_.blockStart() - 1);
     if (rhsIndex >= 0) {
       constantError = 0.5 * info_.diagonalBlock(rhsIndex)(0, 0);
     }

@@ -116,33 +116,35 @@ void NonlinearMultifrontalSolver::load(const GaussianFactorGraph& graph) {
 
 /* ************************************************************************* */
 void NonlinearMultifrontalSolver::eliminateInPlace(double lambda) {
-  if (lambda <= 0.0) {
-    MultifrontalSolver::eliminateInPlace();
-    return;
-  }
-
   if (!loaded_) {
     throw std::runtime_error(
         "NonlinearMultifrontalSolver::eliminateInPlace: load() must be called "
         "before eliminating.");
   }
+
   eliminated_ = false;
-  runBottomUp(
-      [this, lambda](MultifrontalClique& node) {
-        node.eliminateInPlace(lambda, &dampingParams_, &exactHessianDiagonal_);
-      },
-      params_.eliminationParallelThreshold);
+  if (lambda <= 0.0) {
+    MultifrontalSolver::eliminateInPlace();
+  } else {
+    runBottomUp(
+        [this, lambda](MultifrontalClique& node) {
+          node.eliminateInPlace(lambda, dampingParams_, exactHessianDiagonal_);
+        },
+        params_.eliminationParallelThreshold);
+  }
   eliminated_ = true;
 }
 
 /* ************************************************************************* */
 void NonlinearMultifrontalSolver::eliminateInPlace(
     const GaussianFactorGraph& graph, double lambda) {
+  eliminated_ = false;
   if (lambda <= 0.0) {
     MultifrontalSolver::eliminateInPlace(graph);
     return;
   }
 
+  // Calculate the exact Hessian diagonal if needed.
   if (dampingParams_.diagonalDamping && dampingParams_.exactHessianDiagonal) {
     exactHessianDiagonal_ = graph.hessianDiagonal();
     hasExactHessianDiagonal_ = true;
@@ -151,11 +153,11 @@ void NonlinearMultifrontalSolver::eliminateInPlace(
     exactHessianDiagonal_ = VectorValues();
   }
 
-  eliminated_ = false;
+  // Run bottom-up elimination with damping.
   runBottomUp(
       [&graph, this, lambda](MultifrontalClique& node) {
         node.fillAb(graph);
-        node.eliminateInPlace(lambda, &dampingParams_, &exactHessianDiagonal_);
+        node.eliminateInPlace(lambda, dampingParams_, exactHessianDiagonal_);
       },
       params_.eliminationParallelThreshold);
   loaded_ = true;

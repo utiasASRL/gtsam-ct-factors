@@ -31,14 +31,13 @@ namespace gtsam {
  * Multifrontal solver for nonlinear factor graphs.
  *
  * This class extends MultifrontalSolver to solve nonlinear problems.
- * The linearization is provided externally via MultifrontalSolver::load().
+ * The linearization is provided externally via load(), or via
+ * eliminateInPlace() which combines loading and elimination.
  */
 class GTSAM_EXPORT NonlinearMultifrontalSolver : public MultifrontalSolver {
  public:
   using DampingParams = LMDampingParams;
 
- private:
- public:
   /**
    * Construct the solver from a nonlinear factor graph and linearization point.
    * This computes the symbolic structure (including fixed keys) from the

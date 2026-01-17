@@ -219,18 +219,10 @@ class GTSAM_EXPORT MultifrontalClique {
    *
    * @param lambda Optional damping value; non-positive disables damping.
    * @param dampingParams Parameters controlling LM-style damping.
-   * @param exactHessianDiagonal Optional `diag(J^T J)` values for exact
-   * diagonal damping.
+   * @param exactHessianDiagonal `diag(J^T J)` values for diagonal damping.
    */
-  void eliminateInPlace(double lambda,
-                        const LMDampingParams* dampingParams = nullptr,
-                        const VectorValues* exactHessianDiagonal = nullptr);
-
-  /**
-   * Apply this clique's separator contribution into the parent clique.
-   * @param parent Parent clique to update.
-   */
-  void updateParent(MultifrontalClique& parent) const;
+  void eliminateInPlace(double lambda, const LMDampingParams& dampingParams,
+                        const VectorValues& exactHessianDiagonal);
 
   /**
    * Solve for this clique's frontal variables and write them back to the
@@ -240,7 +232,7 @@ class GTSAM_EXPORT MultifrontalClique {
    * Cholesky-stored information matrix, solving the triangular system for the
    * frontal blocks.
    */
-  void updateSolution() const;
+  void updateSolution();
 
   /// Access the last old error computed during updateSolution().
   double lastOldError() const { return lastOldError_; }
@@ -284,11 +276,11 @@ class GTSAM_EXPORT MultifrontalClique {
 
   /// Apply damping for QR elimination by writing into extra Ab_ rows.
   void applyDampingQR(double lambda, const LMDampingParams& dampingParams,
-                      const VectorValues* exactHessianDiagonal);
+                      const VectorValues& exactHessianDiagonal);
 
   /// Apply damping for Cholesky elimination by adding to the info_ matrix.
   void applyDampingCholesky(double lambda, const LMDampingParams& dampingParams,
-                            const VectorValues* exactHessianDiagonal);
+                            const VectorValues& exactHessianDiagonal);
 
   /**
    * Add a Jacobian factor's contributions into the Ab matrix.
@@ -316,20 +308,21 @@ class GTSAM_EXPORT MultifrontalClique {
 
   // Finalize-time allocations.
   VerticalBlockMatrix Ab_;
-  mutable SymmetricBlockMatrix info_;
+  
+  // mutable as temporarily updateParentInfo
   mutable VerticalBlockMatrix RSd_;  ///< Cached [R S d] from elimination.
+  mutable SymmetricBlockMatrix info_;
 
   // Elimination-time state.
-  mutable bool RSdReady_ = false;
+  bool RSdReady_ = false;
 
   // Solve-time scratch space.
-  mutable Vector rhsScratch_;  ///< Cached RHS workspace for back-substitution.
-  mutable Vector
-      separatorScratch_;  ///< Cached separator stack for back-substitution.
+  Vector rhsScratch_;        ///< Cached RHS workspace for back-substitution.
+  Vector separatorScratch_;  ///< Cached separator stack for back-substitution.
 
   // Solve-time cached error contributions.
-  mutable double lastOldError_ = 0.0;
-  mutable double lastNewError_ = 0.0;
+  double lastOldError_ = 0.0;
+  double lastNewError_ = 0.0;
 };
 
 std::ostream& operator<<(std::ostream& os, const MultifrontalClique& clique);

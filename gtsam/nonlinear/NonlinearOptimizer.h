@@ -23,7 +23,9 @@
 
 namespace gtsam {
 
-namespace internal { struct NonlinearOptimizerState; }
+namespace internal {
+struct NonlinearOptimizerState;
+}
 class NonlinearMultifrontalSolver;
 
 /**
@@ -31,7 +33,8 @@ class NonlinearMultifrontalSolver;
  * maximum-likelihood estimate of a NonlinearFactorGraph.
  *
  * To use a class derived from this interface, construct the class with a
- * NonlinearFactorGraph and an initial Values variable assignment.  Next, call the
+ * NonlinearFactorGraph and an initial Values variable assignment.  Next, call
+the
  * optimize() method which returns the optimized variable assignment.
  *
  * Simple and compact example:
@@ -55,11 +58,10 @@ cout << "Converged in " << optimizer.iterations() << " iterations "
  *
  * Example of setting parameters before optimization:
  * \code
-// Each derived optimizer type has its own parameters class, which inherits from NonlinearOptimizerParams
-DoglegParams params;
-params.factorization = DoglegParams::QR;
-params.relativeErrorTol = 1e-3;
-params.absoluteErrorTol = 1e-3;
+// Each derived optimizer type has its own parameters class, which inherits from
+NonlinearOptimizerParams DoglegParams params; params.factorization =
+DoglegParams::QR; params.relativeErrorTol = 1e-3; params.absoluteErrorTol =
+1e-3;
 
 // Optimize
 Values result = DoglegOptimizer(graph, initialValues, params).optimize();
@@ -71,27 +73,28 @@ Values result = DoglegOptimizer(graph, initialValues, params).optimize();
  * you can easily control what happens between iterations, such as drawing or
  * printing, moving points from behind the camera to in front, etc.
  *
- * For more flexibility you may override virtual methods in your own derived class.
+ * For more flexibility you may override virtual methods in your own derived
+class.
  */
 class GTSAM_EXPORT NonlinearOptimizer {
+ protected:
+  NonlinearFactorGraph graph_;  ///< The graph with nonlinear factors
 
-protected:
-  NonlinearFactorGraph graph_; ///< The graph with nonlinear factors
+  std::unique_ptr<internal::NonlinearOptimizerState> state_;  ///< PIMPL'd state
 
-  std::unique_ptr<internal::NonlinearOptimizerState> state_; ///< PIMPL'd state
-  
   /// Solver for multifrontal Cholesky, lazily created
-  mutable std::unique_ptr<NonlinearMultifrontalSolver> nonlinearMultifrontalSolver_;
+  mutable std::unique_ptr<NonlinearMultifrontalSolver>
+      nonlinearMultifrontalSolver_;
 
-public:
+ public:
   /** A shared pointer to this class */
   using shared_ptr = std::shared_ptr<const NonlinearOptimizer>;
 
   /// @name Standard interface
   /// @{
 
-  /** 
-   * Optimize for the maximum-likelihood estimate, returning a the optimized 
+  /**
+   * Optimize for the maximum-likelihood estimate, returning a the optimized
    * variable assignments.
    *
    * This function simply calls iterate() in a loop, checking for convergence
@@ -99,7 +102,10 @@ public:
    * process, you may call iterate() and check_convergence() yourself, and if
    * needed modify the optimization state between iterations.
    */
-  virtual const Values& optimize() { defaultOptimize(); return values(); }
+  virtual const Values& optimize() {
+    defaultOptimize();
+    return values();
+  }
 
   /**
    * Optimize, but return empty result if any uncaught exception is thrown
@@ -116,10 +122,10 @@ public:
   size_t iterations() const;
 
   /// return values in current optimizer state
-  const Values &values() const;
+  const Values& values() const;
 
   /// return the graph with nonlinear factors
-  const NonlinearFactorGraph &graph() const { return graph_; }
+  const NonlinearFactorGraph& graph() const { return graph_; }
 
   /// @}
 
@@ -129,19 +135,20 @@ public:
   /** Virtual destructor */
   virtual ~NonlinearOptimizer();
 
-  /** Default function to do linear solve, i.e. optimize a GaussianFactorGraph */
-  virtual VectorValues solve(const GaussianFactorGraph &gfg,
-      const NonlinearOptimizerParams& params) const;
+  /** Default function to do linear solve, i.e. optimize a GaussianFactorGraph
+   */
+  virtual VectorValues solve(const GaussianFactorGraph& gfg,
+                             const NonlinearOptimizerParams& params) const;
 
-  /** 
-   * Perform a single iteration, returning GaussianFactorGraph corresponding to 
+  /**
+   * Perform a single iteration, returning GaussianFactorGraph corresponding to
    * the linearized factor graph.
    */
   virtual GaussianFactorGraph::shared_ptr iterate() = 0;
 
   /// @}
 
-protected:
+ protected:
   /** A default implementation of the optimization loop, which calls iterate()
    * until checkConvergence returns true.
    */
@@ -150,22 +157,29 @@ protected:
   virtual const NonlinearOptimizerParams& _params() const = 0;
 
   /**
-   * Ensure that the nonlinearMultifrontalSolver_ is populated if the params
-   * request multifrontal Cholesky. Returns true if the solver is available and
-   * ready. If constraints are present or initialization fails, returns false
-   * (and user should fall back to legacy solver).
+   * Ensure that the nonlinearMultifrontalSolver_ is populated if (and only if)
+   * the params request the multifrontal Cholesky solver type (e.g.,
+   * MULTIFRONTAL_SOLVER).
+   *
+   * Returns true if the multifrontal solver is available and ready. If a
+   * different solver type is requested in params, this function returns false
+   * without modifying any solver state. If constraints are present or
+   * multifrontal initialization fails, it also returns false (and callers
+   * should fall back to the legacy linear solver path).
    */
   bool ensureMultifrontalSolver(const NonlinearOptimizerParams& params,
                                 const Values& values) const;
 
-  /** Constructor for initial construction of base classes. Takes ownership of state. */
+  /** Constructor for initial construction of base classes. Takes ownership of
+   * state. */
   NonlinearOptimizer(const NonlinearFactorGraph& graph,
                      std::unique_ptr<internal::NonlinearOptimizerState> state);
 };
 
-/** Check whether the relative error decrease is less than relativeErrorThreshold,
- * the absolute error decrease is less than absoluteErrorThreshold, <em>or</em>
- * the error itself is less than errorThreshold.
+/** Check whether the relative error decrease is less than
+ * relativeErrorThreshold, the absolute error decrease is less than
+ * absoluteErrorThreshold, <em>or</em> the error itself is less than
+ * errorThreshold.
  */
 GTSAM_EXPORT bool checkConvergence(
     double relativeErrorThreshold, double absoluteErrorThreshold,
@@ -176,4 +190,4 @@ GTSAM_EXPORT bool checkConvergence(
 GTSAM_EXPORT bool checkConvergence(const NonlinearOptimizerParams& params,
                                    double currentError, double newError);
 
-} // gtsam
+}  // namespace gtsam
