@@ -15,59 +15,68 @@
 using namespace std;
 
 namespace {
-Eigen::Matrix<double, 15, 15> I_15x15 =
-    Eigen::Matrix<double, 15, 15>::Identity();
+constexpr double kInvSqrt2 = 0.7071067811865475244;
+constexpr double kInvSqrt6 = 0.4082482904638630164;
+constexpr double kInvSqrt12 = 0.2886751345948128823;
 
 Eigen::Matrix<double, 16, 15> setVecToAlgMatrix() {
   Eigen::Matrix<double, 16, 15> alg = Eigen::Matrix<double, 16, 15>::Zero();
 
-  // 12 Off-diagonal E_ij generators
   int k = 0;
-  for (int i = 0; i < 4; ++i) {
-    for (int j = 0; j < 4; ++j) {
-      if (i != j) {
-        alg(i * 4 + j, k++) = 1.0;
-      }
-    }
-  }
+  auto set_skew = [&](int i, int j) {
+    alg(i * 4 + j, k) = kInvSqrt2;
+    alg(j * 4 + i, k) = -kInvSqrt2;
+    ++k;
+  };
+  auto set_sym = [&](int i, int j) {
+    alg(i * 4 + j, k) = kInvSqrt2;
+    alg(j * 4 + i, k) = kInvSqrt2;
+    ++k;
+  };
 
-  // For Diagonal generators B1 = diag(1, -1, 0, 0)
-  alg(0, 12) = 1.0;
-  alg(5, 12) = -1.0;
+  // Rotations (skew-symmetric).
+  set_skew(0, 1);
+  set_skew(0, 2);
+  set_skew(0, 3);
+  set_skew(1, 2);
+  set_skew(1, 3);
+  set_skew(2, 3);
 
-  // For B2 = diag(0, 1, -1, 0)
-  alg(5, 13) = 1.0;
-  alg(10, 13) = -1.0;
+  // Symmetric off-diagonal shears.
+  set_sym(0, 1);
+  set_sym(0, 2);
+  set_sym(0, 3);
+  set_sym(1, 2);
+  set_sym(1, 3);
+  set_sym(2, 3);
 
-  // For B3 = diag(0, 0, 1, -1)
-  alg(10, 14) = 1.0;
-  alg(15, 14) = -1.0;
+  // Traceless diagonal scalings.
+  alg(0, k) = kInvSqrt2;
+  alg(5, k) = -kInvSqrt2;
+  ++k;
+
+  alg(0, k) = kInvSqrt6;
+  alg(5, k) = kInvSqrt6;
+  alg(10, k) = -2.0 * kInvSqrt6;
+  ++k;
+
+  alg(0, k) = kInvSqrt12;
+  alg(5, k) = kInvSqrt12;
+  alg(10, k) = kInvSqrt12;
+  alg(15, k) = -3.0 * kInvSqrt12;
+  ++k;
 
   return alg;
 }
 
-Eigen::Matrix<double, 15, 16> setAlgtoVecMatrix() {
-  Eigen::Matrix<double, 15, 16> mat;
-  mat << 0., 1., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.,
-      1., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 1.,
-      0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 1., 0.,
-      0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 1., 0.,
-      0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 1., 0., 0.,
-      0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 1., 0., 0., 0.,
-      0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 1., 0., 0., 0., 0.,
-      0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 1., 0., 0., 0., 0.,
-      0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 1., 0., 0., 0., 0., 0.,
-      0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 1., 0., 0., 0., 0., 0., 0.,
-      0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 1., 0., 1., 0., 0., 0., 0., 0.,
-      0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 1., 0., 0., 0., 0., 1., 0., 0.,
-      0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.,
-      0., 0., 0., 0., 0., -1.;
-  return mat;
+Eigen::Matrix<double, 15, 16> setAlgtoVecMatrix(
+    const Eigen::Matrix<double, 16, 15>& vec_to_alg) {
+  return vec_to_alg.transpose();
 }
 
-// ALG_TO_VEC * VEC_TO_ALG is equals to I_15x15
+// For the orthonormal basis, ALG_TO_VEC * VEC_TO_ALG is the identity.
 const Eigen::Matrix<double, 16, 15> VEC_TO_ALG = setVecToAlgMatrix();
-const Eigen::Matrix<double, 15, 16> ALG_TO_VEC = setAlgtoVecMatrix();
+const Eigen::Matrix<double, 15, 16> ALG_TO_VEC = setAlgtoVecMatrix(VEC_TO_ALG);
 
 }  // namespace
 namespace gtsam {
@@ -185,28 +194,69 @@ Matrix44 SL4::Hat(const Vector& xi) {
         "SL4::Hat: xi must be a vector of size 15. Got size " +
         std::to_string(xi.size()));
   }
-  Matrix44 A;
-  const double d11 = xi(12);
-  const double d22 = -xi(12) + xi(13);
-  const double d33 = -xi(13) + xi(14);
-  const double d44 = -xi(14);
+  Matrix44 A = Matrix44::Zero();
 
-  A << d11, xi(0), xi(1), xi(2), xi(3), d22, xi(4), xi(5), xi(6), xi(7), d33,
-      xi(8), xi(9), xi(10), xi(11), d44;
+  // Rotations (skew-symmetric), normalized by 1/sqrt(2).
+  A(0, 1) += kInvSqrt2 * xi(0);
+  A(1, 0) -= kInvSqrt2 * xi(0);
+  A(0, 2) += kInvSqrt2 * xi(1);
+  A(2, 0) -= kInvSqrt2 * xi(1);
+  A(0, 3) += kInvSqrt2 * xi(2);
+  A(3, 0) -= kInvSqrt2 * xi(2);
+  A(1, 2) += kInvSqrt2 * xi(3);
+  A(2, 1) -= kInvSqrt2 * xi(3);
+  A(1, 3) += kInvSqrt2 * xi(4);
+  A(3, 1) -= kInvSqrt2 * xi(4);
+  A(2, 3) += kInvSqrt2 * xi(5);
+  A(3, 2) -= kInvSqrt2 * xi(5);
+
+  // Symmetric off-diagonal shears, normalized by 1/sqrt(2).
+  A(0, 1) += kInvSqrt2 * xi(6);
+  A(1, 0) += kInvSqrt2 * xi(6);
+  A(0, 2) += kInvSqrt2 * xi(7);
+  A(2, 0) += kInvSqrt2 * xi(7);
+  A(0, 3) += kInvSqrt2 * xi(8);
+  A(3, 0) += kInvSqrt2 * xi(8);
+  A(1, 2) += kInvSqrt2 * xi(9);
+  A(2, 1) += kInvSqrt2 * xi(9);
+  A(1, 3) += kInvSqrt2 * xi(10);
+  A(3, 1) += kInvSqrt2 * xi(10);
+  A(2, 3) += kInvSqrt2 * xi(11);
+  A(3, 2) += kInvSqrt2 * xi(11);
+
+  // Traceless diagonal scalings.
+  const double a = kInvSqrt2 * xi(12);
+  const double b = kInvSqrt6 * xi(13);
+  const double c = kInvSqrt12 * xi(14);
+
+  A(0, 0) += a + b + c;
+  A(1, 1) += -a + b + c;
+  A(2, 2) += -2.0 * b + c;
+  A(3, 3) += -3.0 * c;
 
   return A;
 }
 
 /* ************************************************************************* */
-// NOTE(hlim): Why 'X'? - I just follow the convention of GTSAM
-Vector SL4::Vee(const Matrix44& X) {
-  Vector vec(15);
-  const double x12 = X(0, 0);
-  const double x13 = X(1, 1) + x12;
-  const double x14 = -X(3, 3);
-  vec << X(0, 1), X(0, 2), X(0, 3), X(1, 0), X(1, 2), X(1, 3), X(2, 0), X(2, 1),
-      X(2, 3), X(3, 0), X(3, 1), X(3, 2), x12, x13, x14;
-  return vec;
+// used consistent notation with Hat()
+Vector SL4::Vee(const Matrix44& A) {
+  Vector xi(15);
+  xi << kInvSqrt2 * (A(0, 1) - A(1, 0)),
+      kInvSqrt2 * (A(0, 2) - A(2, 0)),
+      kInvSqrt2 * (A(0, 3) - A(3, 0)),
+      kInvSqrt2 * (A(1, 2) - A(2, 1)),
+      kInvSqrt2 * (A(1, 3) - A(3, 1)),
+      kInvSqrt2 * (A(2, 3) - A(3, 2)),
+      kInvSqrt2 * (A(0, 1) + A(1, 0)),
+      kInvSqrt2 * (A(0, 2) + A(2, 0)),
+      kInvSqrt2 * (A(0, 3) + A(3, 0)),
+      kInvSqrt2 * (A(1, 2) + A(2, 1)),
+      kInvSqrt2 * (A(1, 3) + A(3, 1)),
+      kInvSqrt2 * (A(2, 3) + A(3, 2)),
+      kInvSqrt2 * (A(0, 0) - A(1, 1)),
+      kInvSqrt6 * (A(0, 0) + A(1, 1) - 2.0 * A(2, 2)),
+      kInvSqrt12 * (A(0, 0) + A(1, 1) + A(2, 2) - 3.0 * A(3, 3));
+  return xi;
 }
 
 }  // namespace gtsam
