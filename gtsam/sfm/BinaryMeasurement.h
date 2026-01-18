@@ -50,7 +50,16 @@ private:
                     const SharedNoiseModel &model = nullptr)
       : Factor(std::vector<Key>({key1, key2})),
         measured_(measured),
-        noiseModel_(model) {}
+        noiseModel_(model) {
+    if (model) {
+      if (static_cast<int>(model->dim()) != traits<T>::GetDimension(measured))
+        throw std::runtime_error(
+            "BinaryMeasurement: Noise model dimension does not match "
+            "measurement dimension.");
+    } else {
+      noiseModel_ = noiseModel::Unit::Create(traits<T>::GetDimension(measured));
+    }
+  }
 
   /// @name Standard Interface
   /// @{

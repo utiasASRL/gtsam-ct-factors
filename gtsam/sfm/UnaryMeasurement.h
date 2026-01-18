@@ -53,9 +53,20 @@ public:
    * @param measured The measurement value.
    * @param model The noise model (optional).
    */
-  UnaryMeasurement(Key key, const T &measured,
-                   const SharedNoiseModel &model = nullptr)
-      : Factor(std::vector<Key>({key})), measured_(measured), noiseModel_(model) {}
+ UnaryMeasurement(Key key, const T &measured,
+                  const SharedNoiseModel &model = nullptr)
+     : Factor(std::vector<Key>({key})),
+       measured_(measured),
+       noiseModel_(model) {
+   if (model) {
+      if (static_cast<int>(model->dim()) != traits<T>::GetDimension(measured))
+       throw std::runtime_error(
+           "BinaryMeasurement: Noise model dimension does not match "
+           "measurement dimension.");
+   } else {
+     noiseModel_ = noiseModel::Unit::Create(traits<T>::GetDimension(measured));
+   }
+ }
 
   /// @name Standard Interface
   /// @{
