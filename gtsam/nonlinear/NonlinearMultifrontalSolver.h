@@ -62,11 +62,6 @@ class GTSAM_EXPORT NonlinearMultifrontalSolver : public MultifrontalSolver {
       const NonlinearFactorGraph& graph, const Values& values,
       const Ordering& ordering);
 
-  /// Update damping parameters for subsequent eliminations.
-  void setDampingParams(const DampingParams& params) {
-    dampingParams_ = params;
-  }
-
   /**
    * Load new numerical values from the factor graph.
    * This overrides the base load() to optionally cache `diag(J^T J)` for

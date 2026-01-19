@@ -250,11 +250,8 @@ void MultifrontalClique::fillAb(const GaussianFactorGraph& graph) {
     assert(index < graph.size());
     const GaussianFactor::shared_ptr& gf = graph[index];
     if (!gf) continue;
-    if (!gf->isJacobian()) {
-      throw std::runtime_error(
-          "MultifrontalClique::fillAb: only JacobianFactor inputs are "
-          "supported.");
-    }
+    assert(gf->isJacobian() &&
+           "MultifrontalClique::fillAb: inconsistent graph passed.");
     auto jacobianFactor = std::static_pointer_cast<JacobianFactor>(gf);
     rowOffset += addJacobianFactor(*jacobianFactor, rowOffset);
   }

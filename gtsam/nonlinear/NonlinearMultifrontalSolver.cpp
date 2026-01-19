@@ -36,11 +36,16 @@ std::map<Key, size_t> computeDimsFromValues(const Values& values) {
 std::unordered_set<Key> collectFixedKeys(const NonlinearFactorGraph& graph) {
   std::unordered_set<Key> fixedKeys;
   for (const auto& factor : graph) {
-    if (!factor) continue;
-    if (!std::dynamic_pointer_cast<NonlinearEqualityConstraint>(factor))
-      continue;
-    if (factor->keys().size() != 1) continue;
-    fixedKeys.insert(factor->keys().front());
+    if (!factor || factor->keys().size() != 1) continue;
+    if (auto constraint =
+            std::dynamic_pointer_cast<NonlinearEqualityConstraint>(factor)) {
+      if (constraint->isHardConstraint()) {
+        fixedKeys.insert(factor->keys().front());
+      } else {
+        throw MultifrontalSolverNotSupported(
+            "non-hard constraints are not supported");
+      }
+    }
   }
   return fixedKeys;
 }

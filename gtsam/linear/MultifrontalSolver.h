@@ -29,6 +29,8 @@
 #include <iosfwd>
 #include <map>
 #include <memory>
+#include <stdexcept>
+#include <string>
 #include <unordered_set>
 #include <vector>
 
@@ -36,6 +38,25 @@ namespace gtsam {
 
 class GaussianBayesTree;
 class MultifrontalClique;
+
+/**
+ * Exception for unsupported use of the new multifrontal solver.
+ * Includes guidance for using the legacy solver instead.
+ */
+class GTSAM_EXPORT MultifrontalSolverNotSupported : public std::runtime_error {
+ public:
+  explicit MultifrontalSolverNotSupported(const std::string& reason)
+      : std::runtime_error(BuildMessage(reason)) {}
+
+ private:
+  static std::string BuildMessage(const std::string& reason) {
+    std::string message = "MultifrontalSolver not supported: " + reason + ". ";
+    message +=
+        "Enable GTSAM_ALLOW_DEPRECATED_SINCE_V43 to default to the legacy "
+        "solver, or set linearSolverType = MULTIFRONTAL_CHOLESKY.";
+    return message;
+  }
+};
 
 /**
  * Imperative-style multifrontal solver for Gaussian factor graphs.
@@ -96,11 +117,7 @@ class GTSAM_EXPORT MultifrontalSolver
    * @param params Tunable parameters for traversal and reporting.
    */
   MultifrontalSolver(const GaussianFactorGraph& graph, const Ordering& ordering,
-                     const Parameters& params);
-
-  /// Construct the solver with default parameters.
-  MultifrontalSolver(const GaussianFactorGraph& graph,
-                     const Ordering& ordering);
+                     const Parameters& params = Parameters{});
 
   /**
    * Construct the solver from precomputed symbolic data.
@@ -110,10 +127,7 @@ class GTSAM_EXPORT MultifrontalSolver
    * @param params Tunable parameters for traversal and reporting.
    */
   MultifrontalSolver(PrecomputedData data, const Ordering& ordering,
-                     const Parameters& params);
-
-  /// Construct the solver with default parameters.
-  MultifrontalSolver(PrecomputedData data, const Ordering& ordering);
+                     const Parameters& params = Parameters{});
 
   /// Precompute symbolic structure and sizing data from a factor graph.
   /// Only JacobianFactor inputs are supported.

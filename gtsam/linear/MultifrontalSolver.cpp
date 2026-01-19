@@ -88,68 +88,54 @@ struct StructureStats {
 constexpr double kConstraintSigmaTol = 1e-12;
 constexpr double kConstraintFeasibleTol = 1e-9;
 
-std::unordered_set<Key> collectFixedKeys(const GaussianFactorGraph& graph) {
+struct PrecomputeScratch {
+  std::map<Key, size_t> dims;
   std::unordered_set<Key> fixedKeys;
-  for (const auto& factor : graph) {
+  std::vector<size_t> rowCounts;
+};
+
+PrecomputeScratch precomputeFromGraph(const GaussianFactorGraph& graph) {
+  PrecomputeScratch out;
+  out.rowCounts.resize(graph.size(), 0);
+  for (size_t i = 0; i < graph.size(); ++i) {
+    const auto& factor = graph[i];
     if (!factor) continue;
     if (!factor->isJacobian()) {
-      throw std::runtime_error(
-          "MultifrontalSolver: only JacobianFactor inputs are supported.");
+      throw MultifrontalSolverNotSupported(
+          "only JacobianFactor inputs are supported");
     }
     auto jacobianFactor = std::static_pointer_cast<JacobianFactor>(factor);
+    out.rowCounts[i] = jacobianFactor->rows();
+    for (auto it = jacobianFactor->begin(); it != jacobianFactor->end(); ++it) {
+      out.dims[*it] = jacobianFactor->getDim(it);
+    }
     auto model = jacobianFactor->get_model();
     if (!model || !model->isConstrained()) continue;
     // Only accept fully constrained unary factors with zero residuals.
     if (jacobianFactor->size() != 1) {
-      throw std::runtime_error(
-          "MultifrontalSolver: only unary constrained factors are supported.");
+      throw MultifrontalSolverNotSupported(
+          "only unary constrained factors are supported");
     }
     const Vector& sigmas = model->sigmasRef();
     if (!(sigmas.array().abs() <= kConstraintSigmaTol).all()) {
-      throw std::runtime_error(
-          "MultifrontalSolver: only fully constrained factors are supported.");
+      throw MultifrontalSolverNotSupported(
+          "only fully constrained factors are supported");
     }
     if (jacobianFactor->getb().array().abs().maxCoeff() >
         kConstraintFeasibleTol) {
-      throw std::runtime_error(
-          "MultifrontalSolver: constrained factor is not feasible.");
+      throw MultifrontalSolverNotSupported(
+          "constrained factor is not feasible");
     }
-    fixedKeys.insert(*jacobianFactor->begin());
+    out.fixedKeys.insert(*jacobianFactor->begin());
   }
-  return fixedKeys;
-}
-
-// Compute variable dimensions from the GaussianFactorGraph
-std::map<Key, size_t> computeDims(const GaussianFactorGraph& graph) {
-  std::map<Key, size_t> dims;
-  for (const auto& factor : graph) {
-    if (!factor) continue;
-    if (!factor->isJacobian()) {
-      throw std::runtime_error(
-          "MultifrontalSolver: only JacobianFactor inputs are supported.");
-    }
-    auto jacobianFactor = std::static_pointer_cast<JacobianFactor>(factor);
-    for (auto it = jacobianFactor->begin(); it != jacobianFactor->end(); ++it) {
-      dims[*it] = jacobianFactor->getDim(it);
-    }
-  }
-  return dims;
-}
-
-size_t factorRowCount(const GaussianFactorGraph& graph, size_t index) {
-  if (index >= graph.size() || !graph[index]) return 0;
-  if (!graph[index]->isJacobian()) {
-    throw std::runtime_error(
-        "MultifrontalSolver: only JacobianFactor inputs are supported.");
-  }
-  auto jacobianFactor = std::static_pointer_cast<JacobianFactor>(graph[index]);
-  return jacobianFactor->rows();
+  return out;
 }
 
 // Build SymbolicFactorGraph from GaussianFactorGraph
 SymbolicFactorGraph buildSymbolicGraph(
     const GaussianFactorGraph& graph,
-    const std::unordered_set<Key>& fixedKeys) {
+    const std::unordered_set<Key>& fixedKeys,
+    const std::vector<size_t>& rowCounts) {
   SymbolicFactorGraph symbolicGraph;
   symbolicGraph.reserve(graph.size());
   for (size_t i = 0; i < graph.size(); ++i) {
@@ -164,7 +150,7 @@ SymbolicFactorGraph buildSymbolicGraph(
     // Skip factors that are fully constrained away.
     if (keys.empty()) continue;
     symbolicGraph.emplace_shared<internal::IndexedSymbolicFactor>(
-        keys, i, factorRowCount(graph, i));
+        keys, i, rowCounts.at(i));
   }
   return symbolicGraph;
 }
@@ -529,11 +515,6 @@ MultifrontalSolver::MultifrontalSolver(const GaussianFactorGraph& graph,
     : MultifrontalSolver(Precompute(graph, ordering), ordering, params) {}
 
 /* ************************************************************************* */
-MultifrontalSolver::MultifrontalSolver(const GaussianFactorGraph& graph,
-                                       const Ordering& ordering)
-    : MultifrontalSolver(graph, ordering, Parameters{}) {}
-
-/* ************************************************************************* */
 MultifrontalSolver::MultifrontalSolver(PrecomputedData data,
                                        const Ordering& ordering,
                                        const Parameters& params)
@@ -589,30 +570,26 @@ MultifrontalSolver::MultifrontalSolver(PrecomputedData data,
 }
 
 /* ************************************************************************* */
-MultifrontalSolver::MultifrontalSolver(PrecomputedData data,
-                                       const Ordering& ordering)
-    : MultifrontalSolver(std::move(data), ordering, Parameters{}) {}
-
-/* ************************************************************************* */
 MultifrontalSolver::PrecomputedData MultifrontalSolver::Precompute(
     const GaussianFactorGraph& graph, const Ordering& ordering) {
-  auto dims = computeDims(graph);
-  auto fixedKeys = collectFixedKeys(graph);
+  PrecomputeScratch scratch = precomputeFromGraph(graph);
 
   Ordering reducedOrdering;
   reducedOrdering.reserve(ordering.size());
   for (Key key : ordering) {
-    if (!fixedKeys.count(key)) {
+    if (!scratch.fixedKeys.count(key)) {
       reducedOrdering.push_back(key);
     }
   }
 
-  SymbolicFactorGraph symbolicGraph = buildSymbolicGraph(graph, fixedKeys);
+  SymbolicFactorGraph symbolicGraph =
+      buildSymbolicGraph(graph, scratch.fixedKeys, scratch.rowCounts);
   SymbolicEliminationTree eliminationTree(symbolicGraph, reducedOrdering);
   SymbolicJunctionTree junctionTree(eliminationTree);
 
   return MultifrontalSolver::PrecomputedData{
-      std::move(dims), std::move(fixedKeys), std::move(junctionTree)};
+      std::move(scratch.dims), std::move(scratch.fixedKeys),
+      std::move(junctionTree)};
 }
 
 /* ************************************************************************* */

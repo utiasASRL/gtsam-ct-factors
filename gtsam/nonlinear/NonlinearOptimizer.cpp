@@ -244,21 +244,17 @@ bool NonlinearOptimizer::ensureMultifrontalSolver(
     const NonlinearOptimizerParams& params, const Values& values) const {
   if (params.linearSolverType != NonlinearOptimizerParams::MULTIFRONTAL_SOLVER)
     return false;
-  // TODO(frank): check for constraints and return false if present?
-  // MultifrontalSolver supports constraints via "fixedKeys", but
-  // NonlinearMultifrontalSolver wrapper might need to expose that. For now, we
-  // assume if isMultifrontal() is true, we try to use it.
-
-  NonlinearMultifrontalSolver::DampingParams dampingParams;
-  if (auto lmParams = dynamic_cast<const LevenbergMarquardtParams*>(&params)) {
-    dampingParams.exactHessianDiagonal =
-        lmParams->dampingParams.exactHessianDiagonal;
-    dampingParams.diagonalDamping = lmParams->dampingParams.diagonalDamping;
-    dampingParams.minDiagonal = lmParams->dampingParams.minDiagonal;
-    dampingParams.maxDiagonal = lmParams->dampingParams.maxDiagonal;
-  }
-
   if (!nonlinearMultifrontalSolver_) {
+    NonlinearMultifrontalSolver::DampingParams dampingParams;
+    if (auto lmParams =
+            dynamic_cast<const LevenbergMarquardtParams*>(&params)) {
+      dampingParams.exactHessianDiagonal =
+          lmParams->dampingParams.exactHessianDiagonal;
+      dampingParams.diagonalDamping = lmParams->dampingParams.diagonalDamping;
+      dampingParams.minDiagonal = lmParams->dampingParams.minDiagonal;
+      dampingParams.maxDiagonal = lmParams->dampingParams.maxDiagonal;
+    }
+
     // Lazily create the solver.
     // Use default ordering or create one.
     Ordering ordering;
@@ -267,19 +263,11 @@ bool NonlinearOptimizer::ensureMultifrontalSolver(
     else
       ordering = Ordering::Create(params.orderingType, graph_);
 
-    // Check if we can construct it (might throw if constraints are tricky?)
-    try {
-      MultifrontalSolver::Parameters mfParams = params.multifrontalParams;
-      nonlinearMultifrontalSolver_ =
-          std::make_unique<NonlinearMultifrontalSolver>(
-              graph_, values, ordering, mfParams, dampingParams);
-    } catch (...) {
-      // Fallback to legacy
-      return false;
-    }
-  } else {
-    nonlinearMultifrontalSolver_->setDampingParams(dampingParams);
+    // Construct it (may throw if unsupported).
+    nonlinearMultifrontalSolver_ =
+        std::make_unique<NonlinearMultifrontalSolver>(
+            graph_, values, ordering, params.multifrontalParams, dampingParams);
   }
   return true;
 }
-}
+} // namespace gtsam

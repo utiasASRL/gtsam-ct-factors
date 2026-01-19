@@ -378,10 +378,10 @@ TEST(NonlinearOptimizer, Pose2OptimizationWithHuberNoOutlier) {
   expected.insert(0, Pose2(0,0,0));
   expected.insert(1, Pose2(0.961187, 0.99965, 1.1781));
 
-  LevenbergMarquardtParams lm_params;
+  LevenbergMarquardtParams lmParams;
 
   auto gn_result = GaussNewtonOptimizer(fg, init).optimize();
-  auto lm_result = LevenbergMarquardtOptimizer(fg, init, lm_params).optimize();
+  auto lm_result = LevenbergMarquardtOptimizer(fg, init, lmParams).optimize();
   auto dl_result = DoglegOptimizer(fg, init).optimize();
 
   EXPECT(assert_equal(expected, gn_result, 3e-2));

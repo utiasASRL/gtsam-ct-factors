@@ -22,6 +22,7 @@
 #include <gtsam/inference/Symbol.h>
 #include <gtsam/linear/JacobianFactor.h>
 #include <gtsam/linear/NoiseModel.h>
+#include <gtsam/nonlinear/NonlinearEquality.h>
 #include <gtsam/nonlinear/NonlinearMultifrontalSolver.h>
 #include <gtsam/nonlinear/NonlinearOptimizerParams.h>
 #include <gtsam/nonlinear/Values.h>
@@ -132,6 +133,35 @@ TEST(NonlinearMultifrontalSolver, OneStepPrecomputed) {
 
   EXPECT(assert_equal(Point2(0, 0), result.at<Point2>(X(1)), 1e-9));
   EXPECT(assert_equal(Point2(1, 0), result.at<Point2>(X(2)), 1e-9));
+}
+
+/* ************************************************************************* */
+TEST(NonlinearMultifrontalSolver, PrecomputeHardConstraint) {
+  NonlinearFactorGraph graph;
+  Values values;
+  Ordering ordering;
+
+  graph.emplace_shared<NonlinearEquality<Point2>>(X(1), Point2(1.0, 2.0));
+  values.insert(X(1), Point2(0.0, 0.0));
+  ordering.push_back(X(1));
+
+  auto data = NonlinearMultifrontalSolver::Precompute(graph, values, ordering);
+  CHECK_EQUAL(1, data.fixedKeys.size());
+}
+
+/* ************************************************************************* */
+TEST(NonlinearMultifrontalSolver, PrecomputeSoftConstraintThrows) {
+  NonlinearFactorGraph graph;
+  Values values;
+  Ordering ordering;
+
+  graph.emplace_shared<NonlinearEquality<Point2>>(X(1), Point2(1.0, 2.0), 10.0);
+  values.insert(X(1), Point2(0.0, 0.0));
+  ordering.push_back(X(1));
+
+  CHECK_EXCEPTION(
+      NonlinearMultifrontalSolver::Precompute(graph, values, ordering),
+      std::runtime_error);
 }
 
 /* ************************************************************************* */

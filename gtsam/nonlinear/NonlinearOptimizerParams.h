@@ -107,10 +107,16 @@ public:
     CHOLMOD, /* Experimental Flag */
   };
 
-  LinearSolverType linearSolverType = MULTIFRONTAL_SOLVER; ///< The type of linear solver to use in the nonlinear optimizer
   std::optional<Ordering> ordering; ///< The optional variable elimination ordering, or empty to use COLAMD (default: empty)
   IterativeOptimizationParameters::shared_ptr iterativeParams; ///< The container for iterativeOptimization parameters. used in CG Solvers.
   /// Parameters for `gtsam::MultifrontalSolver` when using `MULTIFRONTAL_SOLVER`.
+
+  /// The type of linear solver to use in the nonlinear optimizer
+ #ifdef GTSAM_ALLOW_DEPRECATED_SINCE_V43
+  LinearSolverType linearSolverType = MULTIFRONTAL_CHOLESKY;
+#else
+  LinearSolverType linearSolverType = MULTIFRONTAL_SOLVER;
+#endif
   MultifrontalParameters multifrontalParams;
 
   NonlinearOptimizerParams() = default;
