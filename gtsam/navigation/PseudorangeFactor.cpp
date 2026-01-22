@@ -64,7 +64,7 @@ Vector PseudorangeFactor::evaluateError(
     if (range < std::numeric_limits<double>::epsilon()) {
       *Hreceiver_pos = Matrix13::Zero();
     } else {
-      *Hreceiver_pos = position_difference / range;
+      *Hreceiver_pos = (position_difference / range).transpose();
     }
   }
 
