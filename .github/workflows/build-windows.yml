@@ -6,6 +6,9 @@ on:
       - '**.md'
       - '**.ipynb'
       - 'myst.yml'
+  push:
+    # Run on pushes to develop branch to cache compilations
+    branches: [develop]
 
 # Cancels any in-progress workflow runs for the same PR when a new push is made,
 # allowing the runner to become available more quickly for the latest changes.
