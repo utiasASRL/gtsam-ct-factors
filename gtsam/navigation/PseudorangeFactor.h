@@ -28,6 +28,7 @@ namespace gtsam {
  * tropospheric, and unmodeled errors respectively.
  *
  * Ionospheric and tropospheric terms are omitted in this simplified factor.
+ * Note that this factor is also designed for code-phase measurements.
  *
  * @ingroup navigation
  *
@@ -61,7 +62,15 @@ class GTSAM_EXPORT PseudorangeFactor
   virtual ~PseudorangeFactor() = default;
 
   /**
-   * @brief TODO
+   * Construct a PseudorangeFactor that models the distance between a receiver
+   * and a satellite.
+   *
+   * @param receiver_position_key Receiver gtsam::Point3 ECEF position node.
+   * @param receiver_clock_bias_key Receiver clock bias node.
+   * @param measured_pseudorange Receiver-measured pseudorange in meters.
+   * @param satellite_position Satellite ECEF position in meters.
+   * @param satellite_clock_bias Satellite clock bias in seconds.
+   * @param model 1-D noise model.
    */
   PseudorangeFactor(Key receiver_position_key, Key receiver_clock_bias_key,
                     double measured_pseudorange,
@@ -75,13 +84,12 @@ class GTSAM_EXPORT PseudorangeFactor
   }
 
   /// print
-  //  void print(const std::string& s = "", const KeyFormatter& keyFormatter =
-  //                                            DefaultKeyFormatter) const
-  //                                            override;
+  void print(const std::string& s = "", const KeyFormatter& keyFormatter =
+                                            DefaultKeyFormatter) const override;
 
   /// equals
-  //  bool equals(const NonlinearFactor& expected, double tol = 1e-9) const
-  //  override;
+  bool equals(const NonlinearFactor& expected,
+              double tol = 1e-9) const override;
 
   /// vector of errors
   Vector evaluateError(const Point3& receiver_position,

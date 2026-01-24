@@ -31,22 +31,26 @@ PseudorangeFactor::PseudorangeFactor(Key receiver_position_key,
       sat_clk_bias_(satellite_clock_bias) {}
 
 //***************************************************************************
-// void PseudorangeFactor::print(const std::string& s, const KeyFormatter&
-// keyFormatter) const {
-//  cout << (s.empty() ? "" : s + " ") << "PseudorangeFactor on " <<
-//  keyFormatter(key())
-//       << "\n";
-//  cout << "  GPS measurement: " << nT_ << "\n";
-//  noiseModel_->print("  noise model: ");
-//}
+void PseudorangeFactor::print(const std::string& s,
+                              const KeyFormatter& keyFormatter) const {
+  std::cout << (s.empty() ? "" : s + " ") << "PseudorangeFactor on "
+            << keyFormatter(key()) << "\n";
+  std::cout << "  Pseudorange: " << pseudorange_ << " meters\n";
+  std::cout << "  Satellite Position: " << sat_pos_.transpose()
+            << " meters (ECEF)\n";
+  std::cout << "  Satellite clock bias: " << sat_clk_bias_ << " seconds\n";
+  noiseModel_->print("  noise model: ");
+}
 
 //***************************************************************************
-// bool PseudorangeFactor::equals(const NonlinearFactor& expected, double tol)
-// const {
-//  const This* e = dynamic_cast<const This*>(&expected);
-//  return e != nullptr && Base::equals(*e, tol) /*&&
-//  traits<Point3>::Equals(nT_, e->nT_, tol)*/;
-//}
+bool PseudorangeFactor::equals(const NonlinearFactor& expected,
+                               double tol) const {
+  const This* e = dynamic_cast<const This*>(&expected);
+  return e != nullptr && Base::equals(*e, tol) &&
+         traits<double>::Equals(pseudorange_, e->pseudorange_, tol) &&
+         traits<Point3>::Equals(sat_pos_, e->sat_pos_, tol) &&
+         traits<double>::Equals(sat_clk_bias_, e->sat_clk_bias_, tol);
+}
 
 //***************************************************************************
 Vector PseudorangeFactor::evaluateError(

@@ -494,6 +494,12 @@ virtual class PseudorangeFactor : gtsam::NonlinearFactor {
                     double satellite_clock_bias,
                     const gtsam::noiseModel::Base* model);
 
+  // Testable
+  void print(string s = "", const gtsam::KeyFormatter& keyFormatter =
+                                                         gtsam::DefaultKeyFormatter) const;
+  bool equals(const gtsam::NonlinearFactor& expected, double tol);
+
+  // Standard Interface
   gtsam::Vector evaluateError(const gtsam::Point3& receiver_position,
                               const double& receiver_clock_bias) const;
 };
