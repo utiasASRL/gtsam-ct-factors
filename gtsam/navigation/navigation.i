@@ -619,7 +619,7 @@ virtual class ManifoldEKF {
 
   // Only vector-based measurements are supported in wrapper
   void updateWithVector(const gtsam::Vector& prediction, const gtsam::Matrix& H,
-                        const gtsam::Vector& z, const gtsam::Matrix& R);
+                        const gtsam::Vector& z, const gtsam::Matrix& R, bool performReset = true);
 };
 
 #include <gtsam/navigation/LieGroupEKF.h>
