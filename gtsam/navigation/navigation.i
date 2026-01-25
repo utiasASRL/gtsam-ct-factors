@@ -654,8 +654,8 @@ virtual class InvariantEKF : gtsam::LeftLinearEKF<G> {
 // ---------------------------------------------------------------------------
 // Equivariant Filter (attitude example wrapper)
 #include <gtsam/navigation/EquivariantFilter.h>
-#include <gtsam_unstable/geometry/EquivariantFilterAttitude.h>
-template <M = {gtsam::Unit3}, Symmetry = {gtsam::attitude_example::Symmetry}>
+#include <gtsam_unstable/geometry/ABC.h>
+template <M = {gtsam::Unit3}, Symmetry = {gtsam::abc::attitude_example::Symmetry}>
 virtual class EquivariantFilter : gtsam::ManifoldEKF<M> {
   // Constructors
   EquivariantFilter(const M& xi_ref, gtsam::Matrix Sigma);

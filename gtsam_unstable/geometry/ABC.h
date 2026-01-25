@@ -240,6 +240,30 @@ struct Symmetry : public GroupAction<Symmetry<N>, Group<N>, State<N>> {
   };
 };
 
+//========================================================================
+// Attitude-only symmetry for Unit3/Rot3 (used by Python EqF wrappers)
+//========================================================================
+namespace attitude_example {
+
+using M = Unit3;
+using G = Rot3;
+
+/**
+ * Symmetry: right group action on Unit3.
+ */
+struct Symmetry : public GroupAction<Symmetry, G, M> {
+  static constexpr ActionType type = ActionType::Right;
+
+  M operator()(const M& eta, const G& Q,
+               OptionalJacobian<2, 2> H_eta = {},
+               OptionalJacobian<2, 3> H_Q = {}) const {
+    // Apply the right action Q^T * eta
+    return Q.unrotate(eta, H_Q, H_eta);
+  }
+};
+
+}  // namespace attitude_example
+
 /**
  * Continuous-time dynamics on the manifold M = SO(3) x R^3 x SO(3)^N, as in
  * Eq. (2) of the paper. Given state ξ = (R, b, S) and body angular velocity
