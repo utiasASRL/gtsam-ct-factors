@@ -166,6 +166,7 @@ jobs:
               -DVCPKG_TARGET_TRIPLET=${{ matrix.triplet }} \
               -DVCPKG_HOST_TRIPLET=${{ matrix.triplet }} \
               -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+              -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=OFF \
               -DGTSAM_BUILD_EXAMPLES_ALWAYS=ON \
               -DGTSAM_BUILD_WITH_PRECOMPILED_HEADERS=OFF \
               -DGTSAM_ROT3_EXPMAP=ON \
