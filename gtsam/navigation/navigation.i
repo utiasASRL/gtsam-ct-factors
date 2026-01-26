@@ -487,11 +487,11 @@ virtual class GPSFactor2ArmCalib : gtsam::NonlinearFactor{
 
 #include <gtsam/navigation/PseudorangeFactor.h>
 virtual class PseudorangeFactor : gtsam::NonlinearFactor {
-  PseudorangeFactor(gtsam::Key receiver_position_key,
-                    gtsam::Key receiver_clock_bias_key,
-                    double measured_pseudorange,
-                    const gtsam::Point3& satellite_position,
-                    double satellite_clock_bias,
+  PseudorangeFactor(gtsam::Key receiverPositionKey,
+                    gtsam::Key receiverClockBiasKey,
+                    double measuredPseudorange,
+                    const gtsam::Point3& satellitePosition,
+                    double satelliteClockBias,
                     const gtsam::noiseModel::Base* model);
 
   // Testable
@@ -500,8 +500,8 @@ virtual class PseudorangeFactor : gtsam::NonlinearFactor {
   bool equals(const gtsam::NonlinearFactor& expected, double tol);
 
   // Standard Interface
-  gtsam::Vector evaluateError(const gtsam::Point3& receiver_position,
-                              const double& receiver_clock_bias) const;
+  gtsam::Vector evaluateError(const gtsam::Point3& receiverPosition,
+                              const double& receiverClock_bias) const;
 };
 
 #include <gtsam/navigation/BarometricFactor.h>

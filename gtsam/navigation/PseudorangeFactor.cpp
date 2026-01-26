@@ -17,18 +17,18 @@ constexpr double CLIGHT = 299792458.0;
 namespace gtsam {
 
 PseudorangeFactor::PseudorangeFactor()
-    : Base(), pseudorange_(0.0), sat_pos_(Point3::Zero()), sat_clk_bias_(0.0) {}
+    : Base(), pseudorange_(0.0), satPos_(Point3::Zero()), satClkBias_(0.0) {}
 
-PseudorangeFactor::PseudorangeFactor(Key receiver_position_key,
-                                     Key receiver_clock_bias_key,
-                                     const double measured_pseudorange,
-                                     const Point3& satellite_position,
-                                     const double satellite_clock_bias,
+PseudorangeFactor::PseudorangeFactor(Key receiverPositionKey,
+                                     Key receiverClockBiasKey,
+                                     const double measuredPseudorange,
+                                     const Point3& satellitePosition,
+                                     const double satelliteClockBias,
                                      const SharedNoiseModel& model)
-    : Base(model, receiver_position_key, receiver_clock_bias_key),
-      pseudorange_(measured_pseudorange),
-      sat_pos_(satellite_position),
-      sat_clk_bias_(satellite_clock_bias) {}
+    : Base(model, receiverPositionKey, receiverClockBiasKey),
+      pseudorange_(measuredPseudorange),
+      satPos_(satellitePosition),
+      satClkBias_(satelliteClockBias) {}
 
 //***************************************************************************
 void PseudorangeFactor::print(const std::string& s,
@@ -37,9 +37,9 @@ void PseudorangeFactor::print(const std::string& s,
             << keyFormatter(this->key<1>()) << ", "
             << keyFormatter(this->key<2>()) << "\n";
   std::cout << "  Pseudorange: " << pseudorange_ << " meters\n";
-  std::cout << "  Satellite Position: " << sat_pos_.transpose()
+  std::cout << "  Satellite Position: " << satPos_.transpose()
             << " meters (ECEF)\n";
-  std::cout << "  Satellite clock bias: " << sat_clk_bias_ << " seconds\n";
+  std::cout << "  Satellite clock bias: " << satClkBias_ << " seconds\n";
   noiseModel_->print("  noise model: ");
 }
 
@@ -49,8 +49,8 @@ bool PseudorangeFactor::equals(const NonlinearFactor& expected,
   const This* e = dynamic_cast<const This*>(&expected);
   return e != nullptr && Base::equals(*e, tol) &&
          traits<double>::Equals(pseudorange_, e->pseudorange_, tol) &&
-         traits<Point3>::Equals(sat_pos_, e->sat_pos_, tol) &&
-         traits<double>::Equals(sat_clk_bias_, e->sat_clk_bias_, tol);
+         traits<Point3>::Equals(satPos_, e->satPos_, tol) &&
+         traits<double>::Equals(satClkBias_, e->satClkBias_, tol);
 }
 
 //***************************************************************************
@@ -59,9 +59,9 @@ Vector PseudorangeFactor::evaluateError(
     OptionalMatrixType Hreceiver_pos,
     OptionalMatrixType Hreceiver_clock_bias) const {
   // Apply pseudorange equation: rho = range + c*[dt_u - dt^s]
-  const Vector3 position_difference = receiver_position - sat_pos_;
+  const Vector3 position_difference = receiver_position - satPos_;
   const double range = position_difference.norm();
-  const double rho = range + CLIGHT * (receiver_clock_bias - sat_clk_bias_);
+  const double rho = range + CLIGHT * (receiver_clock_bias - satClkBias_);
   const double error = rho - pseudorange_;
 
   // Compute associated derivatives:

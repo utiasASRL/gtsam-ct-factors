@@ -43,8 +43,8 @@ class GTSAM_EXPORT PseudorangeFactor
 
   const double
       pseudorange_;  ///< Receiver-reported pseudorange measurement in meters.
-  const Point3 sat_pos_;       ///< Satellite position in WGS84 ECEF meters.
-  const double sat_clk_bias_;  ///< Satellite clock bias in seconds.
+  const Point3 satPos_;      ///< Satellite position in WGS84 ECEF meters.
+  const double satClkBias_;  ///< Satellite clock bias in seconds.
 
  public:
   // Provide access to the Matrix& version of evaluateError:
@@ -65,17 +65,18 @@ class GTSAM_EXPORT PseudorangeFactor
    * Construct a PseudorangeFactor that models the distance between a receiver
    * and a satellite.
    *
-   * @param receiver_position_key Receiver gtsam::Point3 ECEF position node.
-   * @param receiver_clock_bias_key Receiver clock bias node.
-   * @param measured_pseudorange Receiver-measured pseudorange in meters.
-   * @param satellite_position Satellite ECEF position in meters.
-   * @param satellite_clock_bias Satellite clock bias in seconds.
+   * @param receiverPositionKey Receiver gtsam::Point3 ECEF position node.
+   * @param receiverClockBiasKey Receiver clock bias node.
+   * @param measuredPseudorange Receiver-measured pseudorange in meters.
+   * @param satellitePosition Satellite ECEF position in meters.
+   * @param satelliteClockBias Satellite clock bias in seconds.
    * @param model 1-D noise model.
    */
-  PseudorangeFactor(Key receiver_position_key, Key receiver_clock_bias_key,
-                    double measured_pseudorange,
-                    const Point3& satellite_position,
-                    double satellite_clock_bias, const SharedNoiseModel& model);
+  PseudorangeFactor(Key receiverPositionKey, Key receiverClockBiasKey,
+                    double measuredPseudorange, const Point3& satellitePosition,
+                    double satelliteClockBias,
+                    const SharedNoiseModel& model =
+                        noiseModel::Diagonal::Sigmas(Vector1(1.0)));
 
   /// @return a deep copy of this factor
   gtsam::NonlinearFactor::shared_ptr clone() const override {
@@ -92,10 +93,10 @@ class GTSAM_EXPORT PseudorangeFactor
               double tol = 1e-9) const override;
 
   /// vector of errors
-  Vector evaluateError(const Point3& receiver_position,
-                       const double& receiver_clock_bias,
-                       OptionalMatrixType Hreceiver_pos,
-                       OptionalMatrixType Hreceiver_clock_bias) const override;
+  Vector evaluateError(const Point3& receiverPosition,
+                       const double& receiverClock_bias,
+                       OptionalMatrixType HreceiverPos,
+                       OptionalMatrixType HreceiverClockBias) const override;
 
  private:
 #if GTSAM_ENABLE_BOOST_SERIALIZATION  ///
@@ -103,11 +104,10 @@ class GTSAM_EXPORT PseudorangeFactor
   friend class boost::serialization::access;
   template <class ARCHIVE>
   void serialize(ARCHIVE& ar, const unsigned int /*version*/) {
-    ar& boost::serialization::make_nvp(
-        "NoiseModelFactor2", boost::serialization::base_object<Base>(*this));
+    ar& BOOST_SERIALIZATION_BASE_OBJECT_NVP(PseudorangeFactor::Base);
     ar& BOOST_SERIALIZATION_NVP(pseudorange_);
-    ar& BOOST_SERIALIZATION_NVP(sat_pos_);
-    ar& BOOST_SERIALIZATION_NVP(sat_clk_bias_);
+    ar& BOOST_SERIALIZATION_NVP(satPos_);
+    ar& BOOST_SERIALIZATION_NVP(satClkBias_);
   }
 #endif
 };
