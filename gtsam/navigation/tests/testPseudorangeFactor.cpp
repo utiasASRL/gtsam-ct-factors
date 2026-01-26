@@ -1,5 +1,5 @@
 /**
- * @file    testPsuedorangeFactor.cpp
+ * @file    testPseudorangeFactor.cpp
  * @brief   Unit test for PseudorangeFactor
  * @author  Sammy Guo
  * @date   January 18, 2026

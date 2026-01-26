@@ -34,7 +34,8 @@ PseudorangeFactor::PseudorangeFactor(Key receiver_position_key,
 void PseudorangeFactor::print(const std::string& s,
                               const KeyFormatter& keyFormatter) const {
   std::cout << (s.empty() ? "" : s + " ") << "PseudorangeFactor on "
-            << keyFormatter(key()) << "\n";
+            << keyFormatter(this->key<1>()) << ", "
+            << keyFormatter(this->key<2>()) << "\n";
   std::cout << "  Pseudorange: " << pseudorange_ << " meters\n";
   std::cout << "  Satellite Position: " << sat_pos_.transpose()
             << " meters (ECEF)\n";
