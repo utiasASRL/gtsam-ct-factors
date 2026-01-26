@@ -551,6 +551,7 @@ virtual class Scenario {
   gtsam::Vector acceleration_n(double t) const;
   gtsam::Rot3 rotation(double t) const;
   gtsam::NavState navState(double t) const;
+  gtsam::Gal3 gal3(double t) const;
   gtsam::Vector velocity_b(double t) const;
   gtsam::Vector acceleration_b(double t) const;
 };
@@ -619,7 +620,7 @@ virtual class ManifoldEKF {
 
   // Only vector-based measurements are supported in wrapper
   void updateWithVector(const gtsam::Vector& prediction, const gtsam::Matrix& H,
-                        const gtsam::Vector& z, const gtsam::Matrix& R);
+                        const gtsam::Vector& z, const gtsam::Matrix& R, bool performReset = true);
 };
 
 #include <gtsam/navigation/LieGroupEKF.h>
