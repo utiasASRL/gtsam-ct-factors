@@ -652,31 +652,6 @@ virtual class InvariantEKF : gtsam::LeftLinearEKF<G> {
 };
 
 // ---------------------------------------------------------------------------
-// Equivariant Filter (attitude example wrapper)
-#include <gtsam/navigation/EquivariantFilter.h>
-#include <gtsam_unstable/geometry/ABC.h>
-template <M = {gtsam::Unit3}, Symmetry = {gtsam::abc::attitude_example::Symmetry}>
-virtual class EquivariantFilter : gtsam::ManifoldEKF<M> {
-  // Constructors
-  EquivariantFilter(const M& xi_ref, gtsam::Matrix Sigma);
-  EquivariantFilter(const M& xi_ref, gtsam::Matrix Sigma,
-                    const Symmetry::Group& X0);
-
-  // Accessors
-  gtsam::Matrix errorCovariance() const;
-  gtsam::Matrix covariance() const;
-  Symmetry::Group groupEstimate() const;
-
-  // Wrapper-friendly predict
-  void predictWithJacobianEuler(const gtsam::Vector& Lambda, gtsam::Matrix A,
-                                gtsam::Matrix Qc, double dt);
-
-  // Only vector-based measurements are supported in wrapper
-  void updateWithVector(const gtsam::Vector& prediction, const gtsam::Matrix& H,
-                        const gtsam::Vector& z, const gtsam::Matrix& R);
-};
-
-// ---------------------------------------------------------------------------
 // ABC Equivariant Filter wrapper (N=1)
 #include <gtsam_unstable/geometry/ABCEqFWrapper.h>
 namespace abc {
