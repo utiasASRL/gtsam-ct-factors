@@ -653,21 +653,22 @@ virtual class InvariantEKF : gtsam::LeftLinearEKF<G> {
 
 // ---------------------------------------------------------------------------
 // ABC Equivariant Filter wrapper (N=1)
-#include <gtsam_unstable/geometry/ABCEqFWrapper.h>
+#include <gtsam_unstable/geometry/ABCEquivariantFilter.h>
 namespace abc {
-class AbcEquivariantFilter1 {
-  AbcEquivariantFilter1();
-  AbcEquivariantFilter1(const gtsam::Matrix& Sigma0);
+template <N = {1, 2, 3}>
+class AbcEquivariantFilter {
+  // Constructors
+  AbcEquivariantFilter();
+  AbcEquivariantFilter(gtsam::Matrix Sigma0);
 
-  void predict(const gtsam::Vector& omega, const gtsam::Matrix& inputCovariance,
-               double dt);
-  void update(const gtsam::Unit3& y, const gtsam::Unit3& d,
-              const gtsam::Matrix& R, int cal_idx);
+  // Predict and update methods
+  void predict(const gtsam::Vector3& omega, const gtsam::Matrix6& inputCovariance, double dt);
+  void update(const gtsam::Unit3& y, const gtsam::Unit3& d, const gtsam::Matrix3& R, int cal_idx);
 
+  // Accessors
   gtsam::Rot3 attitude() const;
-  gtsam::Vector bias() const;
+  gtsam::Vector3 bias() const;
   gtsam::Rot3 calibration(size_t i) const;
-  gtsam::Matrix errorCovariance() const;
 };
 }  // namespace abc
 
