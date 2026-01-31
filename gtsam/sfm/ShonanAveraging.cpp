@@ -98,7 +98,7 @@ template <size_t d>
 static size_t NrUnknowns(
     const typename ShonanAveraging<d>::Measurements &measurements) {
   Key maxKey = 0;
-  std::set<Key> keys;
+  KeySet keys;
   for (const auto &measurement : measurements) {
     for (const Key &key : measurement.keys()) {
       maxKey = std::max(key, maxKey);
