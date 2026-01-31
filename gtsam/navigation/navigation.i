@@ -673,6 +673,27 @@ virtual class InvariantEKF : gtsam::LeftLinearEKF<G> {
   void predict(const gtsam::Vector& u, double dt, gtsam::Matrix Q);
 };
 
+// ---------------------------------------------------------------------------
+// ABC Equivariant Filter
+#include <gtsam_unstable/geometry/ABCEquivariantFilter.h>
+namespace abc {
+template <N = {1, 2, 3}>
+class AbcEquivariantFilter {
+  // Constructors
+  AbcEquivariantFilter();
+  AbcEquivariantFilter(gtsam::Matrix Sigma0);
+
+  // Predict and update methods
+  void predict(const gtsam::Vector3& omega, const gtsam::Matrix6& inputCovariance, double dt);
+  void update(const gtsam::Unit3& y, const gtsam::Unit3& d, const gtsam::Matrix3& R, int cal_idx);
+
+  // Accessors
+  gtsam::Rot3 attitude() const;
+  gtsam::Vector3 bias() const;
+  gtsam::Rot3 calibration(size_t i) const;
+};
+}  // namespace abc
+
 // Specialized NavState IMU EKF
 #include <gtsam/navigation/NavStateImuEKF.h>
 class NavStateImuEKF : gtsam::LeftLinearEKF<gtsam::NavState> {
