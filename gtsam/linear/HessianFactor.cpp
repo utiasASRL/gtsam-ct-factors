@@ -253,12 +253,7 @@ HessianFactor::HessianFactor(const GaussianFactorGraph& factors,
   Allocate(scatter);
   gttoc(Allocate);
 
-  // Only parallelize the inner loop if GTSAM_TBB_BOUNDED_MEMORY_GROWTH_FLAG is
-  // defined. Without this flag, multiple HessianFactor constructions are
-  // already running in parallel (e.g., when constructing multiple factors
-  // concurrently), so there's no need to parallelize the inner
-  // updateHessian loop here as well.
-#if defined(GTSAM_USE_TBB) && defined(GTSAM_TBB_BOUNDED_MEMORY_GROWTH_FLAG)
+#if defined(GTSAM_USE_TBB)
   constexpr DenseIndex kParallelThresholdHeuristic = 50;
   if (info_.rows() > kParallelThresholdHeuristic) {
     gttic(updateHessian_TBB);
