@@ -21,10 +21,15 @@
 #include <gtsam/base/Testable.h>
 #include <gtsam/base/TestableAssertions.h>
 #include <gtsam/base/numericalDerivative.h>
-#include <gtsam/inference/VariableIndex.h>
 #include <gtsam/constrained/NonlinearEqualityConstraint.h>
+#include <gtsam/inference/Symbol.h>
+#include <gtsam/inference/VariableIndex.h>
+#include <gtsam/nonlinear/ExpressionFactor.h>
 #include <gtsam/nonlinear/factorTesting.h>
 #include <gtsam/slam/BetweenFactor.h>
+#include <gtsam/slam/expressions.h>
+
+#include <cmath>
 
 #include "constrainedExample.h"
 
@@ -252,7 +257,54 @@ TEST(NonlinearEqualityConstraints, Container) {
   // Check constraint violation.
 }
 
-TEST(NonlinearEqualityConstraints, FromCostGraph) {}
+TEST(GtsamConstrained, VectorEqualityViolationVectorMixedDims) {
+  using namespace gtsam;
+
+  const Symbol x_key('x', 0);  // Pose3 (dim 6)
+  const Symbol p_key('p', 0);  // Vector3 (dim 3)
+
+  const Pose3_ x(x_key);
+  const Vector3_ p(p_key);
+  const Vector3_ world_point(x, &Pose3::transformFrom, p);
+
+  // Create many constraints so the stacked violation vector is non-trivial.
+  // 28 * 3 = 84 to mirror real-world constraint stacks.
+  NonlinearEqualityConstraints constraints;
+  const Vector3 target(0.1, -0.2, 0.3);
+  const Vector3_ target_expr(target);
+  const Vector3_ error_expr = world_point - target_expr;
+
+  // Use the "cost-factor wrapped as a constraint" path (ZeroCostConstraint),
+  // as this matches how downstream projects (like GTDynamics) typically
+  // construct constraints.
+  const auto noise = noiseModel::Isotropic::Sigma(3, 1.0);
+  for (size_t i = 0; i < 28; ++i) {
+    auto factor = std::make_shared<ExpressionFactor<Vector3>>(
+        noise, Vector3::Zero(), error_expr);
+    constraints.emplace_shared<ZeroCostConstraint>(factor);
+  }
+
+  Values values;
+  values.insert(x_key, Pose3());
+  values.insert(p_key, Vector3(0.0, 0.0, 0.0));
+
+  // This call is the primary reproducer: it should return a finite vector with
+  // size 84. On affected platforms/builds it may abort inside Eigen.
+  const Vector v = constraints.violationVector(values);
+  EXPECT_LONGS_EQUAL(84, static_cast<long>(v.size()));
+  for (int i = 0; i < static_cast<int>(v.size()); ++i) {
+    EXPECT(std::isfinite(v(i)));
+  }
+
+  // Also probe per-constraint violation evaluation, as some failures only show
+  // up when the constraint graph is small.
+  for (size_t i = 0; i < constraints.size(); ++i) {
+    NonlinearEqualityConstraints single;
+    single.push_back(constraints.at(i));
+    const double norm = single.violationNorm(values);
+    EXPECT(std::isfinite(norm));
+  }
+}
 
 int main() {
   TestResult tr;
