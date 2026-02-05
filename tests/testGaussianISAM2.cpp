@@ -325,7 +325,7 @@ TEST(ISAM2, slamlike_solution_dogleglinesearch) {
   ISAM2 isam = createSlamlikeISAM2(
       &fullinit, &fullgraph,
       ISAM2Params(
-          ISAM2DoglegLineSearchParams(0.1, 10.0, 1.5, 1e-3, 1e-4, false), 0.0,
+          ISAM2DoglegLineSearchParams(0.1, 1.0, 3, 1e-3, 1e-4, false), 0.0,
           0, false));
 
   // Compare solutions
@@ -364,7 +364,7 @@ TEST(ISAM2, slamlike_solution_dogleglinesearch_qr) {
   ISAM2 isam = createSlamlikeISAM2(
       &fullinit, &fullgraph,
       ISAM2Params(
-          ISAM2DoglegLineSearchParams(0.1, 10.0, 1.5, 1e-3, 1e-4, false), 0.0,
+          ISAM2DoglegLineSearchParams(0.1, 10.0, 3, 1e-3, 1e-4, false), 0.0,
           0, false, false, ISAM2Params::QR));
 
   // Compare solutions
