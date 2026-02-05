@@ -134,20 +134,19 @@ struct GTSAM_EXPORT ISAM2DoglegParams {
  * ISAM2(const ISAM2Params&).
  */
 struct GTSAM_EXPORT ISAM2DoglegLineSearchParams {
-  double _min_delta{0.02};  ///< Minimum allowed small delta
-  double _max_delta{0.5};   ///< Maximum allowed delta
-  double _step_size{1.5};   ///< Increase of trust region for outward steps
-  double _sufficient_decrease_coeff{
-      1e-4};  ///< Coefficient for sufficient decrease check
-  double _wildfire_threshold{
-      1e-3};             ///< Continue updating the linear delta only when
-                         ///< changes are above this threshold (default: 1e-3)
-  bool _verbose{false};  ///< Whether to print debug information
+  double _min_delta;  ///< Minimum allowed small delta
+  double _max_delta;  ///< Maximum allowed delta
+  double _step_size;  ///< Increase of trust region for outward steps
+  double _sufficient_decrease_coeff;  ///< Coefficient for suff. decrease check
+  double _wildfire_threshold;  ///< Update delta when changes are above thresh
+  bool _verbose;               ///< Whether to print debug information
 
   /** Specify parameters as constructor arguments */
-  ISAM2DoglegLineSearchParams(double min_delta, double max_delta,
-                              double step_size, double wildfire_threshold,
-                              double sufficient_decrease_coeff, bool verbose)
+  ISAM2DoglegLineSearchParams(double min_delta = 0.02, double max_delta = 0.5,
+                              double step_size = 1.5,
+                              double wildfire_threshold = 1e-4,
+                              double sufficient_decrease_coeff = 1e-3,
+                              bool verbose = false)
       : _min_delta(min_delta),
         _max_delta(max_delta),
         _step_size(step_size),
