@@ -1,5 +1,9 @@
 FROM ubuntu:22.04
 
+# Preset the timezone information to prevent hang when installing tzdata
+ENV TZ=America/Toronto
+RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
+
 # Install essential tools
 RUN apt-get update && apt-get install -y \
     build-essential \
@@ -79,21 +83,15 @@ RUN apt-get update && apt-get install -y cmake-curses-gui
 # kcachegrind
 RUN apt-get update && apt-get install -y kcachegrind
 
+# Set up user inside container to avoid issues with permissions.
+ARG USERNAME=cho
+ARG USER_UID=1094
+ARG USER_GID=1094
 
-# Entrypoint script
-COPY entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
-ENTRYPOINT [ "/entrypoint.sh" ]
+RUN groupadd --gid $USER_GID $USERNAME \
+&& useradd --uid $USER_UID --gid $USER_GID -m $USERNAME 
 
-
-# User setup args
-ARG USERID=0
-ARG GROUPID=0
-ARG USERNAME=root
-ARG HOMEDIR=/root
-# Setup user 
-RUN if [ ${GROUPID} -ne 0 ]; then addgroup --gid ${GROUPID} ${USERNAME}; fi \
-  && if [ ${USERID} -ne 0 ]; then adduser --disabled-password --gecos '' --uid ${USERID} --gid ${GROUPID} ${USERNAME}; fi
+# Change any ownerships here...
 
 # Move to working dir
 WORKDIR /${HOMEDIR}/gtsam-ct-factors
