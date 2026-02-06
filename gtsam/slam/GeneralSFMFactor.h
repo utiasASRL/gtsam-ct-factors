@@ -25,6 +25,7 @@
 #include <gtsam/geometry/Point3.h>
 #include <gtsam/geometry/Pose3.h>
 #include <gtsam/nonlinear/NonlinearFactor.h>
+#include <gtsam/nonlinear/NoiseModelFactorN.h>
 #include <gtsam/linear/BinaryJacobianFactor.h>
 #include <gtsam/linear/NoiseModel.h>
 #include <gtsam/base/concepts.h>
@@ -147,8 +148,8 @@ public:
     JacobianL H2;
     Vector2 b;
     try {
-      const CAMERA& camera = values.at<CAMERA>(key1);
-      const LANDMARK& point = values.at<LANDMARK>(key2);
+      const CAMERA& camera = values.atRef<CAMERA>(key1);
+      const LANDMARK& point = values.atRef<LANDMARK>(key2);
       b = measured() - camera.project2(point, H1, H2);
     } catch (CheiralityException& e [[maybe_unused]]) {
       H1.setZero();

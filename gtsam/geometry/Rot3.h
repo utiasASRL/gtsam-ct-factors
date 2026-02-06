@@ -56,6 +56,8 @@ namespace gtsam {
  * @ingroup geometry
  */
 class GTSAM_EXPORT Rot3 : public LieGroup<Rot3, 3> {
+ public:
+  static constexpr size_t MatrixM = 3;
  private:
 
 #ifdef GTSAM_USE_QUATERNIONS
@@ -180,7 +182,7 @@ class GTSAM_EXPORT Rot3 : public LieGroup<Rot3, 3> {
     /// Positive pitch is up (increasing aircraft altitude).See ypr
     static Rot3 Pitch(double t) { return Ry(t); }
 
-    //// Positive roll is to right (increasing yaw in aircraft).
+    /// Positive roll is to right (increasing yaw in aircraft).
     static Rot3 Roll (double t) { return Rx(t); }
 
     /**
@@ -394,6 +396,14 @@ class GTSAM_EXPORT Rot3 : public LieGroup<Rot3, 3> {
     /** Calculate Adjoint map */
     Matrix3 AdjointMap() const { return matrix(); }
 
+    /// Matrix representation of the Lie-algebra adjoint operator ad_xi on so(3).
+    static Matrix3 adjointMap(const Vector3& xi);
+
+    /// Apply the Lie-algebra adjoint map to y with optional derivatives.
+    static Vector3 adjoint(const Vector3& xi, const Vector3& y,
+                           OptionalJacobian<3, 3> Hxi = {},
+                           OptionalJacobian<3, 3> Hy = {});
+
     // Chart at origin, depends on compile-time flag ROT3_DEFAULT_COORDINATES_MODE
     struct GTSAM_EXPORT ChartAtOrigin {
       static Rot3 Retract(const Vector3& v, ChartJacobian H = {});
@@ -590,11 +600,10 @@ class GTSAM_EXPORT Rot3 : public LieGroup<Rot3, 3> {
   GTSAM_EXPORT std::pair<Matrix3, Vector3> RQ(
       const Matrix3& A, OptionalJacobian<3, 9> H = {});
 
-  template<>
-  struct traits<Rot3> : public internal::MatrixLieGroup<Rot3> {};
+  template <>
+struct traits<Rot3> : public internal::MatrixLieGroup<Rot3, 3> {};
 
-  template<>
-  struct traits<const Rot3> : public internal::MatrixLieGroup<Rot3> {};
+template <>
+struct traits<const Rot3> : public internal::MatrixLieGroup<Rot3, 3> {};
   
 }  // namespace gtsam
-

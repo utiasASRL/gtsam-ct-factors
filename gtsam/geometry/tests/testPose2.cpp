@@ -31,7 +31,7 @@ using namespace gtsam;
 using namespace std;
 
 GTSAM_CONCEPT_TESTABLE_INST(Pose2)
-GTSAM_CONCEPT_LIE_INST(Pose2)
+GTSAM_CONCEPT_MATRIX_LIE_GROUP_INST(Pose2)
 
 //******************************************************************************
 TEST(Pose2 , Concept) {
@@ -73,6 +73,20 @@ TEST(Pose2, retract) {
 #endif
   Pose2 actual = pose.retract(Vector3(0.01, -0.015, 0.99));
   EXPECT(assert_equal(expected, actual, 1e-5));
+}
+
+/* ************************************************************************* */
+TEST(Pose2, retractJacobian) {
+  Pose2 pose(M_PI / 2.0, Point2(1, 2));
+  Vector3 v(0.01, -0.015, 0.99);
+
+  Matrix3 actualH;
+  traits<Pose2>::Retract(pose, v, {}, &actualH);
+
+  auto retract_from_pose = [&](const Vector3& delta) { return pose.retract(delta); };
+  Matrix3 expectedH = numericalDerivative11<Pose2, Vector3, 3>(retract_from_pose, v, 1e-6);
+
+  EXPECT(assert_equal(expectedH, actualH, 1e-5));
 }
 
 /* ************************************************************************* */
@@ -959,7 +973,7 @@ TEST(Pose2, Print) {
 }
 
 /* ************************************************************************* */
-TEST(Pose2, vec) {
+TEST(Pose2, Vec) {
   // Test a simple pose
   Pose2 pose(Rot2::fromAngle(M_PI / 4), Point2(1, 2));
 
@@ -976,9 +990,24 @@ TEST(Pose2, vec) {
 }
 
 /* ************************************************************************* */
+
+TEST(Pose2, AdjointMap) {
+  // Create a non-trivial Pose2 object
+  const Pose2 pose(Rot2::fromAngle(0.5), Point2(1.0, 2.0));
+
+  // Call the specialized AdjointMap
+  Matrix3 specialized_Adj = pose.AdjointMap();
+
+  // Call the generic AdjointMap from the base class
+  Matrix3 generic_Adj = static_cast<const MatrixLieGroup<Pose2, 3, 3>*>(&pose)->AdjointMap();
+
+  // Assert that they are equal
+  EXPECT(assert_equal(specialized_Adj, generic_Adj, 1e-9));
+}
+
+/* ************************************************************************* */
 int main() {
   TestResult tr;
   return TestRegistry::runAllTests(tr);
 }
 /* ************************************************************************* */
-

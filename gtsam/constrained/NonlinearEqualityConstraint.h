@@ -38,6 +38,9 @@ class GTSAM_EXPORT NonlinearEqualityConstraint : public NonlinearConstraint {
   /** Destructor. */
   virtual ~NonlinearEqualityConstraint() {}
 
+  /// Whether this constraint should be treated as a hard constraint.
+  virtual bool isHardConstraint() const { return true; }
+
  private:
 #if GTSAM_ENABLE_BOOST_SERIALIZATION
   /** Serialization function */
@@ -101,7 +104,7 @@ class ExpressionEqualityConstraint : public NonlinearEqualityConstraint {
 
 /** Equality constraint that enforce the cost factor with zero error. 
  * e.g., for a factor with unwhitened cost 2x-1, the constraint enforces the
- * equlity 2x-1=0.
+ * equality 2x-1=0.
  */
 class GTSAM_EXPORT ZeroCostConstraint : public NonlinearEqualityConstraint {
  public:

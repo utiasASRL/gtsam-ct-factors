@@ -69,7 +69,10 @@ namespace gtsam {
       throw std::invalid_argument(
           "the root of Bayes tree has not been initialized!");
     os << "digraph G{\n";
-    for (const sharedClique& root : roots_) dot(os, root, keyFormatter);
+    for (const sharedClique& root : roots_) { 
+      size_t key = root->conditional()->firstFrontalKey();
+      dot(os, root, keyFormatter, key);
+    }
     os << "}";
     std::flush(os);
   }
@@ -95,8 +98,8 @@ namespace gtsam {
   template <class CLIQUE>
   void BayesTree<CLIQUE>::dot(std::ostream& s, sharedClique clique,
                               const KeyFormatter& keyFormatter,
-                              int parentnum) const {
-    static int num = 0;
+                              size_t parentnum) const {
+    size_t num = clique->conditional()->firstFrontalKey();
     bool first = true;
     std::stringstream out;
     out << num;
@@ -122,11 +125,9 @@ namespace gtsam {
     }
     parent += "\"];\n";
     s << parent;
-    parentnum = num;
 
     for (sharedClique c : clique->children) {
-      num++;
-      dot(s, c, keyFormatter, parentnum);
+      dot(s, c, keyFormatter, num);
     }
   }
 
@@ -268,8 +269,35 @@ namespace gtsam {
   /* ************************************************************************* */
   template<class CLIQUE>
   bool BayesTree<CLIQUE>::equals(const BayesTree<CLIQUE>& other, double tol) const {
-    return size()==other.size() &&
-      std::equal(nodes_.begin(), nodes_.end(), other.nodes_.begin(), &check_sharedCliques<CLIQUE>);
+    // Compare number of cliques first.
+    if (size() != other.size())
+      return false;
+
+    // Compare number of variables (nodes index size).
+    if (nodes_.size() != other.nodes_.size())
+      return false;
+
+    // Compare cliques by key so equality does not depend on the
+    // iteration order of the underlying ConcurrentMap.
+    for (const auto& kv : nodes_) {
+      const Key key = kv.first;
+      const sharedClique& clique = kv.second;
+
+      auto it = other.nodes_.find(key);
+      if (it == other.nodes_.end())
+        return false;
+
+      const sharedClique& otherClique = it->second;
+
+      if (!clique && !otherClique)
+        continue;
+      if (!clique || !otherClique)
+        return false;
+      if (!clique->equals(*otherClique, tol))
+        return false;
+    }
+
+    return true;
   }
 
   /* ************************************************************************* */

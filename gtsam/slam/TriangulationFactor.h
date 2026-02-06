@@ -64,7 +64,7 @@ public:
 
   /// Default constructor
   TriangulationFactor() :
-      throwCheirality_(false), verboseCheirality_(false) {
+      throwCheirality_(false), verboseCheirality_(false), measured_() {
   }
 
   /**
@@ -81,7 +81,7 @@ public:
       bool verboseCheirality = false) :
       Base(model, pointKey), camera_(camera), measured_(measured), throwCheirality_(
           throwCheirality), verboseCheirality_(verboseCheirality) {
-    if (model && model->dim() != traits<Measurement>::dimension)
+    if (model && !noiseModel::matchesDimension(*model, measured_))
       throw std::invalid_argument(
           "TriangulationFactor must be created with "
               + std::to_string((int) traits<Measurement>::dimension)
@@ -201,4 +201,3 @@ private:
 #endif
 };
 } // \ namespace gtsam
-

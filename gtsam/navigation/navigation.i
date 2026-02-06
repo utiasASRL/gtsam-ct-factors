@@ -31,6 +31,10 @@ class ConstantBias {
   gtsam::Vector correctAccelerometer(gtsam::Vector measurement) const;
   gtsam::Vector correctGyroscope(gtsam::Vector measurement) const;
 
+  // Manifold
+  gtsam::imuBias::ConstantBias retract(const gtsam::Vector& v) const;
+  gtsam::Vector localCoordinates(const gtsam::imuBias::ConstantBias& b) const;
+
   // enabling serialization functionality
   void serialize() const;
 };
@@ -53,6 +57,14 @@ class NavState {
   gtsam::Point3 position() const;
   gtsam::Vector velocity() const;
   gtsam::Pose3 pose() const;
+
+  // Standard Interface
+  double range(const gtsam::Point3& point) const;
+  double range(const gtsam::Point3& point, Eigen::Ref<Eigen::MatrixXd> Hself,
+               Eigen::Ref<Eigen::MatrixXd> Hpoint) const;
+  gtsam::Unit3 bearing(const gtsam::Point3& point) const;
+  gtsam::Unit3 bearing(const gtsam::Point3& point, Eigen::Ref<Eigen::MatrixXd> Hself,
+                       Eigen::Ref<Eigen::MatrixXd> Hpoint) const;
 
   // Manifold
   gtsam::NavState retract(const gtsam::Vector& v) const;
@@ -225,11 +237,9 @@ virtual class PreintegrationCombinedParams : gtsam::PreintegrationParams {
 
   void setBiasAccCovariance(gtsam::Matrix cov);
   void setBiasOmegaCovariance(gtsam::Matrix cov);
-  void setBiasAccOmegaInit(gtsam::Matrix cov);
   
   gtsam::Matrix getBiasAccCovariance() const ;
   gtsam::Matrix getBiasOmegaCovariance() const ;
-  gtsam::Matrix getBiasAccOmegaInit() const;
 
   // enabling serialization functionality
   void serialize() const;
@@ -475,6 +485,27 @@ virtual class GPSFactor2ArmCalib : gtsam::NonlinearFactor{
   void serialize() const;
 };
 
+#include <gtsam/navigation/PseudorangeFactor.h>
+virtual class PseudorangeFactor : gtsam::NonlinearFactor {
+  PseudorangeFactor(gtsam::Key receiverPositionKey,
+                    gtsam::Key receiverClockBiasKey, double measuredPseudorange,
+                    const gtsam::Point3& satellitePosition,
+                    double satelliteClockBias,
+                    const gtsam::noiseModel::Base* model);
+
+  // Testable
+  void print(string s = "", const gtsam::KeyFormatter& keyFormatter =
+                                gtsam::DefaultKeyFormatter) const;
+  bool equals(const gtsam::NonlinearFactor& expected, double tol);
+
+  // Standard Interface
+  gtsam::Vector evaluateError(const gtsam::Point3& receiverPosition,
+                              const double& receiverClock_bias) const;
+
+  // enable serialization functionality
+  void serialize() const;
+};
+
 #include <gtsam/navigation/BarometricFactor.h>
 virtual class BarometricFactor : gtsam::NonlinearFactor {
   BarometricFactor();
@@ -541,6 +572,7 @@ virtual class Scenario {
   gtsam::Vector acceleration_n(double t) const;
   gtsam::Rot3 rotation(double t) const;
   gtsam::NavState navState(double t) const;
+  gtsam::Gal3 gal3(double t) const;
   gtsam::Vector velocity_b(double t) const;
   gtsam::Vector acceleration_b(double t) const;
 };
@@ -555,6 +587,15 @@ virtual class AcceleratingScenario : gtsam::Scenario {
   AcceleratingScenario(const gtsam::Rot3& nRb, const gtsam::Point3& p0,
                        gtsam::Vector v0, gtsam::Vector a_n,
                        gtsam::Vector omega_b);
+};
+
+virtual class DiscreteScenario : gtsam::Scenario {
+  DiscreteScenario(const std::map<double, gtsam::Pose3>& poses,
+                   const std::map<double, gtsam::Vector3>& angularVelocities_b,
+                   const std::map<double, gtsam::Vector3>& velocities_n,
+                   const std::map<double, gtsam::Vector3>& accelerations_n);
+
+  static gtsam::DiscreteScenario FromCSV(const std::string& csv_filepath);
 };
 
 #include <gtsam/navigation/ScenarioRunner.h>
@@ -581,4 +622,132 @@ class ScenarioRunner {
   gtsam::Matrix estimateNoiseCovariance(size_t N) const;
 };
 
+// ---------------------------------------------------------------------------
+// EKF classes
+#include <gtsam/geometry/Gal3.h>
+#include <gtsam/navigation/ManifoldEKF.h>
+template <M = {gtsam::Unit3, gtsam::Rot3, gtsam::Pose2, gtsam::Pose3, gtsam::NavState, gtsam::Gal3}>
+virtual class ManifoldEKF {
+  // Constructors
+  ManifoldEKF(const M& X0, gtsam::Matrix P0);
+
+  // Accessors
+  M state() const;
+  gtsam::Matrix covariance() const;
+  int dimension() const;
+
+  // Predict with provided next state and Jacobian
+  void predict(const M& X_next, gtsam::Matrix F, gtsam::Matrix Q);
+
+  // Only vector-based measurements are supported in wrapper
+  void updateWithVector(const gtsam::Vector& prediction, const gtsam::Matrix& H,
+                        const gtsam::Vector& z, const gtsam::Matrix& R, bool performReset = true);
+};
+
+#include <gtsam/navigation/LieGroupEKF.h>
+template <G = {gtsam::Rot3, gtsam::Pose2, gtsam::Pose3, gtsam::NavState, gtsam::Gal3}>
+virtual class LieGroupEKF : gtsam::ManifoldEKF<G> {
+  // Constructors
+  LieGroupEKF(const G& X0, gtsam::Matrix P0);
+  
+  // Increment-based predict (precomputed increment and Jacobian)
+  void predictWithCompose(const G& U, gtsam::Matrix J_UX, gtsam::Matrix Q);
+};
+
+#include <gtsam/navigation/LeftLinearEKF.h>
+template <G = {gtsam::Rot3, gtsam::Pose2, gtsam::Pose3, gtsam::NavState, gtsam::Gal3}>
+virtual class LeftLinearEKF : gtsam::LieGroupEKF<G> {
+  // Constructors
+  LeftLinearEKF(const G& X0, gtsam::Matrix P0);
+};
+
+#include <gtsam/navigation/InvariantEKF.h>
+template <G = {gtsam::Rot3, gtsam::Pose2, gtsam::Pose3, gtsam::NavState, gtsam::Gal3}>
+virtual class InvariantEKF : gtsam::LeftLinearEKF<G> {
+  // Constructors
+  InvariantEKF(const G& X0, gtsam::Matrix P0);
+
+  // Left-invariant predict APIs
+  void predict(const G& U, gtsam::Matrix Q);
+  void predict(const G& W, const G& U, const gtsam::Matrix& Q);
+  void predict(const gtsam::Vector& u, double dt, gtsam::Matrix Q);
+};
+
+// ---------------------------------------------------------------------------
+// ABC Equivariant Filter
+#include <gtsam_unstable/geometry/ABCEquivariantFilter.h>
+namespace abc {
+template <N = {1, 2, 3}>
+class AbcEquivariantFilter {
+  // Constructors
+  AbcEquivariantFilter();
+  AbcEquivariantFilter(gtsam::Matrix Sigma0);
+
+  // Predict and update methods
+  void predict(const gtsam::Vector3& omega, const gtsam::Matrix6& inputCovariance, double dt);
+  void update(const gtsam::Unit3& y, const gtsam::Unit3& d, const gtsam::Matrix3& R, int cal_idx);
+
+  // Accessors
+  gtsam::Rot3 attitude() const;
+  gtsam::Vector3 bias() const;
+  gtsam::Rot3 calibration(size_t i) const;
+};
+}  // namespace abc
+
+// Specialized NavState IMU EKF
+#include <gtsam/navigation/NavStateImuEKF.h>
+class NavStateImuEKF : gtsam::LeftLinearEKF<gtsam::NavState> {
+  // Constructors
+  NavStateImuEKF(const gtsam::NavState& X0, gtsam::Matrix P0,
+                 const gtsam::PreintegrationParams* params);
+
+  // Accessors
+  gtsam::Matrix processNoise() const;
+  gtsam::Vector gravity() const;
+  const gtsam::PreintegrationParams* params() const;
+
+  // Static methods
+  static gtsam::NavState Gravity(const gtsam::Vector& n_gravity, double dt);
+  static gtsam::NavState Imu(const gtsam::Vector& omega_b, const gtsam::Vector& f_b, double dt);
+  static gtsam::NavState Dynamics(const gtsam::Vector& n_gravity, const gtsam::NavState& X,
+                                   const gtsam::Vector& omega_b, const gtsam::Vector& f_b,
+                                   double dt);
+  
+  // Predict using IMU measurements
+  void predict(const gtsam::Vector& omega_b, const gtsam::Vector& f_b, double dt);
+};
+
+#include <gtsam/navigation/Gal3ImuEKF.h>
+class Gal3ImuEKF : gtsam::InvariantEKF<gtsam::Gal3> {
+  enum Mode { NO_TIME, TRACK_TIME_NO_COVARIANCE, TRACK_TIME_WITH_COVARIANCE };
+  // Constructors
+  Gal3ImuEKF(const gtsam::Gal3& X0, gtsam::Matrix P0,
+             const gtsam::PreintegrationParams* params); // mode = TRACK_TIME_NO_COVARIANCE
+  Gal3ImuEKF(const gtsam::Gal3& X0, gtsam::Matrix P0,
+             const gtsam::PreintegrationParams* params,
+             gtsam::Gal3ImuEKF::Mode mode);
+
+  // Accessors
+  gtsam::Matrix processNoise() const;
+  gtsam::Vector gravity() const;
+  const gtsam::PreintegrationParams* params() const;
+
+  // Static methods
+  static gtsam::Gal3 Gravity(const gtsam::Vector& g_n, double dt);
+  static gtsam::Gal3 TimeZeroingGravity(const gtsam::Vector& g_n, double dt);
+  static gtsam::Gal3 CompensatedGravity(const gtsam::Vector& g_n, double dt, double t_k);
+  static gtsam::Gal3 Imu(const gtsam::Vector& omega_b, const gtsam::Vector& f_b, double dt);
+  static gtsam::Gal3 Dynamics(const gtsam::Vector& n_gravity,
+                              const gtsam::Gal3& X,
+                              const gtsam::Vector& omega_b,
+                              const gtsam::Vector& f_b, double dt); // mode = TRACK_TIME_NO_COVARIANCE
+  static gtsam::Gal3 Dynamics(const gtsam::Vector& n_gravity,
+                              const gtsam::Gal3& X,
+                              const gtsam::Vector& omega_b,
+                              const gtsam::Vector& f_b, double dt,
+                              gtsam::Gal3ImuEKF::Mode mode);
+
+  // Predict using IMU measurements
+  void predict(const gtsam::Vector& omega_b, const gtsam::Vector& f_b, double dt);
+};
 }

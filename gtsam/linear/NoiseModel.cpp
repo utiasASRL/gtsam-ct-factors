@@ -170,6 +170,14 @@ Vector Gaussian::unwhiten(const Vector& v) const {
   return backSubstituteUpper(thisR(), v);
 }
 
+void Gaussian::unwhitenInPlace(Vector& v) const {
+  thisR().triangularView<Eigen::Upper>().solveInPlace(v);
+}
+
+void Gaussian::unwhitenInPlace(Eigen::Block<Vector>& v) const {
+  thisR().triangularView<Eigen::Upper>().solveInPlace(v);
+}
+
 /* ************************************************************************* */
 Matrix Gaussian::Whiten(const Matrix& H) const {
   return thisR() * H;
@@ -319,6 +327,14 @@ Vector Diagonal::unwhiten(const Vector& v) const {
   return v.cwiseProduct(sigmas_);
 }
 
+void Diagonal::whitenInPlace(Vector& v) const {
+  v.array() *= invsigmas_.array();
+}
+
+void Diagonal::unwhitenInPlace(Vector& v) const {
+  v.array() *= sigmas_.array();
+}
+
 Matrix Diagonal::Whiten(const Matrix& H) const {
   return vector_scale(invsigmas(), H);
 }
@@ -331,6 +347,14 @@ void Diagonal::WhitenInPlace(Eigen::Block<Matrix> H) const {
   H = invsigmas().asDiagonal() * H;
 }
 
+void Diagonal::whitenInPlace(Eigen::Block<Vector>& v) const {
+  v.array() *= invsigmas_.array();
+}
+
+void Diagonal::unwhitenInPlace(Eigen::Block<Vector>& v) const {
+  v.array() *= sigmas_.array();
+}
+
 /* *******************************************************************************/
 double Diagonal::logDetR() const {
   return invsigmas_.unaryExpr([](double x) { return log(x); }).sum();
@@ -341,12 +365,16 @@ double Diagonal::logDetR() const {
 /* ************************************************************************* */
 
 namespace internal {
-// switch precisions and invsigmas to finite value
-// TODO: why?? And, why not just ask s==0.0 below ?
+// Keep invsigmas finite for constrained entries while preserving infinite
+// precision so downstream information matrices reflect determinism.
 static void fix(const Vector& sigmas, Vector& precisions, Vector& invsigmas) {
+  static const double kInfinity = std::numeric_limits<double>::infinity();
   for (Vector::Index i = 0; i < sigmas.size(); ++i)
     if (!std::isfinite(1. / sigmas[i])) {
-      precisions[i] = 0.0;
+      // Preserve the infinite precision so downstream information matrices
+      // reflect deterministic constraints. We still zero invsigmas to avoid
+      // scaling constraint rows during whitening.
+      precisions[i] = kInfinity;
       invsigmas[i] = 0.0;
     }
 }
@@ -397,6 +425,26 @@ Vector Constrained::whiten(const Vector& v) const {
     c(i) = (bi==0.0) ? ai : ai/bi; // NOTE: not ediv_()
   }
   return c;
+}
+
+void Constrained::whitenInPlace(Vector& v) const {
+  const size_t n = v.size();
+  for (size_t i = 0; i < n; ++i) {
+    const double si = sigmas_(i);
+    if (si != 0.0) {
+      v(i) /= si;
+    }
+  }
+}
+
+void Constrained::whitenInPlace(Eigen::Block<Vector>& v) const {
+  const DenseIndex n = v.rows();
+  for (DenseIndex i = 0; i < n; ++i) {
+    const double si = sigmas_(static_cast<size_t>(i));
+    if (si != 0.0) {
+      v(i, 0) /= si;
+    }
+  }
 }
 
 /* ************************************************************************* */
@@ -455,6 +503,40 @@ void Constrained::WhitenInPlace(Eigen::Block<Matrix> H) const {
   for (DenseIndex i=0; i<(DenseIndex)dim_; ++i)
     if (!constrained(i)) // if constrained, leave row of H as is
       H.row(i) *= invsigmas_(i);
+}
+
+/* ************************************************************************* */
+Matrix Constrained::informationFromA(const Matrix& A) const {
+  const double kZeroTol = 1e-12;
+  const double kInfinity = std::numeric_limits<double>::infinity();
+  Matrix info = Matrix::Zero(A.cols(), A.cols());
+  assert(static_cast<DenseIndex>(precisions_.size()) == A.rows());
+  // Accumulate row-wise contributions so constrained rows can mark infinite entries.
+  for (DenseIndex row = 0; row < A.rows(); ++row) {
+    const double precision = precisions_(row);
+    if (precision == 0.0) {
+      continue;
+    }
+    const auto a = A.row(row);
+    if (std::isinf(precision)) {
+      // Constrained rows force infinite information wherever they have support.
+      for (DenseIndex i = 0; i < a.cols(); ++i) {
+        if (std::abs(a(i)) <= kZeroTol) {
+          continue;
+        }
+        for (DenseIndex j = 0; j < a.cols(); ++j) {
+          if (std::abs(a(j)) <= kZeroTol) {
+            continue;
+          }
+          info(i, j) = kInfinity;
+        }
+      }
+    } else {
+      // Finite precisions reduce to the standard weighted outer product.
+      info.noalias() += precision * a.transpose() * a;
+    }
+  }
+  return info;
 }
 
 /* ************************************************************************* */
@@ -662,6 +744,16 @@ void Isotropic::whitenInPlace(Vector& v) const {
 /* ************************************************************************* */
 void Isotropic::WhitenInPlace(Eigen::Block<Matrix> H) const {
   H *= invsigma_;
+}
+
+/* ************************************************************************* */
+void Isotropic::unwhitenInPlace(Vector& v) const {
+  v *= sigma_;
+}
+
+/* ************************************************************************* */
+void Isotropic::unwhitenInPlace(Eigen::Block<Vector>& v) const {
+  v *= sigma_;
 }
 
 /* *******************************************************************************/

@@ -15,6 +15,7 @@
  */
 
 #include <gtsam/base/concepts.h>
+#include <gtsam/geometry/Kernel.h>
 #include <gtsam/geometry/Pose2.h>
 #include <gtsam/geometry/Pose3.h>
 #include <gtsam/geometry/Rot3.h>
@@ -214,6 +215,7 @@ Pose3 Pose3::interpolateRt(const Pose3& T, double t,
 /* ************************************************************************* */
 // Expmap is implemented in so3::ExpmapFunctor::expmap, based on Ethan Eade's
 // elegant Lie group document, at https://www.ethaneade.org/lie.pdf.
+// See also [this document](doc/Jacobians.md)
 Pose3 Pose3::Expmap(const Vector6& xi, OptionalJacobian<6, 6> Hxi) {
   // Get angular velocity omega and translational velocity v from twist xi
   const Vector3 w = xi.head<3>(), v = xi.tail<3>();
@@ -228,26 +230,26 @@ Pose3 Pose3::Expmap(const Vector6& xi, OptionalJacobian<6, 6> Hxi) {
   const Rot3 R(local.expmap());
 #endif
 
-  // The translation t = local.leftJacobian() * v.
-  // Here we call applyLeftJacobian, which is faster if you don't need
+  // The translation t = local.Jacobian().left() * v.
+  // Here we call local.Jacobian().applyLeft, which is faster if you don't need
   // Jacobians, and returns Jacobian of t with respect to w if asked.
-  // NOTE(Frank): t = applyLeftJacobian(v) does the same as the intuitive formulas
+  // NOTE(Frank): this does the same as the intuitive formulas:
   //   t_parallel = w * w.dot(v);  // translation parallel to axis
   //   w_cross_v = w.cross(v);     // translation orthogonal to axis
   //   t = (w_cross_v - Rot3::Expmap(w) * w_cross_v + t_parallel) / theta2;
-  // but functor does not need R, deals automatically with the case where theta2
+  // but Local does not need R, deals automatically with the case where theta2
   // is near zero, and also gives us the machinery for the Jacobians.
   Matrix3 H;
-  const Vector3 t = local.applyLeftJacobian(v, Hxi ? &H : nullptr);
+  const Vector3 t = local.Jacobian().applyLeft(v, Hxi ? &H : nullptr);
 
   if (Hxi) {
     // The Jacobian of expmap is given by the right Jacobian of SO(3):
-    const Matrix3 Jr = local.rightJacobian();
+    const Matrix3 Jr = local.Jacobian().right();
     // We are creating a Pose3, so we still need to chain H with R^T, the
     // Jacobian of Pose3::Create with respect to t.
-    const Matrix3 Q = R.matrix().transpose() * H;
+    const Matrix3 Rt = R.transpose();
     *Hxi << Jr, Z_3x3,  // Jr here *is* the Jacobian of expmap
-        Q, Jr;  // Here Jr = R^T * J_l, with J_l the Jacobian of t in v.
+        Rt * H, Jr;     // Here Jr = R^T * Jl, with Jl the Jacobian of t in v.
   }
 
   return Pose3(R, t);
@@ -261,7 +263,7 @@ Vector6 Pose3::Logmap(const Pose3& pose, OptionalJacobian<6, 6> Hpose) {
   const so3::DexpFunctor local(w);
 
   const Vector3 t = pose.translation();
-  const Vector3 u = local.applyLeftJacobianInverse(t);
+  const Vector3 u = local.InvJacobian().applyLeft(t);
   Vector6 xi;
   xi << w, u;
   if (Hpose) *Hpose = LogmapDerivative(xi);
@@ -317,7 +319,7 @@ Matrix6 Pose3::LogmapDerivative(const Vector6& xi) {
 
   // Call applyLeftJacobian to get its Jacobians
   Matrix3 H_t_w;
-  local.applyLeftJacobian(v, H_t_w);
+  local.Jacobian().applyLeft(v, H_t_w);
 
   // Multiply with R^T to account for NavState::Create Jacobian.
   const Matrix3 R = local.expmap();
@@ -358,6 +360,28 @@ Matrix4 Pose3::matrix() const {
   Matrix4 mat;
   mat << R_.matrix(), t_, A14;
   return mat;
+}
+
+/* ************************************************************************* */
+Pose3::Vector16 Pose3::vec(OptionalJacobian<16, 6> H) const {
+  // Vectorize
+  const Matrix4 M = matrix();
+  const Vector16 v = Eigen::Map<const Vector16>(M.data());
+
+  // If requested, calculate H
+  if (H) {
+    H->setZero();
+    auto R = M.block<3, 3>(0, 0);
+    H->block<3, 1>(0, 1) = -R.col(2);
+    H->block<3, 1>(0, 2) = R.col(1);
+    H->block<3, 1>(4, 0) = R.col(2);
+    H->block<3, 1>(4, 2) = -R.col(0);
+    H->block<3, 1>(8, 0) = -R.col(1);
+    H->block<3, 1>(8, 1) = R.col(0);
+    H->block<3,3>(12,3) = R;
+  }
+
+  return v;
 }
 
 /* ************************************************************************* */
@@ -431,56 +455,77 @@ Matrix Pose3::transformTo(const Matrix& points) const {
 /* ************************************************************************* */
 double Pose3::range(const Point3& point, OptionalJacobian<1, 6> Hself,
                     OptionalJacobian<1, 3> Hpoint) const {
-  Matrix36 D_local_pose;
-  Matrix3 D_local_point;
-  Point3 local = transformTo(point, Hself ? &D_local_pose : 0, Hpoint ? &D_local_point : 0);
-  if (!Hself && !Hpoint) {
-    return local.norm();
-  } else {
-    Matrix13 D_r_local;
-    const double r = norm3(local, D_r_local);
-    if (Hself) *Hself = D_r_local * D_local_pose;
-    if (Hpoint) *Hpoint = D_r_local * D_local_point;
-    return r;
+  const Vector3 delta = point - t_;
+  if (!Hself && !Hpoint) return delta.norm();
+
+  Matrix13 D_r_point;
+  const double r = norm3(delta, D_r_point);
+
+  if (Hpoint) *Hpoint = D_r_point;
+  if (Hself) {
+    // Range is rotation-invariant: ||R^T(p-t)|| = ||p-t||, so d(range)/d(rotation) = 0.
+    Hself->leftCols<3>().setZero();
+    // Translation coordinates are in the body frame: dt_world = R * dt_body.
+    Hself->rightCols<3>() = -D_r_point * R_.matrix();
   }
+  return r;
 }
 
 /* ************************************************************************* */
 double Pose3::range(const Pose3& pose, OptionalJacobian<1, 6> Hself,
                     OptionalJacobian<1, 6> Hpose) const {
-  Matrix36 D_point_pose;
-  Matrix13 D_local_point;
-  Point3 point = pose.translation(Hpose ? &D_point_pose : 0);
-  double r = range(point, Hself, Hpose ? &D_local_point : 0);
-  if (Hpose) *Hpose = D_local_point * D_point_pose;
+  const Vector3 delta = pose.t_ - t_;
+  if (!Hself && !Hpose) return delta.norm();
+
+  Matrix13 D_r_point;
+  const double r = norm3(delta, D_r_point);
+
+  if (Hself) {
+    // Range depends only on translation: ||t2-t1||.
+    Hself->leftCols<3>().setZero();
+    // Translation coordinates are in the body frame: dt_world = R * dt_body.
+    Hself->rightCols<3>() = -D_r_point * R_.matrix();
+  }
+
+  if (Hpose) {
+    Hpose->leftCols<3>().setZero();
+    // Translation coordinates are in the body frame: dt_world = R * dt_body.
+    Hpose->rightCols<3>() = D_r_point * pose.R_.matrix();
+  }
+
   return r;
 }
 
 /* ************************************************************************* */
 Unit3 Pose3::bearing(const Point3& point, OptionalJacobian<2, 6> Hself,
                      OptionalJacobian<2, 3> Hpoint) const {
-  Matrix36 D_local_pose;
-  Matrix3 D_local_point;
-  Point3 local = transformTo(point, Hself ? &D_local_pose : 0, Hpoint ? &D_local_point : 0);
-  if (!Hself && !Hpoint) {
-    return Unit3(local);
-  } else {
-    Matrix23 D_b_local;
-    Unit3 b = Unit3::FromPoint3(local, D_b_local);
-    if (Hself) *Hself = D_b_local * D_local_pose;
-    if (Hpoint) *Hpoint = D_b_local * D_local_point;
-    return b;
+  const Matrix3 Rt = R_.transpose();
+  const Point3 local(Rt * (point - t_));
+
+  if (!Hself && !Hpoint) return Unit3(local);
+
+  Matrix23 D_b_local;
+  const Unit3 b = Unit3::FromPoint3(local, D_b_local);
+  if (Hself) {
+    Hself->leftCols<3>() = D_b_local * skewSymmetric(local.x(), local.y(), local.z());
+    Hself->rightCols<3>() = -D_b_local;
   }
+  if (Hpoint) {
+    *Hpoint = D_b_local * Rt;
+  }
+  return b;
 }
 
 /* ************************************************************************* */
 Unit3 Pose3::bearing(const Pose3& pose, OptionalJacobian<2, 6> Hself,
   OptionalJacobian<2, 6> Hpose) const {
-  Matrix36 D_point_pose;
-  Matrix23 D_local_point;
-  Point3 point = pose.translation(Hpose ? &D_point_pose : 0);
-  Unit3 b = bearing(point, Hself, Hpose ? &D_local_point : 0);
-  if (Hpose) *Hpose = D_local_point * D_point_pose;
+  Matrix23 D_bearing_point;
+  const Point3 point = pose.translation();
+  const Unit3 b = bearing(point, Hself, Hpose ? &D_bearing_point : 0);
+  if (Hpose) {
+    Hpose->leftCols<3>().setZero();
+    Hpose->rightCols<3>() = D_bearing_point * pose.rotation().matrix();
+  }
   return b;
 }
 
@@ -523,34 +568,6 @@ std::optional<Pose3> Pose3::Align(const Matrix& a, const Matrix& b) {
 /* ************************************************************************* */
 Pose3 Pose3::slerp(double t, const Pose3& other, OptionalJacobian<6, 6> Hx, OptionalJacobian<6, 6> Hy) const {
   return interpolate(*this, other, t, Hx, Hy);
-}
-
-/* ************************************************************************* */
-// Compute vectorized Lie algebra generators for SE(3)
-using Matrix16x6 = Eigen::Matrix<double, 16, 6>;
-using Vector16 = Eigen::Matrix<double, 16, 1>;
-static Matrix16x6 VectorizedGenerators() {
-  Matrix16x6 G;
-  for (size_t j = 0; j < 6; j++) {
-    const Matrix4 X = Pose3::Hat(Vector::Unit(6, j));
-    G.col(j) = Eigen::Map<const Vector16>(X.data());
-  }
-  return G;
-}
-
-Vector Pose3::vec(OptionalJacobian<16, 6> H) const {
-  // Vectorize
-  const Matrix4 M = matrix();
-  const Vector X = Eigen::Map<const Vector16>(M.data());
-
-  // If requested, calculate H as (I_4 \oplus M) * G.
-  if (H) {
-    static const Matrix16x6 G = VectorizedGenerators(); // static to compute only once
-    for (size_t i = 0; i < 4; i++)
-      H->block(i * 4, 0, 4, dimension) = M * G.block(i * 4, 0, 4, dimension);
-  }
-
-  return X;
 }
 
 /* ************************************************************************* */

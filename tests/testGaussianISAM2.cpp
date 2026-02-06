@@ -18,7 +18,6 @@
 #include <gtsam/linear/GaussianBayesNet.h>
 #include <gtsam/linear/GaussianBayesTree.h>
 #include <gtsam/linear/GaussianFactorGraph.h>
-#include <gtsam/inference/Ordering.h>
 #include <gtsam/base/debug.h>
 #include <gtsam/base/TestableAssertions.h>
 #include <gtsam/base/treeTraversal-inst.h>
@@ -1001,7 +1000,7 @@ class FixActiveFactor : public NoiseModelFactorN<Vector2> {
 
 public:
   FixActiveFactor(const gtsam::Key& key, const bool active)
-      : Base(nullptr, key), is_active_(active) {}
+      : Base(noiseModel::Unit::Create(2), key), is_active_(active) {}
 
   virtual bool active(const gtsam::Values &values) const override {
     return is_active_;
