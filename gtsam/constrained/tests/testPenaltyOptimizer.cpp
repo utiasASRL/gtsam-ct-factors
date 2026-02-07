@@ -53,10 +53,10 @@ TEST(PenaltyOptimizer, constrained_example2) {
   // Check constructor from a single factor graph works
   {
     NonlinearFactorGraph graph = costs;
-    for (const auto& factor: eqConstraints) {
+    for (const auto& factor : eqConstraints) {
       graph.push_back(factor);
     }
-    for (const auto& factor: ineqConstraints) {
+    for (const auto& factor : ineqConstraints) {
       graph.push_back(factor);
     }
     PenaltyOptimizer optimizer(graph, init_values, params);
@@ -65,7 +65,6 @@ TEST(PenaltyOptimizer, constrained_example2) {
     /// Check the result is correct within tolerance.
     EXPECT(assert_equal(optimal_values, results, 1e-4));
   }
-
 }
 
 int main() {
