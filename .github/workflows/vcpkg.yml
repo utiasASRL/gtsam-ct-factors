@@ -17,6 +17,9 @@ jobs:
     runs-on: ${{ matrix.os }}
     env:
       SCCACHE_GHA_ENABLED: 1
+      # Some files take so long to compile that the sccache daemon times out,
+      # which is bad for stats tracking. Always keep sccache daemon alive.
+      SCCACHE_IDLE_TIMEOUT: 0
     strategy:
       fail-fast: false
       matrix:
