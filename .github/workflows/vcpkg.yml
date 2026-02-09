@@ -188,7 +188,7 @@ jobs:
       - name: cmake build
         shell: bash
         run: |
-          cmake --build build --config ${{ matrix.build_type }}
+          cmake --build build
 
       - name: Run Python tests
         shell: bash
@@ -201,4 +201,4 @@ jobs:
       - name: Run tests
         shell: bash
         run: |
-          cmake --build build --config ${{ matrix.build_type }} --target check
+          cmake --build build --target check
