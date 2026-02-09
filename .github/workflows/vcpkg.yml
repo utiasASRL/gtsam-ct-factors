@@ -56,7 +56,7 @@ jobs:
           key: ${{ matrix.os }}
           restore-keys: ${{ matrix.os }}
 
-      - name: Setup msbuild
+      - name: Setup MSVC
         if: runner.os == 'Windows'
         uses: ilammy/msvc-dev-cmd@v1
         with:

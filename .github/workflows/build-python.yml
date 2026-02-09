@@ -65,7 +65,7 @@ jobs:
             ubuntu-22.04-clang-11,
             macos-14-xcode-15.4,
             macos-15-xcode-16,
-            windows-2022-msbuild,
+            windows-2022-msvc,
           ]
 
         build_type: [Release]
@@ -96,7 +96,7 @@ jobs:
             compiler: xcode
             version: "16"
 
-          - name: windows-2022-msbuild
+          - name: windows-2022-msvc
             os: windows-2022
             platform: 64
 
@@ -145,7 +145,7 @@ jobs:
           echo "CC=clang" >> $GITHUB_ENV
           echo "CXX=clang++" >> $GITHUB_ENV
 
-      - name: Setup msbuild (Windows)
+      - name: Setup MSVC (Windows)
         if: runner.os == 'Windows'
         uses: ilammy/msvc-dev-cmd@v1
         with:
