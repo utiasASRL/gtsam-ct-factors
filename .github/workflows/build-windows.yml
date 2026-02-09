@@ -104,12 +104,11 @@ jobs:
       - name: Configuration
         shell: bash
         run: |
-          export CMAKE_GENERATOR=Ninja
           # Convert Windows backslashes to forward slashes for CMake
           BOOST_ROOT_UNIX=$(echo "$BOOST_ROOT" | sed 's/\\/\//g')
           cmake -E remove_directory build
           if [ "${{ matrix.build_type }}" = "Release" ]; then
-            cmake -B build \
+            cmake -B build -G Ninja \
                   -DGTSAM_BUILD_EXAMPLES_ALWAYS=OFF \
                   -DGTSAM_ALLOW_DEPRECATED_SINCE_V43=OFF \
                   -DGTSAM_USE_BOOST_FEATURES=ON \
@@ -121,7 +120,7 @@ jobs:
                   -DCMAKE_C_COMPILER_LAUNCHER=sccache \
                   -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
           else
-            cmake -B build \
+            cmake -B build -G Ninja \
                   -DGTSAM_BUILD_EXAMPLES_ALWAYS=OFF \
                   -DGTSAM_ALLOW_DEPRECATED_SINCE_V43=OFF \
                   -DGTSAM_USE_BOOST_FEATURES=OFF \
