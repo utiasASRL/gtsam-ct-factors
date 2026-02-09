@@ -15,6 +15,8 @@ jobs:
   build:
     name: ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
+    env:
+      SCCACHE_GHA_ENABLED: 1
     strategy:
       fail-fast: false
       matrix:
@@ -60,13 +62,6 @@ jobs:
 
       - name: Install sccache
         uses: mozilla-actions/sccache-action@v0.0.9
-
-      - name: Use sccache
-        shell: bash
-        run: |
-          echo "SCCACHE_GHA_ENABLED=ON" >> "$GITHUB_ENV"
-          echo "CMAKE_C_COMPILER_LAUNCHER=sccache" >> "$GITHUB_ENV"
-          echo "CMAKE_CXX_COMPILER_LAUNCHER=sccache" >> "$GITHUB_ENV"
 
       - name: cl version
         if: runner.os == 'Windows'
@@ -162,6 +157,8 @@ jobs:
 
           cmake . -B build -G Ninja \
               -DCMAKE_TOOLCHAIN_FILE=$VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake \
+              -DCMAKE_C_COMPILER_LAUNCHER=sccache \
+              -DCMAKE_CXX_COMPILER_LAUNCHER=sccache \
               -DVCPKG_INSTALLED_DIR=$VCPKG_INSTALLATION_ROOT/installed \
               -DVCPKG_TARGET_TRIPLET=${{ matrix.triplet }} \
               -DVCPKG_HOST_TRIPLET=${{ matrix.triplet }} \
