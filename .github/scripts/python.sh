@@ -44,7 +44,6 @@ function install_dependencies()
 
 function build()
 {
-  export CMAKE_GENERATOR=Ninja
   BUILD_PYBIND="ON"
   USE_BOOST_FEATURES="ON"
   ENABLE_BOOST_SERIALIZATION="ON"
@@ -64,7 +63,7 @@ function build()
   fi
 
   cmake $GITHUB_WORKSPACE \
-      -B build \
+      -B build -G Ninja \
       -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} \
       -DGTSAM_BUILD_TESTS=OFF \
       -DGTSAM_BUILD_UNSTABLE=${GTSAM_BUILD_UNSTABLE:-ON} \

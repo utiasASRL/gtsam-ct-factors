@@ -15,6 +15,11 @@ jobs:
   build:
     name: ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
+    env:
+      SCCACHE_GHA_ENABLED: 1
+      # Some files take so long to compile that the sccache daemon times out,
+      # which is bad for stats tracking. Always keep sccache daemon alive.
+      SCCACHE_IDLE_TIMEOUT: 0
     strategy:
       fail-fast: false
       matrix:
@@ -51,7 +56,7 @@ jobs:
           key: ${{ matrix.os }}
           restore-keys: ${{ matrix.os }}
 
-      - name: Setup msbuild
+      - name: Setup MSVC
         if: runner.os == 'Windows'
         uses: ilammy/msvc-dev-cmd@v1
         with:
@@ -60,13 +65,6 @@ jobs:
 
       - name: Install sccache
         uses: mozilla-actions/sccache-action@v0.0.9
-
-      - name: Use sccache
-        shell: bash
-        run: |
-          echo "SCCACHE_GHA_ENABLED=ON" >> "$GITHUB_ENV"
-          echo "CMAKE_C_COMPILER_LAUNCHER=sccache" >> "$GITHUB_ENV"
-          echo "CMAKE_CXX_COMPILER_LAUNCHER=sccache" >> "$GITHUB_ENV"
 
       - name: cl version
         if: runner.os == 'Windows'
@@ -160,12 +158,15 @@ jobs:
         run: |
           export CL=-openmp
 
-          cmake . -B build -G Ninja \
+          cmake -B build -G Ninja \
               -DCMAKE_TOOLCHAIN_FILE=$VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake \
+              -DCMAKE_C_COMPILER_LAUNCHER=sccache \
+              -DCMAKE_CXX_COMPILER_LAUNCHER=sccache \
               -DVCPKG_INSTALLED_DIR=$VCPKG_INSTALLATION_ROOT/installed \
               -DVCPKG_TARGET_TRIPLET=${{ matrix.triplet }} \
               -DVCPKG_HOST_TRIPLET=${{ matrix.triplet }} \
               -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+              -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=OFF \
               -DGTSAM_BUILD_EXAMPLES_ALWAYS=ON \
               -DGTSAM_BUILD_WITH_PRECOMPILED_HEADERS=OFF \
               -DGTSAM_ROT3_EXPMAP=ON \
@@ -187,7 +188,7 @@ jobs:
       - name: cmake build
         shell: bash
         run: |
-          cmake --build build --config ${{ matrix.build_type }}
+          cmake --build build
 
       - name: Run Python tests
         shell: bash
@@ -200,4 +201,4 @@ jobs:
       - name: Run tests
         shell: bash
         run: |
-          cmake --build build --config ${{ matrix.build_type }} --target check
+          cmake --build build --target check

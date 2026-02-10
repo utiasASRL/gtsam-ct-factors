@@ -72,12 +72,12 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y ninja-build libtbb-dev
+          sudo apt-get install -y libtbb-dev
 
       # ── TBB=ON ──
       - name: Configure (TBB=ON)
         run: |
-          cmake -S . -B build -GNinja \
+          cmake -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_CXX_FLAGS="-w" \
             -DGTSAM_BUILD_TESTS=OFF \
@@ -115,7 +115,7 @@ jobs:
 
       - name: Configure (TBB=OFF)
         run: |
-          cmake -S . -B build -GNinja \
+          cmake -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_CXX_FLAGS="-w" \
             -DGTSAM_BUILD_TESTS=OFF \
@@ -186,12 +186,12 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y ninja-build libtbb-dev
+          sudo apt-get install -y libtbb-dev
 
       # ── TBB=ON ──
       - name: Configure (TBB=ON)
         run: |
-          cmake -S . -B build -GNinja \
+          cmake -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_CXX_FLAGS="-w" \
             -DGTSAM_BUILD_TESTS=OFF \
@@ -229,7 +229,7 @@ jobs:
 
       - name: Configure (TBB=OFF)
         run: |
-          cmake -S . -B build -GNinja \
+          cmake -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_CXX_FLAGS="-w" \
             -DGTSAM_BUILD_TESTS=OFF \
@@ -298,12 +298,12 @@ jobs:
           bzip2 -dc examples/Data/problem-135-90642-pre.txt.bz2 > examples/Data/dubrovnik-135-90642-pre.txt
 
       - name: Install dependencies
-        run: brew install ninja tbb || true
+        run: brew install tbb || true
 
       # ── TBB=ON ──
       - name: Configure (TBB=ON)
         run: |
-          cmake -S . -B build -GNinja \
+          cmake -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_CXX_FLAGS="-w" \
             -DGTSAM_BUILD_TESTS=OFF \
@@ -341,7 +341,7 @@ jobs:
 
       - name: Configure (TBB=OFF)
         run: |
-          cmake -S . -B build -GNinja \
+          cmake -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_CXX_FLAGS="-w" \
             -DGTSAM_BUILD_TESTS=OFF \
