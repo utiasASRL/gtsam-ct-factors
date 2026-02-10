@@ -224,7 +224,7 @@ Interpolator<PoseType>::interpolatePoseAndVelocity_(
   } else {
     std::tie(Lambda, Psi) = *LambdaPsiPreComp;
   }
-
+  // CLEAN-UP: equations out of date and not helpful for understanding the code.
   // form quantities for Eq. (11.45) in the book, (5.13) in the paper
   VectorN xi_k, xi_dot_k;
   xi_k.setZero();
