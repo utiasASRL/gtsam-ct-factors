@@ -20,6 +20,7 @@
 #include <gtsam/slam/dataset.h>
 #include <gtsam_unstable/geometry/ABC.h>
 #include <gtsam_unstable/geometry/ABCEquivariantFilter.h>
+#include <chrono>
 
 // Use namespace for convenience
 using namespace gtsam;
