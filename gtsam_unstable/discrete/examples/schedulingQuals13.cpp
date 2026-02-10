@@ -5,9 +5,7 @@
  * @author Frank Dellaert
  */
 
-#ifndef ENABLE_TIMING
 #define ENABLE_TIMING
-#endif
 #define ADD_NO_CACHING
 #define ADD_NO_PRUNING
 #include <gtsam_unstable/discrete/Scheduler.h>
