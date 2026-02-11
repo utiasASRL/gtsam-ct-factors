@@ -17,15 +17,16 @@
 
 #pragma once
 
-#include <gtsam/nonlinear/ExpressionFactorGraph.h>
-#include <gtsam/nonlinear/NonlinearFactorGraph.h>
-#include <gtsam/nonlinear/Interpolator.h>
-#include <unordered_map>
-#include <unordered_set>
-#include <gtsam/nonlinear/StateData.h>
 #include <gtsam/linear/GaussianFactorGraph.h>
+#include <gtsam/nonlinear/ExpressionFactorGraph.h>
+#include <gtsam/nonlinear/Interpolator.h>
+#include <gtsam/nonlinear/NonlinearFactorGraph.h>
+#include <gtsam/nonlinear/StateData.h>
+
 #include <array>
 #include <memory>
+#include <unordered_map>
+#include <unordered_set>
 
 using namespace std;
 
@@ -34,23 +35,22 @@ namespace gtsam {
 /**
  * @brief Factor graph specialized for WNOA interpolation-aware computation.
  *
- * `WNOAFactorGraph` wraps standard factor graph functionalities with utilities to compute
- * interpolated pose/velocity states under a White-Noise-on-Acceleration
- * (WNOA) motion prior. It stores the mapping from interpolated query
- * times to their left/right bordering estimated states and precomputes
- * interpolation helpers for efficient repeated evaluation.
+ * `WNOAFactorGraph` wraps standard factor graph functionalities with utilities
+ * to compute interpolated pose/velocity states under a
+ * White-Noise-on-Acceleration (WNOA) motion prior. It stores the mapping from
+ * interpolated query times to their left/right bordering estimated states and
+ * precomputes interpolation helpers for efficient repeated evaluation.
  *
  * The graph provides optimized linearization and error computation routines
  * that can exploit precomputed interpolation batches to reduce repeated
  * work when evaluating many wrapper factors using the same query times.
  *
- * @tparam PoseType Pose group/type (e.g. `Pose2`, `Pose3`) used by the interpolator.
+ * @tparam PoseType Pose group/type (e.g. `Pose2`, `Pose3`) used by the
+ * interpolator.
  */
 template <typename PoseType>
-class WNOAFactorGraph: public ExpressionFactorGraph {
-
-private:
-
+class WNOAFactorGraph : public ExpressionFactorGraph {
+ private:
   using This = WNOAFactorGraph<PoseType>;
   using Base = ExpressionFactorGraph;
   using VelocityType = typename gtsam::traits<PoseType>::TangentVector;
@@ -61,29 +61,31 @@ private:
   using MatrixN = Eigen::Matrix<double, dim, dim>;
   using VectorN = Eigen::Matrix<double, dim, 1>;
 
-
   // Interpolator class
   const Interpolator<PoseType> interpolator_;
 
-
   using LambdaPsiMats = typename Interpolator<PoseType>::LambdaPsiMats;
   using LocalStateVecs = typename Interpolator<PoseType>::LocalStateVecs;
-  using LocalGlobalStateJacs = typename Interpolator<PoseType>::LocalGlobalStateJacs;
+  using LocalGlobalStateJacs =
+      typename Interpolator<PoseType>::LocalGlobalStateJacs;
 
   // map interpolated state to border states
   unordered_map<StateData, pair<StateData, StateData>> interp_to_borders_map_;
-  std::vector<std::pair<StateData, std::pair<StateData, StateData>>> interp_to_borders_vec_;
-  std::vector<std::pair<StateData, std::shared_ptr<const LambdaPsiMats>>> interp_to_LambdaPsi_vec_;
+  std::vector<std::pair<StateData, std::pair<StateData, StateData>>>
+      interp_to_borders_vec_;
+  std::vector<std::pair<StateData, std::shared_ptr<const LambdaPsiMats>>>
+      interp_to_LambdaPsi_vec_;
 
   // Precomputed batches of borders -> indices in interp_to_borders_vec_
-  // Each entry contains the border pair and the list of interp indices that share those borders.
-  std::vector<std::pair<std::pair<StateData, StateData>, std::vector<size_t>>> border_batches_;
+  // Each entry contains the border pair and the list of interp indices that
+  // share those borders.
+  std::vector<std::pair<std::pair<StateData, StateData>, std::vector<size_t>>>
+      border_batches_;
 
   bool fixed_noise_model_ = false;
 
   unordered_set<Key> border_pose_keys_;
   unordered_set<Key> border_vel_keys_;
-
 
   // Efficient storage for indices of WNOAInterpFactors
   unordered_set<size_t> wnoa_interp_factor_indices_;
@@ -98,100 +100,112 @@ private:
    * conditional covariance for each interpolated state.
    *
    * @param values Outer `Values` providing the bordering estimated states.
-   * @param InterpJacobians Optional output pointer populated with flattened jacobian blocks.
-   * @param InterpCondCovs Optional output pointer populated with per-interpolated-state covariances.
+   * @param InterpJacobians Optional output pointer populated with flattened
+   * jacobian blocks.
+   * @param InterpCondCovs Optional output pointer populated with
+   * per-interpolated-state covariances.
    * @return Values Container with interpolated pose and velocity entries.
    */
   Values getInterpolatedValues(
       const Values& values,
-    unordered_map<Key, std::array<Matrix, 4>>* InterpJacobians,
-    unordered_map<StateData, Matrix2N>* InterpCondCovs = nullptr) const;
+      unordered_map<Key, std::array<Matrix, 4>>* InterpJacobians,
+      unordered_map<StateData, Matrix2N>* InterpCondCovs = nullptr) const;
 
-  
+ public:
+  /**
+   * @brief Linearize the graph into a GaussianFactorGraph.
+   *
+   * This routine produces a linearized Gaussian factor graph evaluated at
+   * `linearizationPoint`. It exploits precomputed interpolation data and
+   * batching to reduce duplicated interpolation work across wrapper
+   * factors.
+   *
+   * @param linearizationPoint Values at which to linearize the nonlinear graph.
+   * @return std::shared_ptr<GaussianFactorGraph> Linearized Gaussian factor
+   * graph.
+   */
+  std::shared_ptr<GaussianFactorGraph> linearize(
+      const Values& linearizationPoint) const;
 
-public:
-    /**
-     * @brief Linearize the graph into a GaussianFactorGraph.
-     *
-     * This routine produces a linearized Gaussian factor graph evaluated at
-     * `linearizationPoint`. It exploits precomputed interpolation data and
-     * batching to reduce duplicated interpolation work across wrapper
-     * factors.
-     *
-     * @param linearizationPoint Values at which to linearize the nonlinear graph.
-     * @return std::shared_ptr<GaussianFactorGraph> Linearized Gaussian factor graph.
-     */
-    std::shared_ptr<GaussianFactorGraph> linearize(const Values& linearizationPoint) const;
+  /**
+   * @brief Compute the unnormalized graph error (sum of factor losses).
+   *
+   * Computes the scalar error over all factors in the graph. When the
+   * graph contains interpolation wrapper factors this method uses the
+   * interpolator to evaluate interpolated states as part of the residual
+   * computation and can exploit precomputation to improve throughput.
+   *
+   * @param values Current `Values` used to evaluate the error.
+   * @return double Scalar unnormalized error (sum of factor losses).
+   */
+  double error(const Values& values) const;
 
-    /**
-     * @brief Compute the unnormalized graph error (sum of factor losses).
-     *
-     * Computes the scalar error over all factors in the graph. When the
-     * graph contains interpolation wrapper factors this method uses the
-     * interpolator to evaluate interpolated states as part of the residual
-     * computation and can exploit precomputation to improve throughput.
-     *
-     * @param values Current `Values` used to evaluate the error.
-     * @return double Scalar unnormalized error (sum of factor losses).
-     */
-    double error(const Values& values) const;
+  // CLEANUP: Does this constructor need to be in the header?
+  /**
+   * @brief Construct a `WNOAFactorGraph` with interpolation metadata.
+   *
+   * @param interp_map Mapping from each interpolated `StateData` to its
+   *        left/right bordering estimated `StateData`.
+   * @param Q_psd Diagonal PSD vector for the WNOA interpolator (size must match
+   * PoseType dimension).
+   * @param fixed_noise_model If true, the graph will not augment measurement
+   * noise for interpolation.
+   */
+  WNOAFactorGraph(
+      unordered_map<StateData, pair<StateData, StateData>> interp_map,
+      const Eigen::Vector<double, dim> Q_psd, bool fixed_noise_model = false)
+      : interpolator_(Q_psd),
+        interp_to_borders_map_(std::move(interp_map)),
+        fixed_noise_model_(fixed_noise_model) {
+    // Collect unique keys for boundary states to avoid repeated Values::at
+    // lookups.
+    border_pose_keys_.reserve(interp_to_borders_map_.size() * 2);
+    border_vel_keys_.reserve(interp_to_borders_map_.size() * 2);
+    for (const auto& kv : interp_to_borders_map_) {
+      const auto& border_states = kv.second;
+      const auto& left = border_states.first;
+      const auto& right = border_states.second;
+      border_pose_keys_.insert(left.pose);
+      border_pose_keys_.insert(right.pose);
+      border_vel_keys_.insert(left.vel);
+      border_vel_keys_.insert(right.vel);
 
+      double tau = kv.first.time;
+      double t_k = left.time;
+      double t_kp1 = right.time;
+      interp_to_LambdaPsi_vec_.emplace_back(
+          kv.first, std::make_shared<LambdaPsiMats>(
+                        interpolator_.getLambdaPsi(t_k, t_kp1, tau)));
+    }
 
+    // Convert map to vector for optimal parallel access patterns
+    interp_to_borders_vec_ =
+        std::vector<std::pair<StateData, std::pair<StateData, StateData>>>(
+            interp_to_borders_map_.begin(), interp_to_borders_map_.end());
 
-    /**
-     * @brief Construct a `WNOAFactorGraph` with interpolation metadata.
-     *
-     * @param interp_map Mapping from each interpolated `StateData` to its
-     *        left/right bordering estimated `StateData`.
-     * @param Q_psd Diagonal PSD vector for the WNOA interpolator (size must match PoseType dimension).
-     * @param fixed_noise_model If true, the graph will not augment measurement noise for interpolation.
-     */
-    WNOAFactorGraph(unordered_map<StateData, pair<StateData, StateData>> interp_map, const Eigen::Vector<double, dim> Q_psd, bool fixed_noise_model = false)
-        : interpolator_(Q_psd),
-          interp_to_borders_map_(std::move(interp_map)),
-          fixed_noise_model_(fixed_noise_model) {
-            // Collect unique keys for boundary states to avoid repeated Values::at lookups.
-            border_pose_keys_.reserve(interp_to_borders_map_.size()*2);
-            border_vel_keys_.reserve(interp_to_borders_map_.size()*2);
-            for (const auto& kv : interp_to_borders_map_) {
-              const auto& border_states = kv.second;
-              const auto& left  = border_states.first;
-              const auto& right = border_states.second;
-              border_pose_keys_.insert(left.pose);  border_pose_keys_.insert(right.pose);
-              border_vel_keys_.insert(left.vel);    border_vel_keys_.insert(right.vel);
-
-              double tau = kv.first.time;
-              double t_k = left.time;
-              double t_kp1 = right.time;
-                interp_to_LambdaPsi_vec_.emplace_back(
-                  kv.first,
-                  std::make_shared<LambdaPsiMats>(interpolator_.getLambdaPsi(t_k, t_kp1, tau)));
-            }
-
-
-            // Convert map to vector for optimal parallel access patterns
-            interp_to_borders_vec_ = std::vector<std::pair<StateData, std::pair<StateData, StateData>>>(
-                interp_to_borders_map_.begin(), interp_to_borders_map_.end());
-
-            // Build compact batch vector: for each unique border pair, list indices of interp states
-            struct LocalBorderHash {
-              size_t operator()(const std::pair<StateData, StateData>& p) const noexcept {
-                const size_t h1 = std::hash<StateData>{}(p.first);
-                const size_t h2 = std::hash<StateData>{}(p.second);
-                return h1 ^ (h2 + 0x9e3779b9 + (h1 << 6) + (h1 >> 2));
-              }
-            };
-            std::unordered_map<std::pair<StateData, StateData>, std::vector<size_t>, LocalBorderHash> tmp;
-            tmp.reserve(interp_to_borders_vec_.size());
-            for (size_t idx = 0; idx < interp_to_borders_vec_.size(); ++idx) {
-              const auto& borders = interp_to_borders_vec_[idx].second; // pair<StateData, StateData>
-              tmp[borders].push_back(idx);
-            }
-            border_batches_.clear(); border_batches_.reserve(tmp.size());
-            for (auto &kv : tmp) border_batches_.emplace_back(std::move(kv));
-
-          }
-
+    // Build compact batch vector: for each unique border pair, list indices of
+    // interp states
+    struct LocalBorderHash {
+      size_t operator()(
+          const std::pair<StateData, StateData>& p) const noexcept {
+        const size_t h1 = std::hash<StateData>{}(p.first);
+        const size_t h2 = std::hash<StateData>{}(p.second);
+        return h1 ^ (h2 + 0x9e3779b9 + (h1 << 6) + (h1 >> 2));
+      }
+    };
+    std::unordered_map<std::pair<StateData, StateData>, std::vector<size_t>,
+                       LocalBorderHash>
+        tmp;
+    tmp.reserve(interp_to_borders_vec_.size());
+    for (size_t idx = 0; idx < interp_to_borders_vec_.size(); ++idx) {
+      const auto& borders =
+          interp_to_borders_vec_[idx].second;  // pair<StateData, StateData>
+      tmp[borders].push_back(idx);
+    }
+    border_batches_.clear();
+    border_batches_.reserve(tmp.size());
+    for (auto& kv : tmp) border_batches_.emplace_back(std::move(kv));
+  }
 };
 
-}
+}  // namespace gtsam
