@@ -874,6 +874,9 @@ std::pair<KeySet, bool> ISAM2::predictUpdateInfo(
   ISAM2Result result;
   UpdateImpl update(params_, updateParams);
 
+  if (update.relinarizationNeeded(update_count_) && !deltaReplacedMask_.empty())
+    updateDelta(updateParams.forceFullSolve);
+
   // Gather the Keys involved from update params
   update.computeUnusedKeys(newFactors, variableIndex_,
                            result.keysWithRemovedFactors, &result.unusedKeys);
