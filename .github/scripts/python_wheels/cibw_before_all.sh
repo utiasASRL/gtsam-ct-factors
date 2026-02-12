@@ -33,9 +33,13 @@ BOOST_PREFIX="$HOME/opt/boost"
 ./bootstrap.sh --prefix=${BOOST_PREFIX}
 
 if [ "$(uname)" == "Linux" ]; then
-    ./b2 install --prefix=${BOOST_PREFIX} --with=all -d0
+    ./b2 install --prefix=${BOOST_PREFIX} -d0 --with-graph \
+        --with-move --with-optional --with-program_options --with-random \
+        --with-serialization --with-smart_ptr --with-timer --with-chrono
 elif [ "$(uname)" == "Darwin" ]; then
-    ./b2 install --prefix=${BOOST_PREFIX} --with=all -d0 \
+    ./b2 install --prefix=${BOOST_PREFIX} -d0 --with-graph \
+        --with-move --with-optional --with-program_options --with-random \
+        --with-serialization --with-smart_ptr --with-timer --with-chrono \
         cxxflags="-mmacosx-version-min=${MACOSX_DEPLOYMENT_TARGET}" \
         linkflags="-mmacosx-version-min=${MACOSX_DEPLOYMENT_TARGET}"
 fi
