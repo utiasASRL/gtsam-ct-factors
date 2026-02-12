@@ -112,6 +112,7 @@ jobs:
         run: |
           python3 -m pip install -r python/dev_requirements.txt
           if [ "$RUNNER_OS" == "Linux" ]; then
+            sudo apt update
             sudo apt-get install -y wget libicu-dev python3-pip python3-setuptools libboost-all-dev
           elif [ "$RUNNER_OS" == "macOS" ]; then
             brew install boost python-setuptools
