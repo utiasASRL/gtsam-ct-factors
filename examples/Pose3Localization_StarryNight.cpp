@@ -92,6 +92,7 @@ optimize(const std::vector<std::pair<double, Vector6>>& inputs,
   NonlinearFactorGraph graph;
   Values initialEstimate;
   StateDataSet stateDataSet;
+  std::map<Key, size_t> landmarkObservedCount;
 
   // if interp_during_solve is enabled, only add every nth state to the factor graph
   poseInterval = params.interpDuringSolve ? params.interpSkipStates : 1;
@@ -166,20 +167,7 @@ optimize(const std::vector<std::pair<double, Vector6>>& inputs,
     }
   }
 
-  // 2. ADD LANDMARKS
-
-  // add all groundtruth landmark positions
-  // if doing SLAM, can add a prior on the landmarks if system is unobservable
-  std::cout << "Adding landmarks..." << std::endl;
-  for (size_t landmarkID = 0; landmarkID < numLandmarks; ++landmarkID) {
-    if (params.fixLandmarks) {
-      // use a hard constraint to fix the landmark if doing localization
-      graph.add(NonlinearEquality<Point3>(Symbol('l', landmarkID), gtLandmarks[landmarkID]));
-    }
-    initialEstimate.insert(Symbol('l', landmarkID), gtLandmarks[landmarkID]);
-  }
-
-  // 3. ADD MEASUREMENTS
+  // 2. ADD MEASUREMENTS
   std::cout << "Adding measurements..." << std::endl;
   if (params.useMeasurements) {    
     // Add stereo measurement factors
@@ -194,7 +182,46 @@ optimize(const std::vector<std::pair<double, Vector6>>& inputs,
         // std::cout << "Predicted measurement for pose " << poseID << " and landmark " << landmarkID << ": " << predicted_meas << std::endl;
         graph.emplace_shared<GenericStereoFactor<Pose3, Point3> >(
           measurement, stereoNoise, Symbol('x', poseID), Symbol('l', landmarkID), Cal, T_cv);
+        landmarkObservedCount[Symbol('l', landmarkID)]++;
       }
+    }
+  }
+
+  // 3. ADD LANDMARKS
+
+  // add all groundtruth landmark positions to observed landmarks
+  // if doing SLAM, can add a prior on the landmarks if system is unobservable
+  std::cout << "Adding landmarks..." << std::endl;
+  for (size_t landmarkID = 0; landmarkID < numLandmarks; ++landmarkID) {
+    // if (landmarkObservedCount.count(Symbol('l', landmarkID)) == 0) continue; // only add observed landmarks
+    if (params.fixLandmarks) {
+      // use a hard constraint to fix the landmark if doing localization
+      graph.add(NonlinearEquality<Point3>(Symbol('l', landmarkID), gtLandmarks[landmarkID]));
+      initialEstimate.insert(Symbol('l', landmarkID), gtLandmarks[landmarkID]);
+    } else {
+      // use a bad initialization
+      // initialEstimate.insert(Symbol('l', landmarkID), Point3(0, 0, 0));
+      // initialize landmark to the average of all measurements
+      Point3 landmarkInit(0,0,0);
+      size_t count = 0;
+      for (const auto& measTriple : measTripleVector) {
+        auto [poseID, lmID, measurement] = measTriple;
+        if (lmID == landmarkID && poseID < numPoses_largest_multiple) {
+          auto T_iv = initialEstimate.at<Pose3>(Symbol('x', poseID));
+          auto T_ic = T_iv.compose(T_cv);
+          auto cam = StereoCamera(T_ic, Cal);
+          Point3 lm3D = cam.backproject(measurement);
+          landmarkInit += lm3D;
+          count++;
+        }
+      }
+      if (count > 0) {
+          landmarkInit /= count;
+      }
+      // add some noise to the initial landmark position
+      Vector3 noise = Vector3::Random() * 0.5; // random noise
+      landmarkInit += noise;
+      initialEstimate.insert(Symbol('l', landmarkID), landmarkInit);
     }
   }
 

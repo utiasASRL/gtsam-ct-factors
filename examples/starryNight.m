@@ -1,5 +1,29 @@
-%% compare with gt
-load /home/daniel/Dropbox/Coursework/year_1/AER1513/assignment/3/dataset3.mat
+%% Get groundtruth from raw data
+load /home/daniel/gtsam/gtsam_repo/examples/Data/starryNight.mat;
+%{
+starryNight.mat:
+theta_vk_i : a 3 × K matrix where the k th column is the axis-angle representation of the groundtruth value of
+C_{vk,i}
+r_i_vk_i : a 3 × K matrix where the kth column is the groundtruth value of r_i^{vk,i} [m]
+t : a 1 × K matrix of time values t(k) [s]
+w_vk_vk_i : a 3 × K matrix where the k th column is the measured rotational velocity, ω_vk^{vk,i} [rad/s]
+w_var : a 3 × 1 matrix of the computed variances (based on groundtruth) of the rotational speeds [rad^2 /s^2 ]
+v_vk_vk i : a 3 × K matrix where the k th column is the measured translational velocity, v_vk^{vk,i} [m/s]
+v_var : a 3 × 1 matrix of the computed variances (based on groundtruth) of the translational speeds [m^2 /s^2 ]
+rho_i_pj_i : a 3 × 20 matrix where the jth column is the position of feature j, ρ_i^{pj, i} [m]
+y_k_j : a 4 × K × 20 array of observations, y_k^j [pixels]. All components of y k j(:,k,j) will be −1 if the
+observation is invalid.
+y_var : a 4 × 1 matrix of the computed variances (based on groundtruth) of the stereo measurements [pixels^2 ]
+C_c_v : a 3 × 3 matrix giving the rotation from the vehicle frame to the camera frame, C_{cv}
+rho_v_c_v : a 3 × 1 matrix giving the translation from the vehicle frame to the camera frame, ρ_v^{cv} [m]
+fu : the stereo camera’s horizontal focal length, fu [pixels]
+fv : the stereo camera’s vertical focal length, fv [pixels]
+cu : the stereo camera’s horizontal optical center, cu [pixels]
+cv : the stereo camera’s vertical optical center, cv [pixels]
+b : the stereo camera baseline, b [m]
+%}
+
+% get groundtruth for this section
 k1 = 1215;
 k2 = 1714;
 n = k2 - k1+1;
@@ -15,120 +39,92 @@ fp = '/home/daniel/gtsam/gtsam_repo/results/';  % filename prefix
 pose_interval = 5;
 [C_array_odom, t_array_odom] = load_poses([fp 'starry_night_results/starryNightOdom_poses.csv']);
 [C_array_wnoa, t_array_wnoa] = load_poses([fp 'starry_night_results/starryNightWNOA_poses.csv']);
-[C_array_interval, t_array_interval] = load_poses([fp 'starry_night_results_poses_with_wnoa_no_odom_with_meas_gt_init_pose_interval_' num2str(pose_interval) '_max_pose_1000.csv']);
 [C_array_interpolated, t_array_interpolated] = load_poses([fp 'starry_night_results/starryNightInterp_poses.csv']);
-% [C_array_dr, t_array_dr] = load_poses([fp 'starry_night_results_poses_dr_no_wnoa_with_odom_with_meas_odom_init_pose_interval_1_max_pose_1000.csv']);
-l_array = load_landmarks('/home/daniel/gtsam/gtsam_repo/results/starry_night_results_landmarks.csv');
+l_array = load_landmarks([fp 'starry_night_results_landmarks.csv']);
 
-% get marginals
+% get marginals (covariances)
 [sigmas_3_all] = load_marginals([fp 'starry_night_results/starryNightOdom_marginals.csv']);
 [sigmas_3_wnoa] = load_marginals([fp 'starry_night_results/starryNightWNOA_marginals.csv']);
-% [sigmas_3_interval] = load_marginals([fp 'starry_night_results_marginals_with_wnoa_no_odom_with_meas_gt_init_pose_interval_' num2str(pose_interval) '_max_pose_1000.csv']);
 [sigmas_3_interpolated] = load_marginals([fp 'starry_night_results/starryNightInterp_marginals.csv']);
 
-%% load MATLAB results
-load /home/daniel/Dropbox/Coursework/year_1/AER1513/assignment/3/dataset3_results.mat r_k C_k  % dead reckoning results
-C_k_trans = pagetranspose(C_k);
 %% plotting, same format as a3.m
 fig = figure('Position', [660   187   756   667]);
 set(gcf, 'Color', 'w');
 scatter3(l_array(1,:), l_array(2,:), l_array(3,:), 'LineWidth', 1.5, 'MarkerEdgeColor', [0 0.3 0], 'DisplayName', 'Landmarks')
 hold on
-plot3(r_gt(1,:), r_gt(2,:), r_gt(3,:), '.-', 'Color', [0.2, 0.6, 0.1], 'MarkerSize', 10, 'LineWidth', 0.5, 'DisplayName', 'Groundtruth Trajectory')  % ground truth
+plot3(r_gt(1,:), r_gt(2,:), r_gt(3,:), '.-', 'Color', [0.2, 0.6, 0.1], 'MarkerSize', 10, 'LineWidth', 0.5, 'DisplayName', 'Ground-Truth Trajectory')  % ground truth
 plot3(t_array_wnoa(1,:), t_array_wnoa(2,:), t_array_wnoa(3,:), 'm.-','MarkerSize', 10, 'LineWidth', 0.5, 'DisplayName', 'Optimized Trajectory (WNOA and Measurements, without Interpolation)')
-% scatter3(t_array_wnoa(1,:), t_array_wnoa(2,:), t_array_wnoa(3,:), 100, '.', 'LineWidth', 2, 'MarkerEdgeColor', 'm', 'HandleVisibility', 'off')
-% plot3(t_array_odom(1,:), t_array_odom(2,:), t_array_odom(3,:), 'LineWidth', 2, 'DisplayName', 'Odometry solution')
-% plot3(t_array_interval(1,:), t_array_interval(2,:), t_array_interval(3,:), '.-', 'MarkerSize', 10, 'Color', 'r', 'DisplayName', 'All states in main solve')
 plot3(t_array_interpolated(1,:), t_array_interpolated(2,:), t_array_interpolated(3,:), '.-', 'LineWidth', 0.5, 'MarkerSize', 10, 'Color', 'b', 'DisplayName', 'Optimized Trajectory (WNOA and Measurements, with Interpolation)')
-% scatter3(t_array_interval(1,1:pose_interval:end), t_array_interval(2,1:pose_interval:end), t_array_interval(3,1:pose_interval:end), 60, 'o', 'LineWidth', 2, 'MarkerEdgeColor', 'r', 'HandleVisibility', 'off')
 scatter3(t_array_interpolated(1,1:end), t_array_interpolated(2,1:end), t_array_interpolated(3,1:end), 100, '.', 'LineWidth', 2, 'MarkerEdgeColor', [0.3 0.8 1], 'DisplayName', 'Interpolated States')
 scatter3(t_array_interpolated(1,1:pose_interval:end), t_array_interpolated(2,1:pose_interval:end), t_array_interpolated(3,1:pose_interval:end), 200, '.', 'LineWidth', 2, 'MarkerEdgeColor', 'b', 'HandleVisibility', 'off')
 
-% scatter3(r_gt(1,1:pose_interval:end), r_gt(2,1:pose_interval:end), r_gt(3,1:pose_interval:end), 60, 'o', 'LineWidth', 1, 'MarkerEdgeColor', 'black', 'HandleVisibility', 'off')
-% plot3(t_array_dr(1,:), t_array_dr(2,:), t_array_dr(3,:), 'DisplayName', 'Dead reckoning')  % dead reckoning
-% plot3(r_k(1,:), r_k(2,:), r_k(3,:), 'DisplayName', 'Dead reckoning MATLAB')  % dead reckoning
 xlabel('x [m]'); ylabel('y [m]'); zlabel('z [m]')
 axis equal
 legend('Location', 'northwest')
-title('Visualizing the Effects of Interpolation on the Starry Night Dataset', 'FontWeight','normal', 'FontSize',14)
+% title('Visualizing the Effects of Interpolation on the Starry Night Dataset', 'FontWeight','normal', 'FontSize',14)
 campos([ -3.5882   -6.7749    5.5577])
-export_fig 'starryNight.png' -m5
+% export_fig 'starryNight.png' -m5
+
 %% errors
-% interp_end_idx = idivide(size(t_array_interpolated,2)-1, int16(pose_interval)) * pose_interval + 1;
-interp_end_idx = size(t_array_interpolated,2);
-interp_end_idx = 200;
+% interp_end_idx = size(t_array_interpolated,2);  % plot for the whole solution
+interp_end_idx = 200;  % plot just a subsection for clarity in paper
 
-% odom errors
-% error_r = t_array_wnoa - r_gt;
-% error_theta = compute_error_theta(C_array_wnoa, C_gt);
-% end_idx_diff = 0;
-% errors_to_plot = [error_r; error_theta];
-% sigmas_to_plot = sigmas_3_all;
+plot_type_choices = {'wnoa', 'interpolated'};
+plot_type = 'interpolated';
+assert(ismember(plot_type, plot_type_choices));
+if strcmp(plot_type, 'wnoa')
+    % wnoa errors
+    error_r = t_array_wnoa(:,1:interp_end_idx) - r_gt(:,1:interp_end_idx);
+    error_theta = compute_error_theta(C_array_wnoa, C_gt(:,:,1:interp_end_idx));
+    end_idx_diff = size(t_array_wnoa,2) - interp_end_idx;
+    errors_to_plot = [error_r; error_theta];
+    sigmas_to_plot = sigmas_3_wnoa(:,1:interp_end_idx);
+    marker_color = [0.9 0 0.9];
+    plot_title = 'Pose Errors, without Interpolation';
+else
+    % interpolated errors
+    error_r = t_array_interpolated(:,1:interp_end_idx) - r_gt(:,1:interp_end_idx);
+    error_theta = compute_error_theta(C_array_interpolated, C_gt(:,:,1:interp_end_idx));
+    end_idx_diff = size(t_array_interpolated,2) - interp_end_idx;
+    errors_to_plot = [error_r; error_theta];
+    sigmas_to_plot = sigmas_3_interpolated(:,1:interp_end_idx);
+    marker_color = [0.2 0.7 0.8];
+    plot_title = 'Pose Errors, with Interpolation';
+end
 
-% interval - interpolated, diff
-% end_idx_diff = size(t_array_interval,2) - interp_end_idx;
-% error_r_interp = t_array_interval(:,1:interp_end_idx) - t_array_interpolated;
-% error_theta_interp = compute_error_theta(C_array_interval(:,:,1:interp_end_idx), C_array_interpolated);
-% errors_to_plot = [error_r_interp; error_theta_interp];
-
-% interval errors
-% error_r = t_array_interval(:,1:interp_end_idx) - r_gt(:,1:interp_end_idx);
-% error_theta = compute_error_theta(C_array_interval, C_gt(:,:,1:interp_end_idx));
-% end_idx_diff = size(t_array_interval,2) - interp_end_idx;
-% errors_to_plot = [error_r; error_theta];
-% sigmas_to_plot = sigmas_3_interval(:,1:interp_end_idx);
-
-% wnoa errors
-error_r = t_array_wnoa(:,1:interp_end_idx) - r_gt(:,1:interp_end_idx);
-error_theta = compute_error_theta(C_array_wnoa, C_gt(:,:,1:interp_end_idx));
-end_idx_diff = size(t_array_wnoa,2) - interp_end_idx;
-errors_to_plot = [error_r; error_theta];
-sigmas_to_plot = sigmas_3_wnoa(:,1:interp_end_idx);
-
-% interpolated errors
-error_r = t_array_interpolated(:,1:interp_end_idx) - r_gt(:,1:interp_end_idx);
-error_theta = compute_error_theta(C_array_interpolated, C_gt(:,:,1:interp_end_idx));
-end_idx_diff = size(t_array_interval,2) - interp_end_idx;
-errors_to_plot = [error_r; error_theta];
-sigmas_to_plot = sigmas_3_interpolated(:,1:interp_end_idx);
-
-% error_r_dr = t_array - r_k;
-% error_theta_dr = compute_error_theta(C_array, C_k_trans);
-% errors_to_plot = [error_r_dr; error_theta_dr];
-
-lim_trans = 0.15;
-lim_rot = 0.15;
-% lim_trans = 0.3;
-% lim_rot = 0.3;
-lim_trans = 0.7;
-lim_rot = 0.4;
-figure
+lim_trans = 0.55;
+lim_rot = 0.25;
+fig = figure('Position', [950   305   507   752]);
 set(gcf, 'Color', 'w');
 tiledlayout(6, 1, 'Padding', 'none', 'TileSpacing', 'compact');
-y_label_array = {'error in x', 'error in y', 'error in z', 'error in \theta_x', 'error in \theta_y', 'error in theta_z'};
+y_label_array = {'Error in x [m]', 'Error in y [m]', 'Error in z [m]', 'Error in \theta_x [rad]', 'Error in \theta_y [rad]', 'Error in \theta_z [rad]'};
 for i = 1:6
     nexttile(i);
-    % plot(t(k1:k2-end_idx_diff), errors_to_plot(i,:), '.', 'LineWidth', 1, 'Color', 'b');
-    plot(t(k1:k2-end_idx_diff), errors_to_plot(i,:), '-', 'LineWidth', 1, 'Color', 'b');
+    scatter(t(k1:1:k2-end_idx_diff), errors_to_plot(i,1:1:end), 100, '.', 'MarkerEdgeColor', marker_color);
     hold on
-    scatter(t(k1:pose_interval:k2-end_idx_diff), errors_to_plot(i,1:pose_interval:end), '.', 'MarkerEdgeColor', 'blue');
-    plot(t(k1:k2-end_idx_diff), sigmas_to_plot(i,:), '--');
-    plot(t(k1:k2-end_idx_diff), -sigmas_to_plot(i,:), '--');
-    xlabel('time (s)');
+    x2 = [t(k1:k2-end_idx_diff), fliplr(t(k1:k2-end_idx_diff))];
+    inBetween = [sigmas_to_plot(i,:), fliplr(-sigmas_to_plot(i,:))];
+    fill(x2, inBetween, 'b', 'LineStyle', '--', 'EdgeColor', 'none', 'FaceAlpha', 0.2, 'HandleVisibility', 'off');  % shade covariance envelope
+    if strcmp(plot_type, 'interpolated')
+        scatter(t(k1:pose_interval:k2-end_idx_diff), errors_to_plot(i,1:pose_interval:end), 100, '.', 'MarkerEdgeColor', 'blue');  % with interpolation
+    end
+    xlabel('Time [s]');
     ylabel(y_label_array{i})
-    % legend
     if i < 4
         ylim([-lim_trans lim_trans])
     else
         ylim([-lim_rot lim_rot])
     end
+    xlim([111.5 inf])
+    grid on
 end
-
-%% just plotting covariance
-interp_end_idx = idivide(size(t_array_interpolated,2)-1, int16(pose_interval)) * pose_interval + 1;
+nexttile(1)
+title(plot_title, 'FontWeight','normal', 'FontSize',14)
+% export_fig 'starryNightErrPlot2.png' -m5
+%% just comparing covariance between interpolation and no interpolation
+% This plot did not make it to the paper.
 interp_end_idx = size(t_array_interpolated,2);
-
-end_idx_diff = size(t_array_interval,2) - interp_end_idx;
+end_idx_diff = size(t_array_interpolated,2) - interp_end_idx;
 figure
 set(gcf, 'Color', 'w');
 tiledlayout(6, 1, 'Padding', 'none', 'TileSpacing', 'compact');
@@ -141,10 +137,8 @@ for i = 1:6
     hold on
     plot(t(k1:k2-end_idx_diff), sigmas_3_interpolated(i,:), '.-', 'LineWidth', 1.5, 'Color', 'blue', 'DisplayName', 'With Interpolation');
     scatter(t(k1:pose_interval:k2), sigmas_3_interpolated(i,1:pose_interval:end), 'o', 'LineWidth', 2, 'MarkerEdgeColor', 'blue', 'DisplayName', 'States in main solve');
-    % scatter(t(k1:pose_interval:k2-end_idx_diff), sigmas_3_interval(i,1:pose_interval:end), 'o', 'MarkerEdgeColor', 'm');
     xlabel('time (s)');
     ylabel(y_label_array{i})
-    % legend
     if i < 4
         ylim([0 lim_trans])
     else
@@ -155,117 +149,8 @@ nexttile(1)
 title('Covariance plot for WNOA and measurements, with and without interpolation')
 nexttile(6)
 legend('Location','southoutside')
-%% old code - plot errors
-lim_trans = 0.15;
-lim_rot = 0.3;
-figure
-subplot(3,1,1)
-title('x error')
-xlabel('time (s)')
-ylabel('error in x (m)')
-hold on
-plot(t(k1:k2), error_r(1,:));
-plot(t(k1:k2), sigmas_3(1,:), '--');
-plot(t(k1:k2), -sigmas_3(1,:), '--');
-ylim([-lim_trans lim_trans])
+% result: the two covariances are almost identical, as expected.
 
-subplot(3,1,2)
-title('y error')
-xlabel('time (s)')
-ylabel('error in y (m)')
-hold on
-plot(t(k1:k2), error_r(2,:));
-plot(t(k1:k2), sigmas_3(2,:), '--');
-plot(t(k1:k2), -sigmas_3(2,:), '--');
-ylim([-lim_trans lim_trans])
-
-subplot(3,1,3)
-title('z error')
-xlabel('time (s)')
-ylabel('error in z (m)')
-hold on
-plot(t(k1:k2), error_r(3,:));
-plot(t(k1:k2), sigmas_3(3,:), '--');
-plot(t(k1:k2), -sigmas_3(3,:), '--');
-ylim([-lim_trans lim_trans])
-
-figure
-subplot(3,1,1)
-title('\theta_x error')
-xlabel('time (s)')
-ylabel('error in \theta_x (rad)')
-hold on
-plot(t(k1:k2), error_theta(1,:));
-plot(t(k1:k2), sigmas_3(4,:), '--');
-plot(t(k1:k2), -sigmas_3(4,:), '--');
-ylim([-lim_rot lim_rot])
-
-subplot(3,1,2)
-title('\theta_y error')
-xlabel('time (s)')
-ylabel('error in \theta_y (rad)')
-hold on
-plot(t(k1:k2), error_theta(2,:));
-plot(t(k1:k2), sigmas_3(5,:), '--');
-plot(t(k1:k2), -sigmas_3(5,:), '--');
-ylim([-lim_rot lim_rot])
-
-subplot(3,1,3)
-title('\theta_z error')
-xlabel('time (s)')
-ylabel('error in \theta_z (rad)')
-hold on
-plot(t(k1:k2), error_theta(3,:));
-plot(t(k1:k2), sigmas_3(6,:), '--');
-plot(t(k1:k2), -sigmas_3(6,:), '--');
-ylim([-lim_rot lim_rot])
-
-%% old code using gtsam matlab toolbox
-% for instructions, see https://github.com/borglab/gtsam/blob/develop/matlab/README.md
-% don't know how to set up paths properly yet... seems like it only needs gtsamDebug
-% addpath('~/gtsam/')
-addpath('~/gtsamDebug/')
-format compact
-% addpath('~/gtsamDebug/gtsam_examples/')
-
-[graph_init, initial] = gtsam.readG2o('/home/daniel/gtsam/gtsam_repo/build/starry_night_initial.g2o', true);
-[graph_opt, optimized] = gtsam.readG2o('/home/daniel/gtsam/gtsam_repo/build/starry_night_optimized.g2o', true);
-%% get solution poses
-C_array = zeros(3,3,n);
-t_array = zeros(3,n);
-for i = 1:n
-    pose3 = optimized.atPose3(i);
-    C_array(:,:,i) = pose3.rotation().matrix()';
-    t_array(:,i) = pose3.translation();
-end
-
-% get dr poses
-C_array_dr = zeros(3,3,n);
-t_array_dr = zeros(3,n);
-for i = 1:n
-    pose3_dr = initial.atPose3(i);
-    C_array_dr(:,:,i) = pose3_dr.rotation().matrix()';
-    t_array_dr(:,i) = pose3_dr.translation();
-end
-
-% get landmarks - just for double checking. They shouldn't change compared
-% to the gt
-m = 20;  % num of landmarks
-l_array = zeros(3,m);
-for j = 1:m
-    l_array(:,j) = optimized.atPoint3(gtsam.symbol('l', j-1));
-end
-%% plotting
-figure
-gtsam.plot3DPoints(initial, 'oblack');  % Red stars for landmarks
-gtsam.plot3DTrajectory(initial, 'g');      % Green for initial guess
-gtsam.plot3DTrajectory(optimized, 'b');      % Blue for optimized
-hold on
-grid on;
-view(3);
-axis equal;
-xlabel('x'); ylabel('y'); zlabel('z')
-legend
 %%
 function C = psitoC(psi)
 
