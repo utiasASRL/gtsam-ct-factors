@@ -367,18 +367,11 @@ Interpolator<PoseType>::interpolatePoseAndVelocity_(
   // Output pair
   auto poseVel_tau = PoseVel{T_tau, varpi_tau};
 
-  // compute covariance of the interpolated pose and velocity, if required
+  // compute covariance of the interpolated pose (and velocity, if required)
+  // using Lambda and Psi computed from (11.41) in (Barfoot 2024).
+  // This should be equivalent to using (4.23) in the FnT paper.
   if (mainSolveMarginalMatrix) {
     Eigen::Matrix<double, 2 * dim, 4 * dim> LambdaPsi;
-    // CLEANUP: Remove dead code
-    // uncomment this block to recompute Lambda and Psi using (5.23) in paper
-    // Matrix Lambda_paper(2*dim, 2*dim), Psi_paper(2*dim, 2*dim);
-    // Matrix2N Sigma = computeConditionalCov(Tvarpi_k, Tvarpi_kp1,
-    // Tvarpi_tau, t_k, t_kp1, t_tau,
-    //                                       &Lambda_paper, &Psi_paper);
-    // LambdaPsi << Lambda_paper, Psi_paper;
-
-    // use existing Lambda and Psi computed from (11.41) in (Barfoot 2024)
     Matrix2N Sigma = computeConditionalCov(
         tPoseVel_k, tPoseVel_kp1, TimestampedPoseVel{poseVel_tau, t_tau});
     LambdaPsi << Lambda, Psi;
@@ -534,10 +527,8 @@ Interpolator<PoseType>::computeJointMarginals(
   for (const auto& [stateDataBorders, stateDataInterpVec] : queryBuckets) {
     KeyVector boundaryKeyVector = formBoundaryKeyVector(stateDataBorders);
     allBoundaryKeys.insert(boundaryKeyVector.begin(), boundaryKeyVector.end());
-    // CLEANUP: Remove dead code for method 1
-    // Method 1: compute JointMarginal for each interval separately
-    // faster if there are not too many intervals
-    // ----------------------------------
+    // Compute JointMarginal for each interval separately
+    // This is fast if there are not too many intervals
     JointMarginal mainSolveMarginal =
     marginals->jointMarginalCovariance(boundaryKeyVector);
     // avoid using JointMarginal.fullMatrix() as it returns covariance
@@ -546,24 +537,7 @@ Interpolator<PoseType>::computeJointMarginals(
       std::make_shared<Matrix>(constructMatrixFromJointMarginal(
       mainSolveMarginal, boundaryKeyVector, dim));
     intervalJointMarginals[stateDataBorders] = mainSolveMarginalMatrix;
-    // ----------------------------------
   }
-
-  // Method 2: compute JointMarginal for all boundary keys at once
-  // faster if there are many intervals with shared boundary keys
-  // but inverting the batch info not be well-conditioned for large graphs
-  // ----------------------------------
-  // JointMarginal allBoundaryMarginal = marginals->jointMarginalCovariance(
-  //     KeyVector(allBoundaryKeys.begin(), allBoundaryKeys.end()));
-
-  // for (const auto& [stateDataBorders, stateDataInterpVec] : queryBuckets) {
-  //   KeyVector boundaryKeyVector = formBoundaryKeyVector(stateDataBorders);
-  //   auto mainSolveMarginalMatrix =
-  //       std::make_shared<Matrix>(constructMatrixFromJointMarginal(
-  //           allBoundaryMarginal, boundaryKeyVector, dim));
-  //   intervalJointMarginals[stateDataBorders] = mainSolveMarginalMatrix;
-  // }
-  // ----------------------------------
 
   return intervalJointMarginals;
 }
@@ -818,29 +792,6 @@ Matrix Interpolator<PoseType>::constructMatrixFromJointMarginal(
     }
   }
   return M;
-}
-
-// CLEANUP: Do we actually use this function anywhere? If not, remove it.
-template <typename PoseType>
-Matrix Interpolator<PoseType>::reorderSymmetricMatrix(
-    const Matrix& mat, size_t block_size,
-    const std::vector<size_t>& block_order) {
-  // This was previously used to reorder a matrix from
-  // JointMarginal.fullMatrix() e.g. if KeyVector is {p1, v1, p2, v2},
-  // JointMarginal.fullMatrix() would be the marginal corresponding to {v1,
-  // v2, p1, p2}. Then, we could call
-  // reorderSymmetricMatrix(mainSolveMarginalPermuted, dim, {2, 0, 3, 1});
-  assert(mat.rows() == mat.cols() && "Matrix must be square");
-  assert(block_order.size() * block_size == static_cast<size_t>(mat.rows()) &&
-         "Block order size must match matrix dimensions");
-  Matrix reordered(mat.rows(), mat.cols());
-  for (size_t i = 0; i < block_order.size(); ++i)
-    for (size_t j = 0; j < block_order.size(); ++j)
-      reordered.block(i * block_size, j * block_size, block_size, block_size) =
-          mat.block(block_order[i] * block_size, block_order[j] * block_size,
-                    block_size, block_size);
-
-  return reordered;
 }
 
 // ---- Explicit Instantiations ----

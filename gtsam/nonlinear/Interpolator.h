@@ -497,21 +497,6 @@ class Interpolator {
       const JointMarginal& blockMatrix, const KeyVector& keyVector,
       size_t blockSize);
 
-  /**
-   * @brief Reorder a symmetric block matrix according to a new block ordering.
-   *
-   * Utility helper to permute a symmetric matrix composed of square blocks
-   * into a new order. The function is currently unused but provided for
-   * potential future needs when reordering block-structured covariances.
-   *
-   * @param mat Input symmetric matrix composed of blocks of size `block_size`.
-   * @param block_size The size of each block.
-   * @param block_order Desired order of blocks (indices into the original
-   * order).
-   * @return Matrix Reordered symmetric matrix.
-   */
-  static Matrix reorderSymmetricMatrix(const Matrix& mat, size_t block_size,
-                                       const std::vector<size_t>& block_order);
 };
 
 }  // namespace gtsam
