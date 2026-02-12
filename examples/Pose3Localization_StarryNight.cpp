@@ -25,6 +25,11 @@ size_t numPoses, numLandmarks, poseInterval;
 using StateDataSet = Interpolator<Pose3>::StateDataSet;
 using CovarianceMap = Interpolator<Pose3>::CovarianceMap;
 
+// Config files to use (the --config-file option)
+// for WNOA with no interpolation (Fig. 5.12 left): starryNightWNOA
+// for WNOA with interpolation (Fig. 5.12 right): starryNightInterp
+// for odom (not in paper): starryNightOdom
+
 std::tuple<std::string, std::string>
 parseCommandLine(int argc, char** argv) {
   // Get configuration data
