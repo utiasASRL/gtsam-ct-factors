@@ -266,30 +266,55 @@ class WNOAInterpFactor : public NoiseModelFactor {
     for (size_t i = 0; i < this->keys_.size(); i++) {
       outer_key_to_index[this->keys_[i]] = i;
     }
-    // CLEANUP: (Sven) This bit of code needs comments
     // Build inner key mappings once and cache inner key indices
-    const KeyVector& inner_keys_init = inner_factor_->keys();
-    inner_key_mappings_.resize(inner_keys_init.size());
+    // We will use this mapping to know how to map inner Jacobian blocks to outer 
+    
+    // number of inner keys (keys associated with just the inner factor)
+    const KeyVector& inner_keys_init = inner_factor_->keys(); 
+
+    // Vector of structs that stores the mapping information for each inner key (whether it's interpolated, and the corresponding outer key indices)
+    inner_key_mappings_.resize(inner_keys_init.size()); 
+
+    // This map allows us to quickly find the index of an inner key in the inner factor's key ordering
+    // This is important for correctly mapping Jacobian blocks during linearization.
+    // We build this map once in the constructor to avoid redundant work later (slight speed up)
     inner_key_to_index_.reserve(inner_keys_init.size());
+
+    // Loop through all inner keys and save the relevant mappings to outer keys
     for (size_t i = 0; i < inner_keys_init.size(); ++i) {
+      // inner key
       Key ik = inner_keys_init[i];
+      // current index
       inner_key_to_index_[ik] = static_cast<int>(i);
       InnerKeyMapping mk;
       auto itInterp = key_to_interp.find(ik);
+
+      // If this condition is met, then this inner key is not interpolated and directly corresponds to an outer key
+      // We can map the Jacobian block for this inner key directly to the corresponding outer key index
       if (itInterp == key_to_interp.end()) {
         auto itOuter = outer_key_to_index.find(ik);
         if (itOuter != outer_key_to_index.end())
           mk.directOuterIndex = itOuter->second;
       } else {
+        // Otherwise, this inner key is interpolated and we need to map it to its corresponding border states
+        // The Jacobian blocks that connect them to the inner key 
         mk.isInterpolated = true;
+
+        // get border states for this interpolated key using the interp_to_borders map we built earlier
         const StateData& sd = itInterp->second;
         const auto& br = interp_to_borders.at(sd);
         const StateData& left = br.first;
         const StateData& right = br.second;
+
+        // Map the border states to their corresponding outer key indices
+        // This uses the outer_key_to_index map we built earlier
+        // We will need these indices to know where to map Jacobian blocks during linearization
         mk.idxPoseL = outer_key_to_index.at(left.pose);
         mk.idxVelL = outer_key_to_index.at(left.vel);
         mk.idxPoseR = outer_key_to_index.at(right.pose);
         mk.idxVelR = outer_key_to_index.at(right.vel);
+
+        // also save the actual keys for clarity (might not be accessed during compute)
         mk.keyPoseL = left.pose;
         mk.keyVelL = left.vel;
         mk.keyPoseR = right.pose;
