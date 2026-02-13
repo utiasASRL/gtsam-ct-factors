@@ -19,9 +19,9 @@
 
 #include <gtsam/linear/GaussianFactorGraph.h>
 #include <gtsam/nonlinear/ExpressionFactorGraph.h>
-#include <gtsam/nonlinear/Interpolator.h>
 #include <gtsam/nonlinear/NonlinearFactorGraph.h>
 #include <gtsam/nonlinear/StateData.h>
+#include <gtsam/nonlinear/WNOAInterpolator.h>
 
 #include <array>
 #include <memory>

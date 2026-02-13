@@ -8,12 +8,12 @@
 #include <gtsam/base/numericalDerivative.h>
 #include <gtsam/inference/Symbol.h>
 #include <gtsam/nonlinear/GaussNewtonOptimizer.h>
-#include <gtsam/nonlinear/Interpolator.h>
 #include <gtsam/nonlinear/NonlinearEquality.h>
 #include <gtsam/nonlinear/NonlinearFactorGraph.h>
 #include <gtsam/nonlinear/Values.h>
 #include <gtsam/nonlinear/WNOAFactor.h>
 #include <gtsam/nonlinear/WNOAInterpFactor.h>
+#include <gtsam/nonlinear/WNOAInterpolator.h>
 #include <gtsam/slam/BetweenFactor.h>
 
 #include <set>
@@ -421,12 +421,12 @@ TEST(WNOAInterp, PrecomputeLambdaPsiUnarySe3) {
   const auto prior_factor =
       std::make_shared<PriorFactor<Pose3>>(P(1), p1_se3, model);
   // Construct factor for interpolated pose and velocity
-  const auto factor =
-      WNOAInterpFactor<Pose3>(prior_factor, border, interp, Q_se3, false, false);
+  const auto factor = WNOAInterpFactor<Pose3>(prior_factor, border, interp,
+                                              Q_se3, false, false);
   // factor with precomputed interpolation matrices
   const auto factor_alt =
       WNOAInterpFactor<Pose3>(prior_factor, border, interp, Q_se3, false, true);
-  
+
   // Set up values
   Values values;
   values.insert(P(0), p0_se3);
@@ -444,11 +444,10 @@ TEST(WNOAInterp, PrecomputeLambdaPsiUnarySe3) {
   EXPECT(assert_equal(residual, residual_alt));
   // check that derivatives are identical
   int index = 0;
-  for (auto& mat : H){
+  for (auto& mat : H) {
     EXPECT(assert_equal(mat, H_alt[index]));
     index++;
   }
-  
 }
 
 /* *************************************************************************
@@ -462,15 +461,14 @@ TEST(WNOAInterp, Interpolator) {
   vector<Matrix> H(8);
   auto [pose_est, vel_est] = interp.interpolatePoseAndVelocity(
       TimestampedPoseVelocity<Pose3>(p0_se3, v0_se3, 0.0),
-      TimestampedPoseVelocity<Pose3>(p2_se3, v2_se3, 2 * timestep),
-      timestep, &H);
+      TimestampedPoseVelocity<Pose3>(p2_se3, v2_se3, 2 * timestep), timestep,
+      &H);
 
   // define lambda function for derivatives
   auto f = [&](auto& p0, auto& v0, auto& p2, auto& v2) {
     auto [pose, vel] = interp.interpolatePoseAndVelocity(
         TimestampedPoseVelocity<Pose3>(p0, v0, 0.0),
-        TimestampedPoseVelocity<Pose3>(p2, v2, 2 * timestep),
-        timestep);
+        TimestampedPoseVelocity<Pose3>(p2, v2, 2 * timestep), timestep);
 
     return p1_se3.logmap(pose);
   };

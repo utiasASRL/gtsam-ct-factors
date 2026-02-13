@@ -6,7 +6,7 @@
  * Press, 2024.
  * -------------------------------------------------------------------------- */
 
-#include "Interpolator.h"
+#include "WNOAInterpolator.h"
 
 namespace gtsam {
 
@@ -204,10 +204,9 @@ Interpolator<PoseType>::extrapolatePoseAndVelocity(
   if (mainSolveMarginalMatrix) {
     assert(mainSolveMarginalMatrix->rows() == 2 * dim &&
            mainSolveMarginalMatrix->cols() == 2 * dim);
-           Matrix2N Sigma = covarianceFunction_(t_diff, Q_psd_);
-           // (11.5) in (Barfoot 2024)
-           *covarianceOut =
-               Sigma + Psi * *mainSolveMarginalMatrix * Psi.transpose();
+    Matrix2N Sigma = covarianceFunction_(t_diff, Q_psd_);
+    // (11.5) in (Barfoot 2024)
+    *covarianceOut = Sigma + Psi * *mainSolveMarginalMatrix * Psi.transpose();
   }
   return PoseVel{T_tau, varpi_tau};
 }
@@ -530,12 +529,12 @@ Interpolator<PoseType>::computeJointMarginals(
     // Compute JointMarginal for each interval separately
     // This is fast if there are not too many intervals
     JointMarginal mainSolveMarginal =
-    marginals->jointMarginalCovariance(boundaryKeyVector);
+        marginals->jointMarginalCovariance(boundaryKeyVector);
     // avoid using JointMarginal.fullMatrix() as it returns covariance
     // in alphabetical order of the keys...
     auto mainSolveMarginalMatrix =
-      std::make_shared<Matrix>(constructMatrixFromJointMarginal(
-      mainSolveMarginal, boundaryKeyVector, dim));
+        std::make_shared<Matrix>(constructMatrixFromJointMarginal(
+            mainSolveMarginal, boundaryKeyVector, dim));
     intervalJointMarginals[stateDataBorders] = mainSolveMarginalMatrix;
   }
 
@@ -624,7 +623,8 @@ Values Interpolator<PoseType>::interpolatePosesAndVelocities(
 template <typename PoseType>
 std::pair<Matrix, Matrix> Interpolator<PoseType>::getLambdaPsi(
     double t_k, double t_kp1, double t_tau) const {
-  // See Section 11.1 in (Barfoot 2024) for the derivation of these equations for WNOA
+  // See Section 11.1 in (Barfoot 2024) for the derivation of these equations
+  // for WNOA
   double dt = t_kp1 - t_k;
   double alpha = (t_tau - t_k) / dt;
   double alpha2 = alpha * alpha;
@@ -654,9 +654,9 @@ std::pair<Matrix, Matrix> Interpolator<PoseType>::getLambdaPsi(
 template <typename PoseType>
 std::pair<Matrix, Matrix> Interpolator<PoseType>::getLambdaPsiGeneral(
     double t_k, double t_kp1, double t_tau) const {
-
-  // Build general interpolation equations for Lambda and Psi using the transition function and
-  // See (11.41) in (Barfoot 2024) for the derivation of these equations for general linear time-invariant systems
+  // Build general interpolation equations for Lambda and Psi using the
+  // transition function and See (11.41) in (Barfoot 2024) for the derivation of
+  // these equations for general linear time-invariant systems
   double dt = t_kp1 - t_k;
   auto Phi_12 = transitionFunction_(dt);
   auto Phi_1tau = transitionFunction_(t_tau - t_k);

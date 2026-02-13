@@ -10,7 +10,7 @@
  * -------------------------------------------------------------------------- */
 
 /**
- * @file Interpolator.h
+ * @file WNOAInterpolator.h
  * @brief Interpolator class implementation for interpolating poses and
  * velocities between two bordering states, either during or after a factor
  * graph solve. Interpolator assumes the WNOA motion prior by default.
@@ -496,7 +496,6 @@ class Interpolator {
   static Matrix constructMatrixFromJointMarginal(
       const JointMarginal& blockMatrix, const KeyVector& keyVector,
       size_t blockSize);
-
 };
 
 }  // namespace gtsam

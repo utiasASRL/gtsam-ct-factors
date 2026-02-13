@@ -8,11 +8,11 @@
 #include <gtsam/base/numericalDerivative.h>
 #include <gtsam/inference/Symbol.h>
 #include <gtsam/nonlinear/GaussNewtonOptimizer.h>
-#include <gtsam/nonlinear/Interpolator.h>
 #include <gtsam/nonlinear/NonlinearEquality.h>
 #include <gtsam/nonlinear/NonlinearFactorGraph.h>
 #include <gtsam/nonlinear/Values.h>
 #include <gtsam/nonlinear/WNOAFactor.h>
+#include <gtsam/nonlinear/WNOAInterpolator.h>
 
 using namespace std;
 using namespace gtsam;
@@ -92,10 +92,10 @@ TEST(Interpolator, CovarianceP1) {
   // generate a random SPD covariance matrix for (p0, v0, p1, v1)
   Matrix mainSolveMarginal = randomCovariance(4);
   auto mainSolveMarginalPtr = std::make_shared<Matrix>(mainSolveMarginal);
-  (void) interpolator.interpolatePoseAndVelocity(
+  (void)interpolator.interpolatePoseAndVelocity(
       TimestampedPoseVelocity<Point1>(p0_p1, v0_p1, 0.0),
-      TimestampedPoseVelocity<Point1>(p1_p1, v1_p1, timestep),
-      0.05, nullptr, mainSolveMarginalPtr, &covariance);
+      TimestampedPoseVelocity<Point1>(p1_p1, v1_p1, timestep), 0.05, nullptr,
+      mainSolveMarginalPtr, &covariance);
   CHECK(covariance.rows() == 2 && covariance.cols() == 2);
 }
 /* ************************************************************************* */
@@ -105,10 +105,10 @@ TEST(Interpolator, CovarianceP2) {
   // generate a random SPD covariance matrix for (p0, v0, p1, v1)
   Matrix mainSolveMarginal = randomCovariance(8);
   auto mainSolveMarginalPtr = std::make_shared<Matrix>(mainSolveMarginal);
-  (void) interpolator.interpolatePoseAndVelocity(
+  (void)interpolator.interpolatePoseAndVelocity(
       TimestampedPoseVelocity<Point2>(p0_p2, v0_p2, 0.0),
-      TimestampedPoseVelocity<Point2>(p1_p2, v1_p2, timestep),
-      0.05, nullptr, mainSolveMarginalPtr, &covariance);
+      TimestampedPoseVelocity<Point2>(p1_p2, v1_p2, timestep), 0.05, nullptr,
+      mainSolveMarginalPtr, &covariance);
   CHECK(covariance.rows() == 4 && covariance.cols() == 4);
 }
 /* ************************************************************************* */
@@ -118,10 +118,10 @@ TEST(Interpolator, CovarianceP3) {
   // generate a random SPD covariance matrix for (p0, v0, p1, v1)
   Matrix mainSolveMarginal = randomCovariance(12);
   auto mainSolveMarginalPtr = std::make_shared<Matrix>(mainSolveMarginal);
-  (void) interpolator.interpolatePoseAndVelocity(
+  (void)interpolator.interpolatePoseAndVelocity(
       TimestampedPoseVelocity<Point3>(p0_p3, v0_p3, 0.0),
-      TimestampedPoseVelocity<Point3>(p1_p3, v1_p3, timestep),
-      0.05, nullptr, mainSolveMarginalPtr, &covariance);
+      TimestampedPoseVelocity<Point3>(p1_p3, v1_p3, timestep), 0.05, nullptr,
+      mainSolveMarginalPtr, &covariance);
   CHECK(covariance.rows() == 6 && covariance.cols() == 6);
 }
 /* ************************************************************************* */
@@ -131,10 +131,10 @@ TEST(Interpolator, CovarianceSE2) {
   // generate a random SPD covariance matrix for (p0, v0, p1, v1)
   Matrix mainSolveMarginal = randomCovariance(12);
   auto mainSolveMarginalPtr = std::make_shared<Matrix>(mainSolveMarginal);
-  (void) interpolator.interpolatePoseAndVelocity(
+  (void)interpolator.interpolatePoseAndVelocity(
       TimestampedPoseVelocity<Pose2>(p0_se2, v0_se2, 0.0),
-      TimestampedPoseVelocity<Pose2>(p1_se2, v1_se2, timestep),
-      0.05, nullptr, mainSolveMarginalPtr, &covariance);
+      TimestampedPoseVelocity<Pose2>(p1_se2, v1_se2, timestep), 0.05, nullptr,
+      mainSolveMarginalPtr, &covariance);
   CHECK(covariance.rows() == 6 && covariance.cols() == 6);
 }
 /* ************************************************************************* */
@@ -144,13 +144,13 @@ TEST(Interpolator, CovarianceSE3) {
   // generate a random SPD covariance matrix for (p0, v0, p1, v1)
   Matrix mainSolveMarginal = randomCovariance(24);
   auto mainSolveMarginalPtr = std::make_shared<Matrix>(mainSolveMarginal);
-  (void) interpolator.interpolatePoseAndVelocity(
+  (void)interpolator.interpolatePoseAndVelocity(
       TimestampedPoseVelocity<Pose3>(p0_se3, v0_se3, 0.0),
-      TimestampedPoseVelocity<Pose3>(p1_se3, v1_se3, timestep),
-      0.05, nullptr, mainSolveMarginalPtr, &covariance);
+      TimestampedPoseVelocity<Pose3>(p1_se3, v1_se3, timestep), 0.05, nullptr,
+      mainSolveMarginalPtr, &covariance);
   CHECK(covariance.rows() == 12 && covariance.cols() == 12);
 }
-  
+
 /* ************************************************************************* */
 /* COMMON-VELOCITY TESTS
  * These tests check that if the velocities are the same at the two endpoints,
@@ -261,8 +261,7 @@ TEST(Interpolator, ExtrapolatePoseAndVelocityP1) {
 
     pvtau = interpolator.interpolatePoseAndVelocity(
         TimestampedPoseVelocity<Point1>(p0_p1, v0_p1, -timestep),
-        TimestampedPoseVelocity<Point1>(p1_p1, v1_p1, 0.0),
-        timestep * ratio);
+        TimestampedPoseVelocity<Point1>(p1_p1, v1_p1, 0.0), timestep * ratio);
     expectedPose = p1_p1 + (ratio)*timestep * v1_p1;
     CHECK(assert_equal(expectedPose, pvtau.pose));
     CHECK(assert_equal(v1_p1, pvtau.vel));
@@ -282,8 +281,7 @@ TEST(Interpolator, ExtrapolatePoseAndVelocityP2) {
 
     pvtau = interpolator.interpolatePoseAndVelocity(
         TimestampedPoseVelocity<Point2>(p0_p2, v0_p2, -timestep),
-        TimestampedPoseVelocity<Point2>(p1_p2, v1_p2, 0.0),
-        timestep * ratio);
+        TimestampedPoseVelocity<Point2>(p1_p2, v1_p2, 0.0), timestep * ratio);
     expectedPose = p1_p2 + (ratio)*timestep * v1_p2;
     CHECK(assert_equal(expectedPose, pvtau.pose));
     CHECK(assert_equal(v1_p2, pvtau.vel));
@@ -303,8 +301,7 @@ TEST(Interpolator, ExtrapolatePoseAndVelocityP3) {
 
     pvtau = interpolator.interpolatePoseAndVelocity(
         TimestampedPoseVelocity<Point3>(p0_p3, v0_p3, -timestep),
-        TimestampedPoseVelocity<Point3>(p1_p3, v1_p3, 0.0),
-        timestep * ratio);
+        TimestampedPoseVelocity<Point3>(p1_p3, v1_p3, 0.0), timestep * ratio);
     expectedPose = p1_p3 + (ratio)*timestep * v1_p3;
     CHECK(assert_equal(expectedPose, pvtau.pose));
     CHECK(assert_equal(v1_p3, pvtau.vel));
@@ -325,8 +322,7 @@ TEST(Interpolator, ExtrapolatePoseAndVelocitySE2) {
 
     pvtau = interpolator.interpolatePoseAndVelocity(
         TimestampedPoseVelocity<Pose2>(p0_se2, v0_se2, -timestep),
-        TimestampedPoseVelocity<Pose2>(p1_se2, v1_se2, 0.0),
-        timestep * ratio);
+        TimestampedPoseVelocity<Pose2>(p1_se2, v1_se2, 0.0), timestep * ratio);
     expectedPose = p1_se2.expmap(ratio * timestep * v1_se2);
     CHECK(assert_equal(expectedPose, pvtau.pose));
     CHECK(assert_equal(v1_se2, pvtau.vel));
@@ -347,8 +343,7 @@ TEST(Interpolator, ExtrapolatePoseAndVelocitySE3) {
 
     pvtau = interpolator.interpolatePoseAndVelocity(
         TimestampedPoseVelocity<Pose3>(p0_se3, v0_se3, -timestep),
-        TimestampedPoseVelocity<Pose3>(p1_se3, v1_se3, 0.0),
-        timestep * ratio);
+        TimestampedPoseVelocity<Pose3>(p1_se3, v1_se3, 0.0), timestep * ratio);
     expectedPose = p1_se3.expmap(ratio * timestep * v1_se3);
     CHECK(assert_equal(expectedPose, pvtau.pose));
     CHECK(assert_equal(v1_se3, pvtau.vel));
@@ -479,8 +474,7 @@ TEST(Interpolator, FrameTranslationP1) {
 
     // Transform pvtau2 back to the original frame
     Point1 pvtau2_pose = pvtau2.pose - T_frame;
-    Vector1 pvtau2_velocity =
-        pvtau2.vel;  // body-frame velocity is invariant
+    Vector1 pvtau2_velocity = pvtau2.vel;  // body-frame velocity is invariant
 
     double tol = 1e-8;  // should be exact for Point1
     CHECK(assert_equal(pvtau1.pose, pvtau2_pose, tol));
@@ -507,9 +501,8 @@ TEST(Interpolator, FrameTranslationP2) {
         timestep * ratio);
     // Transform pvtau2 back to the original frame
     Point2 pvtau2_pose = pvtau2.pose - T_frame;
-    Vector2 pvtau2_velocity =
-        pvtau2.vel;  // body-frame velocity is invariant
-    double tol = 1e-8;  // should be exact for Point2
+    Vector2 pvtau2_velocity = pvtau2.vel;  // body-frame velocity is invariant
+    double tol = 1e-8;                     // should be exact for Point2
     CHECK(assert_equal(pvtau1.pose, pvtau2_pose, tol));
     CHECK(assert_equal(pvtau1.vel, pvtau2_velocity, tol));
   }
@@ -533,9 +526,8 @@ TEST(Interpolator, FrameTranslationP3) {
         timestep * ratio);
     // Transform pvtau2 back to the original frame
     Point3 pvtau2_pose = pvtau2.pose - T_frame;
-    Vector3 pvtau2_velocity =
-        pvtau2.vel;  // body-frame velocity is invariant
-    double tol = 1e-8;  // should be exact for Point3
+    Vector3 pvtau2_velocity = pvtau2.vel;  // body-frame velocity is invariant
+    double tol = 1e-8;                     // should be exact for Point3
     CHECK(assert_equal(pvtau1.pose, pvtau2_pose, tol));
     CHECK(assert_equal(pvtau1.vel, pvtau2_velocity, tol));
   }
@@ -559,8 +551,7 @@ TEST(Interpolator, FrameTranslationSE2) {
         timestep * ratio);
     // Transform pvtau2 back to the original frame
     Pose2 pvtau2_pose = Pose2(Rot2::Identity(), -T_frame).compose(pvtau2.pose);
-    Vector3 pvtau2_velocity =
-        pvtau2.vel;  // body-frame velocity is invariant
+    Vector3 pvtau2_velocity = pvtau2.vel;  // body-frame velocity is invariant
     double tol = 1e-8;  // should be exact for SE(2) translation
     CHECK(assert_equal(pvtau1.pose, pvtau2_pose, tol));
     CHECK(assert_equal(pvtau1.vel, pvtau2_velocity, tol));
@@ -585,8 +576,7 @@ TEST(Interpolator, FrameTranslationSE3) {
         timestep * ratio);
     // Transform pvtau2 back to the original frame
     Pose3 pvtau2_pose = Pose3(Rot3::Identity(), -T_frame).compose(pvtau2.pose);
-    Vector6 pvtau2_velocity =
-        pvtau2.vel;  // body-frame velocity is invariant
+    Vector6 pvtau2_velocity = pvtau2.vel;  // body-frame velocity is invariant
     double tol = 1e-8;  // should be exact for SE(3) translation
     CHECK(assert_equal(pvtau1.pose, pvtau2_pose, tol));
     CHECK(assert_equal(pvtau1.vel, pvtau2_velocity, tol));
@@ -616,8 +606,7 @@ TEST(Interpolator, FrameRotationSE2) {
 
     // Transform pvtau2 back to the original frame
     Pose2 pvtau2_pose = T_frame.inverse().compose(pvtau2.pose);
-    Vector3 pvtau2_velocity =
-        pvtau2.vel;  // body-frame velocity is invariant
+    Vector3 pvtau2_velocity = pvtau2.vel;  // body-frame velocity is invariant
 
     double tol = 1e-3;  // larger tolerance since Lie groups have approximations
     CHECK(assert_equal(pvtau1.pose, pvtau2_pose, tol));
@@ -647,8 +636,7 @@ TEST(Interpolator, FrameRotationSE3) {
         timestep * ratio);
     // Transform pvtau2 back to the original frame
     Pose3 pvtau2_pose = T_frame.inverse().compose(pvtau2.pose);
-    Vector6 pvtau2_velocity =
-        pvtau2.vel;  // body-frame velocity is invariant
+    Vector6 pvtau2_velocity = pvtau2.vel;  // body-frame velocity is invariant
     double tol = 1e-2;  // larger tolerance since Lie groups have approximations
     CHECK(assert_equal(pvtau1.pose, pvtau2_pose, tol));
     CHECK(assert_equal(pvtau1.vel, pvtau2_velocity, tol));
@@ -674,15 +662,14 @@ TEST(Interpolator, PoseJacobians) {
   vector<Matrix> H(8);
   auto [pose_est, vel_est] = interp.interpolatePoseAndVelocity(
       TimestampedPoseVelocity<Pose3>(p0_se3, v0_se3, 0.0),
-      TimestampedPoseVelocity<Pose3>(p2_se3, v2_se3, 2 * timestep),
-      timestep, &H);
+      TimestampedPoseVelocity<Pose3>(p2_se3, v2_se3, 2 * timestep), timestep,
+      &H);
 
   // define lambda function for derivatives
   auto f = [&](auto& p0, auto& v0, auto& p2, auto& v2) {
     auto result = interp.interpolatePoseAndVelocity(
         TimestampedPoseVelocity<Pose3>(p0, v0, 0.0),
-        TimestampedPoseVelocity<Pose3>(p2, v2, 2 * timestep),
-        timestep);
+        TimestampedPoseVelocity<Pose3>(p2, v2, 2 * timestep), timestep);
 
     return p1_se3.logmap(result.pose);
   };
@@ -703,10 +690,10 @@ TEST(Interpolator, PoseJacobians) {
           f, p0_se3, v0_se3, p2_se3, v2_se3, delta);
 
   double tol = 1e-3;
-  EXPECT(assert_equal(J_p0_num,H[0], tol));
-  EXPECT(assert_equal(J_v0_num,H[1], tol));
-  EXPECT(assert_equal(J_p2_num,H[2], tol));
-  EXPECT(assert_equal(J_v2_num,H[3], tol));
+  EXPECT(assert_equal(J_p0_num, H[0], tol));
+  EXPECT(assert_equal(J_v0_num, H[1], tol));
+  EXPECT(assert_equal(J_p2_num, H[2], tol));
+  EXPECT(assert_equal(J_v2_num, H[3], tol));
 }
 
 /* *************************************************************************
@@ -728,15 +715,14 @@ TEST(Interpolator, VelJacobians) {
   vector<Matrix> H(8);
   auto [pose_est, vel_est] = interp.interpolatePoseAndVelocity(
       TimestampedPoseVelocity<Pose3>(p0_se3, v0_se3, 0.0),
-      TimestampedPoseVelocity<Pose3>(p2_se3, v2_se3, 2 * timestep),
-      timestep, &H);
+      TimestampedPoseVelocity<Pose3>(p2_se3, v2_se3, 2 * timestep), timestep,
+      &H);
 
   // define lambda function for derivatives
   auto f = [&](auto& p0, auto& v0, auto& p2, auto& v2) {
     auto result = interp.interpolatePoseAndVelocity(
         TimestampedPoseVelocity<Pose3>(p0, v0, 0.0),
-        TimestampedPoseVelocity<Pose3>(p2, v2, 2 * timestep),
-        timestep);
+        TimestampedPoseVelocity<Pose3>(p2, v2, 2 * timestep), timestep);
     Vector6 err = result.vel - v1_se3;
     return err;
   };
@@ -771,18 +757,18 @@ TEST(Interpolator, LambdaPsiConsistencyP1) {
   Interpolator<Point1> interpolator(Q_p1);
   for (double ratio = 0.1; ratio <= 0.9; ratio += 0.1) {
     // get lambda and psi using Eq. (11.41) in the book
-    auto [Lambda_book, Psi_book] = interpolator.getLambdaPsi(
-        0.0, timestep, timestep * ratio);
-    
+    auto [Lambda_book, Psi_book] =
+        interpolator.getLambdaPsi(0.0, timestep, timestep * ratio);
+
     // get lambda and psi using Eq. (5.23) in the paper
     auto tpvk = TimestampedPoseVelocity<Point1>(p0_p1, v0_p1, 0.0);
     auto tpvkp1 = TimestampedPoseVelocity<Point1>(p1_p1, v1_p1, timestep);
-    auto pvtau = interpolator.interpolatePoseAndVelocity(
-        tpvk, tpvkp1, timestep * ratio);
+    auto pvtau =
+        interpolator.interpolatePoseAndVelocity(tpvk, tpvkp1, timestep * ratio);
     auto tpvtau = TimestampedPoseVelocity<Point1>(pvtau, timestep * ratio);
     Matrix Lambda_paper, Psi_paper;
-    (void) interpolator.computeConditionalCov(
-        tpvk, tpvkp1, tpvtau, &Lambda_paper, &Psi_paper);
+    (void)interpolator.computeConditionalCov(tpvk, tpvkp1, tpvtau,
+                                             &Lambda_paper, &Psi_paper);
     EXPECT(assert_equal(Lambda_paper, Lambda_book));
     EXPECT(assert_equal(Psi_paper, Psi_book));
   }
@@ -793,18 +779,18 @@ TEST(Interpolator, LambdaPsiConsistencyP2) {
   Interpolator<Point2> interpolator(Q_p2);
   for (double ratio = 0.1; ratio <= 0.9; ratio += 0.1) {
     // get lambda and psi using Eq. (11.41) in the book
-    auto [Lambda_book, Psi_book] = interpolator.getLambdaPsi(
-        0.0, timestep, timestep * ratio);
-    
-        // get lambda and psi using Eq. (5.23) in the paper
+    auto [Lambda_book, Psi_book] =
+        interpolator.getLambdaPsi(0.0, timestep, timestep * ratio);
+
+    // get lambda and psi using Eq. (5.23) in the paper
     auto tpvk = TimestampedPoseVelocity<Point2>(p0_p2, v0_p2, 0.0);
     auto tpvkp1 = TimestampedPoseVelocity<Point2>(p1_p2, v1_p2, timestep);
-    auto pvtau = interpolator.interpolatePoseAndVelocity(
-        tpvk, tpvkp1, timestep * ratio);
+    auto pvtau =
+        interpolator.interpolatePoseAndVelocity(tpvk, tpvkp1, timestep * ratio);
     auto tpvtau = TimestampedPoseVelocity<Point2>(pvtau, timestep * ratio);
     Matrix Lambda_paper, Psi_paper;
-    (void) interpolator.computeConditionalCov(
-        tpvk, tpvkp1, tpvtau, &Lambda_paper, &Psi_paper);
+    (void)interpolator.computeConditionalCov(tpvk, tpvkp1, tpvtau,
+                                             &Lambda_paper, &Psi_paper);
     EXPECT(assert_equal(Lambda_paper, Lambda_book));
     EXPECT(assert_equal(Psi_paper, Psi_book));
   }
@@ -815,48 +801,48 @@ TEST(Interpolator, LambdaPsiConsistencyP3) {
   Interpolator<Point3> interpolator(Q_p3);
   for (double ratio = 0.1; ratio <= 0.9; ratio += 0.1) {
     // get lambda and psi using Eq. (11.41) in the book
-    auto [Lambda_book, Psi_book] = interpolator.getLambdaPsi(
-        0.0, timestep, timestep * ratio);
-    
+    auto [Lambda_book, Psi_book] =
+        interpolator.getLambdaPsi(0.0, timestep, timestep * ratio);
+
     // get lambda and psi using Eq. (5.23) in the paper
     auto tpvk = TimestampedPoseVelocity<Point3>(p0_p3, v0_p3, 0.0);
     auto tpvkp1 = TimestampedPoseVelocity<Point3>(p1_p3, v1_p3, timestep);
-    auto pvtau = interpolator.interpolatePoseAndVelocity(
-        tpvk, tpvkp1, timestep * ratio);
+    auto pvtau =
+        interpolator.interpolatePoseAndVelocity(tpvk, tpvkp1, timestep * ratio);
     auto tpvtau = TimestampedPoseVelocity<Point3>(pvtau, timestep * ratio);
     Matrix Lambda_paper, Psi_paper;
-    (void) interpolator.computeConditionalCov(
-        tpvk, tpvkp1, tpvtau, &Lambda_paper, &Psi_paper);
+    (void)interpolator.computeConditionalCov(tpvk, tpvkp1, tpvtau,
+                                             &Lambda_paper, &Psi_paper);
     EXPECT(assert_equal(Lambda_paper, Lambda_book));
     EXPECT(assert_equal(Psi_paper, Psi_book));
   }
 }
-
 
 /* ************************************************************************* */
 TEST(Interpolator, LambdaPsiExternal) {
   Interpolator<Point3> interpolator(Q_p3);
   using MatPair = Interpolator<Point3>::LambdaPsiMats;
   double ratio = 0.5;
-  // get lambda and psi 
-  auto lambda_psi_ptr = std::make_shared<MatPair>(interpolator.getLambdaPsi(
-      0.0, timestep, timestep * ratio));
-  
+  // get lambda and psi
+  auto lambda_psi_ptr = std::make_shared<MatPair>(
+      interpolator.getLambdaPsi(0.0, timestep, timestep * ratio));
+
   // get lambda and psi using Eq. (5.23) in the paper
   auto tpvk = TimestampedPoseVelocity<Point3>(p0_p3, v0_p3, 0.0);
   auto tpvkp1 = TimestampedPoseVelocity<Point3>(p1_p3, v1_p3, timestep);
-  auto pvtau = interpolator.interpolatePoseAndVelocity(
-      tpvk, tpvkp1, timestep * ratio);
+  auto pvtau =
+      interpolator.interpolatePoseAndVelocity(tpvk, tpvkp1, timestep * ratio);
   auto pvtau_alt = interpolator.interpolatePoseAndVelocity(
-      tpvk, tpvkp1, timestep * ratio, nullptr, nullptr, nullptr, lambda_psi_ptr);
+      tpvk, tpvkp1, timestep * ratio, nullptr, nullptr, nullptr,
+      lambda_psi_ptr);
 
   EXPECT(assert_equal(pvtau.pose, pvtau_alt.pose));
   EXPECT(assert_equal(pvtau.vel, pvtau_alt.vel));
 }
 
 // The tests below are commented out because the required tolerance are ~1e1
-// /* ************************************************************************* */
-// TEST(Interpolator, LambdaPsiConsistencySE2) {
+// /* *************************************************************************
+// */ TEST(Interpolator, LambdaPsiConsistencySE2) {
 //   Interpolator<Pose2> interpolator(Q_se2);
 //   for (double ratio = 0.1; ratio <= 0.9; ratio += 0.1) {
 //     // get lambda and psi using Eq. (11.41) in the book
@@ -867,16 +853,17 @@ TEST(Interpolator, LambdaPsiExternal) {
 //     auto pvkp1 = TimestampedPoseVelocity<Pose2>(p1_se2, v1_se2, timestep);
 //     auto pvtau = interpolator.interpolatePoseAndVelocity(
 //         pvk, pvkp1, timestep * ratio);
-//     auto tpvtau = TimestampedPoseVelocity<Pose2>(pvtau.pose, pvtau.vel, timestep * ratio);
-//     Matrix Lambda_paper, Psi_paper;
-//     (void) interpolator.computeConditionalCov(
+//     auto tpvtau = TimestampedPoseVelocity<Pose2>(pvtau.pose, pvtau.vel,
+//     timestep * ratio); Matrix Lambda_paper, Psi_paper; (void)
+//     interpolator.computeConditionalCov(
 //         pvk, pvkp1, tpvtau, &Lambda_paper, &Psi_paper);
 //     EXPECT(assert_equal(Lambda_paper, Lambda_book));
 //     EXPECT(assert_equal(Psi_paper, Psi_book));
 //   }
 // }
 
-// // /* ************************************************************************* */
+// // /*
+// ************************************************************************* */
 // TEST(Interpolator, LambdaPsiConsistencySE3) {
 //   Interpolator<Pose3> interpolator(Q_se3);
 //   for (double ratio = 0.1; ratio <= 0.9; ratio += 0.1) {
@@ -888,12 +875,12 @@ TEST(Interpolator, LambdaPsiExternal) {
 //     auto pvkp1 = TimestampedPoseVelocity<Pose3>(p1_se3, v1_se3, timestep);
 //     auto pvtau = interpolator.interpolatePoseAndVelocity(
 //         pvk, pvkp1, timestep * ratio);
-//     auto tpvtau = TimestampedPoseVelocity<Pose3>(pvtau.pose, pvtau.vel, timestep * ratio);
-//     Matrix Lambda_paper(6,6), Psi_paper(6,6);
-//     (void) interpolator.computeConditionalCov(
+//     auto tpvtau = TimestampedPoseVelocity<Pose3>(pvtau.pose, pvtau.vel,
+//     timestep * ratio); Matrix Lambda_paper(6,6), Psi_paper(6,6); (void)
+//     interpolator.computeConditionalCov(
 //         pvk, pvkp1, tpvtau, &Lambda_paper, &Psi_paper);
-//     double tol = 1e-2;  // larger tolerance since Lie groups have approximations
-//     EXPECT(assert_equal(Lambda_paper, Lambda_book,tol));
+//     double tol = 1e-2;  // larger tolerance since Lie groups have
+//     approximations EXPECT(assert_equal(Lambda_paper, Lambda_book,tol));
 //     std::cout << "Lambda_paper: \n"
 //               << std::setprecision(3) << Lambda_paper << std::endl;
 //     EXPECT(assert_equal(Psi_paper, Psi_book,tol));
