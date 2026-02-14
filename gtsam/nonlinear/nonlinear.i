@@ -427,6 +427,26 @@ class ISAM2DoglegParams {
   void setVerbose(bool verbose);
 };
 
+class ISAM2DoglegLineSearchParams {
+  ISAM2DoglegLineSearchParams();
+
+  void print(const std::string str = "") const 
+
+  /** Getters and Setters for all properties */
+  double getMinDelta() const;
+  double getMaxDelta() const;
+  double getStepSize() const;
+  double getSufficientDecreaseCoeff() const;
+  double getWildfireThreshold() const;
+  bool isVerbose() const;
+  void setMinDelta(double min_delta);
+  void setMaxDelta(double max_delta);
+  void setStepSize(double step_size) ;
+  void setSufficientDecreaseCoeff(double sufficient_decrease_coeff);
+  void setWildfireThreshold(double wildfire_threshold);
+  void setVerbose(bool verbose);
+};
+
 class ISAM2ThresholdMapValue {
   ISAM2ThresholdMapValue(char c, gtsam::Vector thresholds);
   ISAM2ThresholdMapValue(const gtsam::ISAM2ThresholdMapValue& other);
@@ -456,6 +476,7 @@ class ISAM2Params {
   void setOptimizationParams(
       const gtsam::ISAM2GaussNewtonParams& gauss_newton__params);
   void setOptimizationParams(const gtsam::ISAM2DoglegParams& optimizationParams);
+  void setOptimizationParams(const gtsam::ISAM2DoglegLineSearchParams& optimizationParams);
   void setRelinearizeThreshold(double relinearizeThreshold);
   void setRelinearizeThreshold(const gtsam::ISAM2ThresholdMap& threshold_map);
   string getFactorization() const;
@@ -560,6 +581,9 @@ class ISAM2 {
 
   void printStats() const;
   gtsam::VectorValues gradientAtZero() const;
+  std::pair<gtsam::KeySet, bool> predictUpdateInfo(
+      const gtsam::NonlinearFactorGraph& newFactors, const gtsam::Values& newTheta,
+      const gtsam::ISAM2UpdateParams& updateParams) const;
 
   string dot(const gtsam::KeyFormatter& keyFormatter =
                  gtsam::DefaultKeyFormatter) const;
