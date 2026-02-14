@@ -425,36 +425,6 @@ class Interpolator {
           localGlobalStateJacsPreComp = nullptr) const;
 
   /**
-   * @brief Fast interpolation using the small-angle approximation.
-   *
-   * For small rotational displacements this variant uses linearized/small-angle
-   * approximations to speed up computation while retaining reasonable
-   * accuracy. It supports optional Jacobian and covariance outputs and may
-   * accept precomputed Lambda/Psi for reuse.
-   *
-   * @param tPoseVel_k Timestamped pose/velocity at the left border.
-   * @param tPoseVel_kp1 Timestamped pose/velocity at the right border.
-   * @param t_tau Interpolation time.
-   * @param H Optional output pointer to a vector of Jacobian blocks.
-   * @param mainSolveMarginalMatrix Optional shared pointer to the main-solve
-   * marginal covariance.
-   * @param covarianceOut Optional output pointer for the resulting covariance
-   * matrix.
-   * @param LambdaPsiPreComp Optional precomputed Lambda/Psi matrices to reuse
-   * work.
-   * @return PoseVel Interpolated pose and velocity at `t_tau` using small-angle
-   * approx.
-   */
-  PoseVel interpolatePoseAndVelocitySmallAngle(
-      const TimestampedPoseVel& tPoseVel_k,
-      const TimestampedPoseVel& tPoseVel_kp1, double t_tau,
-      OptionalMatrixVecType H = nullptr,
-      const std::shared_ptr<Matrix>& mainSolveMarginalMatrix = nullptr,
-      Matrix* covarianceOut = nullptr,
-      const std::shared_ptr<const LambdaPsiMats>& LambdaPsiPreComp =
-          nullptr) const;
-
-  /**
    * @brief Compute joint marginal covariances for requested state intervals.
    *
    * Given a set of query buckets mapping intervals to the contained

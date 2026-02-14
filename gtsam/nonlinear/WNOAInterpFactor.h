@@ -74,8 +74,7 @@ namespace gtsam {
  *     flattened jacobian blocks, and conditional covariances).
  *   - Option to keep the original noise model fixed (no covariance
  * augmentation).
- *   - Optional precomputation of interpolation Lambda/Psi matrices and
- *     small-angle approximation for pose interpolation.
+ *   - Optional precomputation of interpolation Lambda/Psi matrices 
  *   - Exposes helpers to obtain mappings between interpolated keys and their
  *     bordering estimated states.
  *
@@ -138,9 +137,6 @@ class WNOAInterpFactor : public NoiseModelFactor {
   };
   std::vector<InnerKeyMapping> inner_key_mappings_;
 
-  // CLEANUP: why do we make this comment here?
-  // (No internal flattened Jacobian representation; we use nested maps unless
-  // passed externally)
 
  public:
   /**

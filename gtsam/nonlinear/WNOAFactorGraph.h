@@ -140,7 +140,6 @@ class WNOAFactorGraph : public ExpressionFactorGraph {
    */
   double error(const Values& values) const;
 
-  // CLEANUP: Does this constructor need to be in the header?
   /**
    * @brief Construct a `WNOAFactorGraph` with interpolation metadata.
    *
@@ -153,59 +152,8 @@ class WNOAFactorGraph : public ExpressionFactorGraph {
    */
   WNOAFactorGraph(
       unordered_map<StateData, pair<StateData, StateData>> interp_map,
-      const Eigen::Vector<double, dim> Q_psd, bool fixed_noise_model = false)
-      : interpolator_(Q_psd),
-        interp_to_borders_map_(std::move(interp_map)),
-        fixed_noise_model_(fixed_noise_model) {
-    // Collect unique keys for boundary states to avoid repeated Values::at
-    // lookups.
-    border_pose_keys_.reserve(interp_to_borders_map_.size() * 2);
-    border_vel_keys_.reserve(interp_to_borders_map_.size() * 2);
-    for (const auto& kv : interp_to_borders_map_) {
-      const auto& border_states = kv.second;
-      const auto& left = border_states.first;
-      const auto& right = border_states.second;
-      border_pose_keys_.insert(left.pose);
-      border_pose_keys_.insert(right.pose);
-      border_vel_keys_.insert(left.vel);
-      border_vel_keys_.insert(right.vel);
-
-      double tau = kv.first.time;
-      double t_k = left.time;
-      double t_kp1 = right.time;
-      interp_to_LambdaPsi_vec_.emplace_back(
-          kv.first, std::make_shared<LambdaPsiMats>(
-                        interpolator_.getLambdaPsi(t_k, t_kp1, tau)));
-    }
-
-    // Convert map to vector for optimal parallel access patterns
-    interp_to_borders_vec_ =
-        std::vector<std::pair<StateData, std::pair<StateData, StateData>>>(
-            interp_to_borders_map_.begin(), interp_to_borders_map_.end());
-
-    // Build compact batch vector: for each unique border pair, list indices of
-    // interp states
-    struct LocalBorderHash {
-      size_t operator()(
-          const std::pair<StateData, StateData>& p) const noexcept {
-        const size_t h1 = std::hash<StateData>{}(p.first);
-        const size_t h2 = std::hash<StateData>{}(p.second);
-        return h1 ^ (h2 + 0x9e3779b9 + (h1 << 6) + (h1 >> 2));
-      }
-    };
-    std::unordered_map<std::pair<StateData, StateData>, std::vector<size_t>,
-                       LocalBorderHash>
-        tmp;
-    tmp.reserve(interp_to_borders_vec_.size());
-    for (size_t idx = 0; idx < interp_to_borders_vec_.size(); ++idx) {
-      const auto& borders =
-          interp_to_borders_vec_[idx].second;  // pair<StateData, StateData>
-      tmp[borders].push_back(idx);
-    }
-    border_batches_.clear();
-    border_batches_.reserve(tmp.size());
-    for (auto& kv : tmp) border_batches_.emplace_back(std::move(kv));
-  }
+      const Eigen::Vector<double, dim> Q_psd, bool fixed_noise_model = false);
+      
 };
 
 }  // namespace gtsam
