@@ -840,58 +840,6 @@ TEST(Interpolator, LambdaPsiExternal) {
   EXPECT(assert_equal(pvtau.vel, pvtau_alt.vel));
 }
 
-// The tests below are commented out because the required tolerance are ~1e1
-// /* *************************************************************************
-// */ TEST(Interpolator, LambdaPsiConsistencySE2) {
-//   Interpolator<Pose2> interpolator(Q_se2);
-//   for (double ratio = 0.1; ratio <= 0.9; ratio += 0.1) {
-//     // get lambda and psi using Eq. (11.41) in the book
-//     auto [Lambda_book, Psi_book] = interpolator.getLambdaPsi(
-//         0.0, timestep, timestep * ratio);
-//     // get lambda and psi using Eq. (5.23) in the paper
-//     auto pvk = TimestampedPoseVelocity<Pose2>(p0_se2, v0_se2, 0.0);
-//     auto pvkp1 = TimestampedPoseVelocity<Pose2>(p1_se2, v1_se2, timestep);
-//     auto pvtau = interpolator.interpolatePoseAndVelocity(
-//         pvk, pvkp1, timestep * ratio);
-//     auto tpvtau = TimestampedPoseVelocity<Pose2>(pvtau.pose, pvtau.vel,
-//     timestep * ratio); Matrix Lambda_paper, Psi_paper; (void)
-//     interpolator.computeConditionalCov(
-//         pvk, pvkp1, tpvtau, &Lambda_paper, &Psi_paper);
-//     EXPECT(assert_equal(Lambda_paper, Lambda_book));
-//     EXPECT(assert_equal(Psi_paper, Psi_book));
-//   }
-// }
-
-// // /*
-// ************************************************************************* */
-// TEST(Interpolator, LambdaPsiConsistencySE3) {
-//   Interpolator<Pose3> interpolator(Q_se3);
-//   for (double ratio = 0.1; ratio <= 0.9; ratio += 0.1) {
-//     // get lambda and psi using Eq. (11.41) in the book
-//     auto [Lambda_book, Psi_book] = interpolator.getLambdaPsi(
-//         0.0, timestep, timestep * ratio);
-//     // get lambda and psi using Eq. (5.23) in the paper
-//     auto pvk = TimestampedPoseVelocity<Pose3>(p0_se3, v0_se3, 0.0);
-//     auto pvkp1 = TimestampedPoseVelocity<Pose3>(p1_se3, v1_se3, timestep);
-//     auto pvtau = interpolator.interpolatePoseAndVelocity(
-//         pvk, pvkp1, timestep * ratio);
-//     auto tpvtau = TimestampedPoseVelocity<Pose3>(pvtau.pose, pvtau.vel,
-//     timestep * ratio); Matrix Lambda_paper(6,6), Psi_paper(6,6); (void)
-//     interpolator.computeConditionalCov(
-//         pvk, pvkp1, tpvtau, &Lambda_paper, &Psi_paper);
-//     double tol = 1e-2;  // larger tolerance since Lie groups have
-//     approximations EXPECT(assert_equal(Lambda_paper, Lambda_book,tol));
-//     std::cout << "Lambda_paper: \n"
-//               << std::setprecision(3) << Lambda_paper << std::endl;
-//     EXPECT(assert_equal(Psi_paper, Psi_book,tol));
-//     std::cout << "Psi_paper: \n"
-//               << std::setprecision(3) << Psi_paper << std::endl;
-//   }
-// }
-
-/* ************************************************************************* */
-/* Todo: write better tests for covariance interpolation */
-
 int main() {
   TestResult tr;
   return TestRegistry::runAllTests(tr);

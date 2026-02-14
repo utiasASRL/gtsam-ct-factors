@@ -13,7 +13,7 @@ namespace gtsam {
 // ---- Constructors ----
 template <typename PoseType>
 Interpolator<PoseType>::Interpolator(
-    const VectorN& Q_psd, bool small_angle_approx,
+    const VectorN& Q_psd,
     std::function<Matrix(double dt)> transitionFunction,
     std::function<Matrix(double dt, const VectorN& Q_psd)> covarianceFunction,
     std::function<Matrix(double dt, const VectorN& Q_psd)>
@@ -26,7 +26,6 @@ Interpolator<PoseType>::Interpolator(
                          const std::pair<PoseType, VelocityType>&, double)>
         computeJacobianNext)
     : Q_psd_(Q_psd),
-      small_angle_approx_(small_angle_approx),
       transitionFunction_(transitionFunction),
       covarianceFunction_(covarianceFunction),
       inverseCovarianceFunction_(inverseCovarianceFunction),
@@ -34,9 +33,8 @@ Interpolator<PoseType>::Interpolator(
       computeJacobianNext_(computeJacobianNext) {}
 
 template <typename PoseType>
-Interpolator<PoseType>::Interpolator(const VectorN& Q_psd,
-                                     bool small_angle_approx)
-    : Interpolator(Q_psd, small_angle_approx,
+Interpolator<PoseType>::Interpolator(const VectorN& Q_psd)
+    : Interpolator(Q_psd,
                    WNOAMotionFactor<PoseType>::transitionFunction,
                    WNOAMotionFactor<PoseType>::buildWNOACovariance,
                    WNOAMotionFactor<PoseType>::buildInverseWNOACovariance,
@@ -100,16 +98,10 @@ Interpolator<PoseType>::interpolatePoseAndVelocity(
   } else {
     // only remaining case is that t_tau is within border states
     // call protected overload of interpolate function
-    if (small_angle_approx_) {
-      return interpolatePoseAndVelocitySmallAngle(
-          tPoseVel_k.value(), tPoseVel_kp1.value(), t_tau, H,
-          mainSolveMarginalMatrix, covarianceOut, LambdaPsiPreComp);
-    } else {
-      return interpolatePoseAndVelocity_(
+    return interpolatePoseAndVelocity_(
           tPoseVel_k.value(), tPoseVel_kp1.value(), t_tau, H,
           mainSolveMarginalMatrix, covarianceOut, LambdaPsiPreComp,
           localStateVecsPreComp, localGlobalStateJacsPreComp);
-    }
   }
 }
 

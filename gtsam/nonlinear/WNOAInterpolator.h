@@ -114,7 +114,6 @@ class Interpolator {
   using MatrixNx2N = Eigen::Matrix<double, dim, 2 * dim>;
 
   VectorN Q_psd_;            // Diagonal power Spectral Density for WNOA
-  bool small_angle_approx_;  // Controls speed/fidelity trade-off
   std::function<Matrix(double dt)> transitionFunction_;
   std::function<Matrix(double dt, const VectorN& Q_psd)> covarianceFunction_;
   std::function<Matrix(double dt, const VectorN& Q_psd)>
@@ -146,8 +145,6 @@ class Interpolator {
    * @brief Construct an Interpolator with custom motion-model functions.
    *
    * @param Q_psd Diagonal power spectral density vector for the motion prior.
-   * @param small_angle_approx If true, use small-angle approximations on Lie
-   * groups.
    * @param transitionFunction Function returning the transition matrix for dt.
    * @param covarianceFunction Function returning process noise covariance for
    * dt and Q_psd.
@@ -159,7 +156,7 @@ class Interpolator {
    * interpolated state with respect to the next bordering state.
    */
   Interpolator(
-      const VectorN& Q_psd, bool small_angle_approx,
+      const VectorN& Q_psd,
       std::function<Matrix(double dt)> transitionFunction,
       std::function<Matrix(double dt, const VectorN& Q_psd)> covarianceFunction,
       std::function<Matrix(double dt, const VectorN& Q_psd)>
@@ -175,10 +172,8 @@ class Interpolator {
    * @brief Default constructor using the WNOA motion model.
    *
    * @param Q_psd Diagonal power spectral density vector for the motion prior.
-   * @param small_angle_approx If true, use small-angle approximations on Lie
-   * groups.
    */
-  Interpolator(const VectorN& Q_psd, bool small_angle_approx = false);
+  Interpolator(const VectorN& Q_psd);
 
   /**
    * @brief Interpolate the pose and velocity at time `t_tau`.

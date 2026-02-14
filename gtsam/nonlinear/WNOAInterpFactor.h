@@ -186,19 +186,16 @@ class WNOAInterpFactor : public NoiseModelFactor {
    * accurate, as it ignores interpolation uncertainty.
    * @param precomp_interp_mats If true, precompute Lambda/Psi matrices for each
    * interpolated state.
-   * @param small_angle_approx If true, enable the small-angle approximation in
-   * interpolation.
    */
   WNOAInterpFactor(const NoiseModelFactor::shared_ptr inner_factor,
                    const set<StateData> estimated_states,
                    const set<StateData> interp_states,
                    const Eigen::Vector<double, dim> Q_psd,
                    const bool fixed_noise_model = false,
-                   const bool precomp_interp_mats = true,
-                   const bool small_angle_approx = false)
+                   const bool precomp_interp_mats = true)
       : Base(inner_factor->noiseModel()),
         inner_factor_(inner_factor),
-        interpolator_(Q_psd, small_angle_approx),
+        interpolator_(Q_psd),
         fixed_noise_model_(fixed_noise_model) {
     // PROCESS INTERPOLATED STATES
     // estimated state iterator
@@ -894,16 +891,13 @@ class WNOAInterpFactor : public NoiseModelFactor {
  * match PoseType).
  * @param fixed_noise If true, do not augment measurement noise models for
  * interpolation.
- * @param small_angle_approx If true, use small-angle approximation for
- * interpolation.
  * @return NonlinearFactorGraph New graph with interpolated states removed and
  * wrapper factors added.
  */
 template <class PoseType>
 NonlinearFactorGraph interpolateFactorGraph(
     const NonlinearFactorGraph& graph, const set<StateData>& estimated_states,
-    const set<StateData>& interp_states, Vector Q_psd, bool fixed_noise = false,
-    bool small_angle_approx = false) {
+    const set<StateData>& interp_states, Vector Q_psd, bool fixed_noise = false) {
   // assert that the pose is the right kind of variable
   static_assert(
       std::is_same_v<typename traits<PoseType>::structure_category,
@@ -986,7 +980,7 @@ NonlinearFactorGraph interpolateFactorGraph(
       // Define and add factor to new graph
       const auto wrapped_factor = std::make_shared<WNOAInterpFactor<PoseType>>(
           nmfactor, factor_estimated_states, factor_interp_states, Q_psd,
-          fixed_noise, small_angle_approx);
+          fixed_noise);
       new_graph.add(wrapped_factor);
     }
   }
