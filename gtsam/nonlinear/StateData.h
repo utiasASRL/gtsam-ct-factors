@@ -44,7 +44,7 @@ struct StateData {
   /**
    * @brief Compare by timestamp (ascending).
    *
-   * Useful to sort state lists in chronological order.
+   * Useful to sort state lists in chronological order. Allows sets to be ordered by time.
    */
   bool operator<(const StateData& other) const { return this->time < other.time; }
 
