@@ -576,7 +576,7 @@ namespace gtsam {
   /* *********************************************************************** */
   template <class CLIQUE>
   void BayesTree<CLIQUE>::traverseClique(gtsam::KeySet& traversedKeys,
-                                     const sharedClique& clique) const {
+                                         const sharedClique& clique) const {
     traversedKeys.insert(clique->conditional()->frontals().begin(),
                          clique->conditional()->frontals().end());
   }
@@ -584,15 +584,14 @@ namespace gtsam {
   /* *********************************************************************** */
   template <class CLIQUE>
   void BayesTree<CLIQUE>::traversePath(gtsam::KeySet& traversedKeys,
-                                   const sharedClique& clique) const {
+                                       const sharedClique& clique) const {
     // base case is nullptr, if so we do nothing and return empties above
     if (clique) {
       // traverse me
       this->traverseClique(traversedKeys, clique);
       // traverse path above me
-      this->traversePath(
-          traversedKeys,
-          typename sharedClique::shared_ptr(clique->parent_.lock()));
+      this->traversePath(traversedKeys, typename sharedClique::shared_ptr(
+                                            clique->parent_.lock()));
     }
   }
 

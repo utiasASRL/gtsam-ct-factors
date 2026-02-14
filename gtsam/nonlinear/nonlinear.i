@@ -441,7 +441,7 @@ class ISAM2DoglegLineSearchParams {
   bool isVerbose() const;
   void setMinDelta(double min_delta);
   void setMaxDelta(double max_delta);
-  void setStepSize(double step_size) ;
+  void setStepSize(double step_size);
   void setSufficientDecreaseCoeff(double sufficient_decrease_coeff);
   void setWildfireThreshold(double wildfire_threshold);
   void setVerbose(bool verbose);

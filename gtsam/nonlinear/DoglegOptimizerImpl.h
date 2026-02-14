@@ -343,8 +343,7 @@ typename DoglegOptimizerImpl::IterationResult DoglegLineSearchImpl::Iterate(
     double new_F_error = f.error(x_d);
 
     if (verbose)
-      std::cout << "Step: " << step << " | Error: " << new_F_error
-                << std::endl;
+      std::cout << "Step: " << step << " | Error: " << new_F_error << std::endl;
 
     // Check step acceptance conditions
     bool update_decreased_error = new_F_error < result.f_error;

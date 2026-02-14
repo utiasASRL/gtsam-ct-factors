@@ -364,7 +364,7 @@ TEST(DogLegOptimizer, VariableUpdate) {
  * To enable variable changes to smart factors, ISAM2 was updated to add
  * variables before updating the delta. This however can cause a structural
  * miss-match between dx_n and dx_u during ComputeBlend causing this test to
- * crash with an error before the fix. 
+ * crash with an error before the fix.
  * ref: https://github.com/borglab/gtsam/issues/301
  */
 TEST(DogLegOptimizer, ComputeBlend) {
@@ -392,9 +392,9 @@ TEST(DogLegOptimizer, ComputeBlend) {
   }
   for (size_t i = 0; i < 3; i++) {
     NonlinearFactorGraph graph;
-    graph.emplace_shared<BetweenFactor<Pose2>>(i, i+1, Pose2(1,0,0), model);
+    graph.emplace_shared<BetweenFactor<Pose2>>(i, i + 1, Pose2(1, 0, 0), model);
     Values values;
-    values.insert(i+1, Pose2(i + 5, i + 5, 3));
+    values.insert(i + 1, Pose2(i + 5, i + 5, 3));
     isam2.update(graph, values, update_params);
   }
 

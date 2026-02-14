@@ -806,7 +806,8 @@ void ISAM2::updateDelta(bool forceFullSolve) const {
         DoglegLineSearchImpl::Iterate(
             dlls_params.getMinDelta(), dlls_params.getMaxDelta(),
             dlls_params.getStepSize(), dlls_params.getSufficientDecreaseCoeff(),
-            dx_u, deltaNewton_, *this, nonlinearFactors_, theta_, dlls_params.isVerbose()));
+            dx_u, deltaNewton_, *this, nonlinearFactors_, theta_,
+            dlls_params.isVerbose()));
 
     // Update Delta and linear step
     delta_ = doglegResult.dx_d;
