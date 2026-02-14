@@ -430,7 +430,7 @@ class ISAM2DoglegParams {
 class ISAM2DoglegLineSearchParams {
   ISAM2DoglegLineSearchParams();
 
-  void print(const std::string str = "") const 
+  void print(const std::string str = "") const;
 
   /** Getters and Setters for all properties */
   double getMinDelta() const;
