@@ -703,13 +703,9 @@ TEST(GncOptimizer, nonNoiseFactorBehavior) {
 
   GncParams<LevenbergMarquardtParams> gncParams;
   gncParams.setLossType(GncLossType::GM);
+  gncParams.setAllowNonNoiseModelFactors(true);
   auto gnc = GncOptimizer<GncParams<LevenbergMarquardtParams>>(nfg, initial,
                                                                gncParams);
-
-  // checks if non noise model factors as set as knownInliers
-  const auto& known = gnc.getParams().knownInliers;
-  CHECK(known.size() == 1);
-  CHECK(known[0] == 1);
 
   // check if the weight is carried correctly and non noise model factor is unchanged
   Vector weights = Vector::Ones(nfg.size());

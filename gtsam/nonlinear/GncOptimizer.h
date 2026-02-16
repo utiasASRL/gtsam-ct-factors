@@ -29,6 +29,7 @@
 #include <gtsam/nonlinear/GncParams.h>
 #include <gtsam/nonlinear/NonlinearFactorGraph.h>
 #include <gtsam/nonlinear/internal/ChiSquaredInverse.h>
+#include <set>
 
 namespace gtsam {
 /*
@@ -52,6 +53,7 @@ class GncOptimizer {
   GncParameters params_; ///< GNC parameters.
   Vector weights_;  ///< Weights associated to each factor in GNC (this could be a local variable in optimize, but it is useful to make it accessible from outside).
   Vector barcSq_;  ///< Inlier thresholds. A factor is considered an inlier if factor.error() < barcSq_[i] (where i is the position of the factor in the factor graph. Note that factor.error() whitens by the covariance.
+  std::set<size_t> knownInliers_; ///< Set of known Inliers for the Gnc Optimization process
 
  public:
   /// Constructor.
@@ -61,14 +63,18 @@ class GncOptimizer {
         params_(params) {
 
     // make sure all noiseModels are Gaussian or convert to Gaussian
+    knownInliers_.insert(params.knownInliers.begin(), params.knownInliers.end());
     nfg_.resize(graph.size());
     for (size_t i = 0; i < graph.size(); i++) {
       if (graph[i]) {
         NoiseModelFactor::shared_ptr factor = graph.at<NoiseModelFactor>(i);
         if (!factor) {
-          // Non-NoiseModelFactor (e.g. KarcherMeanFactorPose3).
+          if (!params.allow_non_noisemodel_factors) {
+            throw std::runtime_error("GncOptimizer::constructor: the user must set allow_non_noisemodel_factors as "
+              " true if the factor graph contains factors without noise model.");
+          }
           nfg_[i] = graph[i];
-          params_.knownInliers.push_back(i);
+          knownInliers_.insert(i);
           continue;
         }
         auto robust =
@@ -78,16 +84,10 @@ class GncOptimizer {
       }
     }
 
-    // Ensure known inliers are sorted/unique before set operations.
-    std::sort(params_.knownInliers.begin(), params_.knownInliers.end());
-    params_.knownInliers.erase(
-        std::unique(params_.knownInliers.begin(), params_.knownInliers.end()),
-        params_.knownInliers.end());
-
     // check that known inliers and outliers make sense:
     std::vector<size_t> inconsistentlySpecifiedWeights; // measurements the user has incorrectly specified
     // to be BOTH known inliers and known outliers
-    std::set_intersection(params.knownInliers.begin(),params.knownInliers.end(),
+    std::set_intersection(knownInliers_.begin(), knownInliers_.end(),
                         params.knownOutliers.begin(),params.knownOutliers.end(),
                         std::inserter(inconsistentlySpecifiedWeights, inconsistentlySpecifiedWeights.begin()));
     if(inconsistentlySpecifiedWeights.size() > 0){ // if we have inconsistently specified weights, we throw an exception
@@ -96,8 +96,8 @@ class GncOptimizer {
           " to be BOTH a known inlier and a known outlier.");
     }
     // check that known inliers are in the graph
-    for (size_t i = 0; i < params.knownInliers.size(); i++){
-      if( params.knownInliers[i] > nfg_.size()-1 ){ // outside graph
+    for (size_t i: knownInliers_){
+      if( i > nfg_.size()-1 ){ // outside graph
         throw std::runtime_error("GncOptimizer::constructor: the user has selected one or more measurements"
                   "that are not in the factor graph to be known inliers.");
       }
@@ -211,7 +211,7 @@ class GncOptimizer {
     // maximum residual errors at initialization
     // For GM: if residual error is small, mu -> 0
     // For TLS: if residual error is small, mu -> -1
-    int nrUnknownInOrOut = nfg_.size() - ( params_.knownInliers.size() + params_.knownOutliers.size() );
+    int nrUnknownInOrOut = nfg_.size() - ( knownInliers_.size() + params_.knownOutliers.size() );
     // ^^ number of measurements that are not known to be inliers or outliers (GNC will need to figure them out)
     if (mu <= 0 || nrUnknownInOrOut == 0) { // no need to even call GNC in this case
       if (mu <= 0 && params_.verbosity >= GncParameters::Verbosity::SUMMARY) {
@@ -427,7 +427,7 @@ class GncOptimizer {
       if (nfg_[i]) {
         auto factor = nfg_.at<NoiseModelFactor>(i);
         if (!factor) {
-          // Keep non-NoiseModel factors as-is.
+          // Keep non-NoiseModel factors same.
           newGraph[i] = nfg_[i];
           continue;
         }
@@ -456,7 +456,7 @@ class GncOptimizer {
       allWeights.push_back(k);
     }
     std::vector<size_t> knownWeights;
-    std::set_union(params_.knownInliers.begin(), params_.knownInliers.end(),
+    std::set_union(knownInliers_.begin(), knownInliers_.end(),
                    params_.knownOutliers.begin(), params_.knownOutliers.end(),
                    std::inserter(knownWeights, knownWeights.begin()));
 
