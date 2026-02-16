@@ -30,7 +30,10 @@
 #include <CppUnitLite/TestHarness.h>
 #include <gtsam/nonlinear/GncOptimizer.h>
 #include <gtsam/nonlinear/LinearContainerFactor.h>
+#include <gtsam/geometry/Pose3.h>
 #include <gtsam/slam/dataset.h>
+#include <gtsam/slam/KarcherMeanFactor.h>
+#include <gtsam/slam/KarcherMeanFactor-inl.h>
 #include <tests/smallExample.h>
 
 #include <gtsam/sam/BearingFactor.h>
@@ -681,6 +684,53 @@ TEST(GncOptimizer, barcsq_heterogeneousFactors) {
   // extra test:
   // fg.add( PriorFactor<Pose2>(  0, Pose2(0.0, 0.0, 0.0) )); // works if we add model3D as noise model
   // std::cout <<  "fg[3]->dim() " << fg[3]->dim() << std::endl; // this segfaults?
+}
+
+/* ************************************************************************* */
+TEST(GncOptimizer, nonNoiseFactorBehavior) {
+  NonlinearFactorGraph nfg;
+  SharedNoiseModel pose_noise = noiseModel::Isotropic::Sigma(6, 0.5);
+  nfg.add(PriorFactor<Pose3>(X(0), Pose3(), pose_noise));
+
+  KeyVector keys;
+  keys.push_back(X(0));
+  keys.push_back(X(1));
+  nfg.emplace_shared<KarcherMeanFactor<Pose3>>(keys, 6, 1000.0);
+
+  Values initial;
+  initial.insert(X(0), Pose3(Rot3(), Point3(7.0, 0.0, 0.0)));
+  initial.insert(X(1), Pose3());
+
+  GncParams<LevenbergMarquardtParams> gncParams;
+  gncParams.setLossType(GncLossType::GM);
+  auto gnc = GncOptimizer<GncParams<LevenbergMarquardtParams>>(nfg, initial,
+                                                               gncParams);
+
+  // checks if non noise model factors as set as knownInliers
+  const auto& known = gnc.getParams().knownInliers;
+  CHECK(known.size() == 1);
+  CHECK(known[0] == 1);
+
+  // check if the weight is carried correctly and non noise model factor is unchanged
+  Vector weights = Vector::Ones(nfg.size());
+  weights[1] = 0.0;
+  NonlinearFactorGraph weighted = gnc.makeWeightedGraph(weights);
+  CHECK(!weighted.at<NoiseModelFactor>(1));
+  CHECK(weighted.at<NoiseModelFactor>(0));
+  CHECK(weighted.at(1).get() == nfg.at(1).get());
+
+  // checks if knownInliers (our non noise model factor) is not reweighted
+  double mu = 1.5;
+  double expected_weight = 1.0;
+  Vector w = gnc.calculateWeights(initial, mu);
+  DOUBLES_EQUAL(expected_weight, w[1], tol);
+  CHECK(w[0] < 1.0);
+
+  // checks if non noise model factors are ignored is calculating mu
+  double err0 = gnc.getFactors().at(0)->error(initial);
+  Vector barcSq = gnc.getInlierCostThresholds();
+  double expected_mu = 2.0 * err0 / barcSq[0];
+  EXPECT_DOUBLES_EQUAL(expected_mu, gnc.initializeMu(), 1e-6);
 }
 
 /* ************************************************************************* */
