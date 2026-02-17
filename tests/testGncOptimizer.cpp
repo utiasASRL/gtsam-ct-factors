@@ -727,6 +727,12 @@ TEST(GncOptimizer, nonNoiseFactorBehavior) {
   Vector barcSq = gnc.getInlierCostThresholds();
   double expected_mu = 2.0 * err0 / barcSq[0];
   EXPECT_DOUBLES_EQUAL(expected_mu, gnc.initializeMu(), 1e-6);
+
+  // checks if gnc optimization runs and keeps the non noise model factor weight fixed at 1
+  Values result = gnc.optimize();
+  CHECK(result.exists(X(0)));
+  Vector finalWeights = gnc.getWeights();
+  DOUBLES_EQUAL(1.0, finalWeights[1], tol);
 }
 
 /* ************************************************************************* */

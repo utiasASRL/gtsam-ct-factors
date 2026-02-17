@@ -299,9 +299,7 @@ class GncOptimizer {
         for (size_t k = 0; k < nfg_.size(); k++) {
           if (nfg_[k]) {
             auto nf = std::dynamic_pointer_cast<NoiseModelFactor>(nfg_[k]);
-            if (!nf) {
-              continue;
-            }
+            if (!nf) continue;
             mu_init = std::max(mu_init, 2 * nfg_[k]->error(state_) / barcSq_[k]);
           }
         }
@@ -317,9 +315,7 @@ class GncOptimizer {
         for (size_t k = 0; k < nfg_.size(); k++) {
           if (nfg_[k]) {
             auto nf = std::dynamic_pointer_cast<NoiseModelFactor>(nfg_[k]);
-            if (!nf) {
-              continue;
-            }
+            if (!nf) continue;
             double rk = nfg_[k]->error(state_);
             mu_init = (2 * rk - barcSq_[k]) > 0 ? // if positive, update mu, otherwise keep same
                 std::min(mu_init, barcSq_[k] / (2 * rk - barcSq_[k]) ) : mu_init;
