@@ -1,5 +1,5 @@
 /**
- * @file    testWNOAFactor.cpp
+ * @file    testWNOAInterpFactor.cpp
  * @brief   Unit test for WNOA Interpolation Factor
  * @author  Connor Holmes
  */

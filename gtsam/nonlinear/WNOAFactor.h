@@ -31,7 +31,6 @@
 #include <cassert>
 
 #pragma once
-using namespace std;
 
 namespace gtsam {
 
@@ -249,8 +248,8 @@ class WNOAMotionFactor
     //
     Matrix2N covariance;
     MatrixN Q_diag = Q.asDiagonal();
-    covariance << (1.0 / 3.0 * pow(timestep, 3)) * Q_diag,
-        (1.0 / 2.0 * pow(timestep, 2)) * Q_diag,
+    covariance << (1.0 / 3.0 * std::pow(timestep, 3)) * Q_diag,
+        (1.0 / 2.0 * std::pow(timestep, 2)) * Q_diag,
         (1.0 / 2.0 * pow(timestep, 2)) * Q_diag, timestep * Q_diag;
     return covariance;
   }

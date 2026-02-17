@@ -524,7 +524,7 @@ TEST(WNOAFactor, OptimizeSE2) {
 
   // add WNOA factor
   graph.add(WNOAMotionFactor<Pose2>(P(0), V(0), P(1), V(1), timestep, Q_se2));
-  // Set up initial geuss
+  // Set up initial guess
   Values values;
   values.insert(P(0), p0_se2);
   values.insert(V(0), v0_se2);
@@ -557,7 +557,7 @@ TEST(WNOAFactor, OptimizeSE3) {
 
   // add WNOA factor
   graph.add(WNOAMotionFactor<Pose3>(P(0), V(0), P(1), V(1), timestep, Q_se3));
-  // Set up initial geuss
+  // Set up initial guess
   Values values;
   values.insert(V(0), v0_se3);
   values.insert(P(0), p0_se3);
@@ -618,7 +618,7 @@ TEST(WNOAFactor, OptimizeSE3Pert) {
 
   // add WNOA factor
   graph.add(WNOAMotionFactor<Pose3>(P(0), V(0), P(1), V(1), timestep, Q_se3));
-  // Set up initial geuss
+  // Set up initial guess
   Values values;
   values.insert(V(0), v0_se3);
   values.insert(P(0), p0_se3);
@@ -638,37 +638,6 @@ TEST(WNOAFactor, OptimizeSE3Pert) {
 
 /* ************************************************************************* */
 
-
-// TEST(WNOAFactor, CovarianceCheckP3) {
-//   // Covariance
-//   auto cov_diag = Vector3::Ones();
-//   // Create graph with three poses connected by WNOA
-//   NonlinearFactorGraph graph1;
-//   // prior on first pose
-//   graph1.addPrior(P(0), p0_p3, cov_diag.asDiagonal());
-//   graph1.addPrior(P(1), p1_p3, cov_diag.asDiagonal());
-//   // add wnoa factors
-//   graph1.emplace_shared<WNOAMotionFactor<Point3>>(P(0), V(0), P(2), V(2), timestep, Q_p3);
-//   graph1.emplace_shared<WNOAMotionFactor<Point3>>(P(2), V(2), P(1), V(1), timestep, Q_p3);
-//   // init vals
-//   Values values;
-//   values.insert(V(0), v0_se3);
-//   values.insert(P(0), p0_se3);
-//   values.insert(V(1), v1_se3);
-//   values.insert(P(1), p1_se3);
-//   values.insert(V(2), Vector3::Zero());
-//   values.insert(P(2), Vector3::Zero());
-  
-
-//   // Create two state graph
-//   NonlinearFactorGraph graph2;
-//   // prior on first pose
-//   graph2.addPrior(P(0), p0_p3, cov_diag.asDiagonal());
-//   // add wnoa factors
-//   graph2.emplace_shared<WNOAMotionFactor<Point3>>(P(0), V(0),P(2), V(2), 2*timestep, Q_p3);
-  
-
-// }
 
 int main() {
   TestResult tr;

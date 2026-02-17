@@ -144,7 +144,7 @@ namespace {
     return distance1(location, point);
   }
 }
-TEST( Point2, distance ) {
+TEST( Point1, distance ) {
   Matrix expectedH1, actualH1, expectedH2, actualH2;
 
   // establish distance is indeed zero
