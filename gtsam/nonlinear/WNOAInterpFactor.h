@@ -115,8 +115,9 @@ class WNOAInterpFactor : public NoiseModelFactor {
       interp_to_borders;
   // map outer key to outer key index (for Jacobians)
   std::unordered_map<Key, int> outer_key_to_index;
-  // vector of precomputed matrices for interpolation
-  std::vector<std::shared_ptr<LambdaPsiMats>> lambda_psi_pre_comp;
+  // map of precomputed matrices for interpolation, keyed by StateData
+  std::unordered_map<StateData, std::shared_ptr<LambdaPsiMats>>
+      lambda_psi_pre_comp;
 
   // Cache inner key -> index mapping to avoid rebuilding in noise model calc
   std::unordered_map<Key, int> inner_key_to_index_;
@@ -220,12 +221,12 @@ class WNOAInterpFactor : public NoiseModelFactor {
       }
       // Precompute Lambda and Psi WNOA interpolation matrices
       if (precomp_interp_mats) {
-        lambda_psi_pre_comp.push_back(
+        lambda_psi_pre_comp[state] =
             std::make_shared<LambdaPsiMats>(interpolator_.getLambdaPsi(
                 interp_to_borders[state].first.time,
-                interp_to_borders[state].second.time, state.time)));
+                interp_to_borders[state].second.time, state.time));
       } else {
-        lambda_psi_pre_comp.push_back(nullptr);
+        lambda_psi_pre_comp[state] = nullptr;
       }
     }
     // DEFINE KEYS
@@ -740,7 +741,6 @@ class WNOAInterpFactor : public NoiseModelFactor {
     Values values_interp;  // interpolated values
 
     // loop through interpolated state map and compute values
-    uint interp_ind = 0;
     for (const auto& [interp_state, border_states] : interp_to_borders) {
       // unpack border states
       auto& [left, right] = border_states;
@@ -760,11 +760,11 @@ class WNOAInterpFactor : public NoiseModelFactor {
       if (InterpJacobians) {
         result = interpolator_.interpolatePoseAndVelocity(
             state_left, state_right, interp_state.time, &H, nullptr, nullptr,
-            lambda_psi_pre_comp.at(interp_ind));
+            lambda_psi_pre_comp.at(interp_state));
       } else {
         result = interpolator_.interpolatePoseAndVelocity(
             state_left, state_right, interp_state.time, nullptr, nullptr,
-            nullptr, lambda_psi_pre_comp.at(interp_ind));
+            nullptr, lambda_psi_pre_comp.at(interp_state));
       }
 
       // insert into values structure
@@ -788,9 +788,6 @@ class WNOAInterpFactor : public NoiseModelFactor {
         (*InterpCondCovs)[interp_state] =
             Sigma_tau;  // assumed preallocated vector
       }
-
-      // increment counter
-      interp_ind++;
     }
 
     return values_interp;
