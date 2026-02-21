@@ -318,10 +318,7 @@ GemanMcClure::GemanMcClure(double c, const ReweightScheme reweight)
 }
 
 double GemanMcClure::weight(double distance) const {
-  const double c2 = c_*c_;
-  const double c4 = c2*c2;
-  const double c2error = c2 + distance*distance;
-  return c4/(c2error*c2error);
+  return Weight(distance, c_);
 }
 
 double GemanMcClure::Weight(double distance, double c) {
