@@ -1,5 +1,5 @@
 /**
- * @file    testInterpolator.cpp
+ * @file    testWNOAInterpolator.cpp
  * @brief   Unit tests for post-solve interpolator
  * @author  Zi Cong Guo
  */

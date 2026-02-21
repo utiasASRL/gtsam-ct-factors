@@ -193,7 +193,7 @@ Interpolator<PoseType>::extrapolatePoseAndVelocity(
   // compute covariance of the extrapolated pose and velocity
   // assume that mainSolveMarginalMatrix corresponds to the covariance of
   // Tvarpi_extrapolate_point
-  if (mainSolveMarginalMatrix) {
+  if (mainSolveMarginalMatrix && covarianceOut) {
     assert(mainSolveMarginalMatrix->rows() == 2 * dim &&
            mainSolveMarginalMatrix->cols() == 2 * dim);
     Matrix2N Sigma = covarianceFunction_(t_diff, Q_psd_);
@@ -276,11 +276,13 @@ Interpolator<PoseType>::interpolatePoseAndVelocity_(
   // Compute local state vectors at time tau, in the Lie algebra of Pose at time
   // k, using WNOA interpolation equations
   VectorN xi_tau =
-      Lambda(0, dim) * xi_dot_k + Psi(0, 0) * xi_kp1 +
-      Psi(0, dim) * xi_dot_kp1;  // Dropping xi_k term here since it's zero
+      Lambda.block(0, dim, dim, dim) * xi_dot_k +
+      Psi.block(0, 0, dim, dim) * xi_kp1 +
+      Psi.block(0, dim, dim, dim) * xi_dot_kp1;  // Dropping xi_k term here since it's zero
   VectorN xidot_tau =
-      Lambda(dim, dim) * xi_dot_k + Psi(dim, 0) * xi_kp1 +
-      Psi(dim, dim) * xi_dot_kp1;  // Dropping xi_k term here since it's zero
+      Lambda.block(dim, dim, dim, dim) * xi_dot_k +
+      Psi.block(dim, 0, dim, dim) * xi_kp1 +
+      Psi.block(dim, dim, dim, dim) * xi_dot_kp1;  // Dropping xi_k term here since it's zero
   // Additional intermediate Jacobians
   MatrixN right_jac_tau;
   MatrixN dTtau_dTk;
@@ -361,7 +363,7 @@ Interpolator<PoseType>::interpolatePoseAndVelocity_(
   // compute covariance of the interpolated pose (and velocity, if required)
   // using Lambda and Psi computed from (11.41) in (Barfoot 2024).
   // This should be equivalent to using (4.23) in the FnT paper.
-  if (mainSolveMarginalMatrix) {
+  if (mainSolveMarginalMatrix && covarianceOut) {
     Eigen::Matrix<double, 2 * dim, 4 * dim> LambdaPsi;
     Matrix2N Sigma = computeConditionalCov(
         tPoseVel_k, tPoseVel_kp1, TimestampedPoseVel{poseVel_tau, t_tau});
@@ -567,7 +569,7 @@ Interpolator<PoseType>::computeLocalStateVecs(
     xi_kp1 = traits<PoseType>::Logmap(
         traits<PoseType>::Between(T_k, T_kp1, &dbetween_Tk, &dbetween_Tkp1),
         &right_jac_inv);
-    // Compute deriviatives
+    // Compute derivatives
     dxi_dTk = right_jac_inv * dbetween_Tk;
     dxi_dTkp1 = right_jac_inv * dbetween_Tkp1;
   } else {
@@ -589,9 +591,9 @@ Interpolator<PoseType>::computeLocalStateVecs(
       // For Lie groups
       dxidot_dxi = -PoseType::adjointMap(varpi_kp1) / 2.0;
     }
-    dxidot_dTk << dxidot_dxi * dxi_dTk;
-    dxidot_dTkp1 << dxidot_dxi * dxi_dTkp1;
-    dxidotkp1_dvarpikp1 << right_jac_inv;
+    dxidot_dTk = dxidot_dxi * dxi_dTk;
+    dxidot_dTkp1 = dxidot_dxi * dxi_dTkp1;
+    dxidotkp1_dvarpikp1 = right_jac_inv;
 
     jacs->clear();
     jacs->push_back(dxi_dTk);

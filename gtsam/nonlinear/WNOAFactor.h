@@ -11,7 +11,8 @@
 
 /**
  * @file    WNOAFactor.h
- * @brief   White-Noise-On-Acceleration (WNOA) motion prior factor between two states (pose and velocity at times t_k and t_{k+1})
+ * @brief   White-Noise-On-Acceleration (WNOA) motion prior factor between two
+ * states (pose and velocity at times t_k and t_{k+1})
  * @author  Connor Holmes
  * @author  Sven Lilge
  */
@@ -25,12 +26,11 @@
 #include <gtsam/geometry/Pose2.h>
 #include <gtsam/geometry/Pose3.h>
 #include <gtsam/nonlinear/NonlinearFactor.h>
-#include <gtsam/nonlinear/StateData.h>
+#include <gtsam/nonlinear/WNOAStateData.h>
 
 #include <cassert>
 
 #pragma once
-using namespace std;
 
 namespace gtsam {
 
@@ -189,7 +189,8 @@ class WNOAMotionFactor
     } else {
       xi = traits<Pose>::Logmap(traits<Pose>::Between(p1, p2), &right_jac_inv);
     }
-    // Compute error for local state vector (pose, velocity) in the tangent space
+    // Compute error for local state vector (pose, velocity) in the tangent
+    // space
     Vector2N err;
     err << xi - delta_t_ * v1, right_jac_inv * v2 - v1;
 
@@ -236,18 +237,19 @@ class WNOAMotionFactor
    *
    * Returns the 2N x 2N covariance matrix for a WNOA prior discretized over
    * `timestep` using the diagonal PSD `Q`.
-   * See (11.7) in (Barfoot, 2024) for the derivation of covariance for the WNOA prior
+   * See (11.7) in (Barfoot, 2024) for the derivation of covariance for the WNOA
+   * prior
    *
    * @param timestep Time interval over which to compute covariance
    * @param Q Diagonal PSD vector
    * @return Matrix2N Process covariance
    */
   static Matrix2N buildWNOACovariance(double timestep, const VectorN& Q) {
-    // 
+    //
     Matrix2N covariance;
     MatrixN Q_diag = Q.asDiagonal();
-    covariance << (1.0 / 3.0 * pow(timestep, 3)) * Q_diag,
-        (1.0 / 2.0 * pow(timestep, 2)) * Q_diag,
+    covariance << (1.0 / 3.0 * std::pow(timestep, 3)) * Q_diag,
+        (1.0 / 2.0 * std::pow(timestep, 2)) * Q_diag,
         (1.0 / 2.0 * pow(timestep, 2)) * Q_diag, timestep * Q_diag;
     return covariance;
   }
@@ -304,7 +306,8 @@ class WNOAMotionFactor
   }
 
   /**
-   * @brief Compute interpolation Jacobian with respect to the previous (left) state.
+   * @brief Compute interpolation Jacobian with respect to the previous (left)
+   * state.
    *
    * Computes the 2N x 2N Jacobian block that maps perturbations in the
    * previous bordering state (pose_k, vel_k) to perturbations in the
@@ -347,7 +350,8 @@ class WNOAMotionFactor
   }
 
   /**
-   * @brief Compute interpolation Jacobian with respect to the next (right) state.
+   * @brief Compute interpolation Jacobian with respect to the next (right)
+   * state.
    *
    * Computes the 2N x 2N Jacobian block that maps perturbations in the
    * next bordering state (pose_kp1, vel_kp1) to perturbations in the
@@ -397,11 +401,5 @@ template <class Pose>
 struct traits<WNOAMotionFactor<Pose>>
     : public Testable<WNOAMotionFactor<Pose>> {};
 
-// Explicit Instantiation.
-template class WNOAMotionFactor<Point1>;
-template class WNOAMotionFactor<Point2>;
-template class WNOAMotionFactor<Point3>;
-template class WNOAMotionFactor<Pose2>;
-template class WNOAMotionFactor<Pose3>;
 
 }  // namespace gtsam

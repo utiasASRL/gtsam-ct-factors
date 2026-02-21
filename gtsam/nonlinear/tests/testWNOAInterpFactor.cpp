@@ -1,5 +1,5 @@
 /**
- * @file    testWNOAFactor.cpp
+ * @file    testWNOAInterpFactor.cpp
  * @brief   Unit test for WNOA Interpolation Factor
  * @author  Connor Holmes
  */
@@ -150,7 +150,7 @@ TEST(WNOAInterp, EvalErrorP3Unary) {
   // prior at first pose
   auto prior = std::make_shared<PriorFactor<Point3>>(P(1), p0_p3, model);
   auto factor =
-      boost::make_shared<WNOAInterpFactor<Point3>>(prior, border, interp, Q_p3);
+      std::make_shared<WNOAInterpFactor<Point3>>(prior, border, interp, Q_p3);
   Values values;
   values.insert(P(0), p0_p3);
   values.insert(P(2), p0_p3);
@@ -167,7 +167,7 @@ TEST(WNOAInterp, EvalErrorP3Unary) {
   // prior at pose 1 (between 0 and 2)
   prior = std::make_shared<PriorFactor<Point3>>(P(1), p1_p3, model);
   factor =
-      boost::make_shared<WNOAInterpFactor<Point3>>(prior, border, interp, Q_p3);
+      std::make_shared<WNOAInterpFactor<Point3>>(prior, border, interp, Q_p3);
   values.update(P(0), p0_p3);
   values.update(P(2), p2_p3);
   values.update(V(0), Vector3::Zero().eval());
@@ -182,7 +182,7 @@ TEST(WNOAInterp, EvalErrorP3Unary) {
   // prior at pose 1 (between 0 and 2)
   prior = std::make_shared<PriorFactor<Point3>>(P(1), p1_p3, model);
   factor =
-      boost::make_shared<WNOAInterpFactor<Point3>>(prior, border, interp, Q_p3);
+      std::make_shared<WNOAInterpFactor<Point3>>(prior, border, interp, Q_p3);
   values.update(P(0), p0_p3);
   values.update(P(2), p2_p3);
   values.update(V(0), v0_p3);
