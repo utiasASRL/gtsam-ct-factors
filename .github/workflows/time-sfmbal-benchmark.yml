@@ -118,8 +118,34 @@ jobs:
               });
             }
 
-            // Dispatch all unprivileged benchmark worker runs.
+            // Helper: check whether an exact cache key exists.
+            const cacheExists = async (key) => {
+              const resp = await github.rest.actions.getActionsCacheList({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                key,
+              });
+              return resp.data.actions_caches.some((c) => c.key === key);
+            };
+
+            // Check cache and dispatch only uncached benchmark worker runs.
+            // Each worker produces both TBB=ON and TBB=OFF results, so we
+            // skip dispatch only when both cache entries are present.
             for (const spec of specs) {
+              const keyON = `timeSFMBAL-benchmark-v4-${spec.os_name}-${spec.arch}-tbbON-${spec.sha}`;
+              const keyOFF = `timeSFMBAL-benchmark-v4-${spec.os_name}-${spec.arch}-tbbOFF-${spec.sha}`;
+              const [hitON, hitOFF] = await Promise.all([
+                cacheExists(keyON),
+                cacheExists(keyOFF),
+              ]);
+              if (hitON && hitOFF) {
+                core.info(
+                  `Cache hit for ${spec.role} ${spec.id} (both TBB variants), skipping dispatch.`
+                );
+                spec.conclusion = "skipped_cached";
+                continue;
+              }
+
               spec.group_token = `${groupId}-${spec.role}-${spec.id}`;
               await github.rest.actions.createWorkflowDispatch({
                 owner: context.repo.owner,
@@ -169,7 +195,7 @@ jobs:
             for (let attempt = 0; attempt < 80; attempt++) {
               let allResolved = true;
               for (const spec of specs) {
-                if (spec.run_id) continue;
+                if (spec.run_id || spec.conclusion) continue;
                 const run = await findMatchingRun(spec.group_token);
                 if (run) {
                   spec.run_id = run.id;
@@ -205,7 +231,7 @@ jobs:
             }
 
             for (const spec of specs) {
-              if (!spec.run_id) spec.conclusion = "not_found";
+              if (!spec.run_id) spec.conclusion = spec.conclusion || "not_found";
               if (!spec.conclusion) spec.conclusion = "timed_out";
             }
 
@@ -226,30 +252,45 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - id: linux-x64
+          - id: linux-x64-tbbON
             os_name: linux
             arch: x64
-          - id: linux-arm64
+            tbb: "ON"
+          - id: linux-x64-tbbOFF
+            os_name: linux
+            arch: x64
+            tbb: "OFF"
+          - id: linux-arm64-tbbON
             os_name: linux
             arch: arm64
-          - id: macos-arm64
+            tbb: "ON"
+          - id: linux-arm64-tbbOFF
+            os_name: linux
+            arch: arm64
+            tbb: "OFF"
+          - id: macos-arm64-tbbON
             os_name: macos
             arch: arm64
+            tbb: "ON"
+          - id: macos-arm64-tbbOFF
+            os_name: macos
+            arch: arm64
+            tbb: "OFF"
     runs-on: ubuntu-latest
     steps:
       - name: Restore head benchmark cache
         id: restore_head
         uses: actions/cache/restore@v4
         with:
-          path: benchmark-cache/${{ matrix.os_name }}-${{ matrix.arch }}-${{ needs.context.outputs.head_sha }}.json
-          key: timeSFMBAL-benchmark-v3-${{ matrix.os_name }}-${{ matrix.arch }}-${{ needs.context.outputs.head_sha }}
+          path: benchmark-cache/${{ matrix.os_name }}-${{ matrix.arch }}-tbb${{ matrix.tbb }}-${{ needs.context.outputs.head_sha }}.json
+          key: timeSFMBAL-benchmark-v4-${{ matrix.os_name }}-${{ matrix.arch }}-tbb${{ matrix.tbb }}-${{ needs.context.outputs.head_sha }}
 
       - name: Restore base benchmark cache
         id: restore_base
         uses: actions/cache/restore@v4
         with:
-          path: benchmark-cache/${{ matrix.os_name }}-${{ matrix.arch }}-${{ needs.context.outputs.base_sha }}.json
-          key: timeSFMBAL-benchmark-v3-${{ matrix.os_name }}-${{ matrix.arch }}-${{ needs.context.outputs.base_sha }}
+          path: benchmark-cache/${{ matrix.os_name }}-${{ matrix.arch }}-tbb${{ matrix.tbb }}-${{ needs.context.outputs.base_sha }}.json
+          key: timeSFMBAL-benchmark-v4-${{ matrix.os_name }}-${{ matrix.arch }}-tbb${{ matrix.tbb }}-${{ needs.context.outputs.base_sha }}
 
       - name: Stage collected files
         shell: bash
@@ -258,13 +299,13 @@ jobs:
           mkdir -p artifact
           echo "head cache-hit: ${{ steps.restore_head.outputs.cache-hit }}"
           echo "base cache-hit: ${{ steps.restore_base.outputs.cache-hit }}"
-          if [[ "${{ steps.restore_head.outputs.cache-hit }}" == "true" ]] && [[ -f "benchmark-cache/${{ matrix.os_name }}-${{ matrix.arch }}-${{ needs.context.outputs.head_sha }}.json" ]]; then
-            cp "benchmark-cache/${{ matrix.os_name }}-${{ matrix.arch }}-${{ needs.context.outputs.head_sha }}.json" "artifact/head-${{ matrix.id }}.json"
+          if [[ "${{ steps.restore_head.outputs.cache-hit }}" == "true" ]] && [[ -f "benchmark-cache/${{ matrix.os_name }}-${{ matrix.arch }}-tbb${{ matrix.tbb }}-${{ needs.context.outputs.head_sha }}.json" ]]; then
+            cp "benchmark-cache/${{ matrix.os_name }}-${{ matrix.arch }}-tbb${{ matrix.tbb }}-${{ needs.context.outputs.head_sha }}.json" "artifact/head-${{ matrix.id }}.json"
           else
             : > "artifact/head-miss-${{ matrix.id }}.txt"
           fi
-          if [[ "${{ steps.restore_base.outputs.cache-hit }}" == "true" ]] && [[ -f "benchmark-cache/${{ matrix.os_name }}-${{ matrix.arch }}-${{ needs.context.outputs.base_sha }}.json" ]]; then
-            cp "benchmark-cache/${{ matrix.os_name }}-${{ matrix.arch }}-${{ needs.context.outputs.base_sha }}.json" "artifact/base-${{ matrix.id }}.json"
+          if [[ "${{ steps.restore_base.outputs.cache-hit }}" == "true" ]] && [[ -f "benchmark-cache/${{ matrix.os_name }}-${{ matrix.arch }}-tbb${{ matrix.tbb }}-${{ needs.context.outputs.base_sha }}.json" ]]; then
+            cp "benchmark-cache/${{ matrix.os_name }}-${{ matrix.arch }}-tbb${{ matrix.tbb }}-${{ needs.context.outputs.base_sha }}.json" "artifact/base-${{ matrix.id }}.json"
           else
             : > "artifact/base-miss-${{ matrix.id }}.txt"
           fi
