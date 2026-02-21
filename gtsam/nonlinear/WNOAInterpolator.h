@@ -104,7 +104,7 @@ struct TimestampedPoseVelocity {
  * @tparam PoseType Pose group/type (e.g., Pose2, Pose3, or a vector-space pose)
  */
 template <typename PoseType>
-class Interpolator {
+class GTSAM_EXPORT Interpolator {
  protected:
   static constexpr int dim = traits<PoseType>::dimension;
   using VelocityType = typename traits<PoseType>::TangentVector;
