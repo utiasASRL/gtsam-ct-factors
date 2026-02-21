@@ -32,9 +32,9 @@
 #include <gtsam/inference/Key.h>
 #include <gtsam/nonlinear/NonlinearFactor.h>
 #include <gtsam/nonlinear/Values.h>
+#include <gtsam/nonlinear/WNOAFactorGraph.h>
 #include <gtsam/nonlinear/WNOAInterpolator.h>
 #include <gtsam/nonlinear/WNOAStateData.h>
-#include <gtsam/nonlinear/WNOAFactorGraph.h>
 
 #include <algorithm>
 #include <array>
@@ -1007,8 +1007,9 @@ NonlinearFactorGraph interpolateFactorGraph(
  */
 template <class PoseType>
 WNOAFactorGraph<PoseType> interpolateWNOAFactorGraph(
-    const NonlinearFactorGraph& graph, const set<StateData>& estimated_states,
-    const set<StateData>& interp_states, Vector Q_psd,
+    const NonlinearFactorGraph& graph,
+    const std::set<StateData>& estimated_states,
+    const std::set<StateData>& interp_states, Vector Q_psd,
     bool fixed_noise = false) {
   // assert that the pose is the right kind of variable
   static_assert(
@@ -1022,24 +1023,26 @@ WNOAFactorGraph<PoseType> interpolateWNOAFactorGraph(
 
   // Get map from keys to interpolated state, and interpolated state to
   // estimated state.
-  unordered_map<Key, StateData> key_to_interp;
-  unordered_map<StateData, pair<StateData, StateData>> interp_to_borders;
+  std::unordered_map<Key, StateData> key_to_interp;
+  std::unordered_map<StateData, std::pair<StateData, StateData>>
+      interp_to_borders;
   auto iter_est_state = estimated_states.begin();
   for (const StateData& state : interp_states) {
     // search for estimated state that upper bound current interpolated state
     iter_est_state =
         std::lower_bound(iter_est_state, estimated_states.end(), state);
     if (iter_est_state == estimated_states.begin()) {
-      throw runtime_error(
+      throw std::runtime_error(
           "Interpolated state time is before all estimated state times");
     } else if (iter_est_state == estimated_states.end()) {
-      throw runtime_error(
+      throw std::runtime_error(
           "Interpolated state time is after all estimated state times");
     } else {
       // decrement iterator (point to left border)
       iter_est_state--;
       // map interp to left border index
-      interp_to_borders[state] = pair(*iter_est_state, *next(iter_est_state));
+      interp_to_borders[state] =
+          std::pair(*iter_est_state, *std::next(iter_est_state));
       // map keys to interp state
       key_to_interp[state.pose] = state;
       key_to_interp[state.vel] = state;
@@ -1051,9 +1054,9 @@ WNOAFactorGraph<PoseType> interpolateWNOAFactorGraph(
 
   // Add WNOA prior between all estimated states
   auto iter_state = estimated_states.begin();
-  while (next(iter_state) != estimated_states.end()) {
+  while (std::next(iter_state) != estimated_states.end()) {
     StateData state_k = *iter_state;
-    StateData state_kp1 = *next(iter_state);
+    StateData state_kp1 = *std::next(iter_state);
     // get time diff
     double del_t = state_kp1.time - state_k.time;
     // add factor
@@ -1067,10 +1070,10 @@ WNOAFactorGraph<PoseType> interpolateWNOAFactorGraph(
     // handle null factor
     if (!factor) continue;
     // if the factor is a WNOA motion factor, do not add it
-    if (dynamic_pointer_cast<WNOAMotionFactor<PoseType>>(factor)) continue;
+    if (std::dynamic_pointer_cast<WNOAMotionFactor<PoseType>>(factor)) continue;
     // get ordered sets of interpolated and estimated states
-    set<StateData> factor_interp_states;
-    set<StateData> factor_estimated_states;
+    std::set<StateData> factor_interp_states;
+    std::set<StateData> factor_estimated_states;
     for (Key& key : factor->keys()) {
       // check if key is an interpolated value
       if (key_to_interp.count(key) > 0) {

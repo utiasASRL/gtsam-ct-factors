@@ -36,8 +36,6 @@
 #include <thread>
 #include <unordered_set>
 
-using namespace std;
-
 namespace gtsam {
 
 /* ************************************************************************* */
@@ -66,7 +64,7 @@ class _LinearizeOneFactor {
     for (size_t i = blocked_range.begin(); i != blocked_range.end(); ++i) {
       if (nonlinearGraph_[i] && nonlinearGraph_[i]->sendable()) {
         // Attempt dynamic cast to WNOAInterpFactor
-        auto wnoa_factor = dynamic_pointer_cast<WNOAInterpFactor<PoseType>>(
+        auto wnoa_factor = std::dynamic_pointer_cast<WNOAInterpFactor<PoseType>>(
             nonlinearGraph_[i]);
         if (wnoa_factor) {
           result_[i] =
@@ -86,7 +84,7 @@ class _LinearizeOneFactor {
 
 template <typename PoseType>
 WNOAFactorGraph<PoseType>::WNOAFactorGraph(
-      unordered_map<StateData, pair<StateData, StateData>> interp_map,
+      std::unordered_map<StateData, std::pair<StateData, StateData>> interp_map,
       const Eigen::Vector<double, dim> Q_psd, bool fixed_noise_model)
       : interpolator_(Q_psd),
         interp_to_borders_map_(std::move(interp_map)),
@@ -182,7 +180,7 @@ std::shared_ptr<GaussianFactorGraph> WNOAFactorGraph<PoseType>::linearize(
     if (factor && !(factor->sendable())) {
       // Attempt dynamic cast to WNOAInterpFactor
       auto wnoa_factor =
-          dynamic_pointer_cast<WNOAInterpFactor<PoseType>>(factor);
+          std::dynamic_pointer_cast<WNOAInterpFactor<PoseType>>(factor);
       if (wnoa_factor) {
         (*linearFG)[i] =
             wnoa_factor->linearize(linearizationPoint, passedInterpData.get());
@@ -201,7 +199,7 @@ std::shared_ptr<GaussianFactorGraph> WNOAFactorGraph<PoseType>::linearize(
     // Attempt dynamic cast to WNOAInterpFactor
     if (factor) {
       auto wnoa_factor =
-          dynamic_pointer_cast<WNOAInterpFactor<PoseType>>(factor);
+          std::dynamic_pointer_cast<WNOAInterpFactor<PoseType>>(factor);
       if (wnoa_factor) {
         linearFG->push_back(
             wnoa_factor->linearize(linearizationPoint, passedInterpData.get()));
@@ -239,7 +237,7 @@ double WNOAFactorGraph<PoseType>::error(const Values& values) const {
   for (const sharedFactor& factor : factors_) {
     if (factor) {
       auto wnoa_factor =
-          dynamic_pointer_cast<WNOAInterpFactor<PoseType>>(factor);
+          std::dynamic_pointer_cast<WNOAInterpFactor<PoseType>>(factor);
       if (wnoa_factor) {
         total_error += wnoa_factor->error(values, passedInterpData.get());
       } else {
@@ -255,8 +253,8 @@ double WNOAFactorGraph<PoseType>::error(const Values& values) const {
 template <typename PoseType>
 Values WNOAFactorGraph<PoseType>::getInterpolatedValues(
     const Values& values,
-    unordered_map<Key, std::array<Matrix, 4>>* InterpJacobians,
-    unordered_map<StateData, Matrix2N>* InterpCondCovs) const {
+    std::unordered_map<Key, std::array<Matrix, 4>>* InterpJacobians,
+    std::unordered_map<StateData, Matrix2N>* InterpCondCovs) const {
 
 #ifdef GTSAM_USE_TBB
   // Parallelized version using TBB
@@ -269,9 +267,9 @@ Values WNOAFactorGraph<PoseType>::getInterpolatedValues(
   
   TbbOpenMPMixedScope threadLimiter;
   // Cache boundary values
-  unordered_map<Key, PoseType> border_pose_cache;
+  std::unordered_map<Key, PoseType> border_pose_cache;
   border_pose_cache.reserve(border_pose_keys_.size());
-  unordered_map<Key, VelocityType> border_vel_cache;
+  std::unordered_map<Key, VelocityType> border_vel_cache;
   border_vel_cache.reserve(border_vel_keys_.size());
   for (Key k : border_pose_keys_)
     border_pose_cache.emplace(k, values.at<PoseType>(k));
@@ -418,9 +416,9 @@ Values WNOAFactorGraph<PoseType>::getInterpolatedValues(
   // Sequential version
   // Logic is the same as in the parallel version, but we can directly insert results into the final output containers without needing thread-local storage or merging
   // See comments above for more details on the logic
-  unordered_map<Key, PoseType> border_pose_cache;
+  std::unordered_map<Key, PoseType> border_pose_cache;
   border_pose_cache.reserve(border_pose_keys_.size());
-  unordered_map<Key, VelocityType> border_vel_cache;
+  std::unordered_map<Key, VelocityType> border_vel_cache;
   border_vel_cache.reserve(border_vel_keys_.size());
   for (Key k : border_pose_keys_)
     border_pose_cache.emplace(k, values.at<PoseType>(k));

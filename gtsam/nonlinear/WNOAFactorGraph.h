@@ -20,15 +20,13 @@
 #include <gtsam/linear/GaussianFactorGraph.h>
 #include <gtsam/nonlinear/ExpressionFactorGraph.h>
 #include <gtsam/nonlinear/NonlinearFactorGraph.h>
-#include <gtsam/nonlinear/StateData.h>
+#include <gtsam/nonlinear/WNOAStateData.h>
 #include <gtsam/nonlinear/WNOAInterpolator.h>
 
 #include <array>
 #include <memory>
 #include <unordered_map>
 #include <unordered_set>
-
-using namespace std;
 
 namespace gtsam {
 
@@ -70,7 +68,7 @@ class WNOAFactorGraph : public ExpressionFactorGraph {
       typename Interpolator<PoseType>::LocalGlobalStateJacs;
 
   // map interpolated state to border states
-  unordered_map<StateData, pair<StateData, StateData>> interp_to_borders_map_;
+  std::unordered_map<StateData, std::pair<StateData, StateData>> interp_to_borders_map_;
   std::vector<std::pair<StateData, std::pair<StateData, StateData>>>
       interp_to_borders_vec_;
   std::vector<std::pair<StateData, std::shared_ptr<const LambdaPsiMats>>>
@@ -84,11 +82,11 @@ class WNOAFactorGraph : public ExpressionFactorGraph {
 
   bool fixed_noise_model_ = false;
 
-  unordered_set<Key> border_pose_keys_;
-  unordered_set<Key> border_vel_keys_;
+  std::unordered_set<Key> border_pose_keys_;
+  std::unordered_set<Key> border_vel_keys_;
 
   // Efficient storage for indices of WNOAInterpFactors
-  unordered_set<size_t> wnoa_interp_factor_indices_;
+  std::unordered_set<size_t> wnoa_interp_factor_indices_;
 
   /**
    * @brief Evaluate interpolated states from bordering estimated states.
@@ -108,8 +106,8 @@ class WNOAFactorGraph : public ExpressionFactorGraph {
    */
   Values getInterpolatedValues(
       const Values& values,
-      unordered_map<Key, std::array<Matrix, 4>>* InterpJacobians,
-      unordered_map<StateData, Matrix2N>* InterpCondCovs = nullptr) const;
+      std::unordered_map<Key, std::array<Matrix, 4>>* InterpJacobians,
+      std::unordered_map<StateData, Matrix2N>* InterpCondCovs = nullptr) const;
 
  public:
   /**
@@ -151,7 +149,7 @@ class WNOAFactorGraph : public ExpressionFactorGraph {
    * noise for interpolation.
    */
   WNOAFactorGraph(
-      unordered_map<StateData, pair<StateData, StateData>> interp_map,
+      std::unordered_map<StateData, std::pair<StateData, StateData>> interp_map,
       const Eigen::Vector<double, dim> Q_psd, bool fixed_noise_model = false);
       
 };
