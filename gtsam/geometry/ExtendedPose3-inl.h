@@ -33,7 +33,7 @@ size_t ExtendedPose3<K, Derived>::RuntimeK(const TangentVector& xi) {
 }
 
 template <int K, class Derived>
-void ExtendedPose3<K, Derived>::ZeroJacobian(ChartJacobian H, size_t d) {
+void ExtendedPose3<K, Derived>::ZeroJacobian(ChartJacobian H, Eigen::Index d) {
   if (!H) return;
   if constexpr (dimension == Eigen::Dynamic) {
     H->setZero(d, d);
@@ -51,7 +51,7 @@ ExtendedPose3<K, Derived>::ExtendedPose3()
 template <int K, class Derived>
 template <int K_, typename>
 ExtendedPose3<K, Derived>::ExtendedPose3(size_t k)
-    : R_(Rot3::Identity()), t_(3, k) {
+    : R_(Rot3::Identity()), t_(3, static_cast<Eigen::Index>(k)) {
   t_.setZero();
 }
 
@@ -61,23 +61,14 @@ ExtendedPose3<K, Derived>::ExtendedPose3(const Rot3& R, const Matrix3K& x)
 
 template <int K, class Derived>
 ExtendedPose3<K, Derived>::ExtendedPose3(const LieAlgebra& T) {
+  const Eigen::Index n = T.rows();
   if constexpr (K == Eigen::Dynamic) {
-    const auto n = T.rows();
     if (T.cols() != n || n < 3) {
       throw std::invalid_argument("ExtendedPose3: invalid matrix shape.");
     }
-    const auto k = n - 3;
-    t_.resize(3, k);
-    t_.setZero();
-  }
-
-  const auto n = T.rows();
-  if constexpr (K != Eigen::Dynamic) {
-    if (n != matrix_dim || T.cols() != matrix_dim) {
-      throw std::invalid_argument("ExtendedPose3: invalid matrix shape.");
-    }
+    t_.resize(3, n - 3);
   } else {
-    if (T.cols() != n || n < 3) {
+    if (n != matrix_dim || T.cols() != matrix_dim) {
       throw std::invalid_argument("ExtendedPose3: invalid matrix shape.");
     }
   }
@@ -90,7 +81,7 @@ template <int K, class Derived>
 const Rot3& ExtendedPose3<K, Derived>::rotation(ComponentJacobian H) const {
   if (H) {
     if constexpr (dimension == Eigen::Dynamic) {
-      H->setZero(3, dim());
+      H->setZero(3, static_cast<Eigen::Index>(dim()));
     } else {
       H->setZero();
     }
@@ -104,7 +95,7 @@ Point3 ExtendedPose3<K, Derived>::x(size_t i, ComponentJacobian H) const {
   if (i >= k()) throw std::out_of_range("ExtendedPose3: x(i) out of range.");
   if (H) {
     if constexpr (dimension == Eigen::Dynamic) {
-      H->setZero(3, dim());
+      H->setZero(3, static_cast<Eigen::Index>(dim()));
     } else {
       H->setZero();
     }
@@ -175,7 +166,7 @@ typename ExtendedPose3<K, Derived>::This ExtendedPose3<K, Derived>::operator*(
 template <int K, class Derived>
 typename ExtendedPose3<K, Derived>::This ExtendedPose3<K, Derived>::Expmap(
     const TangentVector& xi, ChartJacobian Hxi) {
-  const size_t k = RuntimeK(xi);
+  const Eigen::Index k = static_cast<Eigen::Index>(RuntimeK(xi));
 
   // Get angular velocity omega
   const Vector3 w = xi.template head<3>();
@@ -202,30 +193,28 @@ typename ExtendedPose3<K, Derived>::This ExtendedPose3<K, Derived>::Expmap(
   // is near zero, and also gives us the machinery for the Jacobians.
 
   Matrix3K x;
-  if constexpr (K == Eigen::Dynamic) x.resize(3, static_cast<Eigen::Index>(k));
+  if constexpr (K == Eigen::Dynamic) x.resize(3, k);
 
   if (Hxi) {
-    const size_t d = 3 + 3 * k;
-    ZeroJacobian(Hxi, d);
+    ZeroJacobian(Hxi, 3 + 3 * k);
     const Matrix3 Jr = local.Jacobian().right();
     Hxi->block(0, 0, 3, 3) = Jr;  // Jr here *is* the Jacobian of expmap
     const Matrix3 Rt = R.transpose();
-    for (size_t i = 0; i < k; ++i) {
+    for (Eigen::Index i = 0; i < k; ++i) {
       Matrix3 H_xi_w;
-      const Eigen::Index idx = 3 + 3 * static_cast<Eigen::Index>(i);
+      const Eigen::Index idx = 3 + 3 * i;
       const Vector3 rho = xi.template segment<3>(idx);
-      x.col(static_cast<Eigen::Index>(i)) =
-          local.Jacobian().applyLeft(rho, &H_xi_w);
+      x.col(i) = local.Jacobian().applyLeft(rho, &H_xi_w);
       Hxi->block(idx, 0, 3, 3) = Rt * H_xi_w;
       Hxi->block(idx, idx, 3, 3) = Jr;
       // In the last row, Jr = R^T * Jl, see Barfoot eq. (8.83).
       // Jl is the left Jacobian of SO(3) at w.
     }
   } else {
-    for (size_t i = 0; i < k; ++i) {
-      const Eigen::Index idx = 3 + 3 * static_cast<Eigen::Index>(i);
+    for (Eigen::Index i = 0; i < k; ++i) {
+      const Eigen::Index idx = 3 + 3 * i;
       const Vector3 rho = xi.template segment<3>(idx);
-      x.col(static_cast<Eigen::Index>(i)) = local.Jacobian().applyLeft(rho);
+      x.col(i) = local.Jacobian().applyLeft(rho);
     }
   }
 
@@ -243,10 +232,11 @@ ExtendedPose3<K, Derived>::Logmap(const This& pose, ChartJacobian H) {
   if constexpr (K == Eigen::Dynamic)
     xi.resize(static_cast<Eigen::Index>(poseBase.dim()));
   xi.template head<3>() = w;
-  for (size_t i = 0; i < poseBase.k(); ++i) {
-    const Eigen::Index idx = 3 + 3 * static_cast<Eigen::Index>(i);
-    xi.template segment<3>(idx) = local.InvJacobian().applyLeft(
-        poseBase.t_.col(static_cast<Eigen::Index>(i)));
+  const Eigen::Index k = static_cast<Eigen::Index>(poseBase.k());
+  for (Eigen::Index i = 0; i < k; ++i) {
+    const Eigen::Index idx = 3 + 3 * i;
+    xi.template segment<3>(idx) =
+        local.InvJacobian().applyLeft(poseBase.t_.col(i));
   }
 
   if (H) *H = LogmapDerivative(xi);
@@ -265,10 +255,10 @@ ExtendedPose3<K, Derived>::AdjointMap() const {
   }
 
   adj.block(0, 0, 3, 3) = R;
-  for (size_t i = 0; i < k(); ++i) {
-    const Eigen::Index idx = 3 + 3 * static_cast<Eigen::Index>(i);
-    adj.block(idx, 0, 3, 3) =
-        skewSymmetric(t_.col(static_cast<Eigen::Index>(i))) * R;
+  const Eigen::Index k = static_cast<Eigen::Index>(this->k());
+  for (Eigen::Index i = 0; i < k; ++i) {
+    const Eigen::Index idx = 3 + 3 * i;
+    adj.block(idx, 0, 3, 3) = skewSymmetric(t_.col(i)) * R;
     adj.block(idx, idx, 3, 3) = R;
   }
   return adj;
@@ -288,7 +278,7 @@ ExtendedPose3<K, Derived>::Adjoint(const TangentVector& xi_b,
 template <int K, class Derived>
 typename ExtendedPose3<K, Derived>::Jacobian
 ExtendedPose3<K, Derived>::adjointMap(const TangentVector& xi) {
-  const size_t k = RuntimeK(xi);
+  const Eigen::Index k = static_cast<Eigen::Index>(RuntimeK(xi));
   const Matrix3 w_hat = skewSymmetric(xi(0), xi(1), xi(2));
 
   Jacobian adj;
@@ -299,8 +289,8 @@ ExtendedPose3<K, Derived>::adjointMap(const TangentVector& xi) {
   }
 
   adj.block(0, 0, 3, 3) = w_hat;
-  for (size_t i = 0; i < k; ++i) {
-    const Eigen::Index idx = 3 + 3 * static_cast<Eigen::Index>(i);
+  for (Eigen::Index i = 0; i < k; ++i) {
+    const Eigen::Index idx = 3 + 3 * i;
     adj.block(idx, 0, 3, 3) =
         skewSymmetric(xi(idx + 0), xi(idx + 1), xi(idx + 2));
     adj.block(idx, idx, 3, 3) = w_hat;
@@ -346,7 +336,7 @@ ExtendedPose3<K, Derived>::ExpmapDerivative(const TangentVector& xi) {
 template <int K, class Derived>
 typename ExtendedPose3<K, Derived>::Jacobian
 ExtendedPose3<K, Derived>::LogmapDerivative(const TangentVector& xi) {
-  const size_t k = RuntimeK(xi);
+  const Eigen::Index k = static_cast<Eigen::Index>(RuntimeK(xi));
   const Vector3 w = xi.template head<3>();
 
   // Instantiate functor for Dexp-related operations:
@@ -363,9 +353,9 @@ ExtendedPose3<K, Derived>::LogmapDerivative(const TangentVector& xi) {
   }
 
   J.block(0, 0, 3, 3) = Jw;
-  for (size_t i = 0; i < k; ++i) {
+  for (Eigen::Index i = 0; i < k; ++i) {
     Matrix3 H_xi_w;
-    const Eigen::Index idx = 3 + 3 * static_cast<Eigen::Index>(i);
+    const Eigen::Index idx = 3 + 3 * i;
     local.Jacobian().applyLeft(xi.template segment<3>(idx), H_xi_w);
     const Matrix3 Q = Rt * H_xi_w;
     J.block(idx, 0, 3, 3) = -Jw * Q * Jw;
@@ -399,20 +389,21 @@ typename ExtendedPose3<K, Derived>::LieAlgebra
 ExtendedPose3<K, Derived>::matrix() const {
   LieAlgebra M;
   if constexpr (matrix_dim == Eigen::Dynamic) {
-    const Eigen::Index n = 3 + static_cast<Eigen::Index>(k());
+    const Eigen::Index k = static_cast<Eigen::Index>(this->k());
+    const Eigen::Index n = 3 + k;
     M = LieAlgebra::Identity(n, n);
   } else {
     M = LieAlgebra::Identity();
   }
   M.template block<3, 3>(0, 0) = R_.matrix();
-  M.block(0, 3, 3, static_cast<Eigen::Index>(k())) = t_;
+  M.block(0, 3, 3, static_cast<Eigen::Index>(this->k())) = t_;
   return M;
 }
 
 template <int K, class Derived>
 typename ExtendedPose3<K, Derived>::LieAlgebra ExtendedPose3<K, Derived>::Hat(
     const TangentVector& xi) {
-  const size_t k = RuntimeK(xi);
+  const Eigen::Index k = static_cast<Eigen::Index>(RuntimeK(xi));
   LieAlgebra X;
   if constexpr (matrix_dim == Eigen::Dynamic) {
     X.setZero(3 + k, 3 + k);
@@ -420,8 +411,8 @@ typename ExtendedPose3<K, Derived>::LieAlgebra ExtendedPose3<K, Derived>::Hat(
     X.setZero();
   }
   X.block(0, 0, 3, 3) = skewSymmetric(xi(0), xi(1), xi(2));
-  for (size_t i = 0; i < k; ++i) {
-    const Eigen::Index idx = 3 + 3 * static_cast<Eigen::Index>(i);
+  for (Eigen::Index i = 0; i < k; ++i) {
+    const Eigen::Index idx = 3 + 3 * i;
     X.block(0, 3 + i, 3, 1) = xi.template segment<3>(idx);
   }
   return X;

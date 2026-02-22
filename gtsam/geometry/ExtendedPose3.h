@@ -46,7 +46,7 @@ class ExtendedPose3;
  * Template parameter K can be fixed (K >= 1) or Eigen::Dynamic.
  */
 template <int K, class Derived>
-class GTSAM_EXPORT ExtendedPose3
+class ExtendedPose3
     : public MatrixLieGroup<std::conditional_t<std::is_void_v<Derived>,
                                                ExtendedPose3<K, void>, Derived>,
                             (K == Eigen::Dynamic) ? Eigen::Dynamic : 3 + 3 * K,
@@ -392,7 +392,7 @@ class GTSAM_EXPORT ExtendedPose3
   }
 
   static size_t RuntimeK(const TangentVector& xi);
-  static void ZeroJacobian(ChartJacobian H, size_t d);
+  static void ZeroJacobian(ChartJacobian H, Eigen::Index d);
 
  private:
 #if GTSAM_ENABLE_BOOST_SERIALIZATION

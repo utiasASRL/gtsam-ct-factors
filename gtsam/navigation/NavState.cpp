@@ -118,9 +118,7 @@ void NavState::print(const std::string& s) const {
 
 //------------------------------------------------------------------------------
 bool NavState::equals(const NavState& other, double tol) const {
-  return R_.equals(other.R_, tol) &&
-      traits<Point3>::Equals(t_.col(0), other.t_.col(0), tol) &&
-      equal_with_abs_tol(t_.col(1), other.t_.col(1), tol);
+  return Base::equals(other, tol);
 }
 
 //------------------------------------------------------------------------------
