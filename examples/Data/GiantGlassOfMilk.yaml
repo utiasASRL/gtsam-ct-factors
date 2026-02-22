@@ -1,6 +1,0 @@
-files:
-  input: "GiantGlassOfMilk.csv"
-  output: "../results/milk.csv"
-params:
-  dt_meas: 7.5
-  interp: false
