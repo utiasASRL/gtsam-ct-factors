@@ -41,11 +41,9 @@ using Velocity3 = Vector3;
  * NOTE: While Barrau20icra follow a R,v,t order,
  * we use a R,t,v order to maintain backwards compatibility.
  */
-class GTSAM_EXPORT NavState : public MatrixLieGroup<NavState, 9, 5>,
-                              public ExtendedPose3<2> {
+class GTSAM_EXPORT NavState : public ExtendedPose3<2, NavState> {
 public:
-  using Base = ExtendedPose3<2>;
-  using LieGroupBase = MatrixLieGroup<NavState, 9, 5>;
+  using Base = ExtendedPose3<2, NavState>;
   using LieAlgebra = Matrix5;
   using Vector25 = Eigen::Matrix<double, 25, 1>;
   inline constexpr static auto dimension = 9;
@@ -155,10 +153,6 @@ public:
   /// @name Group
   /// @{
 
-  static NavState Identity() { return NavState(Base::Identity()); }
-  NavState inverse() const;
-  NavState operator*(const NavState& other) const;
-
   /// Syntactic sugar
   const Rot3& rotation() const { return attitude(); };
 
@@ -196,41 +190,6 @@ public:
   /// @}
   /// @name Lie Group
   /// @{
-
-  static NavState Expmap(const Vector9& xi, OptionalJacobian<9, 9> Hxi = {});
-  static Vector9 Logmap(const NavState& pose, OptionalJacobian<9, 9> Hpose = {});
-
-  Matrix9 AdjointMap() const;
-  Vector9 Adjoint(const Vector9& xi_b, OptionalJacobian<9, 9> H_this = {},
-                  OptionalJacobian<9, 9> H_xib = {}) const;
-
-  static Matrix9 adjointMap(const Vector9& xi);
-  static Vector9 adjoint(const Vector9& xi, const Vector9& y,
-                         OptionalJacobian<9, 9> Hxi = {},
-                         OptionalJacobian<9, 9> H_y = {});
-
-  static Matrix9 ExpmapDerivative(const Vector9& xi);
-  static Matrix9 LogmapDerivative(const Vector9& xi);
-  static Matrix9 LogmapDerivative(const NavState& state);
-
-  struct GTSAM_EXPORT ChartAtOrigin {
-    static NavState Retract(const Vector9& xi, ChartJacobian Hxi = {});
-    static Vector9 Local(const NavState& state, ChartJacobian Hstate = {});
-  };
-
-  using LieGroupBase::between;
-  using LieGroupBase::compose;
-  using LieGroupBase::expmap;
-  using LieGroupBase::LocalCoordinates;
-  using LieGroupBase::logmap;
-  using LieGroupBase::Retract;
-  using LieGroup<NavState, 9>::inverse;
-
-  static Matrix5 Hat(const Vector9& xi);
-  static Vector9 Vee(const Matrix5& X);
-
-  Matrix5 matrix() const { return Base::matrix(); }
-  Vector25 vec(OptionalJacobian<25, 9> H = {}) const { return Base::vec(H); }
 
   /// @}
   /// @name Dynamics

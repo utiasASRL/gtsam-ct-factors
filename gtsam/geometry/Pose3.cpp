@@ -58,58 +58,6 @@ Pose3 Pose3::FromPose2(const Pose2& p, OptionalJacobian<6, 3> H) {
 }
 
 /* ************************************************************************* */
-Pose3 Pose3::inverse() const { return Pose3(Base::inverse()); }
-
-/* ************************************************************************* */
-Pose3 Pose3::operator*(const Pose3& T) const {
-  return Pose3(Base::operator*(T));
-}
-
-/* ************************************************************************* */
-Pose3 Pose3::Expmap(const Vector6& xi, OptionalJacobian<6, 6> Hxi) {
-  return Pose3(Base::Expmap(xi, Hxi));
-}
-
-/* ************************************************************************* */
-Vector6 Pose3::Logmap(const Pose3& pose, OptionalJacobian<6, 6> Hpose) {
-  return Base::Logmap(pose, Hpose);
-}
-
-/* ************************************************************************* */
-Matrix6 Pose3::AdjointMap() const { return Base::AdjointMap(); }
-
-/* ************************************************************************* */
-Vector6 Pose3::Adjoint(const Vector6& xi_b, OptionalJacobian<6, 6> H_this,
-                       OptionalJacobian<6, 6> H_xib) const {
-  return Base::Adjoint(xi_b, H_this, H_xib);
-}
-
-/* ************************************************************************* */
-Matrix6 Pose3::adjointMap(const Vector6& xi) { return Base::adjointMap(xi); }
-
-/* ************************************************************************* */
-Vector6 Pose3::adjoint(const Vector6& xi, const Vector6& y,
-                       OptionalJacobian<6, 6> Hxi,
-                       OptionalJacobian<6, 6> H_y) {
-  return Base::adjoint(xi, y, Hxi, H_y);
-}
-
-/* ************************************************************************* */
-Matrix6 Pose3::ExpmapDerivative(const Vector6& xi) {
-  return Base::ExpmapDerivative(xi);
-}
-
-/* ************************************************************************* */
-Matrix6 Pose3::LogmapDerivative(const Vector6& xi) {
-  return Base::LogmapDerivative(xi);
-}
-
-/* ************************************************************************* */
-Matrix6 Pose3::LogmapDerivative(const Pose3& pose) {
-  return Base::LogmapDerivative(pose);
-}
-
-/* ************************************************************************* */
 Pose3 Pose3::ChartAtOrigin::Retract(const Vector6& xi, ChartJacobian Hxi) {
 #ifdef GTSAM_POSE3_EXPMAP
   return Expmap(xi, Hxi);
@@ -139,20 +87,6 @@ Vector6 Pose3::ChartAtOrigin::Local(const Pose3& pose, ChartJacobian Hpose) {
   }
   return xi;
 #endif
-}
-
-/* ************************************************************************* */
-Matrix4 Pose3::Hat(const Vector6& xi) { return Base::Hat(xi); }
-
-/* ************************************************************************* */
-Vector6 Pose3::Vee(const Matrix4& X) { return Base::Vee(X); }
-
-/* ************************************************************************* */
-Matrix4 Pose3::matrix() const { return Base::matrix(); }
-
-/* ************************************************************************* */
-Pose3::Vector16 Pose3::vec(OptionalJacobian<16, 6> H) const {
-  return Base::vec(H);
 }
 
 /* ************************************************************************* */

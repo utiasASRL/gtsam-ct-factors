@@ -39,10 +39,9 @@ class Pose2;
  * @ingroup geometry
  * \nosubgrouping
  */
-class GTSAM_EXPORT Pose3: public MatrixLieGroup<Pose3, 6, 4>, public ExtendedPose3<1> {
+class GTSAM_EXPORT Pose3: public ExtendedPose3<1, Pose3> {
 public:
-  using Base = ExtendedPose3<1>;
-  using LieGroupBase = MatrixLieGroup<Pose3, 6, 4>;
+  using Base = ExtendedPose3<1, Pose3>;
 
   /** Pose Concept requirements */
   typedef Rot3 Rotation;
@@ -51,6 +50,7 @@ public:
 
 public:
   using Vector16 = Eigen::Matrix<double, 16, 1>;
+  using Base::operator*;
 
   /// @name Standard Constructors
   /// @{
@@ -106,15 +106,6 @@ public:
   /// @name Group
   /// @{
 
-  static Pose3 Identity() {
-    return Pose3(Base::Identity());
-  }
-
-  Pose3 inverse() const;
-
-  /// compose syntactic sugar
-  Pose3 operator*(const Pose3& T) const;
-
   /**
    * Interpolate between two poses via individual rotation and translation
    * interpolation.
@@ -140,22 +131,6 @@ public:
 
   using LieAlgebra = Matrix4;
 
-  static Pose3 Expmap(const Vector6& xi, OptionalJacobian<6, 6> Hxi = {});
-
-  static Vector6 Logmap(const Pose3& pose, OptionalJacobian<6, 6> Hpose = {});
-
-  Matrix6 AdjointMap() const;
-
-  Vector6 Adjoint(const Vector6& xi_b,
-                  OptionalJacobian<6, 6> H_this = {},
-                  OptionalJacobian<6, 6> H_xib = {}) const;
-
-  static Matrix6 adjointMap(const Vector6& xi);
-
-  static Vector6 adjoint(const Vector6& xi, const Vector6& y,
-                         OptionalJacobian<6, 6> Hxi = {},
-                         OptionalJacobian<6, 6> H_y = {});
-  
   /// The dual version of Adjoint
   Vector6 AdjointTranspose(const Vector6& x,
                            OptionalJacobian<6, 6> H_this = {},
@@ -172,36 +147,10 @@ public:
                                   OptionalJacobian<6, 6> Hxi = {},
                                   OptionalJacobian<6, 6> H_y = {});
 
-  static Matrix6 ExpmapDerivative(const Vector6& xi);
-
-  static Matrix6 LogmapDerivative(const Vector6& xi);
-
-  static Matrix6 LogmapDerivative(const Pose3& pose);
-
   struct GTSAM_EXPORT ChartAtOrigin {
     static Pose3 Retract(const Vector6& xi, ChartJacobian Hxi = {});
     static Vector6 Local(const Pose3& pose, ChartJacobian Hpose = {});
   };
-
-  using LieGroupBase::between;
-  using LieGroupBase::compose;
-  using LieGroupBase::expmap;
-  using LieGroupBase::LocalCoordinates;
-  using LieGroupBase::logmap;
-  using LieGroupBase::Retract;
-  using LieGroup<Pose3, 6>::inverse;
-  using LieGroupBase::localCoordinates;
-  using LieGroupBase::retract;
-
-  static Matrix4 Hat(const Vector6& xi);
-
-  static Vector6 Vee(const Matrix4& X);
-
-  /** convert to 4*4 matrix */
-  Matrix4 matrix() const;
-
-  /// Return vectorized SE(3) matrix in column order.
-  Vector16 vec(OptionalJacobian<16, 6> H = {}) const;
 
   /// @}
   /// @name Group Action on Point3

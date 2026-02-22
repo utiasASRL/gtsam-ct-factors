@@ -34,6 +34,9 @@
 
 namespace gtsam {
 
+template <int K, class Derived = void>
+class ExtendedPose3;
+
 namespace internal {
 
 /// Compile-time traits for SE_k(3) dimensions.
@@ -50,6 +53,16 @@ struct ExtendedPose3Traits {
   }
 };
 
+template <int K, class Derived>
+struct ExtendedPose3Class {
+  using type = Derived;
+};
+
+template <int K>
+struct ExtendedPose3Class<K, void> {
+  using type = ExtendedPose3<K, void>;
+};
+
 }  // namespace internal
 
 /**
@@ -58,18 +71,19 @@ struct ExtendedPose3Traits {
  *
  * Template parameter K can be fixed (K >= 1) or Eigen::Dynamic.
  */
-template <int K>
+template <int K, class Derived>
 class GTSAM_EXPORT ExtendedPose3
-    : public MatrixLieGroup<ExtendedPose3<K>,
+    : public MatrixLieGroup<typename internal::ExtendedPose3Class<K, Derived>::type,
                             internal::ExtendedPose3Traits<K>::Dimension(),
                             internal::ExtendedPose3Traits<K>::MatrixDim()> {
  public:
+  using This = typename internal::ExtendedPose3Class<K, Derived>::type;
   inline constexpr static auto dimension =
       internal::ExtendedPose3Traits<K>::Dimension();
   inline constexpr static auto matrix_dim =
       internal::ExtendedPose3Traits<K>::MatrixDim();
 
-  using Base = MatrixLieGroup<ExtendedPose3<K>, dimension, matrix_dim>;
+  using Base = MatrixLieGroup<This, dimension, matrix_dim>;
   using TangentVector = typename Base::TangentVector;
   using Jacobian = typename Base::Jacobian;
   using ChartJacobian = typename Base::ChartJacobian;
@@ -91,6 +105,22 @@ class GTSAM_EXPORT ExtendedPose3
   using IsDynamic = typename std::enable_if<K_ == Eigen::Dynamic, void>::type;
   template <int K_>
   using IsFixed = typename std::enable_if<K_ >= 1, void>::type;
+
+  static This MakeReturn(const ExtendedPose3& value) {
+    if constexpr (std::is_void_v<Derived>) {
+      return value;
+    } else {
+      return This(value);
+    }
+  }
+
+  static const ExtendedPose3& AsBase(const This& value) {
+    if constexpr (std::is_void_v<Derived>) {
+      return value;
+    } else {
+      return static_cast<const ExtendedPose3&>(value);
+    }
+  }
 
   static size_t RuntimeK(const TangentVector& xi);
   static void ZeroJacobian(ChartJacobian H, size_t d);
@@ -151,22 +181,22 @@ class GTSAM_EXPORT ExtendedPose3
   /// @{
 
   template <int K_ = K, typename = IsFixed<K_>>
-  static ExtendedPose3 Identity();
+  static This Identity();
 
   template <int K_ = K, typename = IsDynamic<K_>>
-  static ExtendedPose3 Identity(size_t k = 0);
+  static This Identity(size_t k = 0);
 
-  ExtendedPose3 inverse() const;
+  This inverse() const;
 
-  ExtendedPose3 operator*(const ExtendedPose3& other) const;
+  This operator*(const This& other) const;
 
   /// @}
   /// @name Lie Group
   /// @{
 
-  static ExtendedPose3 Expmap(const TangentVector& xi, ChartJacobian Hxi = {});
+  static This Expmap(const TangentVector& xi, ChartJacobian Hxi = {});
 
-  static TangentVector Logmap(const ExtendedPose3& pose,
+  static TangentVector Logmap(const This& pose,
                               ChartJacobian Hpose = {});
 
   Jacobian AdjointMap() const;
@@ -184,16 +214,16 @@ class GTSAM_EXPORT ExtendedPose3
 
   static Jacobian LogmapDerivative(const TangentVector& xi);
 
-  static Jacobian LogmapDerivative(const ExtendedPose3& pose);
+  static Jacobian LogmapDerivative(const This& pose);
 
   struct ChartAtOrigin {
-    static ExtendedPose3 Retract(const TangentVector& xi,
+    static This Retract(const TangentVector& xi,
                                  ChartJacobian Hxi = {});
-    static TangentVector Local(const ExtendedPose3& pose,
+    static TangentVector Local(const This& pose,
                                ChartJacobian Hpose = {});
   };
 
-  using LieGroup<ExtendedPose3<K>, dimension>::inverse;
+  using LieGroup<This, dimension>::inverse;
 
   /// @}
   /// @name Matrix Lie Group
@@ -227,15 +257,15 @@ class GTSAM_EXPORT ExtendedPose3
 /// Convenience typedef for dynamic k.
 using ExtendedPose3Dynamic = ExtendedPose3<Eigen::Dynamic>;
 
-template <int K>
-struct traits<ExtendedPose3<K>>
+template <int K, class Derived>
+struct traits<ExtendedPose3<K, Derived>>
     : public internal::MatrixLieGroup<
-          ExtendedPose3<K>, internal::ExtendedPose3Traits<K>::MatrixDim()> {};
+          ExtendedPose3<K, Derived>, internal::ExtendedPose3Traits<K>::MatrixDim()> {};
 
-template <int K>
-struct traits<const ExtendedPose3<K>>
+template <int K, class Derived>
+struct traits<const ExtendedPose3<K, Derived>>
     : public internal::MatrixLieGroup<
-          ExtendedPose3<K>, internal::ExtendedPose3Traits<K>::MatrixDim()> {};
+          ExtendedPose3<K, Derived>, internal::ExtendedPose3Traits<K>::MatrixDim()> {};
 
 }  // namespace gtsam
 

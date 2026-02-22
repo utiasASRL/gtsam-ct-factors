@@ -804,21 +804,6 @@ TEST(NavState, Vec) {
 }
 
 /* ************************************************************************* */
-TEST(NavState, AdjointMap_GenericVsSpecialized) {
-  // Create a non-trivial NavState object
-  const NavState navState(Rot3::Rodrigues(0.1, 0.2, 0.3), Point3(1.0, 2.0, 3.0), Velocity3(0.4, 0.5, 0.6));
-
-  // Call the specialized AdjointMap
-  Matrix9 specialized_Adj = navState.AdjointMap();
-
-  // Call the generic AdjointMap from the base class
-  Matrix9 generic_Adj = static_cast<const MatrixLieGroup<NavState, 9, 5>*>(&navState)->AdjointMap();
-
-  // Assert that they are equal
-  EXPECT(assert_equal(specialized_Adj, generic_Adj, 1e-9));
-}
-
-/* ************************************************************************* */
 TEST(NavState, AutonomousFlow) {
   const double dt = 0.1;
   NavState::AutonomousFlow phi{dt};

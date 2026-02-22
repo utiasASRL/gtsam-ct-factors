@@ -11,7 +11,7 @@
 
 /**
  * @file    ExtendedPose3-inl.h
- * @brief   Template implementations for ExtendedPose3<K>
+ * @brief   Template implementations for ExtendedPose3<K, Derived>
  * @author  Frank Dellaert, et al.
  */
 
@@ -19,8 +19,8 @@
 
 namespace gtsam {
 
-template <int K>
-size_t ExtendedPose3<K>::RuntimeK(const TangentVector& xi) {
+template <int K, class Derived>
+size_t ExtendedPose3<K, Derived>::RuntimeK(const TangentVector& xi) {
   if constexpr (K == Eigen::Dynamic) {
     if (xi.size() < 3 || (xi.size() - 3) % 3 != 0) {
       throw std::invalid_argument(
@@ -32,8 +32,8 @@ size_t ExtendedPose3<K>::RuntimeK(const TangentVector& xi) {
   }
 }
 
-template <int K>
-void ExtendedPose3<K>::ZeroJacobian(ChartJacobian H, size_t d) {
+template <int K, class Derived>
+void ExtendedPose3<K, Derived>::ZeroJacobian(ChartJacobian H, size_t d) {
   if (!H) return;
   if constexpr (dimension == Eigen::Dynamic) {
     H->setZero(d, d);
@@ -43,22 +43,24 @@ void ExtendedPose3<K>::ZeroJacobian(ChartJacobian H, size_t d) {
   }
 }
 
-template <int K>
+template <int K, class Derived>
 template <int K_, typename>
-ExtendedPose3<K>::ExtendedPose3() : R_(Rot3::Identity()), x_(Matrix3K::Zero()) {
-}
+ExtendedPose3<K, Derived>::ExtendedPose3()
+    : R_(Rot3::Identity()), x_(Matrix3K::Zero()) {}
 
-template <int K>
+template <int K, class Derived>
 template <int K_, typename>
-ExtendedPose3<K>::ExtendedPose3(size_t k) : R_(Rot3::Identity()), x_(3, k) {
+ExtendedPose3<K, Derived>::ExtendedPose3(size_t k)
+    : R_(Rot3::Identity()), x_(3, k) {
   x_.setZero();
 }
 
-template <int K>
-ExtendedPose3<K>::ExtendedPose3(const Rot3& R, const Matrix3K& x) : R_(R), x_(x) {}
+template <int K, class Derived>
+ExtendedPose3<K, Derived>::ExtendedPose3(const Rot3& R, const Matrix3K& x)
+    : R_(R), x_(x) {}
 
-template <int K>
-ExtendedPose3<K>::ExtendedPose3(const LieAlgebra& T) {
+template <int K, class Derived>
+ExtendedPose3<K, Derived>::ExtendedPose3(const LieAlgebra& T) {
   if constexpr (K == Eigen::Dynamic) {
     const auto n = T.rows();
     if (T.cols() != n || n < 3) {
@@ -84,24 +86,24 @@ ExtendedPose3<K>::ExtendedPose3(const LieAlgebra& T) {
   x_ = T.block(0, 3, 3, n - 3);
 }
 
-template <int K>
-size_t ExtendedPose3<K>::Dimension(size_t k) {
+template <int K, class Derived>
+size_t ExtendedPose3<K, Derived>::Dimension(size_t k) {
   return 3 + 3 * k;
 }
 
-template <int K>
-size_t ExtendedPose3<K>::k() const {
+template <int K, class Derived>
+size_t ExtendedPose3<K, Derived>::k() const {
   return static_cast<size_t>(x_.cols());
 }
 
-template <int K>
+template <int K, class Derived>
 template <int K_, typename>
-size_t ExtendedPose3<K>::dim() const {
+size_t ExtendedPose3<K, Derived>::dim() const {
   return Dimension(k());
 }
 
-template <int K>
-const Rot3& ExtendedPose3<K>::rotation(ComponentJacobian H) const {
+template <int K, class Derived>
+const Rot3& ExtendedPose3<K, Derived>::rotation(ComponentJacobian H) const {
   if (H) {
     if constexpr (dimension == Eigen::Dynamic) {
       H->setZero(3, dim());
@@ -113,8 +115,8 @@ const Rot3& ExtendedPose3<K>::rotation(ComponentJacobian H) const {
   return R_;
 }
 
-template <int K>
-Point3 ExtendedPose3<K>::x(size_t i, ComponentJacobian H) const {
+template <int K, class Derived>
+Point3 ExtendedPose3<K, Derived>::x(size_t i, ComponentJacobian H) const {
   if (i >= k()) throw std::out_of_range("ExtendedPose3: x(i) out of range.");
   if (H) {
     if constexpr (dimension == Eigen::Dynamic) {
@@ -127,57 +129,64 @@ Point3 ExtendedPose3<K>::x(size_t i, ComponentJacobian H) const {
   return x_.col(static_cast<Eigen::Index>(i));
 }
 
-template <int K>
-const typename ExtendedPose3<K>::Matrix3K& ExtendedPose3<K>::xMatrix() const {
+template <int K, class Derived>
+const typename ExtendedPose3<K, Derived>::Matrix3K&
+ExtendedPose3<K, Derived>::xMatrix() const {
   return x_;
 }
 
-template <int K>
-typename ExtendedPose3<K>::Matrix3K& ExtendedPose3<K>::xMatrix() {
+template <int K, class Derived>
+typename ExtendedPose3<K, Derived>::Matrix3K&
+ExtendedPose3<K, Derived>::xMatrix() {
   return x_;
 }
 
-template <int K>
-void ExtendedPose3<K>::print(const std::string& s) const {
+template <int K, class Derived>
+void ExtendedPose3<K, Derived>::print(const std::string& s) const {
   std::cout << (s.empty() ? s : s + " ") << *this << std::endl;
 }
 
-template <int K>
-bool ExtendedPose3<K>::equals(const ExtendedPose3& other, double tol) const {
+template <int K, class Derived>
+bool ExtendedPose3<K, Derived>::equals(const ExtendedPose3& other,
+                                       double tol) const {
   return R_.equals(other.R_, tol) && equal_with_abs_tol(x_, other.x_, tol);
 }
 
-template <int K>
+template <int K, class Derived>
 template <int K_, typename>
-ExtendedPose3<K> ExtendedPose3<K>::Identity() {
-  return ExtendedPose3();
+typename ExtendedPose3<K, Derived>::This ExtendedPose3<K, Derived>::Identity() {
+  return MakeReturn(ExtendedPose3());
 }
 
-template <int K>
+template <int K, class Derived>
 template <int K_, typename>
-ExtendedPose3<K> ExtendedPose3<K>::Identity(size_t k) {
-  return ExtendedPose3(k);
+typename ExtendedPose3<K, Derived>::This
+ExtendedPose3<K, Derived>::Identity(size_t k) {
+  return MakeReturn(ExtendedPose3(k));
 }
 
-template <int K>
-ExtendedPose3<K> ExtendedPose3<K>::inverse() const {
+template <int K, class Derived>
+typename ExtendedPose3<K, Derived>::This
+ExtendedPose3<K, Derived>::inverse() const {
   const Rot3 Rt = R_.inverse();
   const Matrix3K x = -(Rt.matrix() * x_);
-  return ExtendedPose3(Rt, x);
+  return MakeReturn(ExtendedPose3(Rt, x));
 }
 
-template <int K>
-ExtendedPose3<K> ExtendedPose3<K>::operator*(const ExtendedPose3& other) const {
-  if (k() != other.k()) {
+template <int K, class Derived>
+typename ExtendedPose3<K, Derived>::This
+ExtendedPose3<K, Derived>::operator*(const This& other) const {
+  const ExtendedPose3& otherBase = AsBase(other);
+  if (k() != otherBase.k()) {
     throw std::invalid_argument("ExtendedPose3: compose requires matching k.");
   }
-  Matrix3K x = x_ + R_.matrix() * other.x_;
-  return ExtendedPose3(R_ * other.R_, x);
+  Matrix3K x = x_ + R_.matrix() * otherBase.x_;
+  return MakeReturn(ExtendedPose3(R_ * otherBase.R_, x));
 }
 
-template <int K>
-ExtendedPose3<K> ExtendedPose3<K>::Expmap(const TangentVector& xi,
-                                          ChartJacobian Hxi) {
+template <int K, class Derived>
+typename ExtendedPose3<K, Derived>::This ExtendedPose3<K, Derived>::Expmap(
+    const TangentVector& xi, ChartJacobian Hxi) {
   const size_t k = RuntimeK(xi);
 
   const Vector3 w = xi.template head<3>();
@@ -208,29 +217,32 @@ ExtendedPose3<K> ExtendedPose3<K>::Expmap(const TangentVector& xi,
     }
   }
 
-  return ExtendedPose3(R, x);
+  return MakeReturn(ExtendedPose3(R, x));
 }
 
-template <int K>
-typename ExtendedPose3<K>::TangentVector ExtendedPose3<K>::Logmap(
-    const ExtendedPose3& pose, ChartJacobian Hpose) {
-  const Vector3 w = Rot3::Logmap(pose.R_);
+template <int K, class Derived>
+typename ExtendedPose3<K, Derived>::TangentVector ExtendedPose3<K, Derived>::Logmap(
+    const This& pose, ChartJacobian Hpose) {
+  const ExtendedPose3& poseBase = AsBase(pose);
+  const Vector3 w = Rot3::Logmap(poseBase.R_);
   const so3::DexpFunctor local(w);
 
   TangentVector xi;
-  if constexpr (K == Eigen::Dynamic) xi.resize(static_cast<Eigen::Index>(pose.dim()));
+  if constexpr (K == Eigen::Dynamic)
+    xi.resize(static_cast<Eigen::Index>(poseBase.dim()));
   xi.template head<3>() = w;
-  for (size_t i = 0; i < pose.k(); ++i) {
+  for (size_t i = 0; i < poseBase.k(); ++i) {
     xi.template segment<3>(3 + 3 * i) =
-        local.InvJacobian().applyLeft(pose.x_.col(static_cast<Eigen::Index>(i)));
+        local.InvJacobian().applyLeft(poseBase.x_.col(static_cast<Eigen::Index>(i)));
   }
 
   if (Hpose) *Hpose = LogmapDerivative(xi);
   return xi;
 }
 
-template <int K>
-typename ExtendedPose3<K>::Jacobian ExtendedPose3<K>::AdjointMap() const {
+template <int K, class Derived>
+typename ExtendedPose3<K, Derived>::Jacobian
+ExtendedPose3<K, Derived>::AdjointMap() const {
   const Matrix3 R = R_.matrix();
   Jacobian adj;
   if constexpr (dimension == Eigen::Dynamic) {
@@ -248,8 +260,8 @@ typename ExtendedPose3<K>::Jacobian ExtendedPose3<K>::AdjointMap() const {
   return adj;
 }
 
-template <int K>
-typename ExtendedPose3<K>::TangentVector ExtendedPose3<K>::Adjoint(
+template <int K, class Derived>
+typename ExtendedPose3<K, Derived>::TangentVector ExtendedPose3<K, Derived>::Adjoint(
     const TangentVector& xi_b, ChartJacobian H_this, ChartJacobian H_xib) const {
   const Jacobian Ad = AdjointMap();
   if (H_this) *H_this = -Ad * adjointMap(xi_b);
@@ -257,8 +269,8 @@ typename ExtendedPose3<K>::TangentVector ExtendedPose3<K>::Adjoint(
   return Ad * xi_b;
 }
 
-template <int K>
-typename ExtendedPose3<K>::Jacobian ExtendedPose3<K>::adjointMap(
+template <int K, class Derived>
+typename ExtendedPose3<K, Derived>::Jacobian ExtendedPose3<K, Derived>::adjointMap(
     const TangentVector& xi) {
   const size_t k = RuntimeK(xi);
   const Matrix3 w_hat = skewSymmetric(xi(0), xi(1), xi(2));
@@ -279,8 +291,8 @@ typename ExtendedPose3<K>::Jacobian ExtendedPose3<K>::adjointMap(
   return adj;
 }
 
-template <int K>
-typename ExtendedPose3<K>::TangentVector ExtendedPose3<K>::adjoint(
+template <int K, class Derived>
+typename ExtendedPose3<K, Derived>::TangentVector ExtendedPose3<K, Derived>::adjoint(
     const TangentVector& xi, const TangentVector& y, ChartJacobian Hxi,
     ChartJacobian H_y) {
   const Jacobian ad_xi = adjointMap(xi);
@@ -305,17 +317,17 @@ typename ExtendedPose3<K>::TangentVector ExtendedPose3<K>::adjoint(
   return ad_xi * y;
 }
 
-template <int K>
-typename ExtendedPose3<K>::Jacobian ExtendedPose3<K>::ExpmapDerivative(
-    const TangentVector& xi) {
+template <int K, class Derived>
+typename ExtendedPose3<K, Derived>::Jacobian
+ExtendedPose3<K, Derived>::ExpmapDerivative(const TangentVector& xi) {
   Jacobian J;
   Expmap(xi, J);
   return J;
 }
 
-template <int K>
-typename ExtendedPose3<K>::Jacobian ExtendedPose3<K>::LogmapDerivative(
-    const TangentVector& xi) {
+template <int K, class Derived>
+typename ExtendedPose3<K, Derived>::Jacobian
+ExtendedPose3<K, Derived>::LogmapDerivative(const TangentVector& xi) {
   const size_t k = RuntimeK(xi);
   const Vector3 w = xi.template head<3>();
   const so3::DexpFunctor local(w);
@@ -340,26 +352,29 @@ typename ExtendedPose3<K>::Jacobian ExtendedPose3<K>::LogmapDerivative(
   return J;
 }
 
-template <int K>
-typename ExtendedPose3<K>::Jacobian ExtendedPose3<K>::LogmapDerivative(
-    const ExtendedPose3& pose) {
+template <int K, class Derived>
+typename ExtendedPose3<K, Derived>::Jacobian
+ExtendedPose3<K, Derived>::LogmapDerivative(const This& pose) {
   return LogmapDerivative(Logmap(pose));
 }
 
-template <int K>
-ExtendedPose3<K> ExtendedPose3<K>::ChartAtOrigin::Retract(
-    const TangentVector& xi, ChartJacobian Hxi) {
-  return Expmap(xi, Hxi);
+template <int K, class Derived>
+typename ExtendedPose3<K, Derived>::This
+ExtendedPose3<K, Derived>::ChartAtOrigin::Retract(const TangentVector& xi,
+                                                  ChartJacobian Hxi) {
+  return ExtendedPose3::Expmap(xi, Hxi);
 }
 
-template <int K>
-typename ExtendedPose3<K>::TangentVector ExtendedPose3<K>::ChartAtOrigin::Local(
-    const ExtendedPose3& pose, ChartJacobian Hpose) {
-  return Logmap(pose, Hpose);
+template <int K, class Derived>
+typename ExtendedPose3<K, Derived>::TangentVector
+ExtendedPose3<K, Derived>::ChartAtOrigin::Local(const This& pose,
+                                                ChartJacobian Hpose) {
+  return ExtendedPose3::Logmap(pose, Hpose);
 }
 
-template <int K>
-typename ExtendedPose3<K>::LieAlgebra ExtendedPose3<K>::matrix() const {
+template <int K, class Derived>
+typename ExtendedPose3<K, Derived>::LieAlgebra
+ExtendedPose3<K, Derived>::matrix() const {
   LieAlgebra M;
   if constexpr (matrix_dim == Eigen::Dynamic) {
     const Eigen::Index n = 3 + static_cast<Eigen::Index>(k());
@@ -372,8 +387,8 @@ typename ExtendedPose3<K>::LieAlgebra ExtendedPose3<K>::matrix() const {
   return M;
 }
 
-template <int K>
-typename ExtendedPose3<K>::LieAlgebra ExtendedPose3<K>::Hat(
+template <int K, class Derived>
+typename ExtendedPose3<K, Derived>::LieAlgebra ExtendedPose3<K, Derived>::Hat(
     const TangentVector& xi) {
   const size_t k = RuntimeK(xi);
   LieAlgebra X;
@@ -389,8 +404,8 @@ typename ExtendedPose3<K>::LieAlgebra ExtendedPose3<K>::Hat(
   return X;
 }
 
-template <int K>
-typename ExtendedPose3<K>::TangentVector ExtendedPose3<K>::Vee(
+template <int K, class Derived>
+typename ExtendedPose3<K, Derived>::TangentVector ExtendedPose3<K, Derived>::Vee(
     const LieAlgebra& X) {
   const Eigen::Index k = X.cols() - 3;
   TangentVector xi;
