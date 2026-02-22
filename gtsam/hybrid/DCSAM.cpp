@@ -157,6 +157,8 @@ HybridValues DCSAM::calculateEstimate() const {
   return values;
 }
 
+const VectorValues& DCSAM::getDelta() const { return isam_.getDelta(); }
+
 double DCSAM::error(const VectorValues& x) const { return isam_.error(x); }
 
 // TODO(Varun) Create HybridMarginals

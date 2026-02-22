@@ -571,6 +571,9 @@ class DCSAM {
   const gtsam::DiscreteFactorGraph& getDiscreteFactorGraph() const;
   const gtsam::NonlinearFactorGraph& getNonlinearFactorGraph() const;
 
+  const gtsam::VectorValues& getDelta() const;
+  double error(const gtsam::VectorValues& x) const;
+
 };
 
 }  // namespace gtsam
