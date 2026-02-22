@@ -429,17 +429,34 @@ typename ExtendedPose3<K, Derived>::LieAlgebra ExtendedPose3<K, Derived>::Hat(
 template <int K, class Derived>
 typename ExtendedPose3<K, Derived>::TangentVector
 ExtendedPose3<K, Derived>::Vee(const LieAlgebra& X) {
-  const Eigen::Index k = X.cols() - 3;
+  if (X.rows() != X.cols() || X.rows() < 3) {
+    throw std::invalid_argument("ExtendedPose3::Vee: invalid matrix shape.");
+  }
+
+  const Eigen::Index k = [&]() -> Eigen::Index {
+    if constexpr (K == Eigen::Dynamic) {
+      return X.cols() - 3;
+    } else {
+      if (X.rows() != matrix_dim) {
+        throw std::invalid_argument("ExtendedPose3::Vee: invalid matrix shape.");
+      }
+      return static_cast<Eigen::Index>(K);
+    }
+  }();
+
   TangentVector xi;
   if constexpr (dimension == Eigen::Dynamic) {
     xi.resize(3 + 3 * k);
+    xi.setZero();
+  } else {
+    xi.setZero();
   }
   xi(0) = X(2, 1);
   xi(1) = X(0, 2);
   xi(2) = X(1, 0);
   for (Eigen::Index i = 0; i < k; ++i) {
     const Eigen::Index idx = 3 + 3 * i;
-    xi.template segment<3>(idx) = X.template block<3, 1>(0, idx);
+    xi.template segment<3>(idx) = X.template block<3, 1>(0, 3 + i);
   }
   return xi;
 }
