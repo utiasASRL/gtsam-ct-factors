@@ -24,6 +24,5 @@ template class GTSAM_EXPORT ExtendedPose3<2>;
 template class GTSAM_EXPORT ExtendedPose3<3>;
 template class GTSAM_EXPORT ExtendedPose3<4>;
 template class GTSAM_EXPORT ExtendedPose3<6>;
-template class GTSAM_EXPORT ExtendedPose3<Eigen::Dynamic>;
 
 }  // namespace gtsam
