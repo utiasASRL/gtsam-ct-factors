@@ -157,8 +157,10 @@ HybridValues DCSAM::calculateEstimate() const {
   return values;
 }
 
+double DCSAM::error(const VectorValues& x) const { return isam_.error(x); }
+
 // TODO(Varun) Create HybridMarginals
-//  // NOTE separate dcmarginals class?
+//  NOTE separate dcmarginals class?
 //  DCMarginals DCSAM::getMarginals(const NonlinearFactorGraph &graph,
 //                                  const Values &continuousEst,
 //                                  const DiscreteFactorGraph &dfg) {
