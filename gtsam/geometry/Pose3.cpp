@@ -58,38 +58,6 @@ Pose3 Pose3::FromPose2(const Pose2& p, OptionalJacobian<6, 3> H) {
 }
 
 /* ************************************************************************* */
-Pose3 Pose3::ChartAtOrigin::Retract(const Vector6& xi, ChartJacobian Hxi) {
-#ifdef GTSAM_POSE3_EXPMAP
-  return Expmap(xi, Hxi);
-#else
-  Matrix3 DR;
-  const Rot3 R = Rot3::Retract(xi.head<3>(), Hxi ? &DR : nullptr);
-  if (Hxi) {
-    Hxi->setIdentity();
-    Hxi->block<3, 3>(0, 0) = DR;
-  }
-  return Pose3(R, xi.tail<3>());
-#endif
-}
-
-/* ************************************************************************* */
-Vector6 Pose3::ChartAtOrigin::Local(const Pose3& pose, ChartJacobian Hpose) {
-#ifdef GTSAM_POSE3_EXPMAP
-  return Logmap(pose, Hpose);
-#else
-  Matrix3 DR;
-  Vector6 xi;
-  xi.head<3>() = Rot3::LocalCoordinates(pose.rotation(), Hpose ? &DR : nullptr);
-  xi.tail<3>() = pose.translation();
-  if (Hpose) {
-    Hpose->setIdentity();
-    Hpose->block<3, 3>(0, 0) = DR;
-  }
-  return xi;
-#endif
-}
-
-/* ************************************************************************* */
 /// The dual version of Adjoint
 Vector6 Pose3::AdjointTranspose(const Vector6& x, OptionalJacobian<6, 6> H_pose,
                                 OptionalJacobian<6, 6> H_x) const {
@@ -136,8 +104,7 @@ void Pose3::print(const std::string& s) const {
 
 /* ************************************************************************* */
 bool Pose3::equals(const Pose3& pose, double tol) const {
-  return R_.equals(pose.R_, tol) &&
-         traits<Point3>::Equals(x_.col(0), pose.x_.col(0), tol);
+  return R_.equals(pose.R_, tol) && traits<Point3>::Equals(x_, pose.x_, tol);
 }
 
 /* ************************************************************************* */
@@ -152,8 +119,8 @@ Pose3 Pose3::interpolateRt(const Pose3& T, double t,
     typename MakeJacobian<Point3, double>::type HtPoint;
 
     Rot3 Rint = interpolate<Rot3>(R_, T.R_, t, HselfRot, HargRot, HtRot);
-    Point3 Pint = interpolate<Point3>(x_.col(0), T.x_.col(0), t, HselfPoint,
-                                      HargPoint, HtPoint);
+    Point3 Pint =
+        interpolate<Point3>(x_, T.x_, t, HselfPoint, HargPoint, HtPoint);
     Pose3 result = Pose3(Rint, Pint);
 
     if(Hself) *Hself << HselfRot, Z_3x3, Z_3x3, Rint.transpose() * R_.matrix() * HselfPoint;
@@ -164,19 +131,48 @@ Pose3 Pose3::interpolateRt(const Pose3& T, double t,
     return result;
   }
   return Pose3(interpolate<Rot3>(R_, T.R_, t),
-               interpolate<Point3>(x_.col(0), T.x_.col(0), t));
+               interpolate<Point3>(x_, T.x_, t));
+}
 
+/* ************************************************************************* */
+Pose3 Pose3::ChartAtOrigin::Retract(const Vector6& xi, ChartJacobian Hxi) {
+#ifdef GTSAM_POSE3_EXPMAP
+  return Expmap(xi, Hxi);
+#else
+  Matrix3 DR;
+  const Rot3 R = Rot3::Retract(xi.head<3>(), Hxi ? &DR : nullptr);
+  if (Hxi) {
+    Hxi->setIdentity();
+    Hxi->block<3, 3>(0, 0) = DR;
+  }
+  return Pose3(R, xi.tail<3>());
+#endif
+}
+
+/* ************************************************************************* */
+Vector6 Pose3::ChartAtOrigin::Local(const Pose3& pose, ChartJacobian Hpose) {
+#ifdef GTSAM_POSE3_EXPMAP
+  return Logmap(pose, Hpose);
+#else
+  Matrix3 DR;
+  Vector6 xi;
+  xi.head<3>() = Rot3::LocalCoordinates(pose.rotation(), Hpose ? &DR : nullptr);
+  xi.tail<3>() = pose.translation();
+  if (Hpose) {
+    Hpose->setIdentity();
+    Hpose->block<3, 3>(0, 0) = DR;
+  }
+  return xi;
+#endif
 }
 
 /* ************************************************************************* */
 const Point3& Pose3::translation(OptionalJacobian<3, 6> Hself) const {
-  t_cache_ = Base::x(0, Hself);
-  return t_cache_;
-}
-
-/* ************************************************************************* */
-const Rot3& Pose3::rotation(OptionalJacobian<3, 6> Hself) const {
-  return Base::rotation(Hself);
+  if (Hself) {
+    Hself->setZero();
+    Hself->block<3, 3>(0, 3) = R_.matrix();
+  }
+  return x_;
 }
 
 /* ************************************************************************* */
@@ -208,7 +204,7 @@ Point3 Pose3::transformFrom(const Point3& point, OptionalJacobian<3, 6> Hself,
   if (Hpoint) {
     *Hpoint = R;
   }
-  return R_ * point + x_.col(0);
+  return R_ * point + x_;
 }
 
 Matrix Pose3::transformFrom(const Matrix& points) const {
@@ -216,7 +212,7 @@ Matrix Pose3::transformFrom(const Matrix& points) const {
     throw std::invalid_argument("Pose3:transformFrom expects 3*N matrix.");
   }
   const Matrix3 R = R_.matrix();
-  return (R * points).colwise() + x_.col(0);  // Eigen broadcasting!
+  return (R * points).colwise() + x_;  // Eigen broadcasting!
 }
 
 /* ************************************************************************* */
@@ -225,7 +221,7 @@ Point3 Pose3::transformTo(const Point3& point, OptionalJacobian<3, 6> Hself,
   // Only get transpose once, to avoid multiple allocations,
   // as well as multiple conversions in the Quaternion case
   const Matrix3 Rt = R_.transpose();
-  const Point3 q(Rt * (point - x_.col(0)));
+  const Point3 q(Rt * (point - x_));
   if (Hself) {
     const double wx = q.x(), wy = q.y(), wz = q.z();
     (*Hself) <<
@@ -244,13 +240,13 @@ Matrix Pose3::transformTo(const Matrix& points) const {
     throw std::invalid_argument("Pose3:transformTo expects 3*N matrix.");
   }
   const Matrix3 Rt = R_.transpose();
-  return Rt * (points.colwise() - x_.col(0));  // Eigen broadcasting!
+  return Rt * (points.colwise() - x_);  // Eigen broadcasting!
 }
 
 /* ************************************************************************* */
 double Pose3::range(const Point3& point, OptionalJacobian<1, 6> Hself,
                     OptionalJacobian<1, 3> Hpoint) const {
-  const Vector3 delta = point - x_.col(0);
+  const Vector3 delta = point - x_;
   if (!Hself && !Hpoint) return delta.norm();
 
   Matrix13 D_r_point;
@@ -269,7 +265,7 @@ double Pose3::range(const Point3& point, OptionalJacobian<1, 6> Hself,
 /* ************************************************************************* */
 double Pose3::range(const Pose3& pose, OptionalJacobian<1, 6> Hself,
                     OptionalJacobian<1, 6> Hpose) const {
-  const Vector3 delta = pose.x_.col(0) - x_.col(0);
+  const Vector3 delta = pose.x_ - x_;
   if (!Hself && !Hpose) return delta.norm();
 
   Matrix13 D_r_point;
@@ -295,7 +291,7 @@ double Pose3::range(const Pose3& pose, OptionalJacobian<1, 6> Hself,
 Unit3 Pose3::bearing(const Point3& point, OptionalJacobian<2, 6> Hself,
                      OptionalJacobian<2, 3> Hpoint) const {
   const Matrix3 Rt = R_.transpose();
-  const Point3 local(Rt * (point - x_.col(0)));
+  const Point3 local(Rt * (point - x_));
 
   if (!Hself && !Hpoint) return Unit3(local);
 

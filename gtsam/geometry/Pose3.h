@@ -66,7 +66,8 @@ public:
   Pose3(const Base& other) : Base(other) {}
 
   /** Construct from R,t */
-  Pose3(const Rot3& R, const Point3& t) : Base(R, Vector3(t.x(), t.y(), t.z())) {}
+  Pose3(const Rot3& R, const Point3& t)
+      : Base(R, Vector3(t.x(), t.y(), t.z())) {}
 
   /** Construct from Pose2 */
   explicit Pose3(const Pose2& pose2);
@@ -147,6 +148,7 @@ public:
                                   OptionalJacobian<6, 6> Hxi = {},
                                   OptionalJacobian<6, 6> H_y = {});
 
+  // Chart at origin, depends on compile-time flag GTSAM_POSE3_EXPMAP
   struct GTSAM_EXPORT ChartAtOrigin {
     static Pose3 Retract(const Vector6& xi, ChartJacobian Hxi = {});
     static Vector6 Local(const Pose3& pose, ChartJacobian Hpose = {});
@@ -198,9 +200,6 @@ public:
   /// @}
   /// @name Standard Interface
   /// @{
-
-  /// get rotation
-  const Rot3& rotation(OptionalJacobian<3, 6> Hself = {}) const;
 
   /// get translation
   const Point3& translation(OptionalJacobian<3, 6> Hself = {}) const;
@@ -316,8 +315,6 @@ public:
   /// @}
 
  private:
-  mutable Point3 t_cache_ = Point3::Zero();
-
 #if GTSAM_ENABLE_BOOST_SERIALIZATION
   /** Serialization function */
   friend class boost::serialization::access;

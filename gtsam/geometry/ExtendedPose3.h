@@ -37,51 +37,27 @@ namespace gtsam {
 template <int K, class Derived = void>
 class ExtendedPose3;
 
-namespace internal {
-
-/// Compile-time traits for SE_k(3) dimensions.
-template <int K>
-struct ExtendedPose3Traits {
-  /// Manifold dimensionality for SE_k(3): 3 + 3*k.
-  static constexpr int Dimension() {
-    return (K == Eigen::Dynamic) ? Eigen::Dynamic : 3 + 3 * K;
-  }
-
-  /// Homogeneous matrix size for SE_k(3): (3 + k) x (3 + k).
-  static constexpr int MatrixDim() {
-    return (K == Eigen::Dynamic) ? Eigen::Dynamic : 3 + K;
-  }
-};
-
-template <int K, class Derived>
-struct ExtendedPose3Class {
-  using type = Derived;
-};
-
-template <int K>
-struct ExtendedPose3Class<K, void> {
-  using type = ExtendedPose3<K, void>;
-};
-
-}  // namespace internal
-
 /**
  * Lie group SE_k(3): semidirect product of SO(3) with k copies of R^3.
- * Tangent ordering is [omega, x1, x2, ..., xk], each xi in R^3.
+ * State ordering is (R, x_1, ..., x_k) with R in SO(3) and x_i in R^3.
+ * Tangent ordering is [omega, rho_1, ..., rho_k], each block in R^3.
  *
+ * The manifold dimension is 3+3k and the homogeneous matrix size is 3+k.
  * Template parameter K can be fixed (K >= 1) or Eigen::Dynamic.
  */
 template <int K, class Derived>
 class GTSAM_EXPORT ExtendedPose3
-    : public MatrixLieGroup<typename internal::ExtendedPose3Class<K, Derived>::type,
-                            internal::ExtendedPose3Traits<K>::Dimension(),
-                            internal::ExtendedPose3Traits<K>::MatrixDim()> {
+    : public MatrixLieGroup<std::conditional_t<std::is_void_v<Derived>,
+                                               ExtendedPose3<K, void>, Derived>,
+                            (K == Eigen::Dynamic) ? Eigen::Dynamic : 3 + 3 * K,
+                            (K == Eigen::Dynamic) ? Eigen::Dynamic : 3 + K> {
  public:
-  using This = typename internal::ExtendedPose3Class<K, Derived>::type;
-  inline constexpr static auto dimension =
-      internal::ExtendedPose3Traits<K>::Dimension();
-  inline constexpr static auto matrix_dim =
-      internal::ExtendedPose3Traits<K>::MatrixDim();
+  using This = std::conditional_t<std::is_void_v<Derived>,
+                                  ExtendedPose3<K, void>, Derived>;
+  inline constexpr static int dimension =
+      (K == Eigen::Dynamic) ? Eigen::Dynamic : 3 + 3 * K;
+  inline constexpr static int matrix_dim =
+      (K == Eigen::Dynamic) ? Eigen::Dynamic : 3 + K;
 
   using Base = MatrixLieGroup<This, dimension, matrix_dim>;
   using TangentVector = typename Base::TangentVector;
@@ -106,6 +82,299 @@ class GTSAM_EXPORT ExtendedPose3
   template <int K_>
   using IsFixed = typename std::enable_if<K_ >= 1, void>::type;
 
+ public:
+  /// @name Constructors
+  /// @{
+
+  /**
+   * Construct a fixed-size identity element.
+   *
+   * For fixed K, this creates R=I and x_i=0 for i=1..k.
+   * The manifold dimension is 3+3k and matrix size is (3+k)x(3+k).
+   */
+  template <int K_ = K, typename = IsFixed<K_>>
+  ExtendedPose3();
+
+  /**
+   * Construct a dynamic-size identity element.
+   *
+   * @param k Number of R^3 blocks.
+   * Creates R=I and x_i=0 for i=1..k.
+   * The manifold dimension is 3+3k and matrix size is (3+k)x(3+k).
+   */
+  template <int K_ = K, typename = IsDynamic<K_>>
+  explicit ExtendedPose3(size_t k = 0);
+
+  /** Copy constructor. */
+  ExtendedPose3(const ExtendedPose3&) = default;
+
+  /** Copy assignment. */
+  ExtendedPose3& operator=(const ExtendedPose3&) = default;
+
+  /**
+   * Construct from rotation and 3xk block.
+   *
+   * @param R Rotation in SO(3).
+   * @param x Matrix in R^(3xk), where column i stores x_i.
+   */
+  ExtendedPose3(const Rot3& R, const Matrix3K& x);
+
+  /**
+   * Construct from homogeneous matrix representation.
+   *
+   * @param T Homogeneous matrix in R^((3+k)x(3+k)).
+   * Top-left 3x3 is R, top-right 3xk stores x_1..x_k.
+   */
+  explicit ExtendedPose3(const LieAlgebra& T);
+
+  /// @}
+  /// @name Access
+  /// @{
+
+  /**
+   * Runtime manifold dimension helper.
+   *
+   * @param k Number of R^3 blocks.
+   * @return 3+3k.
+   */
+  static size_t Dimension(size_t k) { return 3 + 3 * k; }
+
+  /** @return Number of R^3 blocks, k. */
+  size_t k() const { return static_cast<size_t>(x_.cols()); }
+
+  /** @return Runtime manifold dimension, 3+3k. */
+  size_t dim() const { return Dimension(k()); }
+
+  /**
+   * Rotation component.
+   *
+   * @param H Optional Jacobian in R^(3xdim) for local rotation coordinates.
+   * @return Rotation R.
+   */
+  const Rot3& rotation(ComponentJacobian H = {}) const;
+
+  /**
+   * i-th R^3 component, returned by value.
+   *
+   * @param i Zero-based block index in [0, k).
+   * @param H Optional Jacobian in R^(3xdim).
+   * @return x_i in R^3.
+   */
+  Point3 x(size_t i, ComponentJacobian H = {}) const;
+
+  /**
+   * Access all x_i blocks.
+   *
+   * @return Matrix in R^(3xk) with columns x_1..x_k.
+   */
+  const Matrix3K& xMatrix() const;
+
+  /**
+   * Mutable access to all x_i blocks.
+   *
+   * @return Matrix in R^(3xk) with columns x_1..x_k.
+   */
+  Matrix3K& xMatrix();
+
+  /// @}
+  /// @name Testable
+  /// @{
+
+  /**
+   * Print this state.
+   *
+   * @param s Optional prefix string.
+   */
+  void print(const std::string& s = "") const;
+
+  /**
+   * Equality check with tolerance.
+   *
+   * @param other Other state.
+   * @param tol Absolute tolerance.
+   * @return True if rotation and all x_i blocks are equal within tol.
+   */
+  bool equals(const ExtendedPose3& other, double tol = 1e-9) const;
+
+  /// @}
+  /// @name Group
+  /// @{
+
+  /**
+   * Identity element for fixed-size K.
+   *
+   * @return Identity with manifold dimension 3+3k and matrix size 3+k.
+   */
+  template <int K_ = K, typename = IsFixed<K_>>
+  static This Identity();
+
+  /**
+   * Identity element for dynamic-size K.
+   *
+   * @param k Number of R^3 blocks.
+   * @return Identity with manifold dimension 3+3k and matrix size 3+k.
+   */
+  template <int K_ = K, typename = IsDynamic<K_>>
+  static This Identity(size_t k = 0);
+
+  /**
+   * Group inverse.
+   *
+   * @return X^{-1}.
+   */
+  This inverse() const;
+
+  /**
+   * Group composition.
+   *
+   * @param other Right-hand operand with the same k.
+   * @return this * other.
+   */
+  This operator*(const This& other) const;
+
+  /// @}
+  /// @name Lie Group
+  /// @{
+
+  /**
+   * Exponential map from tangent to group.
+   *
+   * @param xi Tangent vector in R^dim.
+   * @param Hxi Optional Jacobian in R^(dimxdim).
+   * @return Group element in SE_k(3).
+   */
+  static This Expmap(const TangentVector& xi, ChartJacobian Hxi = {});
+
+  /**
+   * Logarithm map from group to tangent.
+   *
+   * @param pose Group element in SE_k(3).
+   * @param Hpose Optional Jacobian in R^(dimxdim).
+   * @return Tangent vector in R^dim.
+   */
+  static TangentVector Logmap(const This& pose, ChartJacobian Hpose = {});
+
+  /**
+   * Adjoint map.
+   *
+   * @return Matrix in R^(dimxdim).
+   */
+  Jacobian AdjointMap() const;
+
+  /**
+   * Adjoint action on a tangent vector.
+   *
+   * @param xi_b Tangent vector in R^dim.
+   * @param H_this Optional Jacobian in R^(dimxdim).
+   * @param H_xib Optional Jacobian in R^(dimxdim).
+   * @return Ad_X xi_b in R^dim.
+   */
+  TangentVector Adjoint(const TangentVector& xi_b, ChartJacobian H_this = {},
+                        ChartJacobian H_xib = {}) const;
+
+  /**
+   * Lie algebra adjoint map.
+   *
+   * @param xi Tangent vector in R^dim.
+   * @return ad_xi matrix in R^(dimxdim).
+   */
+  static Jacobian adjointMap(const TangentVector& xi);
+
+  /**
+   * Lie bracket action ad_xi(y).
+   *
+   * @param xi Tangent vector in R^dim.
+   * @param y Tangent vector in R^dim.
+   * @param Hxi Optional Jacobian in R^(dimxdim).
+   * @param H_y Optional Jacobian in R^(dimxdim).
+   * @return ad_xi(y) in R^dim.
+   */
+  static TangentVector adjoint(const TangentVector& xi, const TangentVector& y,
+                               ChartJacobian Hxi = {}, ChartJacobian H_y = {});
+
+  /**
+   * Jacobian of Expmap.
+   *
+   * @param xi Tangent vector in R^dim.
+   * @return Matrix in R^(dimxdim).
+   */
+  static Jacobian ExpmapDerivative(const TangentVector& xi);
+
+  /**
+   * Jacobian of Logmap evaluated from tangent coordinates.
+   *
+   * @param xi Tangent vector in R^dim.
+   * @return Matrix in R^(dimxdim).
+   */
+  static Jacobian LogmapDerivative(const TangentVector& xi);
+
+  /**
+   * Jacobian of Logmap evaluated at a group element.
+   *
+   * @param pose Group element in SE_k(3).
+   * @return Matrix in R^(dimxdim).
+   */
+  static Jacobian LogmapDerivative(const This& pose);
+
+  /** Chart operations at identity for LieGroup/Manifold compatibility. */
+  struct ChartAtOrigin {
+    /**
+     * Retract at identity.
+     *
+     * @param xi Tangent vector in R^dim.
+     * @param Hxi Optional Jacobian in R^(dimxdim).
+     * @return Expmap(xi).
+     */
+    static This Retract(const TangentVector& xi, ChartJacobian Hxi = {});
+
+    /**
+     * Local coordinates at identity.
+     *
+     * @param pose Group element in SE_k(3).
+     * @param Hpose Optional Jacobian in R^(dimxdim).
+     * @return Logmap(pose) in R^dim.
+     */
+    static TangentVector Local(const This& pose, ChartJacobian Hpose = {});
+  };
+
+  using LieGroup<This, dimension>::inverse;
+
+  /// @}
+  /// @name Matrix Lie Group
+  /// @{
+
+  /**
+   * Homogeneous matrix representation.
+   *
+   * @return Matrix in R^((3+k)x(3+k)).
+   */
+  LieAlgebra matrix() const;
+
+  /**
+   * Hat operator from tangent to Lie algebra.
+   *
+   * @param xi Tangent vector in R^dim.
+   * @return Matrix in R^((3+k)x(3+k)).
+   */
+  static LieAlgebra Hat(const TangentVector& xi);
+
+  /**
+   * Vee operator from Lie algebra to tangent.
+   *
+   * @param X Matrix in R^((3+k)x(3+k)).
+   * @return Tangent vector in R^dim.
+   */
+  static TangentVector Vee(const LieAlgebra& X);
+
+  /// @}
+
+  friend std::ostream& operator<<(std::ostream& os, const ExtendedPose3& p) {
+    os << "R: " << p.R_ << "\n";
+    os << "x: " << p.x_;
+    return os;
+  }
+
+ protected:
   static This MakeReturn(const ExtendedPose3& value) {
     if constexpr (std::is_void_v<Derived>) {
       return value;
@@ -125,123 +394,6 @@ class GTSAM_EXPORT ExtendedPose3
   static size_t RuntimeK(const TangentVector& xi);
   static void ZeroJacobian(ChartJacobian H, size_t d);
 
- public:
-  /// @name Constructors
-  /// @{
-
-  /// Construct fixed-size identity.
-  template <int K_ = K, typename = IsFixed<K_>>
-  ExtendedPose3();
-
-  /// Construct dynamic identity, optionally with runtime k.
-  template <int K_ = K, typename = IsDynamic<K_>>
-  explicit ExtendedPose3(size_t k = 0);
-
-  ExtendedPose3(const ExtendedPose3&) = default;
-  ExtendedPose3& operator=(const ExtendedPose3&) = default;
-
-  /// Construct from rotation and 3xK block.
-  ExtendedPose3(const Rot3& R, const Matrix3K& x);
-
-  /// Construct from homogeneous matrix representation.
-  explicit ExtendedPose3(const LieAlgebra& T);
-
-  /// @}
-  /// @name Access
-  /// @{
-
-  static size_t Dimension(size_t k);
-
-  /// Number of R^3 columns.
-  size_t k() const;
-
-  /// Runtime manifold dimension.
-  size_t dim() const;
-
-  /// Rotation component.
-  const Rot3& rotation(ComponentJacobian H = {}) const;
-
-  /// i-th R^3 component, returned by value.
-  Point3 x(size_t i, ComponentJacobian H = {}) const;
-
-  const Matrix3K& xMatrix() const;
-  Matrix3K& xMatrix();
-
-  /// @}
-  /// @name Testable
-  /// @{
-
-  void print(const std::string& s = "") const;
-
-  bool equals(const ExtendedPose3& other, double tol = 1e-9) const;
-
-  /// @}
-  /// @name Group
-  /// @{
-
-  template <int K_ = K, typename = IsFixed<K_>>
-  static This Identity();
-
-  template <int K_ = K, typename = IsDynamic<K_>>
-  static This Identity(size_t k = 0);
-
-  This inverse() const;
-
-  This operator*(const This& other) const;
-
-  /// @}
-  /// @name Lie Group
-  /// @{
-
-  static This Expmap(const TangentVector& xi, ChartJacobian Hxi = {});
-
-  static TangentVector Logmap(const This& pose,
-                              ChartJacobian Hpose = {});
-
-  Jacobian AdjointMap() const;
-
-  TangentVector Adjoint(const TangentVector& xi_b, ChartJacobian H_this = {},
-                        ChartJacobian H_xib = {}) const;
-
-  static Jacobian adjointMap(const TangentVector& xi);
-
-  static TangentVector adjoint(const TangentVector& xi, const TangentVector& y,
-                               ChartJacobian Hxi = {},
-                               ChartJacobian H_y = {});
-
-  static Jacobian ExpmapDerivative(const TangentVector& xi);
-
-  static Jacobian LogmapDerivative(const TangentVector& xi);
-
-  static Jacobian LogmapDerivative(const This& pose);
-
-  struct ChartAtOrigin {
-    static This Retract(const TangentVector& xi,
-                                 ChartJacobian Hxi = {});
-    static TangentVector Local(const This& pose,
-                               ChartJacobian Hpose = {});
-  };
-
-  using LieGroup<This, dimension>::inverse;
-
-  /// @}
-  /// @name Matrix Lie Group
-  /// @{
-
-  LieAlgebra matrix() const;
-
-  static LieAlgebra Hat(const TangentVector& xi);
-
-  static TangentVector Vee(const LieAlgebra& X);
-
-  /// @}
-
-  friend std::ostream& operator<<(std::ostream& os, const ExtendedPose3& p) {
-    os << "R: " << p.R_ << "\n";
-    os << "x: " << p.x_;
-    return os;
-  }
-
  private:
 #if GTSAM_ENABLE_BOOST_SERIALIZATION
   friend class boost::serialization::access;
@@ -258,13 +410,13 @@ using ExtendedPose3Dynamic = ExtendedPose3<Eigen::Dynamic>;
 
 template <int K, class Derived>
 struct traits<ExtendedPose3<K, Derived>>
-    : public internal::MatrixLieGroup<
-          ExtendedPose3<K, Derived>, internal::ExtendedPose3Traits<K>::MatrixDim()> {};
+    : public internal::MatrixLieGroup<ExtendedPose3<K, Derived>,
+                                      ExtendedPose3<K, Derived>::matrix_dim> {};
 
 template <int K, class Derived>
 struct traits<const ExtendedPose3<K, Derived>>
-    : public internal::MatrixLieGroup<
-          ExtendedPose3<K, Derived>, internal::ExtendedPose3Traits<K>::MatrixDim()> {};
+    : public internal::MatrixLieGroup<ExtendedPose3<K, Derived>,
+                                      ExtendedPose3<K, Derived>::matrix_dim> {};
 
 }  // namespace gtsam
 

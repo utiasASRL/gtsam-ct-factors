@@ -14,14 +14,12 @@
  * @brief  Unit tests for ExtendedPose3<K>
  */
 
-#include <gtsam/geometry/ExtendedPose3.h>
-
+#include <CppUnitLite/TestHarness.h>
 #include <gtsam/base/Lie.h>
 #include <gtsam/base/TestableAssertions.h>
 #include <gtsam/base/lieProxies.h>
 #include <gtsam/base/numericalDerivative.h>
-
-#include <CppUnitLite/TestHarness.h>
+#include <gtsam/geometry/ExtendedPose3.h>
 
 using namespace gtsam;
 
@@ -37,21 +35,13 @@ namespace {
 
 const Rot3 kR1 = Rot3::RzRyRx(0.1, -0.2, 0.3);
 const Rot3 kR2 = Rot3::RzRyRx(-0.3, 0.4, -0.2);
-const Matrix33 kX1 = (Matrix33() << 1.0, 4.0, -1.0, 2.0, 5.0, 0.5, 3.0, 6.0,
-                    2.0)
+const Matrix3 kX1 =
+    (Matrix3() << 1.0, 4.0, -1.0, 2.0, 5.0, 0.5, 3.0, 6.0, 2.0).finished();
+const Matrix3 kX2 =
+    (Matrix3() << -2.0, 1.0, 0.1, 0.3, -1.5, 2.2, 0.7, -0.9, 1.6).finished();
+const Vector12 kXi = (Vector12() << 0.11, -0.07, 0.05, 0.3, -0.4, 0.1, -0.2,
+                      0.6, -0.5, 0.7, -0.1, 0.2)
                          .finished();
-const Matrix33 kX2 = (Matrix33() << -2.0, 1.0, 0.1, 0.3, -1.5, 2.2, 0.7, -0.9,
-                    1.6)
-                         .finished();
-const Vector12 kXi =
-    (Vector12() << 0.11, -0.07, 0.05, 0.3, -0.4, 0.1, -0.2, 0.6, -0.5, 0.7,
-     -0.1, 0.2)
-        .finished();
-
-ExtendedPose3d MakeDynamic(const Rot3& R, const Matrix33& X) {
-  Matrix Xd = X;
-  return ExtendedPose3d(R, Xd);
-}
 
 }  // namespace
 
@@ -84,14 +74,16 @@ TEST(ExtendedPose3, Dimensions) {
 //******************************************************************************
 TEST(ExtendedPose3, ConstructorsAndAccess) {
   const ExtendedPose33 fixed(kR1, kX1);
-  const ExtendedPose3d dynamic = MakeDynamic(kR1, kX1);
+  const ExtendedPose3d dynamic(kR1, ExtendedPose3d::Matrix3K(kX1));
 
   EXPECT(assert_equal(kR1, fixed.rotation()));
   EXPECT(assert_equal(kR1, dynamic.rotation()));
 
   for (size_t i = 0; i < 3; ++i) {
-    EXPECT(assert_equal(Point3(kX1.col(static_cast<Eigen::Index>(i))), fixed.x(i)));
-    EXPECT(assert_equal(Point3(kX1.col(static_cast<Eigen::Index>(i))), dynamic.x(i)));
+    EXPECT(assert_equal(Point3(kX1.col(static_cast<Eigen::Index>(i))),
+                        fixed.x(i)));
+    EXPECT(assert_equal(Point3(kX1.col(static_cast<Eigen::Index>(i))),
+                        dynamic.x(i)));
   }
 
   EXPECT(assert_equal(fixed.matrix(), dynamic.matrix()));
@@ -100,7 +92,8 @@ TEST(ExtendedPose3, ConstructorsAndAccess) {
 //******************************************************************************
 TEST(ExtendedPose3, GroupOperationsMatch) {
   const ExtendedPose33 f1(kR1, kX1), f2(kR2, kX2);
-  const ExtendedPose3d d1 = MakeDynamic(kR1, kX1), d2 = MakeDynamic(kR2, kX2);
+  const ExtendedPose3d d1(kR1, ExtendedPose3d::Matrix3K(kX1));
+  const ExtendedPose3d d2(kR2, ExtendedPose3d::Matrix3K(kX2));
 
   const auto f12 = f1 * f2;
   const auto d12 = d1 * d2;
@@ -108,8 +101,10 @@ TEST(ExtendedPose3, GroupOperationsMatch) {
 
   const auto f_id = f1 * f1.inverse();
   const auto d_id = d1 * d1.inverse();
-  EXPECT(assert_equal(ExtendedPose33::Identity().matrix(), f_id.matrix(), 1e-9));
-  EXPECT(assert_equal(ExtendedPose3d::Identity(3).matrix(), d_id.matrix(), 1e-9));
+  EXPECT(
+      assert_equal(ExtendedPose33::Identity().matrix(), f_id.matrix(), 1e-9));
+  EXPECT(
+      assert_equal(ExtendedPose3d::Identity(3).matrix(), d_id.matrix(), 1e-9));
 
   const auto f_between = f1.between(f2);
   const auto d_between = d1.between(d2);
@@ -141,7 +136,7 @@ TEST(ExtendedPose3, ExpmapLogmapRoundTrip) {
 //******************************************************************************
 TEST(ExtendedPose3, AdjointConsistency) {
   const ExtendedPose33 f(kR1, kX1);
-  const ExtendedPose3d d = MakeDynamic(kR1, kX1);
+  const ExtendedPose3d d(kR1, ExtendedPose3d::Matrix3K(kX1));
   const Vector xi = kXi;
 
   const auto f_conj = f * ExtendedPose33::Expmap(kXi) * f.inverse();
@@ -153,10 +148,12 @@ TEST(ExtendedPose3, AdjointConsistency) {
   EXPECT(assert_equal(d_conj.matrix(), d_adj.matrix(), 1e-9));
 
   const ExtendedPose33::Jacobian f_generic =
-      static_cast<const MatrixLieGroup<ExtendedPose33, 12, 6>*>(&f)->AdjointMap();
-  const Matrix d_generic = static_cast<
-      const MatrixLieGroup<ExtendedPose3d, Eigen::Dynamic, Eigen::Dynamic>*>(&d)
-                               ->AdjointMap();
+      static_cast<const MatrixLieGroup<ExtendedPose33, 12, 6>*>(&f)
+          ->AdjointMap();
+  const Matrix d_generic =
+      static_cast<const MatrixLieGroup<ExtendedPose3d, Eigen::Dynamic,
+                                       Eigen::Dynamic>*>(&d)
+          ->AdjointMap();
   EXPECT(assert_equal(Matrix(f_generic), Matrix(f.AdjointMap()), 1e-9));
   EXPECT(assert_equal(d_generic, d.AdjointMap(), 1e-9));
 }
@@ -164,31 +161,39 @@ TEST(ExtendedPose3, AdjointConsistency) {
 //******************************************************************************
 TEST(ExtendedPose3, Derivatives) {
   const ExtendedPose33 f(kR1, kX1);
-  const ExtendedPose3d d = MakeDynamic(kR1, kX1);
+  const ExtendedPose3d d(kR1, ExtendedPose3d::Matrix3K(kX1));
   const Vector xi = kXi;
 
   Matrix Hf;
   ExtendedPose33::Expmap(kXi, Hf);
-  const auto f_exp = [](const Vector12& v) { return ExtendedPose33::Expmap(v); };
-  const Matrix Hf_num = numericalDerivative11<ExtendedPose33, Vector12, 12>(f_exp, kXi);
+  const auto f_exp = [](const Vector12& v) {
+    return ExtendedPose33::Expmap(v);
+  };
+  const Matrix Hf_num =
+      numericalDerivative11<ExtendedPose33, Vector12, 12>(f_exp, kXi);
   EXPECT(assert_equal(Hf_num, Hf, 1e-6));
 
   Matrix Hd;
   ExtendedPose3d::Expmap(xi, Hd);
   const auto d_exp = [](const Vector& v) { return ExtendedPose3d::Expmap(v); };
-  const Matrix Hd_num = numericalDerivative11<ExtendedPose3d, Vector, 12>(d_exp, xi);
+  const Matrix Hd_num =
+      numericalDerivative11<ExtendedPose3d, Vector, 12>(d_exp, xi);
   EXPECT(assert_equal(Hd_num, Hd, 1e-6));
 
   Matrix Lf;
   ExtendedPose33::Logmap(f, Lf);
-  const auto f_log = [](const ExtendedPose33& g) { return Vector12(ExtendedPose33::Logmap(g)); };
+  const auto f_log = [](const ExtendedPose33& g) {
+    return Vector12(ExtendedPose33::Logmap(g));
+  };
   const Matrix Lf_num =
       numericalDerivative11<Vector12, ExtendedPose33, 12>(f_log, f);
   EXPECT(assert_equal(Lf_num, Lf, 1e-6));
 
   Matrix Ld;
   ExtendedPose3d::Logmap(d, Ld);
-  const auto d_log = [](const ExtendedPose3d& g) { return ExtendedPose3d::Logmap(g); };
+  const auto d_log = [](const ExtendedPose3d& g) {
+    return ExtendedPose3d::Logmap(g);
+  };
   const Matrix Ld_num =
       numericalDerivative11<Vector, ExtendedPose3d, 12>(d_log, d);
   EXPECT(assert_equal(Ld_num, Ld, 1e-6));
@@ -197,19 +202,21 @@ TEST(ExtendedPose3, Derivatives) {
 //******************************************************************************
 TEST(ExtendedPose3, VecJacobian) {
   const ExtendedPose33 f(kR1, kX1);
-  const ExtendedPose3d d = MakeDynamic(kR1, kX1);
+  const ExtendedPose3d d(kR1, ExtendedPose3d::Matrix3K(kX1));
 
   Matrix Hf;
   const Vector vf = f.vec(Hf);
   const auto fv = [](const ExtendedPose33& g) { return Vector(g.vec()); };
-  const Matrix Hf_num = numericalDerivative11<Vector, ExtendedPose33, 12>(fv, f);
+  const Matrix Hf_num =
+      numericalDerivative11<Vector, ExtendedPose33, 12>(fv, f);
   EXPECT(assert_equal(Hf_num, Hf, 1e-6));
   EXPECT_LONGS_EQUAL(36, vf.size());
 
   Matrix Hd;
   const Vector vd = d.vec(Hd);
   const auto dv = [](const ExtendedPose3d& g) { return Vector(g.vec()); };
-  const Matrix Hd_num = numericalDerivative11<Vector, ExtendedPose3d, 12>(dv, d);
+  const Matrix Hd_num =
+      numericalDerivative11<Vector, ExtendedPose3d, 12>(dv, d);
   EXPECT(assert_equal(Hd_num, Hd, 1e-6));
   EXPECT_LONGS_EQUAL(36, vd.size());
 }
