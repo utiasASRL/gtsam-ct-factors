@@ -373,12 +373,13 @@ class GTSAM_EXPORT GemanMcClure : public Base {
   double loss(double distance) const override;
   void print(const std::string &s) const override;
   bool equals(const Base &expected, double tol = 1e-8) const override;
-  static double Weight(double distance, double c);
+  static double Weight(double distance2, double c2);
   static shared_ptr Create(double k, const ReweightScheme reweight = Block);
   double modelParameter() const { return c_; }
 
  protected:
   double c_;
+  double csquared_;
 
  private:
 #if GTSAM_ENABLE_BOOST_SERIALIZATION
@@ -388,6 +389,7 @@ class GTSAM_EXPORT GemanMcClure : public Base {
   void serialize(ARCHIVE &ar, const unsigned int /*version*/) {
     ar &BOOST_SERIALIZATION_BASE_OBJECT_NVP(Base);
     ar &BOOST_SERIALIZATION_NVP(c_);
+    ar &BOOST_SERIALIZATION_NVP(csquared_);
   }
 #endif
 };
