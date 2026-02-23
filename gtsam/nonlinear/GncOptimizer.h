@@ -26,6 +26,7 @@
 
 #pragma once
 
+#include <gtsam/linear/LossFunctions.h>
 #include <gtsam/nonlinear/GncParams.h>
 #include <gtsam/nonlinear/NonlinearFactorGraph.h>
 #include <gtsam/nonlinear/internal/ChiSquaredInverse.h>
@@ -489,8 +490,7 @@ class GncOptimizer {
         for (size_t k = 0; k < nfg_.size(); k++) {
           if (needsWeightUpdate(factorTypes_[k])) {
             double u2_k = nfg_[k]->error(currentEstimate);  // squared (and whitened) residual
-            weights[k] = std::pow(
-                (mu * barcSq_[k]) / (u2_k + mu * barcSq_[k]), 2);
+            weights[k] = noiseModel::mEstimator::GemanMcClure::Weight(u2_k, mu * barcSq_[k]);
           }
         }
         return weights;

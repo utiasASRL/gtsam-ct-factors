@@ -375,9 +375,23 @@ class GTSAM_EXPORT GemanMcClure : public Base {
   bool equals(const Base &expected, double tol = 1e-8) const override;
   static shared_ptr Create(double k, const ReweightScheme reweight = Block);
   double modelParameter() const { return c_; }
+  /** @brief A static helper function to compute the Geman-McClure robust weight.
+   * The static function takes the squared value of the residual and the scale parameter.
+   * The weight member function now calls this function. While the member function takes the residual as input, 
+   * it passes x² and c² to the static helper.
+   * 
+   * w(x², c²) = \phi(x)/x = c⁴/(c²+x²)²
+   * 
+   * 
+   * @param distance2 Squared residual magnitude.
+   * @param c2 Squared scale parameter.
+   * @return Weight w(x) in (0, 1]
+   */
+  static double Weight(double distance2, double c2);
 
  protected:
   double c_;
+  double csquared_;
 
  private:
 #if GTSAM_ENABLE_BOOST_SERIALIZATION
@@ -387,6 +401,7 @@ class GTSAM_EXPORT GemanMcClure : public Base {
   void serialize(ARCHIVE &ar, const unsigned int /*version*/) {
     ar &BOOST_SERIALIZATION_BASE_OBJECT_NVP(Base);
     ar &BOOST_SERIALIZATION_NVP(c_);
+    ar &BOOST_SERIALIZATION_NVP(csquared_);
   }
 #endif
 };

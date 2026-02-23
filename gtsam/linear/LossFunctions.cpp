@@ -314,20 +314,22 @@ Welsch::shared_ptr Welsch::Create(double c, const ReweightScheme reweight) {
 // GemanMcClure
 /* ************************************************************************* */
 GemanMcClure::GemanMcClure(double c, const ReweightScheme reweight)
-  : Base(reweight), c_(c) {
+  : Base(reweight), c_(c), csquared_(c * c) {
 }
 
 double GemanMcClure::weight(double distance) const {
-  const double c2 = c_*c_;
+  return Weight(distance*distance, csquared_);
+}
+
+double GemanMcClure::Weight(double distance2, double c2) {
   const double c4 = c2*c2;
-  const double c2error = c2 + distance*distance;
+  const double c2error = c2 + distance2;
   return c4/(c2error*c2error);
 }
 
 double GemanMcClure::loss(double distance) const {
-  const double c2 = c_*c_;
   const double error2 = distance*distance;
-  return 0.5 * (c2 * error2) / (c2 + error2);
+  return 0.5 * (csquared_ * error2) / (csquared_ + error2);
 }
 
 void GemanMcClure::print(const std::string &s="") const {
