@@ -140,21 +140,9 @@ public:
   /// Exponential map at identity.
   static Pose3 Expmap(const Vector6& xi, OptionalJacobian<6, 6> Hxi = {});
 
-  /// The dual version of Adjoint
-  Vector6 AdjointTranspose(const Vector6& x,
-                           OptionalJacobian<6, 6> H_this = {},
-                           OptionalJacobian<6, 6> H_x = {}) const;
-
   // temporary fix for wrappers until case issue is resolved
   static Matrix6 adjointMap_(const Vector6 &xi) { return adjointMap(xi);}
   static Vector6 adjoint_(const Vector6 &xi, const Vector6 &y) { return adjoint(xi, y);}
-
-  /**
-   * The dual version of adjoint action, acting on the dual space of the Lie-algebra vector space.
-   */
-  static Vector6 adjointTranspose(const Vector6& xi, const Vector6& y,
-                                  OptionalJacobian<6, 6> Hxi = {},
-                                  OptionalJacobian<6, 6> H_y = {});
 
   // Chart at origin, depends on compile-time flag GTSAM_POSE3_EXPMAP
   struct GTSAM_EXPORT ChartAtOrigin {

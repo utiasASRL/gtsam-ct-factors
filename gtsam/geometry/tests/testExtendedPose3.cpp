@@ -21,6 +21,8 @@
 #include <gtsam/base/numericalDerivative.h>
 #include <gtsam/geometry/ExtendedPose3.h>
 
+#include <functional>
+
 using namespace gtsam;
 
 using ExtendedPose33 = ExtendedPose3<3>;
@@ -156,6 +158,93 @@ TEST(ExtendedPose3, AdjointConsistency) {
           ->AdjointMap();
   EXPECT(assert_equal(Matrix(f_generic), Matrix(f.AdjointMap()), 1e-9));
   EXPECT(assert_equal(d_generic, d.AdjointMap(), 1e-9));
+}
+
+//******************************************************************************
+TEST(ExtendedPose3, AdjointTranspose) {
+  const ExtendedPose33 f(kR1, kX1);
+  const ExtendedPose3d d(kR1, ExtendedPose3d::Matrix3K(kX1));
+  const Vector12 x = kXi;
+  const Vector x_dynamic = x;
+
+  EXPECT(assert_equal(Vector(f.AdjointMap().transpose() * x),
+                      Vector(f.AdjointTranspose(x))));
+  EXPECT(assert_equal(d.AdjointMap().transpose() * x_dynamic,
+                      d.AdjointTranspose(x_dynamic)));
+
+  std::function<Vector12(const ExtendedPose33&, const Vector12&)>
+      f_adjoint_transpose = [](const ExtendedPose33& g, const Vector12& v) {
+        return Vector12(g.AdjointTranspose(v));
+      };
+  Matrix Hf_state, Hf_x;
+  f.AdjointTranspose(x, Hf_state, Hf_x);
+  EXPECT(assert_equal(numericalDerivative21(f_adjoint_transpose, f, x), Hf_state,
+                      1e-8));
+  EXPECT(
+      assert_equal(numericalDerivative22(f_adjoint_transpose, f, x), Hf_x));
+
+  std::function<Vector(const ExtendedPose3d&, const Vector&)>
+      d_adjoint_transpose = [](const ExtendedPose3d& g, const Vector& v) {
+        return g.AdjointTranspose(v);
+      };
+  Matrix Hd_state, Hd_x;
+  d.AdjointTranspose(x_dynamic, Hd_state, Hd_x);
+  EXPECT(assert_equal(
+      numericalDerivative21<Vector, ExtendedPose3d, Vector, 12>(
+          d_adjoint_transpose, d, x_dynamic),
+      Hd_state, 1e-8));
+  EXPECT(assert_equal(
+      numericalDerivative22<Vector, ExtendedPose3d, Vector, 12>(
+          d_adjoint_transpose, d, x_dynamic),
+      Hd_x));
+}
+
+//******************************************************************************
+TEST(ExtendedPose3, adjointTranspose) {
+  const Vector12 xi = kXi;
+  const Vector12 y =
+      (Vector12() << 0.03, -0.07, 0.02, 0.4, 0.1, -0.2, -0.3, 0.5, 0.9, 0.2,
+       -0.8, 0.6)
+          .finished();
+  const Vector xi_dynamic = xi;
+  const Vector y_dynamic = y;
+
+  EXPECT(assert_equal(Vector(ExtendedPose33::adjointMap(xi).transpose() * y),
+                      Vector(ExtendedPose33::adjointTranspose(xi, y))));
+  EXPECT(assert_equal(ExtendedPose3d::adjointMap(xi_dynamic).transpose() *
+                          y_dynamic,
+                      ExtendedPose3d::adjointTranspose(xi_dynamic, y_dynamic)));
+
+  std::function<Vector12(const Vector12&, const Vector12&)>
+      f_adjoint_transpose = [](const Vector12& x, const Vector12& v) {
+        return Vector12(ExtendedPose33::adjointTranspose(x, v));
+      };
+  Matrix Hf_xi, Hf_y;
+  EXPECT(assert_equal(Vector(ExtendedPose33::adjointTranspose(xi, y, Hf_xi, Hf_y)),
+                      Vector(f_adjoint_transpose(xi, y))));
+  EXPECT(
+      assert_equal(numericalDerivative21(f_adjoint_transpose, xi, y, 1e-5), Hf_xi,
+                   1e-5));
+  EXPECT(
+      assert_equal(numericalDerivative22(f_adjoint_transpose, xi, y, 1e-5), Hf_y,
+                   1e-5));
+
+  std::function<Vector(const Vector&, const Vector&)> d_adjoint_transpose =
+      [](const Vector& x, const Vector& v) {
+        return ExtendedPose3d::adjointTranspose(x, v);
+      };
+  Matrix Hd_xi, Hd_y;
+  EXPECT(assert_equal(ExtendedPose3d::adjointTranspose(xi_dynamic, y_dynamic,
+                                                       Hd_xi, Hd_y),
+                      d_adjoint_transpose(xi_dynamic, y_dynamic)));
+  EXPECT(assert_equal(
+      numericalDerivative21<Vector, Vector, Vector, 12>(
+          d_adjoint_transpose, xi_dynamic, y_dynamic, 1e-5),
+      Hd_xi, 1e-5));
+  EXPECT(assert_equal(
+      numericalDerivative22<Vector, Vector, Vector, 12>(
+          d_adjoint_transpose, xi_dynamic, y_dynamic, 1e-5),
+      Hd_y, 1e-5));
 }
 
 //******************************************************************************

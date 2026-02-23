@@ -58,46 +58,6 @@ Pose3 Pose3::FromPose2(const Pose2& p, OptionalJacobian<6, 3> H) {
 }
 
 /* ************************************************************************* */
-/// The dual version of Adjoint
-Vector6 Pose3::AdjointTranspose(const Vector6& x, OptionalJacobian<6, 6> H_pose,
-                                OptionalJacobian<6, 6> H_x) const {
-  const Matrix6 Ad = AdjointMap();
-  const Vector6 AdTx = Ad.transpose() * x;
-
-  // Jacobians
-  // See docs/math.pdf for more details.
-  if (H_pose) {
-    const auto w_T_hat = skewSymmetric(AdTx.head<3>()),
-               v_T_hat = skewSymmetric(AdTx.tail<3>());
-    *H_pose << w_T_hat, v_T_hat,  //
-        /*  */ v_T_hat, Z_3x3;
-  }
-  if (H_x) {
-    *H_x = Ad.transpose();
-  }
-
-  return AdTx;
-}
-
-/* ************************************************************************* */
-Vector6 Pose3::adjointTranspose(const Vector6& xi, const Vector6& y,
-    OptionalJacobian<6, 6> Hxi, OptionalJacobian<6, 6> H_y) {
-  if (Hxi) {
-    Hxi->setZero();
-    for (int i = 0; i < 6; ++i) {
-      Vector6 dxi;
-      dxi.setZero();
-      dxi(i) = 1.0;
-      Matrix6 GTi = adjointMap(dxi).transpose();
-      Hxi->col(i) = GTi * y;
-    }
-  }
-  const Matrix6& adT_xi = adjointMap(xi).transpose();
-  if (H_y) *H_y = adT_xi;
-  return adT_xi * y;
-}
-
-/* ************************************************************************* */
 void Pose3::print(const std::string& s) const {
   std::cout << (s.empty() ? s : s + " ") << *this << std::endl;
 }

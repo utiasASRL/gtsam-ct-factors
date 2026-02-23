@@ -197,20 +197,8 @@ public:
           {}) const;
 
   /// @}
-  /// @name Lie Group
+  /// @name Lie Group (all Lie group operations are implemented in ExtendedPose3)
   /// @{
-
-  /// The dual version of Adjoint
-  Vector9 AdjointTranspose(const Vector9& x,
-                           OptionalJacobian<9, 9> H_this = {},
-                           OptionalJacobian<9, 9> H_x = {}) const;
-
-  /**
-   * The dual version of adjoint action, acting on the dual space of the Lie-algebra vector space.
-   */
-  static Vector9 adjointTranspose(const Vector9& xi, const Vector9& y,
-                                  OptionalJacobian<9, 9> Hxi = {},
-                                  OptionalJacobian<9, 9> H_y = {});
 
   /// @}
   /// @name Dynamics
