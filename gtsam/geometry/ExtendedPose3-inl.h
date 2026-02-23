@@ -165,8 +165,6 @@ typename ExtendedPose3<K, Derived>::This ExtendedPose3<K, Derived>::operator*(
 template <int K, class Derived>
 typename ExtendedPose3<K, Derived>::This ExtendedPose3<K, Derived>::Expmap(
     const TangentVector& xi, ChartJacobian Hxi) {
-  const Eigen::Index k = static_cast<Eigen::Index>(RuntimeK(xi));
-
   // Get angular velocity omega
   const Vector3 w = xi.template head<3>();
 
@@ -180,6 +178,22 @@ typename ExtendedPose3<K, Derived>::This ExtendedPose3<K, Derived>::Expmap(
 #else
   const Rot3 R(local.expmap());
 #endif
+
+  if constexpr (K == 1) {
+    Matrix3 H;
+    const Vector3 v = xi.template tail<3>();
+    const Vector3 t = local.Jacobian().applyLeft(v, Hxi ? &H : nullptr);
+    if (Hxi) {
+      const Matrix3 Jr = local.Jacobian().right();
+      const Matrix3 Rt = R.transpose();
+      *Hxi << Jr, Z_3x3, Rt * H, Jr;
+    }
+    Matrix3K x;
+    x.col(0) = t;
+    return MakeReturn(ExtendedPose3(R, x));
+  }
+
+  const Eigen::Index k = static_cast<Eigen::Index>(RuntimeK(xi));
 
   // The translation t = local.Jacobian().left() * v.
   // Below we call local.Jacobian().applyLeft, which is faster if you don't need
@@ -246,6 +260,7 @@ template <int K, class Derived>
 typename ExtendedPose3<K, Derived>::Jacobian
 ExtendedPose3<K, Derived>::AdjointMap() const {
   const Matrix3 R = R_.matrix();
+
   Jacobian adj;
   if constexpr (dimension == Eigen::Dynamic) {
     adj.setZero(dim(), dim());
@@ -277,8 +292,9 @@ ExtendedPose3<K, Derived>::Adjoint(const TangentVector& xi_b,
 template <int K, class Derived>
 typename ExtendedPose3<K, Derived>::Jacobian
 ExtendedPose3<K, Derived>::adjointMap(const TangentVector& xi) {
-  const Eigen::Index k = static_cast<Eigen::Index>(RuntimeK(xi));
   const Matrix3 w_hat = skewSymmetric(xi(0), xi(1), xi(2));
+
+  const Eigen::Index k = static_cast<Eigen::Index>(RuntimeK(xi));
 
   Jacobian adj;
   if constexpr (dimension == Eigen::Dynamic) {
@@ -335,12 +351,12 @@ ExtendedPose3<K, Derived>::ExpmapDerivative(const TangentVector& xi) {
 template <int K, class Derived>
 typename ExtendedPose3<K, Derived>::Jacobian
 ExtendedPose3<K, Derived>::LogmapDerivative(const TangentVector& xi) {
-  const Eigen::Index k = static_cast<Eigen::Index>(RuntimeK(xi));
   const Vector3 w = xi.template head<3>();
 
   // Instantiate functor for Dexp-related operations:
   const so3::DexpFunctor local(w);
 
+  const Eigen::Index k = static_cast<Eigen::Index>(RuntimeK(xi));
   const Matrix3 Rt = local.expmap().transpose();
   const Matrix3 Jw = Rot3::LogmapDerivative(w);
 
