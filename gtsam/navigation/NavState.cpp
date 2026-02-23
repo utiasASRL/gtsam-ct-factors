@@ -168,6 +168,8 @@ Vector9 NavState::adjointTranspose(const Vector9& xi, const Vector9& y,
 //------------------------------------------------------------------------------
 NavState NavState::retract(const Vector9& xi, //
     OptionalJacobian<9, 9> H1, OptionalJacobian<9, 9> H2) const {
+  // NOTE: This is an intentional custom chart for NavState manifold updates.
+  // It differs from the default LieGroup chart based on full Expmap/Logmap.
   Rot3 nRb = R_;
   Point3 n_t = t_.col(0), n_v = t_.col(1);
   Matrix3 D_bRc_xi, D_R_nRb, D_t_nRb, D_v_nRb;
@@ -195,30 +197,7 @@ NavState NavState::retract(const Vector9& xi, //
 //------------------------------------------------------------------------------
 Vector9 NavState::localCoordinates(const NavState& g, //
     OptionalJacobian<9, 9> H1, OptionalJacobian<9, 9> H2) const {
-  // return LieGroup<NavState, 9>::localCoordinates(g, H1, H2);
-
-  //TODO(Varun) Fix so that test on L680 passes
-
-  // Matrix3 D_dR_R, D_dt_R, D_dv_R;
-  // const Rot3 dR = R_.between(g.R_, H1 ? &D_dR_R : 0);
-  // const Point3 dP = R_.unrotate(g.t_ - t_, H1 ? &D_dt_R : 0);
-  // const Vector dV = R_.unrotate(g.v_ - v_, H1 ? &D_dv_R : 0);
-
-  // Vector9 xi;
-  // Matrix3 D_xi_R;
-  // xi << Rot3::Logmap(dR, (H1 || H2) ? &D_xi_R : 0), dP, dV;
-  // if (H1) {
-  //   *H1 << D_xi_R * D_dR_R, Z_3x3, Z_3x3, //
-  //   D_dt_R, -I_3x3, Z_3x3, //
-  //   D_dv_R, Z_3x3, -I_3x3;
-  // }
-  // if (H2) {
-  //   *H2 << D_xi_R, Z_3x3, Z_3x3, //
-  //   Z_3x3, dR.matrix(), Z_3x3, //
-  //   Z_3x3, Z_3x3, dR.matrix();
-  // }
-  // return xi;
-
+  // Inverse of the custom component-wise chart used in retract().
   Matrix3 D_dR_R, D_dt_R, D_dv_R;
   const Rot3 dR = R_.between(g.R_, H1 ? &D_dR_R : 0);
   const Point3 dP = R_.unrotate(g.t_.col(0) - t_.col(0), H1 ? &D_dt_R : 0);

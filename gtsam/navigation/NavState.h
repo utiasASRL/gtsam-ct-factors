@@ -177,12 +177,21 @@ public:
     return v.segment<3>(6);
   }
 
-  /// retract with optional derivatives
+  /**
+   * Manifold retract used by optimization.
+   * This intentionally uses a component-wise chart (R via Expmap, and p/v via
+   * world-frame rotation of the tangent increments), not the default LieGroup
+   * chart based on full Expmap/Logmap.
+   */
   NavState retract(const Vector9& v, //
       OptionalJacobian<9, 9> H1 = {}, OptionalJacobian<9, 9> H2 =
           {}) const;
 
-  /// localCoordinates with optional derivatives
+  /**
+   * Inverse of the custom manifold chart used by retract.
+   * Kept consistent with retract for optimization; Lie expmap/logmap remain
+   * available separately for group operations.
+   */
   Vector9 localCoordinates(const NavState& g, //
       OptionalJacobian<9, 9> H1 = {}, OptionalJacobian<9, 9> H2 =
           {}) const;
