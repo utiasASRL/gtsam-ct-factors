@@ -377,10 +377,10 @@ class GTSAM_EXPORT GemanMcClure : public Base {
   double modelParameter() const { return c_; }
   /** @brief A static helper function to compute the Geman-McClure robust weight.
    * The static function takes the squared value of the residual and the scale parameter.
-   * The weight member function now calls the this function, while the member function takes the residual as input, 
-   * it passes r² and c² to the static helper.
+   * The weight member function now calls this function. While the member function takes the residual as input, 
+   * it passes x² and c² to the static helper.
    * 
-   *w(d², c²) = \phi(d)/d = c⁴/(c²+d²)²
+   * w(x², c²) = \phi(x)/x = c⁴/(c²+x²)²
    * 
    * 
    * @param distance2 Squared residual magnitude.
