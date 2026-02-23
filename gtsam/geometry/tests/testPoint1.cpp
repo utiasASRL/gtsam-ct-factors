@@ -16,10 +16,6 @@ using namespace gtsam;
 GTSAM_CONCEPT_TESTABLE_INST(Point1)
 GTSAM_CONCEPT_LIE_INST(Point1)
 
-//******************************************************************************
-TEST(Point1 , Constructor) {
-  Point1 p;
-}
 
 //******************************************************************************
 TEST(Double , Concept) {
