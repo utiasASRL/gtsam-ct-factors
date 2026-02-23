@@ -354,49 +354,6 @@ TEST(NavState, interpolate) {
 }
 
 /* ************************************************************************* */
-TEST(NavState, Lie) {
-  NavState nav_state_a(Rot3::Identity(), {0.0, 1.0, 2.0}, {1.0, -1.0, 1.0});
-  NavState nav_state_b(Rot3::Rx(M_PI_4), {0.0, 1.0, 3.0}, {1.0, -1.0, 2.0});
-  NavState nav_state_c(Rot3::Ry(M_PI / 180.0), {1.0, 1.0, 2.0},
-                       {3.0, -1.0, 1.0});
-
-  // TODO(Varun)
-  // logmap
-  // Matrix9 H1, H2;
-  // auto logmap_b = NavState::Create(Rot3::Identity(),
-  //                                         Vector3::Zero(), Vector3::Zero())
-  //                     .localCoordinates(nav_state_b, H1, H2);
-
-  // Matrix6 J1, J2;
-  // auto logmap_pose_b = Pose3::Create(Rot3(), Vector3::Zero())
-  //                          .localCoordinates(nav_state_b.pose(), J1, J2);
-
-  // //  Check retraction
-  // auto retraction_b = NavState().retract(logmap_b);
-  // CHECK(assert_equal(retraction_b, nav_state_b));
-
-  // // Test if the sum of the logmap is the same as the logmap of the product
-  // auto logmap_c = NavState::Create(Rot3::Identity(),
-  //                                         Vector3::Zero(), Vector3::Zero())
-  //                     .localCoordinates(nav_state_c);
-
-  // auto logmap_bc = NavState::Create(
-  //                       gtsam::Rot3::Identity(), Eigen::Vector3d::Zero(),
-  //                       Eigen::Vector3d::Zero(), {}, {}, {})
-  //                       .localCoordinates(nav_state_b * nav_state_c);
-  // Vector9 logmap_bc2 = NavState::Logmap(nav_state_b * nav_state_c);
-
-  // Vector9 logmap_bc_sum = logmap_b + logmap_c;
-  // std::cout << "logmap_bc = " << logmap_bc.transpose() << std::endl;
-  // std::cout << "logmap_bc2 = " << logmap_bc2.transpose() << std::endl;
-
-  // // std::cout << "logmap_bc + logmap_c = " << logmap_bc_sum.transpose() << std::endl;
-  // // std::cout << "logmap_b + logmap_c = " << (NavState::Logmap(nav_state_b) + NavState::Logmap(nav_state_c)).transpose() << std::endl;
-  // // std::cout << "logmap_bc = " << logmap_bc.transpose() << std::endl;
-  // // CHECK(assert_equal(logmap_bc_sum, logmap_bc));
-}
-
-/* ************************************************************************* */
 static const double dt = 2.0;
 std::function<Vector9(const NavState&, const bool&)> coriolis =
     std::bind(&NavState::coriolis, std::placeholders::_1, dt, kOmegaCoriolis,
@@ -428,7 +385,7 @@ TEST(NavState, Coriolis2) {
 
 TEST(NavState, Coriolis3) {
   /** Consider a massless planet with an attached nav frame at
-   *  n_omega = [0 0 1]', and a body at position n_t = [1 0 0]', travelling with
+   *  n_omega = [0 0 1]', and a body at position n_t = [1 0 0]', traveling with
    *  velocity n_v = [0 1 0]'. Orient the body so that it is not instantaneously
    *  aligned with the nav frame (i.e., nRb != I_3x3). Test that first and
    *  second order Coriolis corrections are as expected.
@@ -599,11 +556,10 @@ NavState expected(expectedR, expectedV, expectedP);
 /* ************************************************************************* */
 // Checks correct exponential map (Expmap) with brute force matrix exponential
 TEST(NavState, Expmap_c_full) {
-  //TODO(Varun)
-  // EXPECT(assert_equal(screwNavState::expected,
-  //                     expm<NavState>(screwNavState::xi), 1e-6));
-  // EXPECT(assert_equal(screwNavState::expected,
-  //                     NavState::Expmap(screwNavState::xi), 1e-6));
+  EXPECT(assert_equal(screwNavState::expected,
+                      expm<NavState>(screwNavState::xi), 1e-6));
+  EXPECT(assert_equal(screwNavState::expected,
+                      NavState::Expmap(screwNavState::xi), 1e-6));
 }
 
 /* ************************************************************************* */
@@ -638,30 +594,29 @@ TEST(NavState, Adjoint_compose_full) {
 /* ************************************************************************* */
 TEST(NavState, expmaps_galore_full) {
   Vector xi;
-  //TODO(Varun)
-  // NavState actual;
-  // xi = (Vector(9) << 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9).finished();
-  // actual = NavState::Expmap(xi);
-  // EXPECT(assert_equal(expm<NavState>(xi), actual, 1e-6));
-  // EXPECT(assert_equal(xi, NavState::Logmap(actual), 1e-6));
+  NavState actual;
+  xi = (Vector(9) << 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9).finished();
+  actual = NavState::Expmap(xi);
+  EXPECT(assert_equal(expm<NavState>(xi), actual, 1e-6));
+  EXPECT(assert_equal(xi, NavState::Logmap(actual), 1e-6));
 
-  // xi = (Vector(9) << 0.1, -0.2, 0.3, -0.4, 0.5, -0.6, -0.7, -0.8, -0.9)
-  //          .finished();
-  // for (double theta = 1.0; 0.3 * theta <= M_PI; theta *= 2) {
-  //   Vector txi = xi * theta;
-  //   actual = NavState::Expmap(txi);
-  //   EXPECT(assert_equal(expm<NavState>(txi, 30), actual, 1e-6));
-  //   Vector log = NavState::Logmap(actual);
-  //   EXPECT(assert_equal(actual, NavState::Expmap(log), 1e-6));
-  //   EXPECT(assert_equal(txi, log, 1e-6));  // not true once wraps
-  // }
+  xi = (Vector(9) << 0.1, -0.2, 0.3, -0.4, 0.5, -0.6, -0.7, -0.8, -0.9)
+           .finished();
+  for (double theta = 1.0; 0.3 * theta <= M_PI; theta *= 2) {
+    Vector txi = xi * theta;
+    actual = NavState::Expmap(txi);
+    EXPECT(assert_equal(expm<NavState>(txi, 30), actual, 1e-6));
+    Vector log = NavState::Logmap(actual);
+    EXPECT(assert_equal(actual, NavState::Expmap(log), 1e-6));
+    EXPECT(assert_equal(txi, log, 1e-6));  // not true once wraps
+  }
 
-  // // Works with large v as well, but expm needs 10 iterations!
-  // xi =
-  //     (Vector(9) << 0.2, 0.3, -0.8, 100.0, 120.0, -60.0, 12, 14, 45).finished();
-  // actual = NavState::Expmap(xi);
-  // EXPECT(assert_equal(expm<NavState>(xi, 10), actual, 1e-5));
-  // EXPECT(assert_equal(xi, NavState::Logmap(actual), 1e-9));
+  // Works with large v as well, but expm needs 10 iterations!
+  xi =
+      (Vector(9) << 0.2, 0.3, -0.8, 100.0, 120.0, -60.0, 12, 14, 45).finished();
+  actual = NavState::Expmap(xi);
+  EXPECT(assert_equal(expm<NavState>(xi, 10), actual, 1e-5));
+  EXPECT(assert_equal(xi, NavState::Logmap(actual), 1e-9));
 }
 
 /* ************************************************************************* */
