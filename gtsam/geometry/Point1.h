@@ -1,3 +1,20 @@
+/* ----------------------------------------------------------------------------
+
+ * GTSAM Copyright 2010, Georgia Tech Research Corporation,
+ * Atlanta, Georgia 30332-0415
+ * All Rights Reserved
+ * Authors: Frank Dellaert, et al. (see THANKS for the full author list)
+
+ * See LICENSE for the license information
+
+ * -------------------------------------------------------------------------- */
+
+/**
+ * @file    Point1.h
+ * @brief   1D Point
+ * @author  Sven Lilge
+ */
+
 #pragma once
 
 #include <gtsam/base/Manifold.h>
@@ -21,46 +38,14 @@ typedef Vector1 Point1;
 using Point1Pair = std::pair<Point1, Point1>;
 using Point1Pairs = std::vector<Point1Pair>;
 
-/**
- * @brief Stream insertion operator for Point1Pair.
- *
- * Outputs a human-readable representation of a Point1Pair to the given output
- * stream.
- *
- * @param os The output stream to write to.
- * @param p  The Point1Pair to be serialized to the stream.
- * @return A reference to the output stream \p os after insertion.
- */
+/// Stream insertion operator for Point1Pair.
 GTSAM_EXPORT std::ostream& operator<<(std::ostream& os,
                                       const gtsam::Point1Pair& p);
 
-/**
- * @brief Compute the distance between point and origin.
- *
- * Calculates the absolute distance between two Point1 objects,
- * with optional Jacobians with respect to each point.
- *
- * @param p The first 1D point.
- * @param H Optional Jacobian of the distance with respect to the first point \p
- * p1.
- * @return The scalar distance between \p p and 0.
- */
+/// L1 norm (absolute value) of a Point1, with optional Jacobian.
 GTSAM_EXPORT double norm1(const Point1& p, OptionalJacobian<1, 1> H = {});
 
-/**
- * @brief Compute the distance between two 1D points.
- *
- * Calculates the absolute distance between two Point1 objects,
- * with optional Jacobians with respect to each point.
- *
- * @param p1 The first 1D point.
- * @param q  The second 1D point.
- * @param H1 Optional Jacobian of the distance with respect to the first point
- * \p p1.
- * @param H2 Optional Jacobian of the distance with respect to the second point
- * \p q.
- * @return The scalar distance between \p p1 and \p q.
- */
+/// Distance between two 1D points, with optional Jacobians.
 GTSAM_EXPORT double distance1(const Point1& p1, const Point1& q,
                               OptionalJacobian<1, 1> H1 = {},
                               OptionalJacobian<1, 1> H2 = {});
@@ -68,6 +53,7 @@ GTSAM_EXPORT double distance1(const Point1& p1, const Point1& q,
 template <typename A1, typename A2>
 struct Range;
 
+/// Range functor between two Point1 values, using L1 distance.
 template <>
 struct Range<Point1, Point1> {
   typedef double result_type;

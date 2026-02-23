@@ -1,3 +1,14 @@
+/* ----------------------------------------------------------------------------
+
+ * GTSAM Copyright 2010, Georgia Tech Research Corporation,
+ * Atlanta, Georgia 30332-0415
+ * All Rights Reserved
+ * Authors: Frank Dellaert, et al. (see THANKS for the full author list)
+
+ * See LICENSE for the license information
+
+ * -------------------------------------------------------------------------- */
+
 /**
  * @file    testWNOAInterpolator.cpp
  * @brief   Unit tests for post-solve interpolator
@@ -656,18 +667,18 @@ TEST(Interpolator, PoseJacobians) {
   const Vector6 v2_se3 = v0_se3;
 
   // Create Interpolator
-  Interpolator<Pose3> interp(Vector6::Ones());
+  Interpolator<Pose3> interpolator(Vector6::Ones());
 
   // Get analytic Jacobians
   vector<Matrix> H(8);
-  auto [pose_est, vel_est] = interp.interpolatePoseAndVelocity(
+  auto [pose_est, vel_est] = interpolator.interpolatePoseAndVelocity(
       TimestampedPoseVelocity<Pose3>(p0_se3, v0_se3, 0.0),
       TimestampedPoseVelocity<Pose3>(p2_se3, v2_se3, 2 * timestep), timestep,
       &H);
 
   // define lambda function for derivatives
   auto f = [&](auto& p0, auto& v0, auto& p2, auto& v2) {
-    auto result = interp.interpolatePoseAndVelocity(
+    auto result = interpolator.interpolatePoseAndVelocity(
         TimestampedPoseVelocity<Pose3>(p0, v0, 0.0),
         TimestampedPoseVelocity<Pose3>(p2, v2, 2 * timestep), timestep);
 
@@ -709,18 +720,18 @@ TEST(Interpolator, VelJacobians) {
   const Vector6 v2_se3 = v0_se3;
 
   // Create Interpolator
-  Interpolator<Pose3> interp(Vector6::Ones());
+  Interpolator<Pose3> interpolator(Vector6::Ones());
 
   // Get analytic Jacobians
   vector<Matrix> H(8);
-  auto [pose_est, vel_est] = interp.interpolatePoseAndVelocity(
+  auto [pose_est, vel_est] = interpolator.interpolatePoseAndVelocity(
       TimestampedPoseVelocity<Pose3>(p0_se3, v0_se3, 0.0),
       TimestampedPoseVelocity<Pose3>(p2_se3, v2_se3, 2 * timestep), timestep,
       &H);
 
   // define lambda function for derivatives
   auto f = [&](auto& p0, auto& v0, auto& p2, auto& v2) {
-    auto result = interp.interpolatePoseAndVelocity(
+    auto result = interpolator.interpolatePoseAndVelocity(
         TimestampedPoseVelocity<Pose3>(p0, v0, 0.0),
         TimestampedPoseVelocity<Pose3>(p2, v2, 2 * timestep), timestep);
     Vector6 err = result.vel - v1_se3;

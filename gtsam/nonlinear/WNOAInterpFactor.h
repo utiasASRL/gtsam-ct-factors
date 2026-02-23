@@ -109,15 +109,15 @@ class WNOAInterpFactor : public NoiseModelFactor {
   // disable noise model updates
   const bool fixed_noise_model_;
   // map keys to interpolated state
-  std::unordered_map<Key, StateData> key_to_interp;
+  std::unordered_map<Key, StateData> key_to_interp_;
   // map interpolated state to border states.
   std::unordered_map<StateData, std::pair<StateData, StateData>>
-      interp_to_borders;
+      interp_to_borders_;
   // map outer key to outer key index (for Jacobians)
-  std::unordered_map<Key, int> outer_key_to_index;
+  std::unordered_map<Key, int> outer_key_to_index_;
   // map of precomputed matrices for interpolation, keyed by StateData
   std::unordered_map<StateData, std::shared_ptr<LambdaPsiMats>>
-      lambda_psi_pre_comp;
+      lambda_psi_pre_comp_;
 
   // Cache inner key -> index mapping to avoid rebuilding in noise model calc
   std::unordered_map<Key, int> inner_key_to_index_;
@@ -131,8 +131,9 @@ class WNOAInterpFactor : public NoiseModelFactor {
     // For non-interpolated keys
     int directOuterIndex = -1;
     // For interpolated keys: cached outer indices and keys
-    int idxPoseL = -1, idxVelL = -1, idxPoseR = -1, idxVelR = -1;
-    Key keyPoseL = 0, keyVelL = 0, keyPoseR = 0, keyVelR = 0;
+    int indexPoseLeft = -1, indexVelLeft = -1, indexPoseRight = -1,
+        indexVelRight = -1;
+    Key keyPoseLeft = 0, keyVelLeft = 0, keyPoseRight = 0, keyVelRight = 0;
   };
   std::vector<InnerKeyMapping> inner_key_mappings_;
 
@@ -211,40 +212,40 @@ class WNOAInterpFactor : public NoiseModelFactor {
         // decrement iterator (points to left border state)
         iter_est_state--;
         // map interpolated state to borderstates
-        interp_to_borders[state] =
+        interp_to_borders_[state] =
             std::pair(*iter_est_state, *std::next(iter_est_state));
         // Keep track of the inner keys corresponding to a given interpolated
         // state for easy lookup when building outer keys and mapping jacobians
         // later
-        key_to_interp[state.pose] = state;
-        key_to_interp[state.vel] = state;
+        key_to_interp_[state.pose] = state;
+        key_to_interp_[state.velocity] = state;
       }
       // Precompute Lambda and Psi WNOA interpolation matrices
       if (precomp_interp_mats) {
-        lambda_psi_pre_comp[state] =
+        lambda_psi_pre_comp_[state] =
             std::make_shared<LambdaPsiMats>(interpolator_.getLambdaPsi(
-                interp_to_borders[state].first.time,
-                interp_to_borders[state].second.time, state.time));
+                interp_to_borders_[state].first.time,
+                interp_to_borders_[state].second.time, state.time));
       } else {
-        lambda_psi_pre_comp[state] = nullptr;
+        lambda_psi_pre_comp_[state] = nullptr;
       }
     }
     // DEFINE KEYS
     // Define set of "outer" keys that this wrapper factor is defined on.
     std::unordered_set<Key> outer_key_set;
     for (Key key : inner_factor->keys()) {
-      if (key_to_interp.find(key) == key_to_interp.end()) {
+      if (key_to_interp_.find(key) == key_to_interp_.end()) {
         // inner key is not interpolated, add to outer keys
         outer_key_set.insert(key);
       } else {
         // inner key is interpolated, add associated border state keys to this
         // factor's keys
-        StateData& interp = key_to_interp.at(key);          // get state
-        auto [left, right] = interp_to_borders.at(interp);  // get borders
-        outer_key_set.insert(left.pose);                    // add border keys
-        outer_key_set.insert(left.vel);
+        StateData& interp = key_to_interp_.at(key);          // get state
+        auto [left, right] = interp_to_borders_.at(interp);  // get borders
+        outer_key_set.insert(left.pose);                     // add border keys
+        outer_key_set.insert(left.velocity);
         outer_key_set.insert(right.pose);
-        outer_key_set.insert(right.vel);
+        outer_key_set.insert(right.velocity);
       }
     }
     // Convert to key vector (from set)
@@ -253,7 +254,7 @@ class WNOAInterpFactor : public NoiseModelFactor {
     // map outer keys to their associated index (used when mapping jacobians
     // later)
     for (size_t i = 0; i < this->keys_.size(); i++) {
-      outer_key_to_index[this->keys_[i]] = i;
+      outer_key_to_index_[this->keys_[i]] = i;
     }
     // Build inner key mappings once and cache inner key indices
     // We will use this mapping to know how to map inner Jacobian blocks to
@@ -275,49 +276,49 @@ class WNOAInterpFactor : public NoiseModelFactor {
     // Loop through all inner keys and save the relevant mappings to outer keys
     for (size_t i = 0; i < inner_keys_init.size(); ++i) {
       // inner key
-      Key ik = inner_keys_init[i];
+      Key innerKey = inner_keys_init[i];
       // current index
-      inner_key_to_index_[ik] = static_cast<int>(i);
-      InnerKeyMapping mk;
-      auto itInterp = key_to_interp.find(ik);
+      inner_key_to_index_[innerKey] = static_cast<int>(i);
+      InnerKeyMapping mapping;
+      auto itInterp = key_to_interp_.find(innerKey);
 
       // If this condition is met, then this inner key is not interpolated and
       // directly corresponds to an outer key We can map the Jacobian block for
       // this inner key directly to the corresponding outer key index
-      if (itInterp == key_to_interp.end()) {
-        auto itOuter = outer_key_to_index.find(ik);
-        if (itOuter != outer_key_to_index.end())
-          mk.directOuterIndex = itOuter->second;
+      if (itInterp == key_to_interp_.end()) {
+        auto itOuter = outer_key_to_index_.find(innerKey);
+        if (itOuter != outer_key_to_index_.end())
+          mapping.directOuterIndex = itOuter->second;
       } else {
         // Otherwise, this inner key is interpolated and we need to map it to
         // its corresponding border states The Jacobian blocks that connect them
         // to the inner key
-        mk.isInterpolated = true;
+        mapping.isInterpolated = true;
 
         // get border states for this interpolated key using the
-        // interp_to_borders map we built earlier
+        // interp_to_borders_ map we built earlier
         const StateData& sd = itInterp->second;
-        const auto& br = interp_to_borders.at(sd);
+        const auto& br = interp_to_borders_.at(sd);
         const StateData& left = br.first;
         const StateData& right = br.second;
 
         // Map the border states to their corresponding outer key indices
-        // This uses the outer_key_to_index map we built earlier
+        // This uses the outer_key_to_index_ map we built earlier
         // We will need these indices to know where to map Jacobian blocks
         // during linearization
-        mk.idxPoseL = outer_key_to_index.at(left.pose);
-        mk.idxVelL = outer_key_to_index.at(left.vel);
-        mk.idxPoseR = outer_key_to_index.at(right.pose);
-        mk.idxVelR = outer_key_to_index.at(right.vel);
+        mapping.indexPoseLeft = outer_key_to_index_.at(left.pose);
+        mapping.indexVelLeft = outer_key_to_index_.at(left.velocity);
+        mapping.indexPoseRight = outer_key_to_index_.at(right.pose);
+        mapping.indexVelRight = outer_key_to_index_.at(right.velocity);
 
         // also save the actual keys for clarity (might not be accessed during
         // compute)
-        mk.keyPoseL = left.pose;
-        mk.keyVelL = left.vel;
-        mk.keyPoseR = right.pose;
-        mk.keyVelR = right.vel;
+        mapping.keyPoseLeft = left.pose;
+        mapping.keyVelLeft = left.velocity;
+        mapping.keyPoseRight = right.pose;
+        mapping.keyVelRight = right.velocity;
       }
-      inner_key_mappings_[i] = mk;
+      inner_key_mappings_[i] = mapping;
     }
   };
 
@@ -561,7 +562,7 @@ class WNOAInterpFactor : public NoiseModelFactor {
    * @return unordered_map<Key, StateData>
    */
   std::unordered_map<Key, StateData> getInterpolatedKeys() const {
-    return key_to_interp;
+    return key_to_interp_;
   }
 
   /**
@@ -571,7 +572,7 @@ class WNOAInterpFactor : public NoiseModelFactor {
    */
   std::unordered_map<StateData, std::pair<StateData, StateData>>
   getInterpToBorders() const {
-    return interp_to_borders;
+    return interp_to_borders_;
   }
 
  private:
@@ -671,36 +672,37 @@ class WNOAInterpFactor : public NoiseModelFactor {
       for (size_t i = 0; i < inner_keys.size(); i++) {
         const Key inner_key = inner_keys[i];
         const Matrix& Jinner = (*H_inner)[i];
-        const InnerKeyMapping& mk = inner_key_mappings_[i];
-        if (mk.isInterpolated) {
+        const InnerKeyMapping& mapping = inner_key_mappings_[i];
+        if (mapping.isInterpolated) {
           const std::array<Matrix, 4>& J4 = InterpJacobians->at(inner_key);
           // Order: 0:LPose, 1:LVel, 2:RPose, 3:RVel
-          if (mk.idxPoseL >= 0) {
+          if (mapping.indexPoseLeft >= 0) {
             const Matrix& Jblock = J4[0];
-            if ((*H)[mk.idxPoseL].size() == 0)
-              (*H)[mk.idxPoseL].setZero(Jinner.rows(), Jblock.cols());
-            (*H)[mk.idxPoseL].noalias() += Jinner * Jblock;
+            if ((*H)[mapping.indexPoseLeft].size() == 0)
+              (*H)[mapping.indexPoseLeft].setZero(Jinner.rows(), Jblock.cols());
+            (*H)[mapping.indexPoseLeft].noalias() += Jinner * Jblock;
           }
-          if (mk.idxVelL >= 0) {
+          if (mapping.indexVelLeft >= 0) {
             const Matrix& Jblock = J4[1];
-            if ((*H)[mk.idxVelL].size() == 0)
-              (*H)[mk.idxVelL].setZero(Jinner.rows(), Jblock.cols());
-            (*H)[mk.idxVelL].noalias() += Jinner * Jblock;
+            if ((*H)[mapping.indexVelLeft].size() == 0)
+              (*H)[mapping.indexVelLeft].setZero(Jinner.rows(), Jblock.cols());
+            (*H)[mapping.indexVelLeft].noalias() += Jinner * Jblock;
           }
-          if (mk.idxPoseR >= 0) {
+          if (mapping.indexPoseRight >= 0) {
             const Matrix& Jblock = J4[2];
-            if ((*H)[mk.idxPoseR].size() == 0)
-              (*H)[mk.idxPoseR].setZero(Jinner.rows(), Jblock.cols());
-            (*H)[mk.idxPoseR].noalias() += Jinner * Jblock;
+            if ((*H)[mapping.indexPoseRight].size() == 0)
+              (*H)[mapping.indexPoseRight].setZero(Jinner.rows(),
+                                                   Jblock.cols());
+            (*H)[mapping.indexPoseRight].noalias() += Jinner * Jblock;
           }
-          if (mk.idxVelR >= 0) {
+          if (mapping.indexVelRight >= 0) {
             const Matrix& Jblock = J4[3];
-            if ((*H)[mk.idxVelR].size() == 0)
-              (*H)[mk.idxVelR].setZero(Jinner.rows(), Jblock.cols());
-            (*H)[mk.idxVelR].noalias() += Jinner * Jblock;
+            if ((*H)[mapping.indexVelRight].size() == 0)
+              (*H)[mapping.indexVelRight].setZero(Jinner.rows(), Jblock.cols());
+            (*H)[mapping.indexVelRight].noalias() += Jinner * Jblock;
           }
         } else {
-          const int k = mk.directOuterIndex;
+          const int k = mapping.directOuterIndex;
           if ((*H)[k].size() == 0)
             (*H)[k].setZero(Jinner.rows(), Jinner.cols());
           (*H)[k].noalias() += Jinner;
@@ -714,7 +716,7 @@ class WNOAInterpFactor : public NoiseModelFactor {
   /**
    * @brief Compute interpolated state values from bordering estimated states.
    *
-   * For every `StateData` in `interp_to_borders` this routine evaluates the
+   * For every `StateData` in `interp_to_borders_` this routine evaluates the
    * interpolator using the left/right bordering estimated states from
    * `values`, inserts the resulting pose and velocity into the returned
    * `Values` container, and optionally returns per-interpolated-state
@@ -741,17 +743,17 @@ class WNOAInterpFactor : public NoiseModelFactor {
     Values values_interp;  // interpolated values
 
     // loop through interpolated state map and compute values
-    for (const auto& [interp_state, border_states] : interp_to_borders) {
+    for (const auto& [interp_state, border_states] : interp_to_borders_) {
       // unpack border states
       auto& [left, right] = border_states;
       // retrieve estimated state values
       const auto state_left = TimestampedPoseVelocity<PoseType>(
-          values.at<PoseType>(left.pose), values.at<VelocityType>(left.vel),
-          left.time);
+          values.at<PoseType>(left.pose),
+          values.at<VelocityType>(left.velocity), left.time);
 
       const auto state_right = TimestampedPoseVelocity<PoseType>(
-          values.at<PoseType>(right.pose), values.at<VelocityType>(right.vel),
-          right.time);
+          values.at<PoseType>(right.pose),
+          values.at<VelocityType>(right.velocity), right.time);
 
       // Get interpolated state velocity pair
       PoseVelocity<PoseType> result;
@@ -760,22 +762,22 @@ class WNOAInterpFactor : public NoiseModelFactor {
       if (InterpJacobians) {
         result = interpolator_.interpolatePoseAndVelocity(
             state_left, state_right, interp_state.time, &H, nullptr, nullptr,
-            lambda_psi_pre_comp.at(interp_state));
+            lambda_psi_pre_comp_.at(interp_state));
       } else {
         result = interpolator_.interpolatePoseAndVelocity(
             state_left, state_right, interp_state.time, nullptr, nullptr,
-            nullptr, lambda_psi_pre_comp.at(interp_state));
+            nullptr, lambda_psi_pre_comp_.at(interp_state));
       }
 
       // insert into values structure
       values_interp.insert(interp_state.pose, result.pose);
-      values_interp.insert(interp_state.vel, result.vel);
+      values_interp.insert(interp_state.velocity, result.vel);
 
       // arrange jacobians in flattened map (fixed order blocks)
       if (InterpJacobians) {
         (*InterpJacobians)[interp_state.pose] =
             std::array<Matrix, 4>{H[0], H[1], H[2], H[3]};
-        (*InterpJacobians)[interp_state.vel] =
+        (*InterpJacobians)[interp_state.velocity] =
             std::array<Matrix, 4>{H[4], H[5], H[6], H[7]};
       }
 
@@ -832,7 +834,7 @@ class WNOAInterpFactor : public NoiseModelFactor {
     // Compute the covariance update based on interpolated states
     // Note: Here, we leverage the block-diagonal approximation of the
     // interpolated covariances (i.e., independence approximation)
-    for (auto& [state, borders] : interp_to_borders) {
+    for (auto& [state, borders] : interp_to_borders_) {
       // Retrieve Jacobians from inner factor
       Matrix G_pose(err_dim, dim);
       Matrix G_vel(err_dim, dim);
@@ -842,7 +844,7 @@ class WNOAInterpFactor : public NoiseModelFactor {
       } else {
         G_pose.setZero();
       }
-      auto itVel = inner_key_to_index_.find(state.vel);
+      auto itVel = inner_key_to_index_.find(state.velocity);
       if (itVel != inner_key_to_index_.end()) {
         G_vel = Jacobians[itVel->second];
       } else {
@@ -910,15 +912,16 @@ NonlinearFactorGraph interpolateFactorGraph(
     double del_t = state_kp1.time - state_k.time;
     // add factor
     auto motion_factor = std::make_shared<WNOAMotionFactor<PoseType>>(
-        state_k.pose, state_k.vel, state_kp1.pose, state_kp1.vel, del_t, Q_psd);
+        state_k.pose, state_k.velocity, state_kp1.pose, state_kp1.velocity,
+        del_t, Q_psd);
     new_graph.add(motion_factor);
     iter_state++;
   }
   // Get map from keys to interpolated state, and interpolated state to
   // estimated state.
-  std::unordered_map<Key, StateData> key_to_interp;
+  std::unordered_map<Key, StateData> key_to_interp_;
   std::unordered_map<StateData, std::pair<StateData, StateData>>
-      interp_to_borders;
+      interp_to_borders_;
   for (const StateData& state : interp_states) {
     // search for estimated state that upper bound current interpolated state
     auto iter_est_state = estimated_states.lower_bound(state);
@@ -932,11 +935,11 @@ NonlinearFactorGraph interpolateFactorGraph(
       // decrement iterator (point to left border)
       iter_est_state--;
       // map interp to left border index
-      interp_to_borders[state] =
+      interp_to_borders_[state] =
           std::pair(*iter_est_state, *std::next(iter_est_state));
       // map keys to interp state
-      key_to_interp[state.pose] = state;
-      key_to_interp[state.vel] = state;
+      key_to_interp_[state.pose] = state;
+      key_to_interp_[state.velocity] = state;
     }
   }
   // loop through factors and wrap factors on interpolated states
@@ -950,11 +953,11 @@ NonlinearFactorGraph interpolateFactorGraph(
     std::set<StateData> factor_estimated_states;
     for (Key& key : factor->keys()) {
       // check if key is an interpolated value
-      if (key_to_interp.count(key) > 0) {
+      if (key_to_interp_.count(key) > 0) {
         // add indices
-        StateData interp_state = key_to_interp[key];
+        StateData interp_state = key_to_interp_[key];
         factor_interp_states.insert(interp_state);
-        auto [left, right] = interp_to_borders.at(interp_state);
+        auto [left, right] = interp_to_borders_.at(interp_state);
         factor_estimated_states.insert(left);
         factor_estimated_states.insert(right);
       }

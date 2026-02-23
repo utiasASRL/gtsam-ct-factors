@@ -1,5 +1,5 @@
 /* ----------------------------------------------------------------------------
- * @file Interpolator.cpp
+ * @file WNOAInterpolator.cpp
  *
  * Note: References to (Barfoot 2024) refer to the following textbook:
  * Barfoot, Timothy D. State estimation for robotics. Cambridge University
@@ -13,8 +13,7 @@ namespace gtsam {
 // ---- Constructors ----
 template <typename PoseType>
 Interpolator<PoseType>::Interpolator(
-    const VectorN& Q_psd,
-    std::function<Matrix(double dt)> transitionFunction,
+    const VectorN& Q_psd, std::function<Matrix(double dt)> transitionFunction,
     std::function<Matrix(double dt, const VectorN& Q_psd)> covarianceFunction,
     std::function<Matrix(double dt, const VectorN& Q_psd)>
 
@@ -34,8 +33,7 @@ Interpolator<PoseType>::Interpolator(
 
 template <typename PoseType>
 Interpolator<PoseType>::Interpolator(const VectorN& Q_psd)
-    : Interpolator(Q_psd,
-                   WNOAMotionFactor<PoseType>::transitionFunction,
+    : Interpolator(Q_psd, WNOAMotionFactor<PoseType>::transitionFunction,
                    WNOAMotionFactor<PoseType>::buildWNOACovariance,
                    WNOAMotionFactor<PoseType>::buildInverseWNOACovariance,
                    WNOAMotionFactor<PoseType>::computeJacobianPrev,
@@ -99,9 +97,9 @@ Interpolator<PoseType>::interpolatePoseAndVelocity(
     // only remaining case is that t_tau is within border states
     // call protected overload of interpolate function
     return interpolatePoseAndVelocity_(
-          tPoseVel_k.value(), tPoseVel_kp1.value(), t_tau, H,
-          mainSolveMarginalMatrix, covarianceOut, LambdaPsiPreComp,
-          localStateVecsPreComp, localGlobalStateJacsPreComp);
+        tPoseVel_k.value(), tPoseVel_kp1.value(), t_tau, H,
+        mainSolveMarginalMatrix, covarianceOut, LambdaPsiPreComp,
+        localStateVecsPreComp, localGlobalStateJacsPreComp);
   }
 }
 
@@ -275,14 +273,15 @@ Interpolator<PoseType>::interpolatePoseAndVelocity_(
   }
   // Compute local state vectors at time tau, in the Lie algebra of Pose at time
   // k, using WNOA interpolation equations
-  VectorN xi_tau =
-      Lambda.block(0, dim, dim, dim) * xi_dot_k +
-      Psi.block(0, 0, dim, dim) * xi_kp1 +
-      Psi.block(0, dim, dim, dim) * xi_dot_kp1;  // Dropping xi_k term here since it's zero
+  VectorN xi_tau = Lambda.block(0, dim, dim, dim) * xi_dot_k +
+                   Psi.block(0, 0, dim, dim) * xi_kp1 +
+                   Psi.block(0, dim, dim, dim) *
+                       xi_dot_kp1;  // Dropping xi_k term here since it's zero
   VectorN xidot_tau =
       Lambda.block(dim, dim, dim, dim) * xi_dot_k +
       Psi.block(dim, 0, dim, dim) * xi_kp1 +
-      Psi.block(dim, dim, dim, dim) * xi_dot_kp1;  // Dropping xi_k term here since it's zero
+      Psi.block(dim, dim, dim, dim) *
+          xi_dot_kp1;  // Dropping xi_k term here since it's zero
   // Additional intermediate Jacobians
   MatrixN right_jac_tau;
   MatrixN dTtau_dTk;
@@ -387,12 +386,12 @@ Interpolator<PoseType>::computeJointMarginals(
   auto formBoundaryKeyVector = [](const StateDataInterval& stateDataBorders) {
     KeyVector boundaryKeyVector;
     if (stateDataBorders.first.has_value()) {
-      boundaryKeyVector.push_back(stateDataBorders.first->pose);  // p1
-      boundaryKeyVector.push_back(stateDataBorders.first->vel);   // v1
+      boundaryKeyVector.push_back(stateDataBorders.first->pose);      // p1
+      boundaryKeyVector.push_back(stateDataBorders.first->velocity);  // v1
     }
     if (stateDataBorders.second.has_value()) {
-      boundaryKeyVector.push_back(stateDataBorders.second->pose);  // p2
-      boundaryKeyVector.push_back(stateDataBorders.second->vel);   // v2
+      boundaryKeyVector.push_back(stateDataBorders.second->pose);      // p2
+      boundaryKeyVector.push_back(stateDataBorders.second->velocity);  // v2
     }
     return boundaryKeyVector;
   };
@@ -457,7 +456,7 @@ Values Interpolator<PoseType>::interpolatePosesAndVelocities(
         -> std::optional<TimestampedPoseVel> {
       if (!s) return std::nullopt;
       return TimestampedPoseVel(mainSolveSolution.at<PoseType>(s->pose),
-                                mainSolveSolution.at<VelocityType>(s->vel),
+                                mainSolveSolution.at<VelocityType>(s->velocity),
                                 s->time);
     };
 
@@ -479,13 +478,13 @@ Values Interpolator<PoseType>::interpolatePosesAndVelocities(
                                      mainSolveMarginalMatrix, &covarianceOut);
       auto [T_tau, varpi_tau] = pvtau;
       interpolatedSolution.insert(stateDataInterp.pose, T_tau);
-      interpolatedSolution.insert(stateDataInterp.vel, varpi_tau);
+      interpolatedSolution.insert(stateDataInterp.velocity, varpi_tau);
       if (covarianceMapOut) {
         // upper left covariance block corresponds to pose, lower right block
         // corresponds to velocity
         (*covarianceMapOut)[stateDataInterp.pose] =
             covarianceOut.topLeftCorner(dim, dim);
-        (*covarianceMapOut)[stateDataInterp.vel] =
+        (*covarianceMapOut)[stateDataInterp.velocity] =
             covarianceOut.bottomRightCorner(dim, dim);
       }
     }

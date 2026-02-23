@@ -30,6 +30,7 @@
 #include <functional>
 #include <iostream>
 #include <limits>
+#include <map>
 #include <optional>
 #include <random>
 #include <set>
@@ -37,7 +38,6 @@
 #include <unordered_set>
 #include <utility>
 #include <vector>
-#include <map>
 
 namespace gtsam {
 
@@ -65,6 +65,7 @@ struct PoseVelocity {
   PoseType pose;
   typename traits<PoseType>::TangentVector vel;
 
+  /// Returns pose and velocity as a std::pair.
   std::pair<PoseType, typename traits<PoseType>::TangentVector> asPair() const {
     return std::make_pair(pose, vel);
   }

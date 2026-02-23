@@ -17,6 +17,8 @@
  * @author  Sven Lilge
  */
 
+#pragma once
+
 #include <gtsam/base/Lie.h>
 #include <gtsam/base/Testable.h>
 #include <gtsam/base/VectorSpace.h>
@@ -29,8 +31,6 @@
 #include <gtsam/nonlinear/WNOAStateData.h>
 
 #include <cassert>
-
-#pragma once
 
 namespace gtsam {
 
@@ -81,8 +81,8 @@ class WNOAMotionFactor
   // Time between the two states
   double delta_t_;
 
-  inline static const MatrixN Identity = MatrixN::Identity();
-  inline static const MatrixN Zero = MatrixN::Zero();
+  inline static const MatrixN kIdentity = MatrixN::Identity();
+  inline static const MatrixN kZero = MatrixN::Zero();
 
  public:
   // Provide access to the Matrix& version of evaluateError:
@@ -105,7 +105,8 @@ class WNOAMotionFactor
                    const VectorN& Q)
       : Base() {
     // define keys
-    this->keys_ = {state_k.pose, state_k.vel, state_kp1.pose, state_kp1.vel};
+    this->keys_ = {state_k.pose, state_k.velocity, state_kp1.pose,
+                   state_kp1.velocity};
     // define timestep
     this->delta_t_ = state_kp1.time - state_k.time;
     assert(this->delta_t_ > 0.0 &&
@@ -217,8 +218,8 @@ class WNOAMotionFactor
     }
     if (Hv1) {
       // Derivative of error wrt velocity v1
-      *Hv1 =
-          (Matrix(2 * dim, dim) << -delta_t_ * Identity, -Identity).finished();
+      *Hv1 = (Matrix(2 * dim, dim) << -delta_t_ * kIdentity, -kIdentity)
+                 .finished();
     }
     if (Hp2) {
       // Derivative of error wrt pose p2
@@ -226,7 +227,7 @@ class WNOAMotionFactor
     }
     if (Hv2) {
       // Derivative of error wrt velocity v2
-      *Hv2 = (Matrix(2 * dim, dim) << Zero, right_jac_inv).finished();
+      *Hv2 = (Matrix(2 * dim, dim) << kZero, right_jac_inv).finished();
     }
 
     return err;
@@ -301,7 +302,7 @@ class WNOAMotionFactor
   static Matrix2N transitionFunction(double delta_t) {
     // Construct the transition matrix for the WNOA factor
     Matrix2N F;
-    F << Identity, delta_t * Identity, Zero, Identity;
+    F << kIdentity, delta_t * kIdentity, kZero, kIdentity;
     return F;
   }
 
@@ -345,7 +346,7 @@ class WNOAMotionFactor
     }
     Matrix2N F;
     // first column is pose, second column is velocity
-    F << dxi_dT1, -1 * delta_t * Identity, dvErr_dxi * dxi_dT1, -1 * Identity;
+    F << dxi_dT1, -1 * delta_t * kIdentity, dvErr_dxi * dxi_dT1, -1 * kIdentity;
     return F;
   }
 
@@ -391,7 +392,7 @@ class WNOAMotionFactor
     }
     Matrix2N E;
     // First column is pose, second column is velocity
-    E << dxi_dT2, Zero, dvErr_dxi * dxi_dT2, right_jac_inv;
+    E << dxi_dT2, kZero, dvErr_dxi * dxi_dT2, right_jac_inv;
     return -1 * E;
   }
 };
@@ -400,6 +401,5 @@ class WNOAMotionFactor
 template <class Pose>
 struct traits<WNOAMotionFactor<Pose>>
     : public Testable<WNOAMotionFactor<Pose>> {};
-
 
 }  // namespace gtsam

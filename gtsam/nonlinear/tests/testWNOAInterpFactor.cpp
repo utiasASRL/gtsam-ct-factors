@@ -1,3 +1,14 @@
+/* ----------------------------------------------------------------------------
+
+ * GTSAM Copyright 2010, Georgia Tech Research Corporation,
+ * Atlanta, Georgia 30332-0415
+ * All Rights Reserved
+ * Authors: Frank Dellaert, et al. (see THANKS for the full author list)
+
+ * See LICENSE for the license information
+
+ * -------------------------------------------------------------------------- */
+
 /**
  * @file    testWNOAInterpFactor.cpp
  * @brief   Unit test for WNOA Interpolation Factor
@@ -36,8 +47,8 @@ static double timestep = 0.1;
 
 /**** Point3 Test Variables*****/
 // First pose, moving forward in x with velocity 1
-Point3 v0_p3(1.0, 0.0, 0.0);
-Vector3 p0_p3(0.0, 0.0, 0.0);
+Vector3 v0_p3(1.0, 0.0, 0.0);
+Point3 p0_p3(0.0, 0.0, 0.0);
 // define next two poses along same trajectory
 Point3 p1_p3 = p0_p3 + timestep * v0_p3;
 Vector3 v1_p3 = v0_p3;
@@ -62,12 +73,12 @@ static Pose3 p4_se3 = p0_se3.expmap(4 * timestep * v0_se3);
 static Vector6 v4_se3 = v0_se3;
 
 // Define interpolation parameters
-// Add random border and interpolated states
-static set<StateData> border = {StateData(P(0), V(0), 0.0),
-                                StateData(P(2), V(2), 2 * timestep),
-                                StateData(P(3), V(3), 100 * timestep)};
-static set<StateData> interp = {StateData(P(1), V(1), timestep),
-                                StateData(P(4), V(4), timestep)};
+// Define estimated and interpolated states for testing
+static set<StateData> estimatedStates = {StateData(P(0), V(0), 0.0),
+                                         StateData(P(2), V(2), 2 * timestep),
+                                         StateData(P(3), V(3), 100 * timestep)};
+static set<StateData> interpolatedStates = {StateData(P(1), V(1), timestep),
+                                            StateData(P(4), V(4), timestep)};
 
 // STATE DATA TESTS
 
@@ -118,7 +129,8 @@ TEST(WNOAInterp, Constructor) {
   const auto prior = std::make_shared<PriorFactor<Point3>>(P(1), p0_p3, model);
 
   // wrap factor
-  const auto factor = WNOAInterpFactor<Point3>(prior, border, interp, Q_p3);
+  const auto factor = WNOAInterpFactor<Point3>(prior, estimatedStates,
+                                               interpolatedStates, Q_p3);
   // get factor keys
   KeyVector inner_keys = prior->keys();
   KeyVector outer_keys = factor.keys();
@@ -137,7 +149,8 @@ TEST(WNOAInterp, Print) {
   auto prior = std::make_shared<PriorFactor<Point3>>(P(1), priorValue, model);
 
   // Construct factor
-  const auto factor = WNOAInterpFactor<Point3>(prior, border, interp, Q_p3);
+  const auto factor = WNOAInterpFactor<Point3>(prior, estimatedStates,
+                                               interpolatedStates, Q_p3);
 
   factor.print();
   cout << endl;
@@ -149,8 +162,8 @@ TEST(WNOAInterp, EvalErrorP3Unary) {
   const auto model = noiseModel::Diagonal::Sigmas(Vector3::Ones());
   // prior at first pose
   auto prior = std::make_shared<PriorFactor<Point3>>(P(1), p0_p3, model);
-  auto factor =
-      std::make_shared<WNOAInterpFactor<Point3>>(prior, border, interp, Q_p3);
+  auto factor = std::make_shared<WNOAInterpFactor<Point3>>(
+      prior, estimatedStates, interpolatedStates, Q_p3);
   Values values;
   values.insert(P(0), p0_p3);
   values.insert(P(2), p0_p3);
@@ -166,8 +179,8 @@ TEST(WNOAInterp, EvalErrorP3Unary) {
   // DIFFERENT POSE, ZERO VELOCITY
   // prior at pose 1 (between 0 and 2)
   prior = std::make_shared<PriorFactor<Point3>>(P(1), p1_p3, model);
-  factor =
-      std::make_shared<WNOAInterpFactor<Point3>>(prior, border, interp, Q_p3);
+  factor = std::make_shared<WNOAInterpFactor<Point3>>(prior, estimatedStates,
+                                                      interpolatedStates, Q_p3);
   values.update(P(0), p0_p3);
   values.update(P(2), p2_p3);
   values.update(V(0), Vector3::Zero().eval());
@@ -181,8 +194,8 @@ TEST(WNOAInterp, EvalErrorP3Unary) {
   // DIFFERENT POSE, WITH VELOCITY
   // prior at pose 1 (between 0 and 2)
   prior = std::make_shared<PriorFactor<Point3>>(P(1), p1_p3, model);
-  factor =
-      std::make_shared<WNOAInterpFactor<Point3>>(prior, border, interp, Q_p3);
+  factor = std::make_shared<WNOAInterpFactor<Point3>>(prior, estimatedStates,
+                                                      interpolatedStates, Q_p3);
   values.update(P(0), p0_p3);
   values.update(P(2), p2_p3);
   values.update(V(0), v0_p3);
@@ -203,8 +216,8 @@ TEST(WNOAInterp, EvalErrorSE3UnaryPose) {
   const auto prior_pose =
       std::make_shared<PriorFactor<Pose3>>(P(1), p1_se3, model);
   // Construct factor for interpolated pose and velocity
-  const auto factor_pose =
-      WNOAInterpFactor<Pose3>(prior_pose, border, interp, Q_se3);
+  const auto factor_pose = WNOAInterpFactor<Pose3>(prior_pose, estimatedStates,
+                                                   interpolatedStates, Q_se3);
 
   // Set up values
   Values values;
@@ -232,8 +245,8 @@ TEST(WNOAInterp, EvalErrorSE3BetweenPose) {
   const auto between_factor =
       std::make_shared<BetweenFactor<Pose3>>(P(0), P(1), p01_se3, model);
   // Construct factor for interpolated pose and velocity
-  const auto factor =
-      WNOAInterpFactor<Pose3>(between_factor, border, interp, Q_se3);
+  const auto factor = WNOAInterpFactor<Pose3>(between_factor, estimatedStates,
+                                              interpolatedStates, Q_se3);
 
   // Set up values
   Values values;
@@ -256,11 +269,11 @@ TEST(WNOAInterp, EvalErrorSE3BetweenPose) {
 TEST(WNOAInterp, EvalErrorSE3BtwnInterp) {
   // Same as between above, but using two interpolated states with different
   // boundaries
-  set<StateData> border = {StateData(P(0), V(0), 0.0),
-                           StateData(P(2), V(2), 2 * timestep),
-                           StateData(P(4), V(4), 4 * timestep)};
-  set<StateData> interp = {StateData(P(1), V(1), timestep),
-                           StateData(P(3), V(3), 3 * timestep)};
+  set<StateData> estimatedStates = {StateData(P(0), V(0), 0.0),
+                                    StateData(P(2), V(2), 2 * timestep),
+                                    StateData(P(4), V(4), 4 * timestep)};
+  set<StateData> interpolatedStates = {StateData(P(1), V(1), timestep),
+                                       StateData(P(3), V(3), 3 * timestep)};
   const Pose3 p3_se3 = p0_se3.expmap(3 * timestep * v0_se3);
   const Pose3 p4_se3 = p0_se3.expmap(4 * timestep * v0_se3);
   Vector6 v2_se3 = v0_se3;
@@ -269,8 +282,8 @@ TEST(WNOAInterp, EvalErrorSE3BtwnInterp) {
   const auto between_factor = std::make_shared<BetweenFactor<Pose3>>(
       P(1), P(3), Pose3::Identity(), model);
   // Construct factor for interpolated pose and velocity
-  const auto factor =
-      WNOAInterpFactor<Pose3>(between_factor, border, interp, Q_se3);
+  const auto factor = WNOAInterpFactor<Pose3>(between_factor, estimatedStates,
+                                              interpolatedStates, Q_se3);
 
   // Set up values
   Values values;
@@ -299,8 +312,8 @@ TEST(WNOAInterp, JacobianPoint3UnaryPose) {
   const auto prior_factor =
       std::make_shared<PriorFactor<Point3>>(P(1), p1_p3, model);
   // Construct factor for interpolated pose and velocity
-  const auto factor =
-      WNOAInterpFactor<Point3>(prior_factor, border, interp, Q_p3);
+  const auto factor = WNOAInterpFactor<Point3>(prior_factor, estimatedStates,
+                                               interpolatedStates, Q_p3);
 
   // Set up values
   Values values;
@@ -360,8 +373,8 @@ TEST(WNOAInterp, JacobianSE3UnaryPose) {
   const auto prior_factor =
       std::make_shared<PriorFactor<Pose3>>(P(1), p1_se3, model);
   // Construct factor for interpolated pose and velocity
-  const auto factor =
-      WNOAInterpFactor<Pose3>(prior_factor, border, interp, Q_se3);
+  const auto factor = WNOAInterpFactor<Pose3>(prior_factor, estimatedStates,
+                                              interpolatedStates, Q_se3);
 
   // Set up values
   Values values;
@@ -421,11 +434,11 @@ TEST(WNOAInterp, PrecomputeLambdaPsiUnarySe3) {
   const auto prior_factor =
       std::make_shared<PriorFactor<Pose3>>(P(1), p1_se3, model);
   // Construct factor for interpolated pose and velocity
-  const auto factor = WNOAInterpFactor<Pose3>(prior_factor, border, interp,
-                                              Q_se3, false, false);
+  const auto factor = WNOAInterpFactor<Pose3>(
+      prior_factor, estimatedStates, interpolatedStates, Q_se3, false, false);
   // factor with precomputed interpolation matrices
-  const auto factor_alt =
-      WNOAInterpFactor<Pose3>(prior_factor, border, interp, Q_se3, false, true);
+  const auto factor_alt = WNOAInterpFactor<Pose3>(
+      prior_factor, estimatedStates, interpolatedStates, Q_se3, false, true);
 
   // Set up values
   Values values;
@@ -455,18 +468,18 @@ TEST(WNOAInterp, PrecomputeLambdaPsiUnarySe3) {
 
 TEST(WNOAInterp, Interpolator) {
   // Create Interpolator
-  Interpolator<Pose3> interp(Q_se3);
+  Interpolator<Pose3> interpolator(Q_se3);
 
   // Get analytic Jacobians
   vector<Matrix> H(8);
-  auto [pose_est, vel_est] = interp.interpolatePoseAndVelocity(
+  auto [pose_est, vel_est] = interpolator.interpolatePoseAndVelocity(
       TimestampedPoseVelocity<Pose3>(p0_se3, v0_se3, 0.0),
       TimestampedPoseVelocity<Pose3>(p2_se3, v2_se3, 2 * timestep), timestep,
       &H);
 
   // define lambda function for derivatives
   auto f = [&](auto& p0, auto& v0, auto& p2, auto& v2) {
-    auto [pose, vel] = interp.interpolatePoseAndVelocity(
+    auto [pose, vel] = interpolator.interpolatePoseAndVelocity(
         TimestampedPoseVelocity<Pose3>(p0, v0, 0.0),
         TimestampedPoseVelocity<Pose3>(p2, v2, 2 * timestep), timestep);
 
@@ -505,11 +518,11 @@ TEST(WNOAInterp, NoiseModelSE3Unary) {
       std::make_shared<PriorFactor<Pose3>>(P(1), p1_se3, model);
   auto cov_prior = model->covariance();
   // Factor with changing measurement noise
-  const auto factor =
-      WNOAInterpFactor<Pose3>(prior_factor, border, interp, Q_se3);
+  const auto factor = WNOAInterpFactor<Pose3>(prior_factor, estimatedStates,
+                                              interpolatedStates, Q_se3);
   // Factor with fixed meas noise
-  const auto factor_fixed =
-      WNOAInterpFactor<Pose3>(prior_factor, border, interp, Q_se3, true);
+  const auto factor_fixed = WNOAInterpFactor<Pose3>(
+      prior_factor, estimatedStates, interpolatedStates, Q_se3, true);
   // Set up values
   Values values;
   values.insert(P(0), p0_se3);
@@ -530,11 +543,11 @@ TEST(WNOAInterp, NoiseModelSE3Unary) {
 TEST(WNOAInterp, NoiseModelSE3Btwn) {
   // Same as between above, but using two interpolated states with different
   // boundaries
-  set<StateData> border = {StateData(P(0), V(0), 0.0),
-                           StateData(P(2), V(2), 2 * timestep),
-                           StateData(P(4), V(4), 4 * timestep)};
-  set<StateData> interp = {StateData(P(1), V(1), timestep),
-                           StateData(P(3), V(3), 3 * timestep)};
+  set<StateData> estimatedStates = {StateData(P(0), V(0), 0.0),
+                                    StateData(P(2), V(2), 2 * timestep),
+                                    StateData(P(4), V(4), 4 * timestep)};
+  set<StateData> interpolatedStates = {StateData(P(1), V(1), timestep),
+                                       StateData(P(3), V(3), 3 * timestep)};
   const Pose3 p3_se3 = p0_se3.expmap(3 * timestep * v0_se3);
   const Pose3 p4_se3 = p0_se3.expmap(4 * timestep * v0_se3);
   Vector6 v2_se3 = v0_se3;
@@ -544,10 +557,10 @@ TEST(WNOAInterp, NoiseModelSE3Btwn) {
   const auto between_factor = std::make_shared<BetweenFactor<Pose3>>(
       P(1), P(3), Pose3::Identity(), model);
   // Construct factor for interpolated pose and velocity
-  const auto factor =
-      WNOAInterpFactor<Pose3>(between_factor, border, interp, Q_se3);
-  const auto factor_fixed =
-      WNOAInterpFactor<Pose3>(between_factor, border, interp, Q_se3, true);
+  const auto factor = WNOAInterpFactor<Pose3>(between_factor, estimatedStates,
+                                              interpolatedStates, Q_se3);
+  const auto factor_fixed = WNOAInterpFactor<Pose3>(
+      between_factor, estimatedStates, interpolatedStates, Q_se3, true);
   // Set up values
   Values values;
   values.insert(P(0), p0_se3);
@@ -571,11 +584,11 @@ TEST(WNOAInterp, NoiseModelSE3Btwn) {
 TEST(WNOAInterp, NoiseModelP3Btwn) {
   // Same as between above, but using two interpolated states with different
   // boundaries
-  set<StateData> border = {StateData(P(0), V(0), 0.0),
-                           StateData(P(2), V(2), 2 * timestep),
-                           StateData(P(4), V(4), 4 * timestep)};
-  set<StateData> interp = {StateData(P(1), V(1), timestep),
-                           StateData(P(3), V(3), 3 * timestep)};
+  set<StateData> estimatedStates = {StateData(P(0), V(0), 0.0),
+                                    StateData(P(2), V(2), 2 * timestep),
+                                    StateData(P(4), V(4), 4 * timestep)};
+  set<StateData> interpolatedStates = {StateData(P(1), V(1), timestep),
+                                       StateData(P(3), V(3), 3 * timestep)};
   // const Point3 p3_p3 = p0_p3 + 3 * timestep * v0_p3;
   const Point3 p4_p3 = p0_p3 + 4 * timestep * v0_p3;
   Vector3 v2_p3 = v0_p3;
@@ -585,8 +598,8 @@ TEST(WNOAInterp, NoiseModelP3Btwn) {
   const auto between_factor = std::make_shared<BetweenFactor<Point3>>(
       P(1), P(3), Point3::Identity(), model);
   // Construct factor for interpolated pose and velocity
-  const auto factor =
-      WNOAInterpFactor<Point3>(between_factor, border, interp, Q_p3);
+  const auto factor = WNOAInterpFactor<Point3>(between_factor, estimatedStates,
+                                               interpolatedStates, Q_p3);
 
   // Set up values
   Values values;
@@ -617,11 +630,11 @@ TEST(WNOAInterp, NoiseModelP3Btwn) {
 TEST(WNOAInterp, LinearizeSE3Btwn) {
   // Same as between above, but using two interpolated states with different
   // boundaries
-  set<StateData> border = {StateData(P(0), V(0), 0.0),
-                           StateData(P(2), V(2), 2 * timestep),
-                           StateData(P(4), V(4), 4 * timestep)};
-  set<StateData> interp = {StateData(P(1), V(1), timestep),
-                           StateData(P(3), V(3), 3 * timestep)};
+  set<StateData> estimatedStates = {StateData(P(0), V(0), 0.0),
+                                    StateData(P(2), V(2), 2 * timestep),
+                                    StateData(P(4), V(4), 4 * timestep)};
+  set<StateData> interpolatedStates = {StateData(P(1), V(1), timestep),
+                                       StateData(P(3), V(3), 3 * timestep)};
   const Pose3 p3_se3 = p0_se3.expmap(3 * timestep * v0_se3);
   const Pose3 p4_se3 = p0_se3.expmap(4 * timestep * v0_se3);
   Vector6 v2_se3 = v0_se3;
@@ -630,8 +643,8 @@ TEST(WNOAInterp, LinearizeSE3Btwn) {
   const auto between_factor = std::make_shared<BetweenFactor<Pose3>>(
       P(1), P(3), p1_se3.inverse() * p3_se3, model);
   // Construct factor for interpolated pose and velocity
-  const auto factor =
-      WNOAInterpFactor<Pose3>(between_factor, border, interp, Q_se3);
+  const auto factor = WNOAInterpFactor<Pose3>(between_factor, estimatedStates,
+                                              interpolatedStates, Q_se3);
 
   // Set up values
   Values values;
@@ -659,11 +672,11 @@ TEST(WNOAInterp, SE3OptimTest) {
   //  0 ---- 1 ---- 2 ----- 3 ----- 4
   //  e      i      e       i       e
   //          --- between ---
-  set<StateData> border = {StateData(P(0), V(0), 0.0),
-                           StateData(P(2), V(2), 2 * timestep),
-                           StateData(P(4), V(4), 4 * timestep)};
-  set<StateData> interp = {StateData(P(1), V(1), timestep),
-                           StateData(P(3), V(3), 3 * timestep)};
+  set<StateData> estimatedStates = {StateData(P(0), V(0), 0.0),
+                                    StateData(P(2), V(2), 2 * timestep),
+                                    StateData(P(4), V(4), 4 * timestep)};
+  set<StateData> interpolatedStates = {StateData(P(1), V(1), timestep),
+                                       StateData(P(3), V(3), 3 * timestep)};
   const Pose3 p3_se3 = p0_se3.expmap(3 * timestep * v0_se3);
   const Pose3 p4_se3 = p0_se3.expmap(4 * timestep * v0_se3);
   // Define nominal factors
@@ -679,9 +692,12 @@ TEST(WNOAInterp, SE3OptimTest) {
   NonlinearFactorGraph graph;
 
   // Construct interpolated factors
-  graph.add(WNOAInterpFactor<Pose3>(prior_pose_factor, border, interp, Q_se3));
-  graph.add(WNOAInterpFactor<Pose3>(prior_vel_factor, border, interp, Q_se3));
-  graph.add(WNOAInterpFactor<Pose3>(between_factor, border, interp, Q_se3));
+  graph.add(WNOAInterpFactor<Pose3>(prior_pose_factor, estimatedStates,
+                                    interpolatedStates, Q_se3));
+  graph.add(WNOAInterpFactor<Pose3>(prior_vel_factor, estimatedStates,
+                                    interpolatedStates, Q_se3));
+  graph.add(WNOAInterpFactor<Pose3>(between_factor, estimatedStates,
+                                    interpolatedStates, Q_se3));
 
   // Add WNOA factors
   graph.add(
@@ -756,13 +772,13 @@ TEST(WNOAInterp, SE3InterpGraph) {
   graph.add(prior_vel_factor);
 
   // Interpolate the graph
-  set<StateData> border_shfl = {StateData(P(0), V(0), 0.0),
-                                StateData(P(4), V(4), 4 * timestep),
-                                StateData(P(2), V(2), 2 * timestep)};
-  set<StateData> interp_shfl = {StateData(P(3), V(3), 3 * timestep),
-                                StateData(P(1), V(1), timestep)};
-  auto new_graph =
-      interpolateFactorGraph<Pose3>(graph, border_shfl, interp_shfl, Q_se3);
+  set<StateData> estimatedStatesShuffled = {
+      StateData(P(0), V(0), 0.0), StateData(P(4), V(4), 4 * timestep),
+      StateData(P(2), V(2), 2 * timestep)};
+  set<StateData> interpolatedStatesShuffled = {
+      StateData(P(3), V(3), 3 * timestep), StateData(P(1), V(1), timestep)};
+  auto new_graph = interpolateFactorGraph<Pose3>(
+      graph, estimatedStatesShuffled, interpolatedStatesShuffled, Q_se3);
 
   // Set up values at ground truth solution
   Values values;
@@ -784,8 +800,9 @@ TEST(WNOAInterp, SE3InterpGraph) {
   DOUBLES_EQUAL(0.0, optimizer.error(), 1e-6);
 
   // Test value interpolation
-  Values result_interp = updateInterpValues<Pose3>(
-      new_graph, result, border_shfl, interp_shfl, Q_se3);
+  Values result_interp =
+      updateInterpValues<Pose3>(new_graph, result, estimatedStatesShuffled,
+                                interpolatedStatesShuffled, Q_se3);
 
   auto p3_se3_est = result_interp.at<Pose3>(P(3));
   auto p1_se3_est = result_interp.at<Pose3>(P(1));
