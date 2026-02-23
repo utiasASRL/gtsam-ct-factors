@@ -26,6 +26,8 @@
 
 #pragma once
 
+#include <algorithm>
+
 #include <gtsam/linear/LossFunctions.h>
 #include <gtsam/nonlinear/GncParams.h>
 #include <gtsam/nonlinear/NonlinearFactorGraph.h>
@@ -236,6 +238,7 @@ class GncOptimizer {
 
   /// Compute optimal solution using graduated non-convexity.
   Values optimize() {
+    validateLossSchedulerCombination();
     NonlinearFactorGraph graph_initial = this->makeWeightedGraph(weights_);
     BaseOptimizer baseOptimizer(
         graph_initial, state_, params_.baseOptimizerParams);
@@ -328,6 +331,18 @@ class GncOptimizer {
     return result;
   }
 
+  void validateLossSchedulerCombination() const {
+    if (params_.lossType == GncLossType::GM &&
+        params_.scheduler != GncScheduler::Linear) {
+      throw std::runtime_error(
+          "GncOptimizer::optimize: scheduler must be Linear for GM.");
+    }
+    if (params_.lossType == GncLossType::TLS) {
+      // Linear and SuperLinear are both valid for TLS.
+      return;
+    }
+  }
+
   /// Initialize the gnc parameter mu such that loss is approximately convex (remark 5 in GNC paper).
   double initializeMu() const {
 
@@ -381,7 +396,17 @@ class GncOptimizer {
         return std::max(1.0, mu / params_.muStep);
       case GncLossType::TLS:
         // increases mu at each iteration (original cost is recovered for mu -> inf)
-        return mu * params_.muStep;
+        switch (params_.scheduler) {
+          case GncScheduler::SuperLinear: {
+            if (mu < 1) return std::min(std::sqrt(mu) * params_.muStep, 1e16);
+            return std::min(mu * params_.muStep, 1e16);
+          }
+          case GncScheduler::Linear: {
+            return mu * params_.muStep;
+          }
+          default:
+            throw std::runtime_error("GncOptimizer::updateMu: unknown scheduler type.");
+        }
       default:
         throw std::runtime_error(
             "GncOptimizer::updateMu: called with unknown loss type.");
@@ -495,14 +520,43 @@ class GncOptimizer {
         }
         return weights;
       }
-      case GncLossType::TLS: {  // use eq (14) in GNC paper
+      case GncLossType::TLS: {
         for (size_t k = 0; k < nfg_.size(); k++) {
           if (needsWeightUpdate(factorTypes_[k])) {
             double u2_k = nfg_[k]->error(currentEstimate);  // squared (and whitened) residual
-            double upperbound = (mu + 1) / mu * barcSq_[k];
-            double lowerbound = mu / (mu + 1) * barcSq_[k];
-            const double transition_weight = std::sqrt(barcSq_[k] * mu * (mu + 1) / u2_k) - mu;
-            weights[k] = noiseModel::mEstimator::TruncatedLeastSquares::Weight(u2_k, lowerbound, upperbound, transition_weight);
+            double lowerbound = 0.0;
+            double upperbound = 0.0;
+            double transition_weight = 0.0;
+            switch (params_.scheduler) {
+              case GncScheduler::SuperLinear: {
+                lowerbound = barcSq_[k];
+                upperbound = ((mu + 1.0) * (mu + 1.0) / (mu * mu)) * barcSq_[k];
+                auto w = noiseModel::mEstimator::TruncatedLeastSquares::Weight(u2_k, lowerbound, upperbound);
+                if (w) {
+                  weights[k] = *w;
+                }
+                else {
+                  transition_weight = std::sqrt(barcSq_[k] / u2_k) * (mu + 1.0)  - mu;
+                  weights[k] = std::clamp(transition_weight, 0.0, 1.0);
+                }
+                break;
+              }
+              case GncScheduler::Linear: {  // use eq (14) in GNC paper
+                upperbound = (mu + 1.0) / mu * barcSq_[k];
+                lowerbound = mu / (mu + 1.0) * barcSq_[k];
+                auto w = noiseModel::mEstimator::TruncatedLeastSquares::Weight(u2_k, lowerbound, upperbound);
+                if (w) {
+                  weights[k] = *w;
+                }
+                else {
+                  transition_weight = std::sqrt(barcSq_[k] * mu * (mu + 1.0) / u2_k) - mu;
+                  weights[k] = std::clamp(transition_weight, 0.0, 1.0);
+                }
+                break;
+              }
+              default:
+                throw std::runtime_error("GncOptimizer::calculateWeights: unknown scheduler type.");
+            }
           }
         }
         return weights;

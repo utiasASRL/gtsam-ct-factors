@@ -20,6 +20,7 @@
 
 #pragma once
 
+#include <optional>
 #include <gtsam/base/Matrix.h>
 #include <gtsam/base/Testable.h>
 #include <gtsam/dllexport.h>
@@ -426,21 +427,18 @@ class GTSAM_EXPORT TruncatedLeastSquares : public Base {
   static shared_ptr Create(double c, const ReweightScheme reweight = Block);
   double modelParameter() const { return c_; }
   /** @brief A static helper function to compute the TLS robust weight.
-   * The static function takes the squared value of the residual, the squared lower bound, the squared upper bound, 
-   * and the transition weight (used in GNC).
-   * This helper is mainly useful for GNC, where the weight is not strictly binary (0 or 1) 
-   * when the residual is within the transition region between inliers and outliers.
+   * The static function takes the squared value of the residual, the squared lower bound, the squared upper bound.
+   * This helper returns a optional<double> because it is also used for GNC, and we encounter transition weight cases,
+   * where the weight is not strictly binary (0 or 1) when the residual is within the transition region between inliers and outliers.
    * The weight member function now calls the this function.
-   * While the member function takes the residual as input, it passes x², c², c² and 0 to the static helper.
-   * 
+   * While the member function takes the residual as input, it passes x², c² and c²to the static helper.
    * 
    * @param distance2 Squared residual magnitude.
    * @param lowerbound Squared lower bound.
    * @param upperbound Squared upper bound.
-   * @param transition_weight weight when residual within the transition region.
-   * @return Weight w(x) in [0, 1]
+   * @return Weight w(x) is {0, 1} or None if the residual is between lowerbound and upperbound.
    */
-   static double Weight(double distance2, double lowerbound, double upperbound, double transition_weight);
+   static std::optional<double> Weight(double distance2, double lowerbound, double upperbound);
 
  protected:
   double c_;

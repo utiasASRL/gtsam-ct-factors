@@ -19,6 +19,7 @@
 #include <gtsam/linear/LossFunctions.h>
 
 #include <iostream>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -358,17 +359,14 @@ TruncatedLeastSquares::TruncatedLeastSquares(double c, const ReweightScheme rewe
 }
 
 double TruncatedLeastSquares::weight(double distance) const {
-  return Weight(distance * distance, csquared_, csquared_, 0.0);
+  const auto w = Weight(distance * distance, csquared_, csquared_);
+  return w.value();
 }
 
-double TruncatedLeastSquares::Weight(double distance2, double lowerbound, double upperbound, double transition_weight) {
+std::optional<double> TruncatedLeastSquares::Weight(double distance2, double lowerbound, double upperbound) {
   if (distance2 <= lowerbound) return 1.0;
   if (distance2 >= upperbound) return 0.0;
-
-  // Clamping
-  if (transition_weight < 0.0) return 0.0;
-  if (transition_weight > 1.0) return 1.0;
-  return transition_weight;
+  return std::nullopt;
 }
 
 double TruncatedLeastSquares::loss(double distance) const {
