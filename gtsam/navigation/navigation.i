@@ -45,8 +45,9 @@ class ConstantBias {
 class NavState {
   // Constructors
   NavState();
-  NavState(const gtsam::Rot3& R, const gtsam::Point3& t, gtsam::Vector v);
-  NavState(const gtsam::Pose3& pose, gtsam::Vector v);
+  NavState(const gtsam::Rot3& R, const gtsam::Point3& t,
+           const gtsam::Vector3& v);
+  NavState(const gtsam::Pose3& pose, const gtsam::Vector3& v);
 
   // Testable
   void print(string s = "") const;
@@ -55,8 +56,8 @@ class NavState {
   // Access
   gtsam::Rot3 attitude() const;
   gtsam::Point3 position() const;
-  gtsam::Vector velocity() const;
-  gtsam::Vector bodyVelocity() const;
+  gtsam::Vector3 velocity() const;
+  gtsam::Vector3 bodyVelocity() const;
   gtsam::Pose3 pose() const;
 
   // Standard Interface
@@ -89,10 +90,14 @@ class NavState {
   gtsam::NavState expmap(gtsam::Vector v, Eigen::Ref<Eigen::MatrixXd> H1, Eigen::Ref<Eigen::MatrixXd> H2);
   gtsam::Vector logmap(const gtsam::NavState& p);
   gtsam::Vector logmap(const gtsam::NavState& p, Eigen::Ref<Eigen::MatrixXd> H1, Eigen::Ref<Eigen::MatrixXd> H2);
-  gtsam::Matrix AdjointMap() const;
-  gtsam::Vector Adjoint(gtsam::Vector xi_b) const;
 
   // Matrix Lie Group
+  gtsam::Matrix AdjointMap() const;
+  gtsam::Vector Adjoint(gtsam::Vector xi_b) const;
+  gtsam::Vector AdjointTranspose(gtsam::Vector x) const;
+  static gtsam::Matrix adjointMap(gtsam::Vector xi);
+  static gtsam::Vector adjoint(gtsam::Vector xi, gtsam::Vector y);
+  static gtsam::Vector adjointTranspose(gtsam::Vector xi, gtsam::Vector y);
   gtsam::Vector vec() const;
   gtsam::Matrix matrix() const;
   static gtsam::Matrix Hat(const gtsam::Vector& xi);
