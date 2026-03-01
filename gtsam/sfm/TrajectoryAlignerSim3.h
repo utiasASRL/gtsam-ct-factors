@@ -77,7 +77,7 @@ class GTSAM_EXPORT TrajectoryAlignerSim3 {
       const bool use_gnc_optimizer = false,
       const std::vector<std::vector<std::pair<Point3, Point3>>>
           &overlapping_points = {},
-      const float point3_factor_sigma = 1e-2);
+      const double point3_factor_sigma = 1e-2);
 
   /**
    * @brief Optimizes the graph and returns optimized poses and Sim3 transforms.

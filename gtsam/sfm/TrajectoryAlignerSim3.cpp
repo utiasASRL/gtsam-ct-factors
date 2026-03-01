@@ -69,7 +69,7 @@ TrajectoryAlignerSim3::TrajectoryAlignerSim3(
     const std::vector<Similarity3> &bSa_all, const bool use_gnc_optimizer,
     const std::vector<std::vector<std::pair<Point3, Point3>>>
         &overlapping_points,
-    const float point3_factor_sigma)
+    const double point3_factor_sigma)
     : use_gnc_optimizer_(use_gnc_optimizer) {
   const size_t childCount = bTi_all.size();
   if (!bSa_all.empty() && bSa_all.size() != childCount) {
