@@ -134,64 +134,62 @@ struct GTSAM_EXPORT ISAM2DoglegParams {
  * ISAM2(const ISAM2Params&).
  */
 struct GTSAM_EXPORT ISAM2DoglegLineSearchParams {
-  double _min_delta;  ///< Minimum allowed small delta
-  double _max_delta;  ///< Maximum allowed delta
-  double _step_size;  ///< Increase of trust region for outward steps
-  double _sufficient_decrease_coeff;  ///< Coefficient for suff. decrease check
-  double _wildfire_threshold;  ///< Update delta when changes are above thresh
-  bool _verbose;               ///< Whether to print debug information
+  double minDelta;  ///< Minimum allowed small delta
+  double maxDelta;  ///< Maximum allowed delta
+  double stepSize;  ///< Increase of trust region for outward steps
+  double sufficientDecreaseCoeff;  ///< Coefficient for suff. decrease check
+  double wildfireThreshold;  ///< Update delta when changes are above thresh
+  bool verbose;              ///< Whether to print debug information
 
   /** Specify parameters as constructor arguments */
-  ISAM2DoglegLineSearchParams(double min_delta = 0.02, double max_delta = 0.5,
-                              double step_size = 1.5,
-                              double sufficient_decrease_coeff = 1e-3,
-                              double wildfire_threshold = 1e-4,
+  ISAM2DoglegLineSearchParams(double minDelta = 0.02, double maxDelta = 0.5,
+                              double stepSize = 1.5,
+                              double sufficientDecreaseCoeff = 1e-3,
+                              double wildfireThreshold = 1e-4,
                               bool verbose = false)
-      : _min_delta(min_delta),
-        _max_delta(max_delta),
-        _step_size(step_size),
-        _sufficient_decrease_coeff(sufficient_decrease_coeff),
-        _wildfire_threshold(wildfire_threshold),
-        _verbose(verbose) {
-    if (min_delta < 1e-12 || max_delta < 1e-12 || step_size < 1.0) {
+      : minDelta(minDelta),
+        maxDelta(maxDelta),
+        stepSize(stepSize),
+        sufficientDecreaseCoeff(sufficientDecreaseCoeff),
+        wildfireThreshold(wildfireThreshold),
+        verbose(verbose) {
+    if (minDelta < 1e-12 || maxDelta < 1e-12 || stepSize < 1.0) {
       throw std::invalid_argument(
           "ISAM2DoglegLineSearchParams constructed with invalid configuration. "
-          "Search Bounds [min_delta, max_delta] ~ 0 or step_size < 1.0");
+          "Search Bounds [minDelta, maxDelta] ~ 0 or stepSize < 1.0");
     }
   }
 
   void print(const std::string str = "") const {
     using std::cout;
     cout << str << "type:                      ISAM2DoglegLineSearchParams\n";
-    cout << str << "min_delta:                 " << _min_delta << "\n";
-    cout << str << "max_delta:                 " << _max_delta << "\n";
-    cout << str << "step_size:                 " << _step_size << "\n";
-    cout << str << "sufficient_decrease_coeff: " << _sufficient_decrease_coeff
+    cout << str << "minDelta:                 " << minDelta << "\n";
+    cout << str << "maxDelta:                 " << maxDelta << "\n";
+    cout << str << "stepSize:                 " << stepSize << "\n";
+    cout << str << "sufficientDecreaseCoeff: " << sufficientDecreaseCoeff
          << "\n";
-    cout << str << "wildfire_threshold:        " << _wildfire_threshold << "\n";
+    cout << str << "wildfireThreshold:        " << wildfireThreshold << "\n";
     cout.flush();
   }
   /** Getters **/
-  double getMinDelta() const { return _min_delta; }
-  double getMaxDelta() const { return _max_delta; }
-  double getStepSize() const { return _step_size; }
-  double getSufficientDecreaseCoeff() const {
-    return _sufficient_decrease_coeff;
-  }
-  double getWildfireThreshold() const { return _wildfire_threshold; }
-  bool isVerbose() const { return _verbose; }
+  double getMinDelta() const { return minDelta; }
+  double getMaxDelta() const { return maxDelta; }
+  double getStepSize() const { return stepSize; }
+  double getSufficientDecreaseCoeff() const { return sufficientDecreaseCoeff; }
+  double getWildfireThreshold() const { return wildfireThreshold; }
+  bool isVerbose() const { return verbose; }
 
   /** Setters */
-  void setMinDelta(double min_delta) { this->_min_delta = min_delta; }
-  void setMaxDelta(double max_delta) { this->_max_delta = max_delta; }
-  void setStepSize(double step_size) { this->_step_size = step_size; }
-  void setSufficientDecreaseCoeff(double sufficient_decrease_coeff) {
-    this->_sufficient_decrease_coeff = sufficient_decrease_coeff;
+  void setMinDelta(double minDelta) { this->minDelta = minDelta; }
+  void setMaxDelta(double maxDelta) { this->maxDelta = maxDelta; }
+  void setStepSize(double stepSize) { this->stepSize = stepSize; }
+  void setSufficientDecreaseCoeff(double sufficientDecreaseCoeff) {
+    this->sufficientDecreaseCoeff = sufficientDecreaseCoeff;
   }
-  void setWildfireThreshold(double wildfire_threshold) {
-    this->_wildfire_threshold = wildfire_threshold;
+  void setWildfireThreshold(double wildfireThreshold) {
+    this->wildfireThreshold = wildfireThreshold;
   }
-  void setVerbose(bool verbose) { this->_verbose = verbose; }
+  void setVerbose(bool verbose) { this->verbose = verbose; }
 };
 
 /**
