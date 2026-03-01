@@ -275,8 +275,8 @@ TEST(TrajectoryAlignerSim3, TwoChildrenWithOverlappingPoints) {
       simErrorNorm(gtSim2, resultNoPoints.at<Similarity3>(Symbol('S', 1)));
 
   // Optimize with exact point correspondences.
-  TrajectoryAlignerSim3 alignerWithPoints(aTi, bTi_all, sims, overlappingPoints,
-                                          false, 1e-3);
+  TrajectoryAlignerSim3 alignerWithPoints(aTi, bTi_all, sims, false, overlappingPoints,
+                                          1e-3);
   const Values resultWithPoints = alignerWithPoints.solve();
   const double simErrorWithPoints =
       simErrorNorm(gtSim1, resultWithPoints.at<Similarity3>(Symbol('S', 0))) +
