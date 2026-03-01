@@ -901,8 +901,7 @@ std::pair<KeySet, bool> ISAM2::predictUpdateInfo(
   KeySet newKeys = newFactors.keys();
   affectedKeys.insert(newKeys.begin(), newKeys.end());
   // Return the affected keys and whether or not this will be a batch update
-  return std::make_pair(affectedKeys,
-                        affectedKeys.size() >= theta_.size() * 0.65);
+  return {affectedKeys, affectedKeys.size() >= theta_.size() * 0.65};
 }
 
 }  // namespace gtsam
