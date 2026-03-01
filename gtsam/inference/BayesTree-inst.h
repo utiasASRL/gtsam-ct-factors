@@ -575,28 +575,21 @@ namespace gtsam {
 
   /* *********************************************************************** */
   template <class CLIQUE>
-  void BayesTree<CLIQUE>::traverseClique(gtsam::KeySet& traversedKeys,
-                                         const sharedClique& clique) const {
-    traversedKeys.insert(clique->conditional()->frontals().begin(),
-                         clique->conditional()->frontals().end());
-  }
-
-  /* *********************************************************************** */
-  template <class CLIQUE>
-  void BayesTree<CLIQUE>::traversePath(gtsam::KeySet& traversedKeys,
-                                       const sharedClique& clique) const {
+  void BayesTree<CLIQUE>::collectAffectedPathKeys(
+      gtsam::KeySet& traversedKeys, const sharedClique& clique) const {
     // base case is nullptr, if so we do nothing and return empties above
     if (clique) {
       // traverse me
-      this->traverseClique(traversedKeys, clique);
+      traversedKeys.insert(clique->conditional()->frontals().begin(),
+                           clique->conditional()->frontals().end());
       // traverse path above me
-      this->traversePath(traversedKeys, clique->parent_.lock());
+      this->collectAffectedPathKeys(traversedKeys, clique->parent_.lock());
     }
   }
 
   /* *********************************************************************** */
   template <class CLIQUE>
-  gtsam::KeySet BayesTree<CLIQUE>::traverseTop(
+  gtsam::KeySet BayesTree<CLIQUE>::collectAffectedKeys(
       const gtsam::KeyVector& keys) const {
     gtsam::KeySet traversedKeys;
     // process each key of the new factor
@@ -604,7 +597,7 @@ namespace gtsam {
       typename Nodes::const_iterator node = nodes_.find(j);
       if (node != nodes_.end()) {
         // traverse path from clique to root
-        this->traversePath(traversedKeys, node->second);
+        this->collectAffectedPathKeys(traversedKeys, node->second);
       }
     }
     return traversedKeys;

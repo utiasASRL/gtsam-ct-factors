@@ -246,15 +246,16 @@ namespace gtsam {
     void addFactorsToGraph(FactorGraph<FactorType>* graph) const;
 
     /**
-     * @brief Returns the set of keys in a "contaminated" part of the tree
-     * @param keys: The keys defining a "contaminated" part of the tree
-     * @returns The keys affected by the factor graph computed by removeTop
-     * @note Allows one step look-ahead for what removeTop will modify
+     * @brief Returns the set of keys from the tree that are affected by a
+     * update to 'keys'
+     * @param keys: The keys updated and in-turn affecting the tree
+     * @returns The set of keys from the tree that are affected
+     * @note Note: Return matches contents of BayesNet from removeTop without
+     * affecting the tree
      */
-    gtsam::KeySet traverseTop(const gtsam::KeyVector& keys) const;
-  
+    gtsam::KeySet collectAffectedKeys(const gtsam::KeyVector& keys) const;
 
-  protected:
+   protected:
 
     /** private helper method for saving the Tree to a text file in GraphViz format */
     void dot(std::ostream &s, sharedClique clique, const KeyFormatter& keyFormatter,
@@ -269,12 +270,10 @@ namespace gtsam {
     /** Fill the nodes index for a subtree */
     void fillNodesIndex(const sharedClique& subtree);
 
-    /// @brief Traversal helper for a path used by traverseTop
-    void traversePath(gtsam::KeySet& traversedKeys,
-                      const sharedClique& clique) const;
-    /// @brief Traversal helper for clique used by traverseTop
-    void traverseClique(gtsam::KeySet& traversedKeys,
-                        const sharedClique& clique) const;
+    /// @brief Helper for collectAffectedKeys that recursively aggregates
+    /// affected keys from a path from 'clique' to the root of tree
+    void collectAffectedPathKeys(gtsam::KeySet& traversedKeys,
+                                 const sharedClique& clique) const;
 
     // Friend JunctionTree because it directly fills roots and nodes index.
     template<class BAYESTREE, class GRAPH> friend class EliminatableClusterTree;

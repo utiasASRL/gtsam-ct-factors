@@ -895,7 +895,7 @@ std::pair<KeySet, bool> ISAM2::predictUpdateInfo(
       update.findFluid(roots_, relinKeys, &result.markedKeys, result.details());
   }
   // Get the top of the bayes tree affected by all the involved keys
-  KeySet affectedKeys = traverseTop(
+  KeySet affectedKeys = collectAffectedKeys(
       KeyVector(result.markedKeys.begin(), result.markedKeys.end()));
   // Add the new keys to get the entire set of keys affected by the update
   KeySet newKeys = newFactors.keys();
