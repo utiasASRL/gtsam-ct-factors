@@ -183,6 +183,120 @@ TEST(TestDifferentialPseudorangeFactor, equals) {
 }
 
 // *************************************************************************
+TEST(TestPseudorangeFactorArm, Constructor) {
+  const Point3 leverArm(0.1, 0.2, 0.3);
+  const auto factor = PseudorangeFactorArm(
+      Key(0), Key(1), 0.0, Point3::Zero(), leverArm, 0.0,
+      noiseModel::Isotropic::Sigma(1, 1.0));
+
+  Matrix Hpose, Hbias;
+  const double error =
+      factor.evaluateError(Pose3::Identity(), 0.0, Hpose, Hbias)[0];
+
+  // With identity pose and zero satellite position, the antenna is at the
+  // lever arm position, so range = ||leverArm|| = sqrt(0.01+0.04+0.09)
+  const double expectedRange = leverArm.norm();
+  EXPECT_DOUBLES_EQUAL(expectedRange, error, 1e-9);
+
+  // Check Jacobians are not NaN:
+  EXPECT(!Hpose.array().isNaN().any());
+  EXPECT(!Hbias.array().isNaN().any());
+  // Clock bias derivative should always be speed-of-light in vacuum:
+  EXPECT_DOUBLES_EQUAL(Hbias.norm(), 299792458.0, 1e-9);
+}
+
+// *************************************************************************
+TEST(TestPseudorangeFactorArm, Jacobians1) {
+  const Point3 leverArm(0.5, -0.3, 1.0);
+  const auto factor = PseudorangeFactorArm(
+      Key(0), Key(1),  // Receiver pose and clock bias keys.
+      4.0,             // Measured pseudorange.
+      Vector3(0.0, 0.0, 3.0),  // Satellite position.
+      leverArm,
+      0.0  // Sat clock drift bias.
+  );
+
+  Values values;
+  values.insert(Key(0), Pose3(Rot3::RzRyRx(0.1, 0.2, 0.3),
+                               Point3(1.0, 2.0, 3.0)));
+  values.insert(Key(1), 0.0);
+  EXPECT_CORRECT_FACTOR_JACOBIANS(factor, values, 1e-5, 1e-5);
+}
+
+// *************************************************************************
+TEST(TestPseudorangeFactorArm, Jacobians2) {
+  // Example values adapted from SinglePointPositioningExample:
+  const Point3 leverArm(0.1, 0.0, -0.5);
+  const auto factor = PseudorangeFactorArm(
+      Key(0), Key(1),  // Receiver pose and clock bias keys.
+      24874028.989,    // Measured pseudorange.
+      Vector3(-5824269.46342, -22935011.26952, -12195522.22428),
+      leverArm,
+      -0.00022743876852667193  // Sat clock drift bias.
+  );
+
+  Values values;
+  values.insert(Key(0),
+                Pose3(Rot3::RzRyRx(0.05, -0.03, 0.1),
+                      Point3(-2684418.91084688, -4293361.08683296,
+                             3865365.45451951)));
+  values.insert(Key(1), 5.377885093511699e-07);
+  EXPECT_CORRECT_FACTOR_JACOBIANS(factor, values, 1e-3, 1e-5);
+}
+
+// *************************************************************************
+TEST(TestPseudorangeFactorArm, ZeroLeverArm) {
+  // With zero lever arm, PseudorangeFactorArm should produce the same error
+  // as PseudorangeFactor at the same position:
+  const Point3 satPos(100.0, 200.0, 300.0);
+  const Point3 receiverPos(1.0, 2.0, 3.0);
+  const double pseudorange = 350.0;
+  const double clockBias = 1e-8;
+  const double satClkBias = 1e-9;
+
+  const auto factorPoint = PseudorangeFactor(
+      Key(0), Key(1), pseudorange, satPos, satClkBias);
+  const auto factorArm = PseudorangeFactorArm(
+      Key(0), Key(1), pseudorange, satPos, Point3::Zero(), satClkBias);
+
+  const double errorPoint =
+      factorPoint.evaluateError(receiverPos, clockBias)[0];
+  const double errorArm =
+      factorArm.evaluateError(Pose3(Rot3::Identity(), receiverPos),
+                              clockBias)[0];
+  EXPECT_DOUBLES_EQUAL(errorPoint, errorArm, 1e-9);
+}
+
+// *************************************************************************
+TEST(TestPseudorangeFactorArm, print) {
+  const auto factor = PseudorangeFactorArm();
+  factor.print();
+}
+
+// *************************************************************************
+TEST(TestPseudorangeFactorArm, equals) {
+  const Point3 leverArm(0.1, 0.2, 0.3);
+  const auto factor1 = PseudorangeFactorArm();
+  const auto factor2 =
+      PseudorangeFactorArm(1, 2, 0.0, Point3::Zero(), leverArm, 0.0);
+  const auto factor3 =
+      PseudorangeFactorArm(1, 2, 10.0, Point3(1.0, 2.0, 3.0), leverArm, 20.0);
+
+  CHECK(factor1.equals(factor1));
+  CHECK(factor2.equals(factor2));
+  CHECK(!factor1.equals(factor2));
+  CHECK(factor2.equals(factor3, 1e99));
+
+  // Different lever arm should not be equal:
+  const auto factor4 =
+      PseudorangeFactorArm(1, 2, 0.0, Point3::Zero(),
+                           Point3(9.0, 8.0, 7.0), 0.0);
+  CHECK(!factor2.equals(factor4));
+
+  factor2.print("factor2");
+}
+
+// *************************************************************************
 int main() {
   TestResult tr;
   return TestRegistry::runAllTests(tr);
