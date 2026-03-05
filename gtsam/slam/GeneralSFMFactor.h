@@ -20,7 +20,6 @@
 
 #pragma once
 
-#include <gtsam/geometry/MeasurementTraits.h>
 #include <gtsam/geometry/PinholeCamera.h>
 #include <gtsam/geometry/Point2.h>
 #include <gtsam/geometry/Point3.h>
@@ -70,7 +69,6 @@ class GeneralSFMFactor: public NoiseModelFactorN<CAMERA, LANDMARK> {
   static const int ZDim = traits<Measurement>::dimension;
   typedef Eigen::Matrix<double, ZDim, DimC> JacobianC;
   typedef Eigen::Matrix<double, ZDim, DimL> JacobianL;
-  typedef Eigen::Matrix<double, ZDim, ZDim> MeasurementJacobian;
 
 protected:
 
@@ -138,20 +136,8 @@ public:
   Vector evaluateError(const CAMERA& camera, const LANDMARK& point,
       OptionalMatrixType H1, OptionalMatrixType H2) const override {
     try {
-      JacobianC Dcamera;
-      JacobianL Dlandmark;
-      Measurement predicted =
-          camera.project2(point, H1 ? &Dcamera : nullptr, H2 ? &Dlandmark : nullptr);
-
-      MeasurementJacobian localJacobianStorage;
-      OptionalJacobian<ZDim, ZDim> localJac((H1 || H2) ? &localJacobianStorage : nullptr);
-      Vector error = Vector(internal::MeasurementErrorHelper<Measurement>::Evaluate(
-          measured_, predicted, localJac));
-
-      if (H1) *H1 = localJac ? localJacobianStorage * Dcamera : Dcamera;
-      if (H2) *H2 = localJac ? localJacobianStorage * Dlandmark : Dlandmark;
-
-      return error;
+      Measurement predicted = camera.project2(point, H1, H2);
+      return traits<Measurement>::Local(measured_, predicted);
     } catch (CheiralityException& e [[maybe_unused]]) {
       if (H1) *H1 = JacobianC::Zero();
       if (H2) *H2 = JacobianL::Zero();
@@ -174,13 +160,7 @@ public:
       const LANDMARK& point = values.at<LANDMARK>(key2);
       Measurement predicted = camera.project2(point, &Dcamera, &Dlandmark);
 
-      MeasurementJacobian localJacobianStorage;
-      OptionalJacobian<ZDim, ZDim> localJac(&localJacobianStorage);
-      b = -Vector(internal::MeasurementErrorHelper<Measurement>::Evaluate(
-          measured_, predicted, localJac));
-
-      Dcamera = localJacobianStorage * Dcamera;
-      Dlandmark = localJacobianStorage * Dlandmark;
+      b = -Vector(traits<Measurement>::Local(measured_, predicted));
     } catch (CheiralityException& e [[maybe_unused]]) {
       Dcamera.setZero();
       Dlandmark.setZero();
