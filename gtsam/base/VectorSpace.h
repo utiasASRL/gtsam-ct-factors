@@ -432,9 +432,23 @@ struct DynamicTraits {
     return result;
   }
 
-  static Dynamic Expmap(const TangentVector& /*v*/, ChartJacobian H = {}) {
-    static_cast<void>(H);
-    throw std::runtime_error("Expmap not defined for dynamic types");
+  static Dynamic Expmap(const TangentVector& v, ChartJacobian H = {}) {
+    if constexpr (M == Eigen::Dynamic && N == Eigen::Dynamic) {
+      static_cast<void>(v);
+      static_cast<void>(H);
+      throw std::runtime_error("Expmap not defined for fully dynamic matrices");
+    } else {
+      const int rows = (M == Eigen::Dynamic) ? v.size() / N : M;
+      const int cols = (N == Eigen::Dynamic) ? v.size() / M : N;
+      if (rows * cols != v.size()) {
+        throw std::invalid_argument(
+            "Dynamic Expmap tangent dimension does not match matrix shape");
+      }
+      Dynamic result(rows, cols);
+      Eigen::Map<Dynamic>(result.data(), rows, cols) = v;
+      if (H) *H = Jacobian::Identity(v.size(), v.size());
+      return result;
+    }
   }
 
   static Dynamic Inverse(const Dynamic& m, ChartJacobian H = {}) {

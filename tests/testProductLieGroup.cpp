@@ -23,6 +23,7 @@
 #include <gtsam/base/testLie.h>
 #include <gtsam/geometry/Point2.h>
 #include <gtsam/geometry/Pose2.h>
+#include <gtsam/geometry/Rot3.h>
 
 #include <iostream>
 
@@ -31,6 +32,8 @@ using namespace gtsam;
 constexpr double kTol = 1e-9;
 
 using Product = ProductLieGroup<Point2, Pose2>;
+using ProductVR = ProductLieGroup<Vector, Rot3>;
+using ProductVV = ProductLieGroup<Vector, Vector>;
 constexpr size_t kPowerComponents = 2;
 using Power = PowerLieGroup<Pose2, kPowerComponents>;
 using PowerTangent = Power::TangentVector;
@@ -69,6 +72,15 @@ struct traits<Power> : internal::LieGroupTraits<Power> {
 }  // namespace gtsam
 
 namespace {
+Vector makeVector(std::initializer_list<double> values) {
+  Vector vector(static_cast<Eigen::Index>(values.size()));
+  Eigen::Index index = 0;
+  for (double value : values) {
+    vector(index++) = value;
+  }
+  return vector;
+}
+
 Product composeProductProxy(const Product& A, const Product& B) {
   return A.compose(B);
 }
@@ -82,6 +94,36 @@ Product inverseProductProxy(const Product& A) { return A.inverse(); }
 Product expmapProductProxy(const Vector5& vec) { return Product::Expmap(vec); }
 
 Vector5 logmapProductProxy(const Product& p) { return Product::Logmap(p); }
+
+ProductVR composeProductVRProxy(const ProductVR& A, const ProductVR& B) {
+  return A.compose(B);
+}
+
+ProductVR betweenProductVRProxy(const ProductVR& A, const ProductVR& B) {
+  return A.between(B);
+}
+
+ProductVR inverseProductVRProxy(const ProductVR& A) { return A.inverse(); }
+
+ProductVR expmapProductVRProxy(const Vector& vec) { return ProductVR::Expmap(vec); }
+
+Vector logmapProductVRProxy(const ProductVR& p) { return ProductVR::Logmap(p); }
+
+ProductVV composeProductVVProxy(const ProductVV& A, const ProductVV& B) {
+  return A.compose(B);
+}
+
+ProductVV betweenProductVVProxy(const ProductVV& A, const ProductVV& B) {
+  return A.between(B);
+}
+
+ProductVV inverseProductVVProxy(const ProductVV& A) { return A.inverse(); }
+
+ProductVV expmapProductVVProxy(const Vector& vec) {
+  return ProductVV::Expmap(Vector(vec.head(2)), Vector(vec.tail(3)));
+}
+
+Vector logmapProductVVProxy(const ProductVV& p) { return ProductVV::Logmap(p); }
 
 Power composePowerProxy(const Power& A, const Power& B) { return A.compose(B); }
 
@@ -176,6 +218,228 @@ TEST(testProduct, AdjointMap) {
   expected.bottomRightCorner<3, 3>() = state.second.AdjointMap();
 
   EXPECT(assert_equal(expected, actual, kTol));
+}
+
+/* ************************************************************************* */
+TEST(Lie, ProductLieGroupDynamicVectorRot3) {
+  GTSAM_CONCEPT_ASSERT(IsGroup<ProductVR>);
+  GTSAM_CONCEPT_ASSERT(IsManifold<ProductVR>);
+  GTSAM_CONCEPT_ASSERT(IsLieGroup<ProductVR>);
+
+  ProductVR pair1(Vector::Zero(2), Rot3::Identity());
+  Vector d = makeVector({1.0, 2.0, 0.1, 0.2, 0.3});
+  ProductVR expected(makeVector({1.0, 2.0}), Rot3::Expmap(Vector3(0.1, 0.2, 0.3)));
+  ProductVR pair2 = pair1.expmap(d);
+
+  EXPECT_LONGS_EQUAL(Eigen::Dynamic, ProductVR::dimension);
+  EXPECT_LONGS_EQUAL(5, pair1.dim());
+  EXPECT(assert_equal(expected, pair2, kTol));
+  EXPECT(assert_equal(d, pair1.logmap(pair2), kTol));
+
+  const Matrix adj = pair1.AdjointMap();
+  EXPECT_LONGS_EQUAL(5, adj.rows());
+  EXPECT_LONGS_EQUAL(5, adj.cols());
+}
+
+/* ************************************************************************* */
+TEST(testProductDynamicVR, compose) {
+  ProductVR state1(makeVector({1.0, 2.0}), Rot3::RzRyRx(0.1, 0.2, 0.3));
+  ProductVR state2(makeVector({-0.5, 4.0}), Rot3::RzRyRx(-0.3, 0.1, -0.2));
+
+  Matrix actH1, actH2;
+  state1.compose(state2, actH1, actH2);
+  Matrix numericH1 =
+      numericalDerivative21<ProductVR, ProductVR, ProductVR, 5>(
+          composeProductVRProxy, state1, state2);
+  Matrix numericH2 =
+      numericalDerivative22<ProductVR, ProductVR, ProductVR, 5>(
+          composeProductVRProxy, state1, state2);
+  EXPECT(assert_equal(numericH1, actH1, kTol));
+  EXPECT(assert_equal(numericH2, actH2, kTol));
+}
+
+/* ************************************************************************* */
+TEST(testProductDynamicVR, between) {
+  ProductVR state1(makeVector({1.0, 2.0}), Rot3::RzRyRx(0.1, 0.2, 0.3));
+  ProductVR state2(makeVector({-0.5, 4.0}), Rot3::RzRyRx(-0.3, 0.1, -0.2));
+
+  Matrix actH1, actH2;
+  state1.between(state2, actH1, actH2);
+  Matrix numericH1 =
+      numericalDerivative21<ProductVR, ProductVR, ProductVR, 5>(
+          betweenProductVRProxy, state1, state2);
+  Matrix numericH2 =
+      numericalDerivative22<ProductVR, ProductVR, ProductVR, 5>(
+          betweenProductVRProxy, state1, state2);
+  EXPECT(assert_equal(numericH1, actH1, kTol));
+  EXPECT(assert_equal(numericH2, actH2, kTol));
+}
+
+/* ************************************************************************* */
+TEST(testProductDynamicVR, inverse) {
+  ProductVR state(makeVector({1.0, 2.0}), Rot3::RzRyRx(0.1, 0.2, 0.3));
+
+  Matrix actH;
+  state.inverse(actH);
+  Matrix numericH = numericalDerivative11<ProductVR, ProductVR, 5>(
+      inverseProductVRProxy, state);
+  EXPECT(assert_equal(numericH, actH, kTol));
+}
+
+/* ************************************************************************* */
+TEST(testProductDynamicVR, Expmap) {
+  Vector vec = makeVector({1.0, 2.0, 0.1, 0.2, 0.3});
+
+  Matrix actH;
+  ProductVR::Expmap(vec, actH);
+  Matrix numericH =
+      numericalDerivative11<ProductVR, Vector, 5>(expmapProductVRProxy, vec);
+  EXPECT(assert_equal(numericH, actH, kTol));
+}
+
+/* ************************************************************************* */
+TEST(testProductDynamicVR, Logmap) {
+  ProductVR state(makeVector({1.0, 2.0}), Rot3::RzRyRx(0.1, 0.2, 0.3));
+
+  Matrix actH;
+  ProductVR::Logmap(state, actH);
+  Matrix numericH =
+      numericalDerivative11<Vector, ProductVR, 5>(logmapProductVRProxy, state);
+  EXPECT(assert_equal(numericH, actH, kTol));
+}
+
+/* ************************************************************************* */
+TEST(testProductDynamicVR, AdjointMap) {
+  ProductVR state(makeVector({1.0, 2.0}), Rot3::RzRyRx(0.1, 0.2, 0.3));
+  const Matrix actual = state.AdjointMap();
+
+  Matrix expected = Matrix::Zero(5, 5);
+  expected.topLeftCorner(2, 2) = Matrix::Identity(2, 2);
+  expected.bottomRightCorner(3, 3) = state.second.AdjointMap();
+
+  EXPECT(assert_equal(expected, actual, kTol));
+}
+
+/* ************************************************************************* */
+TEST(Lie, ProductLieGroupDynamicVectorVector) {
+  GTSAM_CONCEPT_ASSERT(IsGroup<ProductVV>);
+  GTSAM_CONCEPT_ASSERT(IsManifold<ProductVV>);
+  GTSAM_CONCEPT_ASSERT(IsLieGroup<ProductVV>);
+
+  ProductVV pair1(makeVector({0.0, 0.0}), makeVector({0.0, 0.0, 0.0}));
+  Vector d = makeVector({1.0, 2.0, 3.0, 4.0, 5.0});
+  ProductVV expected(makeVector({1.0, 2.0}), makeVector({3.0, 4.0, 5.0}));
+  ProductVV pair2 = ProductVV::Expmap(Vector(d.head(2)), Vector(d.tail(3)));
+
+  EXPECT_LONGS_EQUAL(Eigen::Dynamic, ProductVV::dimension);
+  EXPECT_LONGS_EQUAL(5, pair1.dim());
+  EXPECT(assert_equal(expected, pair2, kTol));
+  EXPECT(assert_equal(d, pair1.logmap(pair2), kTol));
+}
+
+/* ************************************************************************* */
+TEST(testProductDynamicVV, compose) {
+  ProductVV state1(makeVector({1.0, 2.0}), makeVector({3.0, 4.0, 5.0}));
+  ProductVV state2(makeVector({-0.5, 4.0}), makeVector({-1.0, 2.0, 1.5}));
+
+  Matrix actH1, actH2;
+  state1.compose(state2, actH1, actH2);
+  Matrix numericH1 =
+      numericalDerivative21<ProductVV, ProductVV, ProductVV, 5>(
+          composeProductVVProxy, state1, state2);
+  Matrix numericH2 =
+      numericalDerivative22<ProductVV, ProductVV, ProductVV, 5>(
+          composeProductVVProxy, state1, state2);
+  EXPECT(assert_equal(numericH1, actH1, kTol));
+  EXPECT(assert_equal(numericH2, actH2, kTol));
+}
+
+/* ************************************************************************* */
+TEST(testProductDynamicVV, between) {
+  ProductVV state1(makeVector({1.0, 2.0}), makeVector({3.0, 4.0, 5.0}));
+  ProductVV state2(makeVector({-0.5, 4.0}), makeVector({-1.0, 2.0, 1.5}));
+
+  Matrix actH1, actH2;
+  state1.between(state2, actH1, actH2);
+  Matrix numericH1 =
+      numericalDerivative21<ProductVV, ProductVV, ProductVV, 5>(
+          betweenProductVVProxy, state1, state2);
+  Matrix numericH2 =
+      numericalDerivative22<ProductVV, ProductVV, ProductVV, 5>(
+          betweenProductVVProxy, state1, state2);
+  EXPECT(assert_equal(numericH1, actH1, kTol));
+  EXPECT(assert_equal(numericH2, actH2, kTol));
+}
+
+/* ************************************************************************* */
+TEST(testProductDynamicVV, inverse) {
+  ProductVV state(makeVector({1.0, 2.0}), makeVector({3.0, 4.0, 5.0}));
+
+  Matrix actH;
+  state.inverse(actH);
+  Matrix numericH = numericalDerivative11<ProductVV, ProductVV, 5>(
+      inverseProductVVProxy, state);
+  EXPECT(assert_equal(numericH, actH, kTol));
+}
+
+/* ************************************************************************* */
+TEST(testProductDynamicVV, retractAndLocalCoordinates) {
+  ProductVV state(makeVector({1.0, 2.0}), makeVector({3.0, 4.0, 5.0}));
+  Vector delta = makeVector({0.1, -0.2, 0.3, -0.4, 0.5});
+
+  ProductVV updated = state.retract(delta);
+  EXPECT(assert_equal(delta, state.localCoordinates(updated), kTol));
+  EXPECT(assert_equal(updated,
+                      state.compose(ProductVV::Expmap(Vector(delta.head(2)),
+                                                      Vector(delta.tail(3)))),
+                      kTol));
+}
+
+/* ************************************************************************* */
+TEST(testProductDynamicVV, Expmap) {
+  Vector vec = makeVector({1.0, 2.0, 3.0, 4.0, 5.0});
+  ProductVV expected(makeVector({1.0, 2.0}), makeVector({3.0, 4.0, 5.0}));
+
+  Matrix actH;
+  ProductVV actual =
+      ProductVV::Expmap(Vector(vec.head(2)), Vector(vec.tail(3)), actH);
+  Matrix numericH =
+      numericalDerivative11<ProductVV, Vector, 5>(expmapProductVVProxy, vec);
+  EXPECT(assert_equal(expected, actual, kTol));
+  EXPECT(assert_equal(vec, ProductVV::Logmap(actual), kTol));
+  EXPECT(assert_equal(numericH, actH, kTol));
+}
+
+/* ************************************************************************* */
+TEST(testProductDynamicVV, Logmap) {
+  ProductVV state(makeVector({1.0, 2.0}), makeVector({3.0, 4.0, 5.0}));
+
+  Matrix actH;
+  ProductVV::Logmap(state, actH);
+  Matrix numericH =
+      numericalDerivative11<Vector, ProductVV, 5>(logmapProductVVProxy, state);
+  EXPECT(assert_equal(numericH, actH, kTol));
+}
+
+/* ************************************************************************* */
+TEST(testProductDynamicVV, AdjointMap) {
+  ProductVV state(makeVector({1.0, 2.0}), makeVector({3.0, 4.0, 5.0}));
+  const Matrix actual = state.AdjointMap();
+  const Matrix expected = Matrix::Identity(5, 5);
+
+  EXPECT(assert_equal(expected, actual, kTol));
+}
+
+/* ************************************************************************* */
+TEST(testProductDynamicVV, Exceptions) {
+  ProductVV state1(makeVector({1.0, 2.0}), makeVector({3.0, 4.0, 5.0}));
+  ProductVV state2(makeVector({1.0, 2.0, 3.0}), makeVector({4.0, 5.0}));
+  Vector vec = makeVector({1.0, 2.0, 3.0, 4.0, 5.0});
+
+  CHECK_EXCEPTION(ProductVV::Expmap(vec), std::invalid_argument);
+  CHECK_EXCEPTION(state1.compose(state2), std::invalid_argument);
+  CHECK_EXCEPTION(state1.between(state2), std::invalid_argument);
+  CHECK_EXCEPTION(state1.localCoordinates(state2), std::invalid_argument);
 }
 
 /* ************************************************************************* */
