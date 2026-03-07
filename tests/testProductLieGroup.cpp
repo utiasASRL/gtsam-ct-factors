@@ -105,7 +105,9 @@ ProductVR betweenProductVRProxy(const ProductVR& A, const ProductVR& B) {
 
 ProductVR inverseProductVRProxy(const ProductVR& A) { return A.inverse(); }
 
-ProductVR expmapProductVRProxy(const Vector& vec) { return ProductVR::Expmap(vec); }
+ProductVR expmapProductVRProxy(const Vector& vec) {
+  return ProductVR::Expmap(vec);
+}
 
 Vector logmapProductVRProxy(const ProductVR& p) { return ProductVR::Logmap(p); }
 
@@ -228,7 +230,8 @@ TEST(Lie, ProductLieGroupDynamicVectorRot3) {
 
   ProductVR pair1(Vector::Zero(2), Rot3::Identity());
   Vector d = makeVector({1.0, 2.0, 0.1, 0.2, 0.3});
-  ProductVR expected(makeVector({1.0, 2.0}), Rot3::Expmap(Vector3(0.1, 0.2, 0.3)));
+  ProductVR expected(makeVector({1.0, 2.0}),
+                     Rot3::Expmap(Vector3(0.1, 0.2, 0.3)));
   ProductVR pair2 = pair1.expmap(d);
 
   EXPECT_LONGS_EQUAL(Eigen::Dynamic, ProductVR::dimension);
@@ -248,12 +251,10 @@ TEST(testProductDynamicVR, compose) {
 
   Matrix actH1, actH2;
   state1.compose(state2, actH1, actH2);
-  Matrix numericH1 =
-      numericalDerivative21<ProductVR, ProductVR, ProductVR, 5>(
-          composeProductVRProxy, state1, state2);
-  Matrix numericH2 =
-      numericalDerivative22<ProductVR, ProductVR, ProductVR, 5>(
-          composeProductVRProxy, state1, state2);
+  Matrix numericH1 = numericalDerivative21<ProductVR, ProductVR, ProductVR, 5>(
+      composeProductVRProxy, state1, state2);
+  Matrix numericH2 = numericalDerivative22<ProductVR, ProductVR, ProductVR, 5>(
+      composeProductVRProxy, state1, state2);
   EXPECT(assert_equal(numericH1, actH1, kTol));
   EXPECT(assert_equal(numericH2, actH2, kTol));
 }
@@ -265,12 +266,10 @@ TEST(testProductDynamicVR, between) {
 
   Matrix actH1, actH2;
   state1.between(state2, actH1, actH2);
-  Matrix numericH1 =
-      numericalDerivative21<ProductVR, ProductVR, ProductVR, 5>(
-          betweenProductVRProxy, state1, state2);
-  Matrix numericH2 =
-      numericalDerivative22<ProductVR, ProductVR, ProductVR, 5>(
-          betweenProductVRProxy, state1, state2);
+  Matrix numericH1 = numericalDerivative21<ProductVR, ProductVR, ProductVR, 5>(
+      betweenProductVRProxy, state1, state2);
+  Matrix numericH2 = numericalDerivative22<ProductVR, ProductVR, ProductVR, 5>(
+      betweenProductVRProxy, state1, state2);
   EXPECT(assert_equal(numericH1, actH1, kTol));
   EXPECT(assert_equal(numericH2, actH2, kTol));
 }
@@ -344,12 +343,10 @@ TEST(testProductDynamicVV, compose) {
 
   Matrix actH1, actH2;
   state1.compose(state2, actH1, actH2);
-  Matrix numericH1 =
-      numericalDerivative21<ProductVV, ProductVV, ProductVV, 5>(
-          composeProductVVProxy, state1, state2);
-  Matrix numericH2 =
-      numericalDerivative22<ProductVV, ProductVV, ProductVV, 5>(
-          composeProductVVProxy, state1, state2);
+  Matrix numericH1 = numericalDerivative21<ProductVV, ProductVV, ProductVV, 5>(
+      composeProductVVProxy, state1, state2);
+  Matrix numericH2 = numericalDerivative22<ProductVV, ProductVV, ProductVV, 5>(
+      composeProductVVProxy, state1, state2);
   EXPECT(assert_equal(numericH1, actH1, kTol));
   EXPECT(assert_equal(numericH2, actH2, kTol));
 }
@@ -361,12 +358,10 @@ TEST(testProductDynamicVV, between) {
 
   Matrix actH1, actH2;
   state1.between(state2, actH1, actH2);
-  Matrix numericH1 =
-      numericalDerivative21<ProductVV, ProductVV, ProductVV, 5>(
-          betweenProductVVProxy, state1, state2);
-  Matrix numericH2 =
-      numericalDerivative22<ProductVV, ProductVV, ProductVV, 5>(
-          betweenProductVVProxy, state1, state2);
+  Matrix numericH1 = numericalDerivative21<ProductVV, ProductVV, ProductVV, 5>(
+      betweenProductVVProxy, state1, state2);
+  Matrix numericH2 = numericalDerivative22<ProductVV, ProductVV, ProductVV, 5>(
+      betweenProductVVProxy, state1, state2);
   EXPECT(assert_equal(numericH1, actH1, kTol));
   EXPECT(assert_equal(numericH2, actH2, kTol));
 }
