@@ -61,8 +61,8 @@ inline Vector6 toInputVector(const Vector3& w) {
 }
 
 /// Bundle of calibration rotations modeled as a Lie group
-template <int N>
-using Calibrations = PowerLieGroup<Rot3, N>;
+template <size_t N>
+using Calibrations = PowerLieGroup<Rot3, static_cast<int>(N)>;
 
 //========================================================================
 // State Manifold
@@ -72,13 +72,13 @@ using Calibrations = PowerLieGroup<Rot3, N>;
  * Minimal state manifold for the biased attitude system: ξ = (R, b, S).
  * Template parameter N is the number of calibrated sensors.
  */
-template <int N>
+template <size_t N>
 struct State {
   Rot3 R;             // Attitude rotation matrix R
   Vector3 b;          // Gyroscope bias b
   Calibrations<N> S;  // Sensor calibrations S
 
-  static constexpr int dimension = 6 + 3 * N;
+  static constexpr int dimension = 6 + 3 * static_cast<int>(N);
   using TangentVector = Eigen::Matrix<double, dimension, 1>;
 
   /// Constructor
@@ -148,11 +148,11 @@ struct State {
  * Symmetry group G = Pose3 × Calibrations<n>. Pose3 handles the SE(3)-like
  * part acting on (R, b) and Calibrations<n> handles the N extrinsic rotations.
  */
-template <int n>
+template <size_t n>
 using Group = ProductLieGroup<Pose3, Calibrations<n>>;
 
 /// @brief Unpack g into A, a, and B
-template <int N>
+template <size_t N>
 auto asTriple = [](const Group<N>& g)
     -> std::tuple<const Rot3&, const Vector3&, const Calibrations<N>&> {
   return std::tie(g.first.rotation(), g.first.translation(), g.second);
@@ -168,7 +168,7 @@ auto asTriple = [](const Group<N>& g)
  * ξ=(R,b,C). This is the discrete version of the homogeneous-space action in
  * Eq. (4) of Fornasier et al. (2022).
  */
-template <int N>
+template <size_t N>
 struct Symmetry : public GroupAction<Symmetry<N>, Group<N>, State<N>> {
   using M = State<N>;
   using G = gtsam::abc::Group<N>;
@@ -249,7 +249,7 @@ struct Symmetry : public GroupAction<Symmetry<N>, Group<N>, State<N>> {
  *   Ṡ_i = 0
  * We represent the tangent as a vector with components (δθ, δb, δσ_i).
  */
-template <int N>
+template <size_t N>
 inline typename State<N>::TangentVector dynamics(const Vector3& omega,
                                                  const State<N>& xi) {
   typename State<N>::TangentVector xi_dot;
@@ -266,7 +266,7 @@ inline typename State<N>::TangentVector dynamics(const Vector3& omega,
  * Fornasier et al., this corresponds to Eq. (7), written in the so(3)≃ℝ³
  * identification.
  */
-template <int N>
+template <size_t N>
 struct Lift {
   using M = State<N>;
   using G = Group<N>;
@@ -312,7 +312,7 @@ struct Lift {
  * yields ψ_u(X) = (A^{-1}(ω - a), 0). The matrices A(X,u) and Φ(X,u) here match
  * the linearization in Eqs. (20) and (21), using ω̃ = Aᵀ(ω − a).
  */
-template <int N>
+template <size_t N>
 struct InputAction : public GroupAction<InputAction<N>, Group<N>, Vector6> {
   using G = Group<N>;
   static constexpr ActionType type = ActionType::Right;
@@ -328,7 +328,7 @@ struct InputAction : public GroupAction<InputAction<N>, Group<N>, Vector6> {
 };
 
 // Embed a 6x6 Sigma into full DimU by appending small calibration noise.
-template <int N>
+template <size_t N>
 inline Matrix inputProcessNoise(const Matrix& Sigma6) {
   std::vector<Matrix> blocks{Sigma6};
   blocks.insert(blocks.end(), N, 1e-9 * I_3x3);
@@ -336,7 +336,7 @@ inline Matrix inputProcessNoise(const Matrix& Sigma6) {
 }
 
 /// Compute the state matrix A(X_hat).
-template <int N>
+template <size_t N>
 inline Matrix stateMatrixA(const typename InputAction<N>::Orbit& psi_u,
                            const Group<N>& X_hat) {
   const Vector6 u0 = psi_u(X_hat.inverse());  // ψ_u(X)^ω (omega, 0)
@@ -352,7 +352,7 @@ inline Matrix stateMatrixA(const typename InputAction<N>::Orbit& psi_u,
 }
 
 /// Compute the input matrix B(X_hat).
-template <int N>
+template <size_t N>
 inline Matrix inputMatrixB(const Group<N>& g) {
   const Rot3& A = g.first.rotation();
   const Calibrations<N>& B = g.second;
@@ -371,7 +371,7 @@ inline Matrix inputMatrixB(const Group<N>& g) {
  * parameterized by the sensor index. Use index = -1 for an uncalibrated
  * sensor measured directly in the body frame.
  */
-template <int N>
+template <size_t N>
 struct OutputAction : public GroupAction<OutputAction<N>, Group<N>, Vector3> {
   using G = Group<N>;
   static constexpr ActionType type = ActionType::Right;
@@ -400,7 +400,7 @@ struct OutputAction : public GroupAction<OutputAction<N>, Group<N>, Vector3> {
 };
 
 /// Compute the measurement matrix C(φ_y).
-template <int N>
+template <size_t N>
 inline Matrix measurementMatrixC(const Unit3& d, int index) {
   Matrix Cc = Matrix::Zero(3, 3 * N);
 
@@ -417,7 +417,7 @@ inline Matrix measurementMatrixC(const Unit3& d, int index) {
   return wedge_d * temp;
 }
 
-template <int N>
+template <size_t N>
 struct Innovation {
   using M = State<N>;
 
@@ -462,7 +462,7 @@ struct Innovation {
   int index_;
 };
 
-template <int N>
+template <size_t N>
 inline Matrix3 outputMatrixD(const Group<N>& X_hat, int index) {
   auto [A, a, B] = asTriple<N>(X_hat);
   if (index >= 0) {
@@ -474,17 +474,11 @@ inline Matrix3 outputMatrixD(const Group<N>& X_hat, int index) {
 
 }  // namespace abc
 
-template <int N>
+template <size_t N>
 struct traits<abc::State<N>> : public internal::Manifold<abc::State<N>> {};
 
-template <int N>
+template <size_t N>
 struct traits<const abc::State<N>> : public internal::Manifold<abc::State<N>> {
 };
-
-template <int N>
-struct traits<abc::Group<N>> : internal::LieGroup<abc::Group<N>> {};
-
-template <int N>
-struct traits<const abc::Group<N>> : internal::LieGroup<abc::Group<N>> {};
 
 }  // namespace gtsam
