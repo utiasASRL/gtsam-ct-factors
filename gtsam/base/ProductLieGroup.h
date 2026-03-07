@@ -370,13 +370,8 @@ class ProductLieGroup : public std::pair<G, H> {
     }
   }
 
-  template <typename T>
-  static size_t dimensionOf(const T& value) {
-    return static_cast<size_t>(traits<T>::GetDimension(value));
-  }
-
-  size_t firstDim() const { return dimensionOf(this->first); }
-  size_t secondDim() const { return dimensionOf(this->second); }
+  size_t firstDim() const { return traits<G>::GetDimension(this->first); }
+  size_t secondDim() const { return traits<H>::GetDimension(this->second); }
 
   static size_t combinedDimension(size_t d1, size_t d2) { return d1 + d2; }
 

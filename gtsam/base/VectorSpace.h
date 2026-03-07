@@ -29,7 +29,7 @@ struct VectorSpaceImpl {
   typedef Eigen::Matrix<double, N, 1> TangentVector;
   typedef OptionalJacobian<N, N> ChartJacobian;
   typedef Eigen::Matrix<double, N, N> Jacobian;
-  static int GetDimension(const Class&) { return N;}
+  static size_t GetDimension(const Class&) { return static_cast<size_t>(N);}
 
   static TangentVector Local(const Class& origin, const Class& other,
       ChartJacobian H1 = {}, ChartJacobian H2 = {}) {
@@ -107,10 +107,10 @@ struct VectorSpaceImpl<Class,Eigen::Dynamic> {
   /// @{
   typedef Eigen::VectorXd TangentVector;
   typedef OptionalJacobian<Eigen::Dynamic,Eigen::Dynamic> ChartJacobian;
-  static int GetDimension(const Class& m) { return m.dim();}
+  static size_t GetDimension(const Class& m) { return m.dim();}
 
   static Eigen::MatrixXd Eye(const Class& m) {
-    int dim = GetDimension(m);
+    size_t dim = GetDimension(m);
     return Eigen::MatrixXd::Identity(dim, dim);
   }
 
@@ -395,12 +395,12 @@ struct DynamicTraits {
   typedef OptionalJacobian<dimension, dimension> ChartJacobian;
   typedef Dynamic ManifoldType;
 
-  static int GetDimension(const Dynamic& m) {
-    return m.rows() * m.cols();
+  static size_t GetDimension(const Dynamic& m) {
+    return static_cast<size_t>(m.rows() * m.cols());
   }
 
   static Jacobian Eye(const Dynamic& m) {
-    int dim = GetDimension(m);
+    size_t dim = GetDimension(m);
     return Eigen::Matrix<double, dimension, dimension>::Identity(dim, dim);
   }
 

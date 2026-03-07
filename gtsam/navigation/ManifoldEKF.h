@@ -97,7 +97,7 @@ class ManifoldEKF {
   const Covariance& covariance() const { return P_; }
 
   /// @return runtime dimension of the manifold.
-  int dimension() const { return n_; }
+  size_t dimension() const { return n_; }
 
   /**
    * Basic predict step: Updates state and covariance given the predicted next
@@ -279,7 +279,7 @@ class ManifoldEKF {
   M X_;           ///< Manifold state estimate.
   Covariance P_;  ///< Covariance (Eigen::Matrix<double, Dim, Dim>).
   Jacobian I_;    ///< Identity matrix sized to the state dimension.
-  int n_;         ///< Runtime tangent space dimension of M.
+  size_t n_;      ///< Runtime tangent space dimension of M.
 
  private:
   // Detection helper: check if traits<T>::Retract(x, v, Jacobian*) is valid.
