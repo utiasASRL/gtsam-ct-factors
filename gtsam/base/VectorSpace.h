@@ -141,7 +141,7 @@ struct VectorSpaceImpl<Class,Eigen::Dynamic> {
 
   static Class Expmap(const TangentVector& v, ChartJacobian Hv = {}) {
     Class result(v);
-    if (Hv) *Hv = Eye(v);
+    if (Hv) *Hv = Eye(result);
     return result;
   }
 
@@ -445,7 +445,7 @@ struct DynamicTraits {
             "Dynamic Expmap tangent dimension does not match matrix shape");
       }
       Dynamic result(rows, cols);
-      Eigen::Map<Dynamic>(result.data(), rows, cols) = v;
+      result = Eigen::Map<const Dynamic>(v.data(), rows, cols);
       if (H) *H = Jacobian::Identity(v.size(), v.size());
       return result;
     }
