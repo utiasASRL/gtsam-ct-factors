@@ -157,21 +157,11 @@ class ProductLieGroup : public std::pair<G, H> {
   static ProductLieGroup Expmap(
       const Eigen::Ref<const typename traits<G>::TangentVector>& v1,
       const Eigen::Ref<const typename traits<H>::TangentVector>& v2,
-      ChartJacobian Hv);
-
-  /// Exponential map from subgroup tangent vectors
-  static ProductLieGroup Expmap(
-      const Eigen::Ref<const typename traits<G>::TangentVector>& v1,
-      const Eigen::Ref<const typename traits<H>::TangentVector>& v2) {
-    return Expmap(v1, v2, {});
-  }
+      OptionalJacobian<Eigen::Dynamic, Eigen::Dynamic> H1 = {},
+      OptionalJacobian<Eigen::Dynamic, Eigen::Dynamic> H2 = {});
 
   /// Logarithmic map
-  static TangentVector Logmap(const ProductLieGroup& p, ChartJacobian Hp = {}) {
-    const size_t firstDimension = p.firstDim();
-    const size_t secondDimension = p.secondDim();
-    return logmapWithDimensions(p, firstDimension, secondDimension, Hp);
-  }
+  static TangentVector Logmap(const ProductLieGroup& p, ChartJacobian Hp = {});
 
   /// Local coordinates (same as Logmap)
   static TangentVector LocalCoordinates(const ProductLieGroup& p,
@@ -220,22 +210,9 @@ class ProductLieGroup : public std::pair<G, H> {
   /// Create an identity Jacobian with the requested runtime size.
   static Jacobian identityJacobian(size_t productDimension);
 
-  /// Check that two products have matching runtime dimensions.
-  static void checkMatchingDimensions(size_t first1, size_t second1,
-                                      size_t first2, size_t second2,
-                                      const char* operation);
-
-  /// Exponential map with an explicit tangent split.
-  static ProductLieGroup expmapWithDimensions(const TangentVector& v,
-                                              size_t firstDimension,
-                                              size_t secondDimension,
-                                              ChartJacobian Hv = {});
-
-  /// Logarithmic map with an explicit runtime dimension split.
-  static TangentVector logmapWithDimensions(const ProductLieGroup& p,
-                                            size_t firstDimension,
-                                            size_t secondDimension,
-                                            ChartJacobian Hp = {});
+  /// Check that another product has matching runtime dimensions.
+  void checkMatchingDimensions(const ProductLieGroup& other,
+                               const char* operation) const;
 
  public:
   /// @name Testable interface
