@@ -53,6 +53,9 @@ endif()
 
 # Set the wrapping script variable
 set(PYBIND_WRAP_SCRIPT "${PROJECT_SOURCE_DIR}/wrap/scripts/pybind_wrap.py")
+
+# Disable pybind11's default LTO for wrapper modules to improve link times.
+set(CMAKE_INTERPROCEDURAL_OPTIMIZATION OFF)
 ############################################################
 
 add_custom_target(gtsam_header DEPENDS "${PROJECT_SOURCE_DIR}/gtsam/gtsam.i")
@@ -95,6 +98,7 @@ set(interface_headers
     ${PROJECT_SOURCE_DIR}/gtsam/inference/inference.i
     ${PROJECT_SOURCE_DIR}/gtsam/discrete/discrete.i
     ${PROJECT_SOURCE_DIR}/gtsam/geometry/geometry.i
+    ${PROJECT_SOURCE_DIR}/gtsam/geometry/cameras.i
     ${PROJECT_SOURCE_DIR}/gtsam/linear/linear.i
     ${PROJECT_SOURCE_DIR}/gtsam/nonlinear/nonlinear.i
     ${PROJECT_SOURCE_DIR}/gtsam/nonlinear/values.i
