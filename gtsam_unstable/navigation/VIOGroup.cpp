@@ -43,11 +43,11 @@ VIOGroup::VIOGroup() : core_(), ids_() {}
 
 VIOGroup::VIOGroup(size_t n)
     : VIOGroup(SE23::Identity(), Vector6::Zero(), Pose3::Identity(),
-               LandmarkGroup::Identity(n)) {}
+               LandmarkGroup(n)) {}
 
 VIOGroup::VIOGroup(const std::vector<int>& ids)
     : VIOGroup(SE23::Identity(), Vector6::Zero(), Pose3::Identity(),
-               LandmarkGroup::Identity(ids.size()), ids) {}
+               LandmarkGroup(ids.size()), ids) {}
 
 VIOGroup::VIOGroup(const SE23& A, const Vector6& beta, const Pose3& B,
                    const LandmarkGroup& Q, const std::vector<int>& ids)

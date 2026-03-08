@@ -38,22 +38,38 @@ template <typename G, typename H>
 ProductLieGroup<G, H> ProductLieGroup<G, H>::retract(const TangentVector& v,
                                                      ChartJacobian H1,
                                                      ChartJacobian H2) const {
-  if (H1 || H2) {
-    throw std::runtime_error(
-        "ProductLieGroup::retract derivatives not implemented yet");
-  }
   const size_t firstDimension = firstDim();
   const size_t secondDimension = secondDim();
+  const size_t productDimension =
+      combinedDimension(firstDimension, secondDimension);
   if (static_cast<size_t>(v.size()) !=
-      combinedDimension(firstDimension, secondDimension)) {
+      productDimension) {
     throw std::invalid_argument(
         "ProductLieGroup::retract tangent dimension does not match product "
         "dimension");
   }
-  G g =
-      traits<G>::Retract(this->first, tangentSegment<G>(v, 0, firstDimension));
+  Jacobian1 D_g_first;
+  Jacobian1 D_g_second;
+  Jacobian2 D_h_first;
+  Jacobian2 D_h_second;
+  G g = traits<G>::Retract(this->first, tangentSegment<G>(v, 0, firstDimension),
+                           H1 ? &D_g_first : nullptr,
+                           H2 ? &D_g_second : nullptr);
   H h = traits<H>::Retract(
-      this->second, tangentSegment<H>(v, firstDimension, secondDimension));
+      this->second, tangentSegment<H>(v, firstDimension, secondDimension),
+      H1 ? &D_h_first : nullptr, H2 ? &D_h_second : nullptr);
+  if (H1) {
+    *H1 = zeroJacobian(productDimension);
+    H1->block(0, 0, firstDimension, firstDimension) = D_g_first;
+    H1->block(firstDimension, firstDimension, secondDimension,
+              secondDimension) = D_h_first;
+  }
+  if (H2) {
+    *H2 = zeroJacobian(productDimension);
+    H2->block(0, 0, firstDimension, firstDimension) = D_g_second;
+    H2->block(firstDimension, firstDimension, secondDimension,
+              secondDimension) = D_h_second;
+  }
   return ProductLieGroup(g, h);
 }
 
@@ -62,16 +78,33 @@ typename ProductLieGroup<G, H>::TangentVector
 ProductLieGroup<G, H>::localCoordinates(const ProductLieGroup& g,
                                         ChartJacobian H1,
                                         ChartJacobian H2) const {
-  if (H1 || H2) {
-    throw std::runtime_error(
-        "ProductLieGroup::localCoordinates derivatives not implemented yet");
-  }
   checkMatchingDimensions(g, "localCoordinates");
   const size_t firstDimension = firstDim();
   const size_t secondDimension = secondDim();
-  typename traits<G>::TangentVector v1 = traits<G>::Local(this->first, g.first);
-  typename traits<H>::TangentVector v2 =
-      traits<H>::Local(this->second, g.second);
+  const size_t productDimension =
+      combinedDimension(firstDimension, secondDimension);
+  Jacobian1 D_g_first;
+  Jacobian1 D_g_second;
+  Jacobian2 D_h_first;
+  Jacobian2 D_h_second;
+  typename traits<G>::TangentVector v1 =
+      traits<G>::Local(this->first, g.first, H1 ? &D_g_first : nullptr,
+                       H2 ? &D_g_second : nullptr);
+  typename traits<H>::TangentVector v2 = traits<H>::Local(
+      this->second, g.second, H1 ? &D_h_first : nullptr,
+      H2 ? &D_h_second : nullptr);
+  if (H1) {
+    *H1 = zeroJacobian(productDimension);
+    H1->block(0, 0, firstDimension, firstDimension) = D_g_first;
+    H1->block(firstDimension, firstDimension, secondDimension,
+              secondDimension) = D_h_first;
+  }
+  if (H2) {
+    *H2 = zeroJacobian(productDimension);
+    H2->block(0, 0, firstDimension, firstDimension) = D_g_second;
+    H2->block(firstDimension, firstDimension, secondDimension,
+              secondDimension) = D_h_second;
+  }
   return makeTangentVector(v1, v2, firstDimension, secondDimension);
 }
 
@@ -469,16 +502,18 @@ template <typename G, int N, typename Derived>
 Derived PowerLieGroupBase<G, N, Derived>::retract(const TangentVector& v,
                                                   ChartJacobian H1,
                                                   ChartJacobian H2) const {
-  if (H1 || H2) {
-    throw std::runtime_error(
-        "PowerLieGroup::retract derivatives not implemented yet");
-  }
   const size_t count = componentCount();
   checkDynamicTangentSize(v, count, "retract");
+  JacobianStorage firstJacobians = makeJacobianStorage(count);
+  JacobianStorage secondJacobians = makeJacobianStorage(count);
   Derived result = makeResult(count);
   for (size_t i = 0; i < count; ++i) {
-    result[i] = traits<G>::Retract(derived()[i], tangentSegment(v, i));
+    result[i] = traits<G>::Retract(derived()[i], tangentSegment(v, i),
+                                   H1 ? &firstJacobians[i] : nullptr,
+                                   H2 ? &secondJacobians[i] : nullptr);
   }
+  fillJacobianBlocks(H1, firstJacobians, count);
+  fillJacobianBlocks(H2, secondJacobians, count);
   return result;
 }
 
@@ -487,15 +522,19 @@ typename PowerLieGroupBase<G, N, Derived>::TangentVector
 PowerLieGroupBase<G, N, Derived>::localCoordinates(const Derived& g,
                                                    ChartJacobian H1,
                                                    ChartJacobian H2) const {
-  if (H1 || H2) {
-    throw std::runtime_error(
-        "PowerLieGroup::localCoordinates derivatives not implemented yet");
-  }
   checkMatchingCounts(g, "localCoordinates");
+  const size_t count = componentCount();
+  JacobianStorage firstJacobians = makeJacobianStorage(count);
+  JacobianStorage secondJacobians = makeJacobianStorage(count);
   TangentVector v = zeroTangent(componentCount());
-  for (size_t i = 0; i < componentCount(); ++i) {
-    assignTangentSegment(v, i, traits<G>::Local(derived()[i], g[i]));
+  for (size_t i = 0; i < count; ++i) {
+    assignTangentSegment(
+        v, i,
+        traits<G>::Local(derived()[i], g[i], H1 ? &firstJacobians[i] : nullptr,
+                         H2 ? &secondJacobians[i] : nullptr));
   }
+  fillJacobianBlocks(H1, firstJacobians, count);
+  fillJacobianBlocks(H2, secondJacobians, count);
   return v;
 }
 

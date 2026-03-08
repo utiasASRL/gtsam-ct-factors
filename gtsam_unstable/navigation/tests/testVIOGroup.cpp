@@ -118,7 +118,7 @@ const SOT3 kQ4(SO3::Expmap((Vector3() << -0.06, -0.02, 0.09).finished()), 1.05);
 const SOT3 kQ5(SO3::Expmap((Vector3() << 0.01, 0.02, 0.03).finished()), 0.98);
 const SOT3 kQ6(SO3::Expmap((Vector3() << -0.02, 0.03, -0.01).finished()), 1.03);
 
-LandmarkGroup MakeQ0() { return LandmarkGroup::Identity(0); }
+LandmarkGroup MakeQ0() { return LandmarkGroup(0); }
 LandmarkGroup MakeQ1A() { return LandmarkGroup({kQ1}); }
 LandmarkGroup MakeQ1B() { return LandmarkGroup({kQ2}); }
 LandmarkGroup MakeQ3A() { return LandmarkGroup({kQ1, kQ2, kQ3}); }
