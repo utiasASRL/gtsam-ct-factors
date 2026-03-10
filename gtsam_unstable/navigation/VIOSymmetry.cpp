@@ -57,27 +57,6 @@ Rot3 RotationFromTwoVectors(const Vector3& from, const Vector3& to) {
   return Rot3(q);
 }
 
-void CheckStateAlignment(const VIOGroup& X, const VIOState& state,
-                         const char* context) {
-  if (X.n() != state.n()) {
-    throw std::invalid_argument(std::string(context) +
-                                ": landmark counts do not match (X.n()=" +
-                                std::to_string(X.n()) + ", state.n()=" +
-                                std::to_string(state.n()) +
-                                ", X.ids().size()=" +
-                                std::to_string(X.ids().size()) + ")");
-  }
-
-  if (!X.ids().empty()) {
-    for (size_t i = 0; i < X.n(); ++i) {
-      if (X.ids()[i] != state.cameraLandmarks[i].id) {
-        throw std::invalid_argument(std::string(context) +
-                                    ": group ids and state ids are not aligned");
-      }
-    }
-  }
-}
-
 std::vector<int> QIdsForMeasurement(const VIOGroup& X,
                                     const VisionMeasurement& measurement) {
   if (!X.ids().empty()) return X.ids();
@@ -169,7 +148,6 @@ VIOSensorState sensorStateGroupAction(const VIOGroup& X,
 }
 
 VIOState stateGroupAction(const VIOGroup& X, const VIOState& state) {
-  CheckStateAlignment(X, state, "stateGroupAction");
 
   VIOState out;
   out.sensor = sensorStateGroupAction(X, state.sensor);

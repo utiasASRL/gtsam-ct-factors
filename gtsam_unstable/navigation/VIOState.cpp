@@ -21,16 +21,6 @@
 
 namespace gtsam {
 
-namespace {
-
-void CheckTangentSize(const Vector& v, int expected, const char* context) {
-  if (v.size() != expected) {
-    throw std::invalid_argument(std::string(context) +
-                                ": unexpected tangent dimension");
-  }
-}
-
-}  // namespace
 
 void Landmark::print(const std::string& s) const {
   if (!s.empty()) std::cout << s << " ";
@@ -81,7 +71,6 @@ std::vector<int> VIOState::ids() const {
 VIOState VIOState::retract(const TangentVector& v, ChartJacobian H1,
                            ChartJacobian H2) const {
   const int d = dim();
-  CheckTangentSize(v, d, "VIOState::retract");
 
   Matrix66 Hpose1, Hpose2, Hcam1, Hcam2;
   VIOState out(*this);
@@ -130,7 +119,6 @@ VIOState VIOState::retract(const TangentVector& v, ChartJacobian H1,
 VIOState::TangentVector VIOState::localCoordinates(const VIOState& other,
                                                    ChartJacobian H1,
                                                    ChartJacobian H2) const {
-  checkCompatible(other, "VIOState::localCoordinates");
   const int d = dim();
 
   Matrix66 Hpose1, Hpose2, Hcam1, Hcam2;
@@ -191,19 +179,6 @@ bool VIOState::equals(const VIOState& other, double tol) const {
     if (!cameraLandmarks[i].equals(other.cameraLandmarks[i], tol)) return false;
   }
   return true;
-}
-
-void VIOState::checkCompatible(const VIOState& other, const char* context) const {
-  if (cameraLandmarks.size() != other.cameraLandmarks.size()) {
-    throw std::invalid_argument(std::string(context) +
-                                ": landmark counts do not match");
-  }
-  for (size_t i = 0; i < cameraLandmarks.size(); ++i) {
-    if (cameraLandmarks[i].id != other.cameraLandmarks[i].id) {
-      throw std::invalid_argument(std::string(context) +
-                                  ": landmark ids are not aligned");
-    }
-  }
 }
 
 }  // namespace gtsam

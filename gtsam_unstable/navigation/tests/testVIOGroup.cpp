@@ -149,10 +149,6 @@ VIOGroup MakeG3() { return VIOGroup(kA1, kBeta1, kB1, MakeQ3A(), kIds3); }
 
 VIOGroup MakeG3b() { return VIOGroup(kA2, kBeta2, kB2, MakeQ3B(), kIds3); }
 
-VIOGroup MakeG3OtherIds() {
-  return VIOGroup(kA2, kBeta2, kB2, MakeQ3B(), kIds3Other);
-}
-
 Vector Xi0() {
   return (Vector(21) << 0.05, -0.04, 0.03, 0.2, -0.1, 0.15, -0.05, 0.07,
           -0.09, 0.1, -0.08, 0.06, -0.04, 0.02, 0.03, 0.01, -0.02, 0.04,
@@ -205,9 +201,6 @@ TEST(VIOGroup, ConstructorsAndAccessors) {
   EXPECT(assert_equal(kB1, g.B()));
   EXPECT(assert_equal(MakeQ3A(), g.Q()));
   EXPECT(g.ids() == kIds3);
-
-  CHECK_EXCEPTION(VIOGroup(kA1, kBeta1, kB1, MakeQ1A(), kIds3),
-                  std::invalid_argument);
 }
 
 //******************************************************************************
@@ -249,8 +242,6 @@ TEST(VIOGroup, ExpmapLogmapAndAdjoint) {
       VIOGroup::SensorCore(g3.A(), g3.beta()),
       VIOGroup::LandmarkCore(g3.B(), g3.Q()));
   EXPECT(assert_equal(core.AdjointMap(), g3.AdjointMap(), 1e-9));
-
-  CHECK_EXCEPTION(VIOGroup::Expmap(Vector::Zero(22)), std::invalid_argument);
 }
 
 //******************************************************************************
@@ -303,10 +294,6 @@ TEST(VIOGroup, IdBehavior) {
   EXPECT(withoutIds.compose(withIds).ids() == kIds1);
   EXPECT(withIds.equals(sameCoreOtherIds));
 
-  CHECK_EXCEPTION(MakeG3().compose(MakeG3OtherIds()), std::invalid_argument);
-  CHECK_EXCEPTION(MakeG3().between(MakeG3OtherIds()), std::invalid_argument);
-  CHECK_EXCEPTION(MakeG3().localCoordinates(MakeG3OtherIds()),
-                  std::invalid_argument);
 }
 
 int main() {

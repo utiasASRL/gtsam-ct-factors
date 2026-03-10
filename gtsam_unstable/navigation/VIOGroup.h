@@ -138,8 +138,6 @@ class GTSAM_UNSTABLE_EXPORT VIOGroup
  private:
   VIOGroup(const VIOGroupCore& core, std::vector<int> ids);
 
-  void validate() const;
-  void checkCompatible(const VIOGroup& other, const char* context) const;
   std::vector<int> resolvedIds(const VIOGroup& other) const;
 
   static size_t inferLandmarkCount(const TangentVector& v);

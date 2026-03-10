@@ -21,32 +21,6 @@
 
 namespace gtsam {
 
-namespace {
-
-void CheckMeasurementCompatibility(const VisionMeasurement& y1,
-                                   const VisionMeasurement& y2,
-                                   const char* context) {
-  if (y1.camCoordinates.size() != y2.camCoordinates.size()) {
-    throw std::invalid_argument(std::string(context) +
-                                ": measurement sizes do not match");
-  }
-
-  auto it1 = y1.camCoordinates.begin();
-  auto it2 = y2.camCoordinates.begin();
-  for (; it1 != y1.camCoordinates.end(); ++it1, ++it2) {
-    if (it1->first != it2->first) {
-      throw std::invalid_argument(std::string(context) +
-                                  ": measurement ids do not match");
-    }
-  }
-
-  if (y1.camera && y2.camera && y1.camera != y2.camera) {
-    throw std::invalid_argument(std::string(context) +
-                                ": camera models do not match");
-  }
-}
-
-}  // namespace
 
 IMUVelocity IMUVelocity::Zero() { return IMUVelocity(); }
 
@@ -147,8 +121,6 @@ VisionMeasurement VisionMeasurement::retract(const TangentVector& v,
 
 VisionMeasurement::TangentVector VisionMeasurement::localCoordinates(
     const VisionMeasurement& other, ChartJacobian H1, ChartJacobian H2) const {
-  CheckMeasurementCompatibility(*this, other,
-                                "VisionMeasurement::localCoordinates");
 
   TangentVector v = Vector::Zero(dim());
   int i = 0;
@@ -187,7 +159,6 @@ bool VisionMeasurement::equals(const VisionMeasurement& other, double tol) const
 
 VisionMeasurement operator-(const VisionMeasurement& y1,
                             const VisionMeasurement& y2) {
-  CheckMeasurementCompatibility(y1, y2, "VisionMeasurement::operator-");
   VisionMeasurement out;
   out.stamp = y1.stamp;
   out.camera = y1.camera ? y1.camera : y2.camera;

@@ -82,8 +82,6 @@ class GTSAM_UNSTABLE_EXPORT VIOState {
   void print(const std::string& s = "") const;
   bool equals(const VIOState& other, double tol = 1e-9) const;
 
- private:
-  void checkCompatible(const VIOState& other, const char* context) const;
 };
 
 template <>

@@ -95,12 +95,6 @@ std::vector<Landmark> Lms3B() {
           {Point3(0.1, 0.65, 4.9), 33}};
 }
 
-std::vector<Landmark> Lms3Misaligned() {
-  return {{Point3(0.9, -0.45, 3.8), 11},
-          {Point3(-0.5, 0.35, 3.4), 99},
-          {Point3(0.1, 0.65, 4.9), 33}};
-}
-
 VIOState MakeState0A() { return VIOState(MakeSensor1(), Lms0()); }
 VIOState MakeState0B() { return VIOState(MakeSensor2(), Lms0()); }
 VIOState MakeState1A() { return VIOState(MakeSensor1(), Lms1A()); }
@@ -157,15 +151,6 @@ TEST(VIOState, DerivativesN1) {
 //******************************************************************************
 TEST(VIOState, DerivativesN3) {
   testChartDerivativesN<30>(result_, name_, MakeState3A(), MakeState3B());
-}
-
-//******************************************************************************
-TEST(VIOState, Validation) {
-  const VIOState s3 = MakeState3A();
-  const VIOState s3bad(MakeSensor2(), Lms3Misaligned());
-
-  CHECK_EXCEPTION(s3.localCoordinates(s3bad), std::invalid_argument);
-  CHECK_EXCEPTION(s3.retract(Vector::Zero(29)), std::invalid_argument);
 }
 
 int main() {

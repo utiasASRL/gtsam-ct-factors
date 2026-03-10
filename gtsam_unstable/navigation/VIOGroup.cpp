@@ -21,23 +21,6 @@
 
 namespace gtsam {
 
-namespace {
-
-void ValidateIdsSize(size_t landmarkCount, const std::vector<int>& ids,
-                     const char* context) {
-  if (!ids.empty() && ids.size() != landmarkCount) {
-    throw std::invalid_argument(std::string(context) +
-                                ": landmark ids must match landmark count");
-  }
-}
-
-void ValidateTangentSize(const Vector& v, size_t expected, const char* context) {
-  if (v.size() != static_cast<Eigen::Index>(expected)) {
-    throw std::invalid_argument(std::string(context) + ": unexpected tangent dimension");
-  }
-}
-
-}  // namespace
 
 VIOGroup::VIOGroup() : core_(), ids_() {}
 
@@ -52,14 +35,13 @@ VIOGroup::VIOGroup(const std::vector<int>& ids)
 VIOGroup::VIOGroup(const SE23& A, const Vector6& beta, const Pose3& B,
                    const LandmarkGroup& Q, const std::vector<int>& ids)
     : core_(SensorCore(A, beta), LandmarkCore(B, Q)), ids_(ids) {
-  validate();
 }
 
 VIOGroup::VIOGroup(const VIOGroupCore& core, std::vector<int> ids)
     : core_(core), ids_(std::move(ids)) {
-  validate();
 }
 
+// helpers so we don't have to reference core objects in the public interface
 VIOGroup VIOGroup::Identity() { return VIOGroup(); }
 
 VIOGroup VIOGroup::Identity(size_t n) { return VIOGroup(n); }
@@ -94,26 +76,22 @@ VIOGroup VIOGroup::inverse() const { return VIOGroup(core_.inverse(), ids_); }
 
 VIOGroup VIOGroup::compose(const VIOGroup& other, ChartJacobian H1,
                            ChartJacobian H2) const {
-  checkCompatible(other, "VIOGroup::compose");
   return VIOGroup(core_.compose(other.core_, H1, H2), resolvedIds(other));
 }
 
 VIOGroup VIOGroup::between(const VIOGroup& other, ChartJacobian H1,
                            ChartJacobian H2) const {
-  checkCompatible(other, "VIOGroup::between");
   return VIOGroup(core_.between(other.core_, H1, H2), resolvedIds(other));
 }
 
 VIOGroup VIOGroup::retract(const TangentVector& v, ChartJacobian H1,
                            ChartJacobian H2) const {
-  ValidateTangentSize(v, dim(), "VIOGroup::retract");
   return VIOGroup(core_.retract(v, H1, H2), ids_);
 }
 
 VIOGroup::TangentVector VIOGroup::localCoordinates(const VIOGroup& other,
                                                    ChartJacobian H1,
                                                    ChartJacobian H2) const {
-  checkCompatible(other, "VIOGroup::localCoordinates");
   return core_.localCoordinates(other.core_, H1, H2);
 }
 
@@ -153,22 +131,6 @@ void VIOGroup::print(const std::string& s) const {
 
 bool VIOGroup::equals(const VIOGroup& other, double tol) const {
   return core_.equals(other.core_, tol);
-}
-
-void VIOGroup::validate() const {
-  ValidateIdsSize(n(), ids_, "VIOGroup");
-}
-
-void VIOGroup::checkCompatible(const VIOGroup& other, const char* context) const {
-  if (n() != other.n()) {
-    throw std::invalid_argument(std::string(context) +
-                                ": incompatible landmark counts");
-  }
-
-  if (!ids_.empty() && !other.ids_.empty() && ids_ != other.ids_) {
-    throw std::invalid_argument(std::string(context) +
-                                ": incompatible landmark id ordering");
-  }
 }
 
 std::vector<int> VIOGroup::resolvedIds(const VIOGroup& other) const {
