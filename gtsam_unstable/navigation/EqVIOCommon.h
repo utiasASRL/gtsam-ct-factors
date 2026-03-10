@@ -136,10 +136,11 @@ struct GTSAM_UNSTABLE_EXPORT VisionMeasurement {
   bool equals(const VisionMeasurement& other, double tol = 1e-9) const;
 };
 
-VisionMeasurement operator-(const VisionMeasurement& y1,
-                            const VisionMeasurement& y2);
+GTSAM_UNSTABLE_EXPORT VisionMeasurement operator-(
+    const VisionMeasurement& y1, const VisionMeasurement& y2);
 
-VisionMeasurement operator+(const VisionMeasurement& y, const Vector& eta);
+GTSAM_UNSTABLE_EXPORT VisionMeasurement operator+(
+    const VisionMeasurement& y, const Vector& eta);
 
 template <>
 struct traits<VisionMeasurement> {
