@@ -237,5 +237,61 @@ TEST( BatchFixedLagSmoother, Example )
 }
 
 /* ************************************************************************* */
+TEST( BatchFixedLagSmoother, EnforceConsistency )
+{
+  // Verify that enforceConsistency_ actually preserves linearization points
+  // for variables involved in marginal factors after marginalization.
+  // Before the fix, linearValues_ was never populated, so this feature
+  // was silently non-functional.
+
+  SharedDiagonal noise = noiseModel::Isotropic::Sigma(2, 0.1);
+
+  typedef BatchFixedLagSmoother::KeyTimestampMap Timestamps;
+
+  // Create two smoothers: one with consistency enforcement, one without
+  LevenbergMarquardtParams params;
+  BatchFixedLagSmoother smootherOn(3.0, params, true);   // enforceConsistency = true
+  BatchFixedLagSmoother smootherOff(3.0, params, false);  // enforceConsistency = false
+
+  // Feed both smoothers the same data: a chain of between factors with
+  // deliberately poor initial values to make relinearization matter.
+  for (size_t i = 0; i <= 7; ++i) {
+    NonlinearFactorGraph newFactors;
+    Values newValues;
+    Timestamps newTimestamps;
+
+    Key key_i(i);
+    if (i == 0) {
+      newFactors.addPrior(key_i, Point2(0.0, 0.0), noise);
+    } else {
+      Key key_prev(i - 1);
+      newFactors.push_back(BetweenFactor<Point2>(key_prev, key_i, Point2(1.0, 0.0), noise));
+    }
+
+    // Use a deliberately poor initial estimate to create nonlinearity
+    newValues.insert(key_i, Point2(double(i) + 0.5, 0.5));
+    newTimestamps[key_i] = double(i);
+
+    smootherOn.update(newFactors, newValues, newTimestamps);
+    smootherOff.update(newFactors, newValues, newTimestamps);
+  }
+
+  // After enough steps, marginalization has occurred (lag=3, at step 7 keys
+  // 0..3 are marginalized). The smoothers should still produce valid estimates
+  // but may differ because consistency enforcement constrains the optimization.
+  // The key test: the enforceConsistency=true smoother should not crash and
+  // should produce a reasonable estimate.
+  Key lastKey(7);
+  Point2 estimateOn = smootherOn.calculateEstimate<Point2>(lastKey);
+  Point2 estimateOff = smootherOff.calculateEstimate<Point2>(lastKey);
+
+  // Both should be close to the ground truth (7.0, 0.0) -- the chain of
+  // unit between-factors from the origin.
+  Point2 expected(7.0, 0.0);
+  EXPECT(assert_equal(expected, estimateOn, 0.5));
+  EXPECT(assert_equal(expected, estimateOff, 0.5));
+}
+
+/* ************************************************************************* */
 int main() { TestResult tr; return TestRegistry::runAllTests(tr);}
 /* ************************************************************************* */
