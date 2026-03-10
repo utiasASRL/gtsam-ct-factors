@@ -3,6 +3,11 @@ name: timeSFMBAL Benchmark
 on:
   pull_request:
     types: [opened]
+    paths-ignore:
+      - 'python/**'
+      - '**.md'
+      - '**.ipynb'
+      - 'myst.yml'
   workflow_dispatch:
     inputs:
       pr_number:
