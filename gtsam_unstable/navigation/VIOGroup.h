@@ -21,13 +21,15 @@
 #include <gtsam/base/Vector.h>
 #include <gtsam/geometry/ExtendedPose3.h>
 #include <gtsam/geometry/Pose3.h>
-#include <gtsam/geometry/SOT3.h>
+#include <gtsam/geometry/SO3.h>
 #include <gtsam_unstable/dllexport.h>
 
 #include <string>
 #include <vector>
 
 namespace gtsam {
+
+using SOT3 = ProductLieGroup<SO3, Vector1>;
 
 /**
  * Eq. (22) VI-SLAM symmetry group:

@@ -103,8 +103,9 @@ inline VIOGroup RandomGroupElement(const std::vector<int>& ids) {
 
   std::vector<SOT3> Q(ids.size());
   for (size_t i = 0; i < ids.size(); ++i) {
-    Q[i] = SOT3(SO3::Expmap(Vector3::Random()),
-                2.0 * static_cast<double>(rand()) / RAND_MAX + 1.0);
+    const double scale = 2.0 * static_cast<double>(rand()) / RAND_MAX + 1.0;
+    Q[i] =
+        SOT3(SO3::Expmap(Vector3::Random()), Vector1::Constant(std::log(scale)));
   }
 
   return VIOGroup(MakeA(Apose.rotation(), Apose.translation(), w), beta, B,
@@ -204,4 +205,3 @@ inline bool MatrixClose(const Matrix& A, const Matrix& B, double h = -1.0) {
 
 }  // namespace eqvio_test_util
 }  // namespace gtsam
-

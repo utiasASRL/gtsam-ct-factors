@@ -19,6 +19,7 @@
 #include <gtsam/base/numericalDerivative.h>
 #include <gtsam_unstable/navigation/VIOGroup.h>
 
+#include <cmath>
 #include <functional>
 #include <stdexcept>
 #include <vector>
@@ -111,12 +112,18 @@ const Vector6 kBeta2 =
 const Pose3 kB1(kR3, Point3(0.2, -0.5, 1.1));
 const Pose3 kB2(kR4, Point3(-0.6, 0.7, 0.3));
 
-const SOT3 kQ1(SO3::Expmap((Vector3() << 0.08, -0.04, 0.05).finished()), 1.2);
-const SOT3 kQ2(SO3::Expmap((Vector3() << -0.03, 0.06, -0.02).finished()), 0.95);
-const SOT3 kQ3(SO3::Expmap((Vector3() << 0.04, 0.07, -0.08).finished()), 1.1);
-const SOT3 kQ4(SO3::Expmap((Vector3() << -0.06, -0.02, 0.09).finished()), 1.05);
-const SOT3 kQ5(SO3::Expmap((Vector3() << 0.01, 0.02, 0.03).finished()), 0.98);
-const SOT3 kQ6(SO3::Expmap((Vector3() << -0.02, 0.03, -0.01).finished()), 1.03);
+const SOT3 kQ1(SO3::Expmap((Vector3() << 0.08, -0.04, 0.05).finished()),
+               Vector1::Constant(std::log(1.2)));
+const SOT3 kQ2(SO3::Expmap((Vector3() << -0.03, 0.06, -0.02).finished()),
+               Vector1::Constant(std::log(0.95)));
+const SOT3 kQ3(SO3::Expmap((Vector3() << 0.04, 0.07, -0.08).finished()),
+               Vector1::Constant(std::log(1.1)));
+const SOT3 kQ4(SO3::Expmap((Vector3() << -0.06, -0.02, 0.09).finished()),
+               Vector1::Constant(std::log(1.05)));
+const SOT3 kQ5(SO3::Expmap((Vector3() << 0.01, 0.02, 0.03).finished()),
+               Vector1::Constant(std::log(0.98)));
+const SOT3 kQ6(SO3::Expmap((Vector3() << -0.02, 0.03, -0.01).finished()),
+               Vector1::Constant(std::log(1.03)));
 
 LandmarkGroup MakeQ0() { return LandmarkGroup(0); }
 LandmarkGroup MakeQ1A() { return LandmarkGroup({kQ1}); }

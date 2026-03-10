@@ -25,6 +25,21 @@ namespace gtsam {
 
 namespace {
 
+double SOT3Scale(const SOT3& Q) { return std::exp(Q.second(0)); }
+
+const SO3& SOT3Rotation(const SOT3& Q) { return Q.first; }
+
+SOT3 MakeSOT3(const SO3& R, double scale) {
+  if (scale <= 0.0) {
+    throw std::invalid_argument("MakeSOT3: scale must be strictly positive");
+  }
+  return SOT3(R, Vector1::Constant(std::log(scale)));
+}
+
+Vector3 SOT3ApplyInverse(const SOT3& Q, const Vector3& p) {
+  return (1.0 / SOT3Scale(Q)) * (SOT3Rotation(Q).matrix().transpose() * p);
+}
+
 Pose3 APose(const VIOGroup& X) { return Pose3(X.A().rotation(), X.A().x(0)); }
 
 Vector3 AW(const VIOGroup& X) { return X.A().x(1); }
@@ -161,7 +176,8 @@ VIOState stateGroupAction(const VIOGroup& X, const VIOState& state) {
   out.cameraLandmarks.resize(state.n());
 
   for (size_t i = 0; i < state.n(); ++i) {
-    out.cameraLandmarks[i].p = X.Q()[i].applyInverse(state.cameraLandmarks[i].p);
+    out.cameraLandmarks[i].p =
+        SOT3ApplyInverse(X.Q()[i], state.cameraLandmarks[i].p);
     out.cameraLandmarks[i].id = state.cameraLandmarks[i].id;
   }
 
@@ -189,8 +205,7 @@ VisionMeasurement outputGroupAction(const VIOGroup& X,
     if (it == measurement.camCoordinates.end()) continue;
 
     const Vector3 bearing = measurement.camera->undistortPoint(it->second);
-    const Vector3 rotated =
-        X.Q()[i].rotation().matrix().transpose() * bearing;
+    const Vector3 rotated = SOT3Rotation(X.Q()[i]).matrix().transpose() * bearing;
     out.camCoordinates[id] = measurement.camera->projectPoint(rotated);
   }
 
@@ -265,7 +280,7 @@ VIOGroup liftVelocityDiscrete(const VIOState& state, const IMUVelocity& velocity
 
     const Rot3 R = RotationFromTwoVectors(lm1.p, lm0.p);
     const double a = lm0.p.norm() / lm1.p.norm();
-    q[i] = SOT3(SO3(R.matrix()), a);
+    q[i] = MakeSOT3(SO3(R.matrix()), a);
     ids[i] = lm1.id;
   }
 
@@ -358,7 +373,8 @@ VIOState VIOSymmetry::operator()(
     for (size_t i = 0; i < xi.n(); ++i) {
       const int row = VIOSensorState::CompDim + 3 * static_cast<int>(i);
       H_xi->block<3, 3>(row, row) =
-          (1.0 / X.Q()[i].scalar()) * X.Q()[i].rotation().matrix().transpose();
+          (1.0 / SOT3Scale(X.Q()[i])) *
+          SOT3Rotation(X.Q()[i]).matrix().transpose();
     }
   }
 
