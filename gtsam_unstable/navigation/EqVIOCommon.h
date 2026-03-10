@@ -105,6 +105,9 @@ struct GTSAM_UNSTABLE_EXPORT VisionMeasurement {
   /** Number of landmark measurements. */
   size_t n() const;
 
+  /** Ordered landmark ids matching camCoordinates map iteration order. */
+  std::vector<int> getIds() const;
+
   int dim() const;
 
   operator Vector() const;
