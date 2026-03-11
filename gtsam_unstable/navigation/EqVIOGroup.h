@@ -131,7 +131,9 @@ class GTSAM_UNSTABLE_EXPORT VIOGroup
   /** @name Group Operations */
   /** @{ */
 
+  /// Group composition with another VIOGroup.
   VIOGroup operator*(const VIOGroup& other) const;
+  /// Group inverse of this VIOGroup element.
   VIOGroup inverse() const;
 
   /** @} */
