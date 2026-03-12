@@ -31,16 +31,13 @@
 #include <gtsam/linear/LossFunctions.h>
 #include <gtsam/nonlinear/GncParams.h>
 #include <gtsam/nonlinear/NonlinearFactorGraph.h>
-#include <gtsam/nonlinear/internal/ChiSquaredInverse.h>
 
 namespace gtsam {
 /*
  * Quantile of chi-squared distribution with given degrees of freedom at probability alpha.
  * Equivalent to chi2inv in Matlab.
  */
-inline double Chi2inv(const double alpha, const size_t dofs) {
-  return internal::chiSquaredQuantile(dofs, alpha);
-}
+GTSAM_EXPORT double Chi2inv(const double alpha, const size_t dofs);
 
 /**
  * @enum Type

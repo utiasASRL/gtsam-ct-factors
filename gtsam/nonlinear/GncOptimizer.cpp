@@ -16,8 +16,14 @@
  */
 
 #include <gtsam/nonlinear/GncOptimizer.h>
+#include <gtsam/nonlinear/internal/ChiSquaredInverse.h>
 
 namespace gtsam {
+
+/* ************************************************************************* */
+double Chi2inv(const double alpha, const size_t dofs) {
+  return internal::chiSquaredQuantile(dofs, alpha);
+}
 
 /* ************************************************************************* */
 bool isNullType(Type type) { return type == Type::NullPointer; }
