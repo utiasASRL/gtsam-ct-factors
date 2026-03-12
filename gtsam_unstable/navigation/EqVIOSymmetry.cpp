@@ -25,7 +25,7 @@ namespace gtsam {
 
 namespace {
 
-double SOT3Scale(const SOT3& Q) { return std::exp(Q.second(0)); }
+double SOT3Scale(const SOT3& Q) { return std::exp(Q.second); }
 
 const SO3& SOT3Rotation(const SOT3& Q) { return Q.first; }
 
@@ -33,7 +33,7 @@ SOT3 MakeSOT3(const SO3& R, double scale) {
   if (scale <= 0.0) {
     throw std::invalid_argument("MakeSOT3: scale must be strictly positive");
   }
-  return SOT3(R, Vector1::Constant(std::log(scale)));
+  return SOT3(R, std::log(scale));
 }
 
 Vector3 SOT3ApplyInverse(const SOT3& Q, const Vector3& p) {

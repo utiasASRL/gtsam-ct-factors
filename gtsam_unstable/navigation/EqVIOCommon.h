@@ -35,7 +35,7 @@
 
 namespace gtsam {
 
-using SOT3 = ProductLieGroup<SO3, Vector1>;
+using SOT3 = ProductLieGroup<SO3, double>;
 
 using VIOSE23 = ExtendedPose3<2>;
 using VIOBias = Vector6;

@@ -107,7 +107,7 @@ namespace eqvio_test_util {
     for (size_t i = 0; i < ids.size(); ++i) {
       const double scale = 2.0 * static_cast<double>(rand()) / RAND_MAX + 1.0;
       Q[i] =
-          SOT3(SO3::Expmap(Vector3::Random()), Vector1::Constant(std::log(scale)));
+          SOT3(SO3::Expmap(Vector3::Random()), std::log(scale));
     }
   
     return makeVIOGroup(MakeA(Apose.rotation(), Apose.translation(), w), beta, B,
@@ -251,11 +251,11 @@ VIOGroup Group3() {
   const Point3 t(0.05, -0.02, 0.03);
   const Vector3 w(0.01, -0.03, 0.02);
   const SOT3 q1(SO3::Expmap((Vector3() << 0.03, -0.02, 0.01).finished()),
-                Vector1::Constant(std::log(1.1)));
+                std::log(1.1));
   const SOT3 q2(SO3::Expmap((Vector3() << -0.01, 0.04, -0.02).finished()),
-                Vector1::Constant(std::log(0.95)));
+                std::log(0.95));
   const SOT3 q3(SO3::Expmap((Vector3() << 0.02, 0.01, 0.03).finished()),
-                Vector1::Constant(std::log(1.05)));
+                std::log(1.05));
   return makeVIOGroup(
       MakeA(R, t, w),
       (Vector6() << 0.01, -0.01, 0.02, -0.02, 0.01, 0.0).finished(),
@@ -268,11 +268,11 @@ VIOGroup Group3b() {
   const Point3 t(-0.03, 0.04, -0.01);
   const Vector3 w(-0.02, 0.01, 0.03);
   const SOT3 q1(SO3::Expmap((Vector3() << -0.02, 0.01, 0.04).finished()),
-                Vector1::Constant(std::log(1.02)));
+                std::log(1.02));
   const SOT3 q2(SO3::Expmap((Vector3() << 0.02, -0.03, 0.01).finished()),
-                Vector1::Constant(std::log(0.98)));
+                std::log(0.98));
   const SOT3 q3(SO3::Expmap((Vector3() << 0.01, 0.02, -0.02).finished()),
-                Vector1::Constant(std::log(1.08)));
+                std::log(1.08));
   return makeVIOGroup(
       MakeA(R, t, w),
       (Vector6() << -0.02, 0.03, -0.01, 0.02, 0.01, -0.01).finished(),
