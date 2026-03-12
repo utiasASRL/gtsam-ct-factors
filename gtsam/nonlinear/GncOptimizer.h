@@ -54,21 +54,13 @@ enum class Type {
   NullPointer      ///< Factor pointer is null.
 };
 
-bool isNullType(Type type) {
-  return type == Type::NullPointer;
-}
+bool isNullType(Type type);
 
-bool isNonNoiseModelType(Type type) {
-  return type == Type::NonNoiseModel;
-}
+bool isNonNoiseModelType(Type type);
 
-bool needsWeightUpdate(Type type) {
-  return type == Type::Normal;
-}
+bool needsWeightUpdate(Type type);
 
-bool hasNoise(Type type) {
-  return type == Type::Normal || type == Type::Inlier || type == Type::Outlier;
-}
+bool hasNoise(Type type);
 
 /* ************************************************************************* */
 template<class GncParameters>
