@@ -52,7 +52,7 @@ TEST(GncOptimizer, Type) {
   CHECK(isNullType(null));
 
   Type nonNoiseModel = Type::NonNoiseModel;
-  CHECK(isNonNoiseModelType(normal));
+  CHECK(isNonNoiseModelType(nonNoiseModel));
 
   Type normal = Type::Normal;
   CHECK(needsWeightUpdate(normal));
