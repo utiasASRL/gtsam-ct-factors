@@ -47,6 +47,24 @@ using symbol_shorthand::X;
 static double tol = 1e-7;
 
 /* ************************************************************************* */
+TEST(GncOptimizer, Type) {
+  Type null = Type::NullPointer;
+  CHECK(isNullType(null));
+
+  Type nonNoiseModel = Type::NonNoiseModel;
+  CHECK(isNonNoiseModelType(normal));
+
+  Type normal = Type::Normal;
+  CHECK(needsWeightUpdate(normal));
+
+  Type inlier = Type::Inlier;
+  Type outlier = Type::Outlier;
+  CHECK(hasNoise(normal));
+  CHECK(hasNoise(inlier));
+  CHECK(hasNoise(outlier));
+}
+
+/* ************************************************************************* */
 TEST(GncOptimizer, gncParamsConstructor) {
   // check params are correctly parsed
   LevenbergMarquardtParams lmParams;
