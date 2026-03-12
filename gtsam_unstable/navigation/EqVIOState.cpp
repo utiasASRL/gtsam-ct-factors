@@ -9,10 +9,9 @@
 
  * -------------------------------------------------------------------------- */
 
-/**
- * @file    EqVIOState.cpp
- * @brief   Dynamic VIO manifold state implementation
- */
+/// @file EqVIOState.cpp
+/// @brief Dynamic EqVIO manifold state implementation.
+/// @author Rohan Bansal
 
 #include <gtsam_unstable/navigation/EqVIOState.h>
 

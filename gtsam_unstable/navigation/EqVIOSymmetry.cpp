@@ -9,10 +9,9 @@
 
  * -------------------------------------------------------------------------- */
 
-/**
- * @file    EqVIOSymmetry.cpp
- * @brief   VIO symmetry actions and lift helpers
- */
+/// @file EqVIOSymmetry.cpp
+/// @brief EqVIO symmetry actions and lift helpers.
+/// @author Rohan Bansal
 
 #include <gtsam_unstable/navigation/EqVIOSymmetry.h>
 

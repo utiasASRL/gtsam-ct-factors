@@ -12,6 +12,7 @@
 /**
  * @file   testEqVIOSymmetry.cpp
  * @brief  Unit tests for VIO symmetry actions and lift helpers
+ * @author Rohan Bansal
  */
 
 #include <CppUnitLite/TestHarness.h>

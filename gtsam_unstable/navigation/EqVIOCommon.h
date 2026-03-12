@@ -9,10 +9,9 @@
 
  * -------------------------------------------------------------------------- */
 
-/**
- * @file    EqVIOCommon.h
- * @brief   Common VIO math/data types for unstable navigation
- */
+/// @file EqVIOCommon.h
+/// @brief Common EqVIO math/data types for unstable navigation.
+/// @author Rohan Bansal
 
 #pragma once
 
@@ -44,13 +43,10 @@ using VIOSensorCore = ProductLieGroup<VIOSE23, VIOBias>;
 using VIOLandmarkCore = ProductLieGroup<Pose3, VIOLandmarkGroup>;
 using VIOGroup = ProductLieGroup<VIOSensorCore, VIOLandmarkCore>;
 
-/** Approximate gravitational acceleration magnitude in m/s^2. */
+/// Approximate gravitational acceleration magnitude in m/s^2.
 constexpr double GRAVITY_CONSTANT = 9.80665;
 
-/**
- * IMU reading bundle used by the VIO EqF machinery.
- * Contains gyro/accelerometer samples and optional bias velocities.
- */
+/// IMU reading bundle used by EqVIO.
 struct GTSAM_UNSTABLE_EXPORT IMUVelocity {
   static constexpr int CompDim = 12;
   using Vector12 = Eigen::Matrix<double, 12, 1>;
@@ -61,69 +57,44 @@ struct GTSAM_UNSTABLE_EXPORT IMUVelocity {
   Vector3 gyrBiasVel = Vector3::Zero();
   Vector3 accBiasVel = Vector3::Zero();
 
-  /** Return an IMUVelocity with all components zero and an invalid timestamp. */
+  /// Return a zero-initialized reading with invalid timestamp.
   static IMUVelocity Zero();
 
   IMUVelocity() = default;
 
-  /** Construct from a size-6 stacked vector of angular and linear components. */
+  /// Construct from stacked [gyr, acc].
   explicit IMUVelocity(const Vector6& vec);
 
-  /**
-   * Construct from a size-12 stacked vector containing IMU and bias-velocity
-   * components.
-   */
+  /// Construct from stacked [gyr, acc, gyrBiasVel, accBiasVel].
   explicit IMUVelocity(const Vector12& vec);
 
-  /** Add two IMUVelocity instances component-wise. */
+  /// Component-wise addition.
   IMUVelocity operator+(const IMUVelocity& other) const;
 
-  /**
-   * Subtract a size-6 stacked vector from the IMU angular and linear
-   * components.
-   */
+  /// Subtract stacked [gyr, acc].
   IMUVelocity operator-(const Vector6& vec) const;
 
-  /**
-   * Subtract a size-12 stacked vector from all IMU and bias-velocity
-   * components.
-   */
+  /// Subtract stacked [gyr, acc, gyrBiasVel, accBiasVel].
   IMUVelocity operator-(const Vector12& vec) const;
 
-  /** Scale all components of the IMUVelocity by a scalar factor. */
+  /// Scale all components.
   IMUVelocity operator*(double c) const;
 };
 
-/**
- * Abstract camera model interface required by VIO output/action math.
- */
+/// Camera model interface for EqVIO output/action math.
 class GTSAM_UNSTABLE_EXPORT VIOCameraModel {
  public:
   virtual ~VIOCameraModel() = default;
 
-  /**
-   * Project a camera-frame 3D point to image coordinates.
-   * @param p camera-frame point.
-   * @return image measurement.
-   */
+  /// Project a camera-frame 3D point to image coordinates.
   virtual Point2 projectPoint(const Point3& p) const = 0;
-  /**
-   * Convert image coordinates to an undistorted 3D bearing-like vector.
-   * @param y image measurement.
-   * @return undistorted vector (typically homogeneous bearing).
-   */
+  /// Convert image coordinates to an undistorted 3D bearing-like vector.
   virtual Vector3 undistortPoint(const Point2& y) const = 0;
-  /**
-   * Jacobian of projection with respect to the input 3D vector.
-   * @param y input 3D vector.
-   * @return 2x3 projection Jacobian.
-   */
+  /// Projection Jacobian with respect to the input 3D vector.
   virtual Matrix23 projectionJacobian(const Vector3& y) const = 0;
 };
 
-/**
- * Vision measurement keyed by landmark id.
- */
+/// Vision measurement keyed by landmark id.
 struct GTSAM_UNSTABLE_EXPORT VisionMeasurement {
   static constexpr int dimension = Eigen::Dynamic;
 
@@ -135,32 +106,20 @@ struct GTSAM_UNSTABLE_EXPORT VisionMeasurement {
   std::map<int, Point2> camCoordinates;
   std::shared_ptr<const VIOCameraModel> camera;
 
-  /** Number of landmark measurements. */
+  /// Number of landmark measurements.
   size_t n() const;
 
-  /** Ordered landmark ids matching camCoordinates map iteration order. */
+  /// Ordered landmark ids matching map iteration order.
   std::vector<int> getIds() const;
 
   int dim() const;
 
   operator Vector() const;
 
-  /**
-   * Retract in Euclidean chart.
-   * @param v tangent increment with size dim().
-   * @param H1 optional derivative wrt this measurement.
-   * @param H2 optional derivative wrt v.
-   * @return updated measurement.
-   */
+  /// Retract in Euclidean chart.
   VisionMeasurement retract(const TangentVector& v, ChartJacobian H1 = {},
                             ChartJacobian H2 = {}) const;
-  /**
-   * Local coordinates in Euclidean chart.
-   * @param other target measurement with aligned ids.
-   * @param H1 optional derivative wrt this measurement.
-   * @param H2 optional derivative wrt other.
-   * @return tangent vector from this to other.
-   */
+  /// Local coordinates in Euclidean chart.
   TangentVector localCoordinates(const VisionMeasurement& other,
                                  ChartJacobian H1 = {},
                                  ChartJacobian H2 = {}) const;
@@ -175,7 +134,7 @@ GTSAM_UNSTABLE_EXPORT VisionMeasurement operator-(
 GTSAM_UNSTABLE_EXPORT VisionMeasurement operator+(
     const VisionMeasurement& y, const Vector& eta);
 
-// Readable accessors for the composed ProductLieGroup VIOGroup.
+/// Readable accessors for the composed ProductLieGroup VIOGroup.
 inline const VIOSE23& groupA(const VIOGroup& X) { return X.first.first; }
 inline VIOSE23& groupA(VIOGroup& X) { return X.first.first; }
 

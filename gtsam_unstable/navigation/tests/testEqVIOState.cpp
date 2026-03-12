@@ -12,6 +12,7 @@
 /**
  * @file   testEqVIOState.cpp
  * @brief  Unit tests for VIOState manifold
+ * @author Rohan Bansal
  */
 
 #include <CppUnitLite/TestHarness.h>

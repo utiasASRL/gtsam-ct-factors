@@ -9,10 +9,10 @@
 
  * -------------------------------------------------------------------------- */
 
-/**
- * @file    EqVIOCommon.cpp
- * @brief   Common VIO math/data type implementations
- */
+/// @file EqVIOCommon.cpp
+/// @brief Common EqVIO math/data type implementations.
+/// @author Rohan Bansal
+
 
 #include <gtsam_unstable/navigation/EqVIOCommon.h>
 

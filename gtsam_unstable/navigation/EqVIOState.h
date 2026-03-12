@@ -9,10 +9,9 @@
 
  * -------------------------------------------------------------------------- */
 
-/**
- * @file    EqVIOState.h
- * @brief   Dynamic VIO manifold state for EqF foundations
- */
+/// @file EqVIOState.h
+/// @brief Dynamic EqVIO manifold state.
+/// @author Rohan Bansal
 
 #pragma once
 
@@ -46,20 +45,14 @@ struct GTSAM_UNSTABLE_EXPORT VIOSensorState {
   Vector3 velocity = Vector3::Zero();
   Pose3 cameraOffset = Pose3::Identity();
 
-  /**
-   * Unit gravity direction expressed in the body frame.
-   * @return body-frame gravity direction.
-   */
+  /// Unit gravity direction expressed in the body frame.
   Vector3 gravityDir() const;
 
   void print(const std::string& s = "") const;
   bool equals(const VIOSensorState& other, double tol = 1e-9) const;
 };
 
-/**
- * Dynamic VIO state manifold:
- *   xi = (sensor, landmarks_1..n), dim = 21 + 3n.
- */
+/// Dynamic VIO state manifold with dimension 21 + 3n.
 class GTSAM_UNSTABLE_EXPORT VIOState {
  public:
   static constexpr int dimension = Eigen::Dynamic;
@@ -71,36 +64,20 @@ class GTSAM_UNSTABLE_EXPORT VIOState {
   VIOSensorState sensor;
   std::vector<Landmark> cameraLandmarks;
 
-  /** Construct default-initialized state. */
+  /// Construct default-initialized state.
   VIOState() = default;
-  /**
-   * Construct from explicit sensor and landmark blocks.
-   * @param sensor_ sensor state block.
-   * @param lms ordered landmark list.
-   */
+  /// Construct from explicit sensor and landmark blocks.
   VIOState(const VIOSensorState& sensor_, const std::vector<Landmark>& lms);
 
-  /** Number of landmarks. */
+  /// Number of landmarks.
   size_t n() const;
   int dim() const;
   std::vector<int> ids() const;
 
-  /**
-   * Retract in the state chart.
-   * @param v tangent increment of size dim().
-   * @param H1 optional derivative wrt this state.
-   * @param H2 optional derivative wrt v.
-   * @return updated state.
-   */
+  /// Retract in the state chart.
   VIOState retract(const TangentVector& v, ChartJacobian H1 = {},
                    ChartJacobian H2 = {}) const;
-  /**
-   * Local coordinates in the state chart.
-   * @param other target state with matching landmark layout.
-   * @param H1 optional derivative wrt this state.
-   * @param H2 optional derivative wrt other.
-   * @return tangent vector from this to other.
-   */
+  /// Local coordinates in the state chart.
   TangentVector localCoordinates(const VIOState& other, ChartJacobian H1 = {},
                                  ChartJacobian H2 = {}) const;
 

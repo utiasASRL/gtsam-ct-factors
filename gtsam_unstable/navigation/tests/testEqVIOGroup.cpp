@@ -9,7 +9,9 @@
 
  * -------------------------------------------------------------------------- */
 
-/** @file testEqVIOGroup.cpp */
+/// @file testEqVIOGroup.cpp
+/// @brief Unit tests for EqVIOGroup.
+/// @author Rohan Bansal
 
 #include <CppUnitLite/TestHarness.h>
 #include <gtsam/base/TestableAssertions.h>
