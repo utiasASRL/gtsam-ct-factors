@@ -847,7 +847,7 @@ class LeggedInvariantEKF : gtsam::LeggedEstimator {
   size_t numFeet() const;
 };
 
-class LeggedInvariantIEKF : gtsam::LeggedEstimator {
+class LeggedInvariantIEKF : gtsam::LeggedInvariantEKF {
   LeggedInvariantIEKF(const gtsam::NavState& navState0,
                       const gtsam::Matrix& footholds0,
                       const gtsam::Matrix& P0,
