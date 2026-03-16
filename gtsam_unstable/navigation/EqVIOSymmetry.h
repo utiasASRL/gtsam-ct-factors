@@ -38,15 +38,15 @@ GTSAM_UNSTABLE_EXPORT VisionMeasurement outputGroupAction(
 
 /// Continuous-time lift map from IMU velocity to VIOGroup tangent.
 GTSAM_UNSTABLE_EXPORT Vector liftVelocity(const VIOState& state,
-                                          const IMUVelocity& velocity);
+                                          const IMUInput& velocity);
 /// Discrete-time lift map from IMU velocity to VIOGroup increment.
 GTSAM_UNSTABLE_EXPORT VIOGroup liftVelocityDiscrete(const VIOState& state,
-                                                    const IMUVelocity& velocity,
+                                                    const IMUInput& velocity,
                                                     double dt);
 
 /// Integrate system dynamics forward by dt.
 GTSAM_UNSTABLE_EXPORT VIOState integrateSystemFunction(
-    const VIOState& state, const IMUVelocity& velocity, double dt);
+    const VIOState& state, const IMUInput& velocity, double dt);
 /// Generate ideal camera measurements from state.
 GTSAM_UNSTABLE_EXPORT VisionMeasurement measureSystemState(
     const VIOState& state, const std::shared_ptr<const VIOCameraModel>& camera);

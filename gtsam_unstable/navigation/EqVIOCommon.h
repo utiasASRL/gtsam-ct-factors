@@ -52,8 +52,8 @@ using VIOGroup = ProductLieGroup<VIOSensorCore, VIOLandmarkCore>;
 /// Approximate gravitational acceleration magnitude in m/s^2.
 constexpr double GRAVITY_CONSTANT = 9.80665;
 
-/// IMU reading bundle used by EqVIO.
-struct GTSAM_UNSTABLE_EXPORT IMUVelocity {
+/// IMU input bundle used by EqVIO propagation.
+struct GTSAM_UNSTABLE_EXPORT IMUInput {
   static constexpr int CompDim = 12;
   using Vector12 = Eigen::Matrix<double, 12, 1>;
 
@@ -63,19 +63,19 @@ struct GTSAM_UNSTABLE_EXPORT IMUVelocity {
   Vector3 gyrBiasVel = Vector3::Zero();
   Vector3 accBiasVel = Vector3::Zero();
 
-  /// Return a zero-initialized reading with invalid timestamp.
-  static IMUVelocity Zero() { return IMUVelocity(); }
+  /// Return a zero-initialized input with invalid timestamp.
+  static IMUInput Zero() { return IMUInput(); }
 
-  IMUVelocity() = default;
+  IMUInput() = default;
 
   /// Construct from stacked [gyr, acc].
-  explicit IMUVelocity(const Vector6& vec) {
+  explicit IMUInput(const Vector6& vec) {
     gyr = vec.head<3>();
     acc = vec.tail<3>();
   }
 
   /// Construct from stacked [gyr, acc, gyrBiasVel, accBiasVel].
-  explicit IMUVelocity(const Vector12& vec) {
+  explicit IMUInput(const Vector12& vec) {
     gyr = vec.segment<3>(0);
     acc = vec.segment<3>(3);
     gyrBiasVel = vec.segment<3>(6);
@@ -83,8 +83,8 @@ struct GTSAM_UNSTABLE_EXPORT IMUVelocity {
   }
 
   /// Component-wise addition.
-  IMUVelocity operator+(const IMUVelocity& other) const {
-    IMUVelocity out;
+  IMUInput operator+(const IMUInput& other) const {
+    IMUInput out;
     out.stamp = stamp >= 0.0 ? stamp : other.stamp;
     out.gyr = gyr + other.gyr;
     out.acc = acc + other.acc;
@@ -94,16 +94,16 @@ struct GTSAM_UNSTABLE_EXPORT IMUVelocity {
   }
 
   /// Subtract stacked [gyr, acc].
-  IMUVelocity operator-(const Vector6& vec) const {
-    IMUVelocity out(*this);
+  IMUInput operator-(const Vector6& vec) const {
+    IMUInput out(*this);
     out.gyr -= vec.head<3>();
     out.acc -= vec.tail<3>();
     return out;
   }
 
   /// Subtract stacked [gyr, acc, gyrBiasVel, accBiasVel].
-  IMUVelocity operator-(const Vector12& vec) const {
-    IMUVelocity out(*this);
+  IMUInput operator-(const Vector12& vec) const {
+    IMUInput out(*this);
     out.gyr -= vec.segment<3>(0);
     out.acc -= vec.segment<3>(3);
     out.gyrBiasVel -= vec.segment<3>(6);
@@ -112,16 +112,16 @@ struct GTSAM_UNSTABLE_EXPORT IMUVelocity {
   }
 
   /// Subtract a ConstantBias from [gyr, acc].
-  IMUVelocity operator-(const VIOBias& bias) const {
-    IMUVelocity out(*this);
+  IMUInput operator-(const VIOBias& bias) const {
+    IMUInput out(*this);
     out.gyr -= bias.gyroscope();
     out.acc -= bias.accelerometer();
     return out;
   }
 
   /// Scale all components.
-  IMUVelocity operator*(double c) const {
-    IMUVelocity out(*this);
+  IMUInput operator*(double c) const {
+    IMUInput out(*this);
     out.gyr *= c;
     out.acc *= c;
     out.gyrBiasVel *= c;

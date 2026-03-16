@@ -154,12 +154,12 @@ VisionMeasurement outputGroupAction(const VIOGroup& X,
   return out;
 }
 
-Vector liftVelocity(const VIOState& state, const IMUVelocity& velocity) {
+Vector liftVelocity(const VIOState& state, const IMUInput& velocity) {
   const size_t N = state.n();
   Vector lift = Vector::Zero(21 + 4 * static_cast<int>(N));
 
   const VIOSensorState& sensor = state.sensor;
-  const IMUVelocity v_est = velocity - sensor.inputBias;
+  const IMUInput v_est = velocity - sensor.inputBias;
 
   Vector6 U_A;
   U_A << v_est.gyr, sensor.velocity;
@@ -186,10 +186,10 @@ Vector liftVelocity(const VIOState& state, const IMUVelocity& velocity) {
   return lift;
 }
 
-VIOGroup liftVelocityDiscrete(const VIOState& state, const IMUVelocity& velocity,
+VIOGroup liftVelocityDiscrete(const VIOState& state, const IMUInput& velocity,
                               double dt) {
   const VIOSensorState& sensor = state.sensor;
-  const IMUVelocity v_est = velocity - sensor.inputBias;
+  const IMUInput v_est = velocity - sensor.inputBias;
 
   const Rot3 dR = Rot3::Expmap(dt * v_est.gyr);
   const Vector3 dXWorld =
@@ -228,11 +228,11 @@ VIOGroup liftVelocityDiscrete(const VIOState& state, const IMUVelocity& velocity
   return makeVIOGroup(A, beta, B, Q);
 }
 
-VIOState integrateSystemFunction(const VIOState& state, const IMUVelocity& velocity,
+VIOState integrateSystemFunction(const VIOState& state, const IMUInput& velocity,
                                  double dt) {
   VIOState out;
   const VIOSensorState& sensor = state.sensor;
-  const IMUVelocity v_est = velocity - sensor.inputBias;
+  const IMUInput v_est = velocity - sensor.inputBias;
 
   out.sensor.inputBias = VIOBias(
       sensor.inputBias.accelerometer() + dt * velocity.accBiasVel,

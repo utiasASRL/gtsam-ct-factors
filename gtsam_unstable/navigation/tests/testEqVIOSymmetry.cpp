@@ -84,8 +84,8 @@ namespace eqvio_test_util {
                         VIOLandmarkGroup(Q));
   }
   
-  inline IMUVelocity RandomVelocityElement() {
-    IMUVelocity vel;
+  inline IMUInput RandomVelocityElement() {
+    IMUInput vel;
     vel.gyr = Vector3::Random();
     vel.acc = Vector3::Random();
     vel.gyrBiasVel = Vector3::Random();
@@ -396,7 +396,7 @@ TEST(VIOSymmetry, OutputEquivarianceEqvioPort) {
 // Verifies discrete lift update matches direct integration.
 TEST(VIOSymmetry, LiftAndIntegrationSanity) {
   const VIOState xi = State3();
-  IMUVelocity imu;
+  IMUInput imu;
   imu.gyr = Vector3(0.03, -0.02, 0.01);
   imu.acc = Vector3(0.2, -0.1, 9.75);
   imu.gyrBiasVel = Vector3(0.01, 0.0, -0.02);
