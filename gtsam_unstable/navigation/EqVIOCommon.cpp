@@ -20,6 +20,7 @@
 #include <stdexcept>
 
 namespace gtsam {
+namespace eqvio {
 
 
 IMUVelocity IMUVelocity::Zero() { return IMUVelocity(); }
@@ -59,6 +60,13 @@ IMUVelocity IMUVelocity::operator-(const Vector12& vec) const {
   out.acc -= vec.segment<3>(3);
   out.gyrBiasVel -= vec.segment<3>(6);
   out.accBiasVel -= vec.segment<3>(9);
+  return out;
+}
+
+IMUVelocity IMUVelocity::operator-(const VIOBias& bias) const {
+  IMUVelocity out(*this);
+  out.gyr -= bias.gyroscope();
+  out.acc -= bias.accelerometer();
   return out;
 }
 
@@ -175,4 +183,5 @@ VisionMeasurement operator+(const VisionMeasurement& y, const Vector& eta) {
   return y.retract(eta);
 }
 
+}  // namespace eqvio
 }  // namespace gtsam

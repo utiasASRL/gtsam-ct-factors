@@ -23,6 +23,7 @@
 #include <gtsam_unstable/dllexport.h>
 
 namespace gtsam {
+namespace eqvio {
 
 /// Right group action on the sensor-only block.
 GTSAM_UNSTABLE_EXPORT VIOSensorState sensorStateGroupAction(
@@ -73,4 +74,5 @@ struct GTSAM_UNSTABLE_EXPORT VIOOutputSymmetry
       OptionalJacobian<Eigen::Dynamic, Eigen::Dynamic> H_X = {}) const;
 };
 
+}  // namespace eqvio
 }  // namespace gtsam

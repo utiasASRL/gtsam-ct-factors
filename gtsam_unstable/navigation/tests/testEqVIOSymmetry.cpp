@@ -36,6 +36,7 @@
 #include <limits>
 
 using namespace gtsam;
+using namespace gtsam::eqvio;
 
 namespace eqvio_test_util {
 
@@ -84,7 +85,7 @@ namespace eqvio_test_util {
   
   inline VIOState RandomStateElement(const std::vector<int>& ids) {
     VIOSensorState sensor;
-    sensor.inputBias = Vector6::Random();
+    sensor.inputBias = VIOBias(Vector3::Random(), Vector3::Random());
     sensor.pose = Pose3::Expmap(Vector6::Random());
     sensor.velocity = Vector3::Random();
     sensor.cameraOffset = Pose3::Expmap(Vector6::Random());
@@ -102,7 +103,7 @@ namespace eqvio_test_util {
     const Pose3 Apose = Pose3::Expmap(Vector6::Random());
     const Vector3 w = Vector3::Random();
     const Pose3 B = Pose3::Expmap(Vector6::Random());
-    const Vector6 beta = Vector6::Random();
+    const VIOBias beta(Vector3::Random(), Vector3::Random());
   
     std::vector<SOT3> Q(ids.size());
     for (size_t i = 0; i < ids.size(); ++i) {
@@ -154,7 +155,7 @@ namespace eqvio_test_util {
     }
   
     double dist = 0.0;
-    dist += (xi1.sensor.inputBias - xi2.sensor.inputBias).norm();
+    dist += xi1.sensor.inputBias.localCoordinates(xi2.sensor.inputBias).norm();
     dist += xi1.sensor.pose.localCoordinates(xi2.sensor.pose).norm();
     dist += xi1.sensor.cameraOffset.localCoordinates(xi2.sensor.cameraOffset).norm();
     dist += (xi1.sensor.velocity - xi2.sensor.velocity).norm();
@@ -225,7 +226,7 @@ std::vector<Landmark> Lms3() {
 
 VIOSensorState SensorA() {
   VIOSensorState s;
-  s.inputBias = (Vector6() << 0.05, -0.04, 0.03, 0.01, -0.02, 0.04).finished();
+  s.inputBias = VIOBias(Vector3(0.01, -0.02, 0.04), Vector3(0.05, -0.04, 0.03));
   s.pose = Pose3(Rot3::RzRyRx(0.1, -0.2, 0.25), Point3(0.4, -0.1, 1.0));
   s.velocity = Vector3(0.3, -0.2, 0.1);
   s.cameraOffset =
@@ -242,7 +243,7 @@ VIOGroup Group0() {
   const Vector3 w(0.01, -0.03, 0.02);
   return makeVIOGroup(
       MakeA(R, t, w),
-      (Vector6() << 0.01, -0.01, 0.02, -0.02, 0.01, 0.0).finished(),
+      VIOBias(Vector3(-0.02, 0.01, 0.0), Vector3(0.01, -0.01, 0.02)),
       Pose3(Rot3::RzRyRx(-0.02, 0.01, 0.03), Point3(0.02, 0.0, -0.01)),
       VIOLandmarkGroup(0));
 }
@@ -259,7 +260,7 @@ VIOGroup Group3() {
                 std::log(1.05));
   return makeVIOGroup(
       MakeA(R, t, w),
-      (Vector6() << 0.01, -0.01, 0.02, -0.02, 0.01, 0.0).finished(),
+      VIOBias(Vector3(-0.02, 0.01, 0.0), Vector3(0.01, -0.01, 0.02)),
       Pose3(Rot3::RzRyRx(-0.02, 0.01, 0.03), Point3(0.02, 0.0, -0.01)),
       VIOLandmarkGroup({q1, q2, q3}));
 }
@@ -276,7 +277,7 @@ VIOGroup Group3b() {
                 std::log(1.08));
   return makeVIOGroup(
       MakeA(R, t, w),
-      (Vector6() << -0.02, 0.03, -0.01, 0.02, 0.01, -0.01).finished(),
+      VIOBias(Vector3(0.02, 0.01, -0.01), Vector3(-0.02, 0.03, -0.01)),
       Pose3(Rot3::RzRyRx(0.01, -0.02, 0.04), Point3(-0.01, 0.03, 0.02)),
       VIOLandmarkGroup({q1, q2, q3}));
 }
@@ -316,6 +317,7 @@ Matrix NumericalDerivativeWrtState(const VIOSymmetry& phi, const VIOGroup& X,
 }  // namespace
 
 //******************************************************************************
+// Verifies the right-action law for VIOSymmetry.
 TEST(VIOSymmetry, RightActionLaw) {
   const VIOSymmetry phi;
   const VIOState xi = State3();
@@ -325,6 +327,7 @@ TEST(VIOSymmetry, RightActionLaw) {
 }
 
 //******************************************************************************
+// Verifies action Jacobians against numerical derivatives for n=0.
 TEST(VIOSymmetry, JacobiansN0) {
   const VIOSymmetry phi;
   const VIOGroup X = Group0();
@@ -340,6 +343,7 @@ TEST(VIOSymmetry, JacobiansN0) {
 }
 
 //******************************************************************************
+// Verifies action Jacobians against numerical derivatives for n=3.
 TEST(VIOSymmetry, JacobiansN3) {
   const VIOSymmetry phi;
   const VIOGroup X = Group3();
@@ -355,6 +359,7 @@ TEST(VIOSymmetry, JacobiansN3) {
 }
 
 //******************************************************************************
+// Verifies eqvio-ported state action identity and composition checks.
 TEST(VIOSymmetry, StateActionEqvioPort) {
   srand(0);
   const std::vector<int> ids = {0, 1, 2, 3, 4};
@@ -377,6 +382,7 @@ TEST(VIOSymmetry, StateActionEqvioPort) {
 }
 
 //******************************************************************************
+// Verifies eqvio-ported output action identity and composition checks.
 TEST(VIOSymmetry, OutputActionEqvioPort) {
   srand(0);
   const std::vector<int> ids = {0, 1, 2, 3, 4};
@@ -400,6 +406,7 @@ TEST(VIOSymmetry, OutputActionEqvioPort) {
 }
 
 //******************************************************************************
+// Verifies measurement equivariance under group action.
 TEST(VIOSymmetry, OutputEquivarianceEqvioPort) {
   srand(0);
   const std::vector<int> ids = {0, 1, 2, 3, 4, 5};
@@ -419,6 +426,7 @@ TEST(VIOSymmetry, OutputEquivarianceEqvioPort) {
 }
 
 //******************************************************************************
+// Verifies discrete lift update matches direct integration.
 TEST(VIOSymmetry, LiftAndIntegrationSanity) {
   const VIOState xi = State3();
   IMUVelocity imu;

@@ -21,6 +21,7 @@
 #include <string>
 
 namespace gtsam {
+namespace eqvio {
 
 namespace {
 
@@ -209,7 +210,7 @@ Vector liftVelocity(const VIOState& state, const IMUVelocity& velocity) {
 
   lift.segment<6>(0) = U_A;
   lift.segment<3>(6) = u_w;
-  lift.segment<6>(9) << velocity.gyrBiasVel, velocity.accBiasVel;
+  lift.segment<6>(9) << velocity.accBiasVel, velocity.gyrBiasVel;
   lift.segment<6>(15) = U_B;
 
   const Vector6 U_C = sensor.cameraOffset.inverse().AdjointMap() * U_A;
@@ -264,8 +265,7 @@ VIOGroup liftVelocityDiscrete(const VIOState& state, const IMUVelocity& velocity
   }
 
   VIOLandmarkGroup Q(q);
-  const Vector6 beta =
-      dt * (Vector6() << velocity.gyrBiasVel, velocity.accBiasVel).finished();
+  const VIOBias beta(dt * velocity.accBiasVel, dt * velocity.gyrBiasVel);
   const VIOSE23 A = MakeA(A_pose.rotation(), A_pose.translation(), w);
   return makeVIOGroup(A, beta, B, Q);
 }
@@ -276,10 +276,9 @@ VIOState integrateSystemFunction(const VIOState& state, const IMUVelocity& veloc
   const VIOSensorState& sensor = state.sensor;
   const IMUVelocity v_est = velocity - sensor.inputBias;
 
-  out.sensor.inputBias.head<3>() =
-      sensor.inputBias.head<3>() + dt * velocity.gyrBiasVel;
-  out.sensor.inputBias.tail<3>() =
-      sensor.inputBias.tail<3>() + dt * velocity.accBiasVel;
+  out.sensor.inputBias = VIOBias(
+      sensor.inputBias.accelerometer() + dt * velocity.accBiasVel,
+      sensor.inputBias.gyroscope() + dt * velocity.gyrBiasVel);
 
   const Rot3 dR = Rot3::Expmap(dt * v_est.gyr);
   const Vector3 dXWorld =
@@ -386,4 +385,5 @@ VisionMeasurement VIOOutputSymmetry::operator()(
   return out;
 }
 
+}  // namespace eqvio
 }  // namespace gtsam

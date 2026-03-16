@@ -24,6 +24,7 @@
 #include <vector>
 
 using namespace gtsam;
+using namespace gtsam::eqvio;
 
 namespace {
 
@@ -60,7 +61,7 @@ void testChartDerivativesN(TestResult& result_, const std::string& name_,
 
 VIOSensorState MakeSensor1() {
   VIOSensorState s;
-  s.inputBias = (Vector6() << 0.1, -0.2, 0.05, 0.03, -0.01, 0.02).finished();
+  s.inputBias = VIOBias(Vector3(0.03, -0.01, 0.02), Vector3(0.1, -0.2, 0.05));
   s.pose = Pose3(Rot3::RzRyRx(0.2, -0.1, 0.15), Point3(0.4, -0.2, 1.0));
   s.velocity = Vector3(0.5, -0.3, 0.2);
   s.cameraOffset =
@@ -70,7 +71,8 @@ VIOSensorState MakeSensor1() {
 
 VIOSensorState MakeSensor2() {
   VIOSensorState s;
-  s.inputBias = (Vector6() << -0.04, 0.07, -0.03, 0.02, 0.05, -0.06).finished();
+  s.inputBias =
+      VIOBias(Vector3(0.02, 0.05, -0.06), Vector3(-0.04, 0.07, -0.03));
   s.pose = Pose3(Rot3::RzRyRx(-0.1, 0.2, -0.25), Point3(-0.3, 0.5, 0.8));
   s.velocity = Vector3(-0.2, 0.4, -0.1);
   s.cameraOffset =
@@ -106,12 +108,14 @@ VIOState MakeState3B() { return VIOState(MakeSensor2(), Lms3B()); }
 }  // namespace
 
 //******************************************************************************
+// Verifies VIOState satisfies manifold and testable concept checks.
 TEST(VIOState, Concept) {
   GTSAM_CONCEPT_ASSERT(IsManifold<VIOState>);
   GTSAM_CONCEPT_ASSERT(IsTestable<VIOState>);
 }
 
 //******************************************************************************
+// Verifies dynamic dimensions and landmark id accessors.
 TEST(VIOState, DimensionsAndAccessors) {
   const VIOState s0 = MakeState0A();
   const VIOState s1 = MakeState1A();
@@ -130,6 +134,7 @@ TEST(VIOState, DimensionsAndAccessors) {
 }
 
 //******************************************************************************
+// Verifies localCoordinates/retract round-trip consistency.
 TEST(VIOState, RetractLocalRoundTrip) {
   const VIOState s3a = MakeState3A();
   const VIOState s3b = MakeState3B();
@@ -140,16 +145,19 @@ TEST(VIOState, RetractLocalRoundTrip) {
 }
 
 //******************************************************************************
+// Verifies chart Jacobians for n=0 landmarks.
 TEST(VIOState, DerivativesN0) {
   testChartDerivativesN<21>(result_, name_, MakeState0A(), MakeState0B());
 }
 
 //******************************************************************************
+// Verifies chart Jacobians for n=1 landmark.
 TEST(VIOState, DerivativesN1) {
   testChartDerivativesN<24>(result_, name_, MakeState1A(), MakeState1B());
 }
 
 //******************************************************************************
+// Verifies chart Jacobians for n=3 landmarks.
 TEST(VIOState, DerivativesN3) {
   testChartDerivativesN<30>(result_, name_, MakeState3A(), MakeState3B());
 }

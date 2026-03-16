@@ -22,6 +22,7 @@
 #include <vector>
 
 using namespace gtsam;
+using namespace gtsam::eqvio;
 
 namespace {
 
@@ -101,10 +102,8 @@ const SE23::Matrix3K kX2 =
 const SE23 kA1(kR1, kX1);
 const SE23 kA2(kR2, kX2);
 
-const Vector6 kBeta1 =
-    (Vector6() << 0.1, -0.2, 0.3, -0.4, 0.2, 0.05).finished();
-const Vector6 kBeta2 =
-    (Vector6() << -0.05, 0.3, -0.1, 0.2, -0.15, 0.07).finished();
+const VIOBias kBeta1(Vector3(-0.4, 0.2, 0.05), Vector3(0.1, -0.2, 0.3));
+const VIOBias kBeta2(Vector3(0.2, -0.15, 0.07), Vector3(-0.05, 0.3, -0.1));
 
 const Pose3 kB1(kR3, Point3(0.2, -0.5, 1.1));
 const Pose3 kB2(kR4, Point3(-0.6, 0.7, 0.3));
@@ -157,6 +156,7 @@ Vector Xi3() {
 
 }  // namespace
 
+// Verifies VIOGroup satisfies the required concept checks.
 TEST(VIOGroup, Concept) {
   GTSAM_CONCEPT_ASSERT(IsGroup<VIOGroup>);
   GTSAM_CONCEPT_ASSERT(IsManifold<VIOGroup>);
@@ -164,6 +164,7 @@ TEST(VIOGroup, Concept) {
   GTSAM_CONCEPT_ASSERT(IsTestable<VIOGroup>);
 }
 
+// Verifies identity sizing and factor accessors.
 TEST(VIOGroup, ConstructorsAndAccessors) {
   const VIOGroup empty = makeVIOGroupIdentity();
   EXPECT_LONGS_EQUAL(0, groupN(empty));
@@ -175,19 +176,20 @@ TEST(VIOGroup, ConstructorsAndAccessors) {
 
   const VIOGroup g = MakeG3();
   EXPECT(assert_equal(kA1, groupA(g)));
-  EXPECT(assert_equal(Vector(kBeta1), Vector(groupBeta(g))));
+  EXPECT(assert_equal(kBeta1.vector(), groupBeta(g).vector()));
   EXPECT(assert_equal(kB1, groupB(g)));
   EXPECT(assert_equal(MakeQ3A(), groupQ(g)));
 }
 
+// Verifies compose, between, and inverse behavior.
 TEST(VIOGroup, GroupOperations) {
   const VIOGroup g1 = MakeG3();
   const VIOGroup g2 = MakeG3b();
   const VIOGroup composed = g1.compose(g2);
 
   EXPECT(assert_equal(groupA(g1).compose(groupA(g2)), groupA(composed)));
-  EXPECT(assert_equal(Vector(groupBeta(g1) + groupBeta(g2)),
-                      Vector(groupBeta(composed))));
+  EXPECT(assert_equal((groupBeta(g1) + groupBeta(g2)).vector(),
+                      groupBeta(composed).vector()));
   EXPECT(assert_equal(groupB(g1).compose(groupB(g2)), groupB(composed)));
   EXPECT(assert_equal(groupQ(g1).compose(groupQ(g2)), groupQ(composed)));
 
@@ -196,6 +198,7 @@ TEST(VIOGroup, GroupOperations) {
   EXPECT(assert_equal(makeVIOGroupIdentity(3), g1.compose(g1.inverse())));
 }
 
+// Verifies Expmap/Logmap round-trip and adjoint consistency.
 TEST(VIOGroup, ExpmapLogmapAndAdjoint) {
   const Vector xi0 = Xi0();
   const Vector xi1 = Xi1();
@@ -214,6 +217,7 @@ TEST(VIOGroup, ExpmapLogmapAndAdjoint) {
   EXPECT(assert_equal(core.AdjointMap(), g3.AdjointMap(), 1e-9));
 }
 
+// Verifies Lie and chart derivatives for n=0 landmarks.
 TEST(VIOGroup, DerivativesN0) {
   const VIOGroup id = makeVIOGroupIdentity();
   const VIOGroup g = MakeG0();
@@ -225,6 +229,7 @@ TEST(VIOGroup, DerivativesN0) {
   testChartDerivativesN<21>(result_, name_, g, h);
 }
 
+// Verifies Lie and chart derivatives for n=1 landmark.
 TEST(VIOGroup, DerivativesN1) {
   const VIOGroup id = makeVIOGroupIdentity(1);
   const VIOGroup g = MakeG1();
@@ -236,6 +241,7 @@ TEST(VIOGroup, DerivativesN1) {
   testChartDerivativesN<25>(result_, name_, g, h);
 }
 
+// Verifies Lie and chart derivatives for n=3 landmarks.
 TEST(VIOGroup, DerivativesN3) {
   const VIOGroup id = makeVIOGroupIdentity(3);
   const VIOGroup g = MakeG3();

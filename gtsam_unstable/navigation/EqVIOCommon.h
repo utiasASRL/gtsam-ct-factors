@@ -26,6 +26,7 @@
 #include <gtsam/geometry/ExtendedPose3.h>
 #include <gtsam/geometry/Pose3.h>
 #include <gtsam/geometry/SO3.h>
+#include <gtsam/navigation/ImuBias.h>
 
 #include <map>
 #include <memory>
@@ -33,11 +34,12 @@
 #include <vector>
 
 namespace gtsam {
+namespace eqvio {
 
 using SOT3 = ProductLieGroup<SO3, double>;
 
 using VIOSE23 = ExtendedPose3<2>;
-using VIOBias = Vector6;
+using VIOBias = imuBias::ConstantBias;
 using VIOLandmarkGroup = PowerLieGroup<SOT3, Eigen::Dynamic>;
 using VIOSensorCore = ProductLieGroup<VIOSE23, VIOBias>;
 using VIOLandmarkCore = ProductLieGroup<Pose3, VIOLandmarkGroup>;
@@ -76,6 +78,9 @@ struct GTSAM_UNSTABLE_EXPORT IMUVelocity {
 
   /// Subtract stacked [gyr, acc, gyrBiasVel, accBiasVel].
   IMUVelocity operator-(const Vector12& vec) const;
+
+  /// Subtract a ConstantBias from [gyr, acc].
+  IMUVelocity operator-(const VIOBias& bias) const;
 
   /// Scale all components.
   IMUVelocity operator*(double c) const;
@@ -136,66 +141,66 @@ GTSAM_UNSTABLE_EXPORT VisionMeasurement operator+(
 
 /// Readable accessors for the composed ProductLieGroup VIOGroup.
 inline const VIOSE23& groupA(const VIOGroup& X) { return X.first.first; }
-inline VIOSE23& groupA(VIOGroup& X) { return X.first.first; }
 
-inline const Vector6& groupBeta(const VIOGroup& X) { return X.first.second; }
-inline Vector6& groupBeta(VIOGroup& X) { return X.first.second; }
+inline const VIOBias& groupBeta(const VIOGroup& X) { return X.first.second; }
 
 inline const Pose3& groupB(const VIOGroup& X) { return X.second.first; }
-inline Pose3& groupB(VIOGroup& X) { return X.second.first; }
 
 inline const VIOLandmarkGroup& groupQ(const VIOGroup& X) {
   return X.second.second;
 }
-inline VIOLandmarkGroup& groupQ(VIOGroup& X) { return X.second.second; }
 
 inline size_t groupN(const VIOGroup& X) { return groupQ(X).size(); }
 inline size_t groupDim(const VIOGroup& X) { return 21 + 4 * groupN(X); }
 
-inline VIOGroup makeVIOGroup(const VIOSE23& A, const Vector6& beta,
+inline VIOGroup makeVIOGroup(const VIOSE23& A, const VIOBias& beta,
                              const Pose3& B, const VIOLandmarkGroup& Q) {
   return VIOGroup(VIOSensorCore(A, beta), VIOLandmarkCore(B, Q));
 }
 
 inline VIOGroup makeVIOGroupIdentity(size_t n = 0) {
-  return makeVIOGroup(VIOSE23::Identity(), Vector6::Zero(), Pose3::Identity(),
+  return makeVIOGroup(VIOSE23::Identity(), VIOBias::Identity(), Pose3::Identity(),
                       VIOLandmarkGroup(n));
 }
 
+}  // namespace eqvio
+
 template <>
-struct traits<VisionMeasurement> {
+struct traits<eqvio::VisionMeasurement> {
   static constexpr int dimension = Eigen::Dynamic;
   using TangentVector = Vector;
-  using ManifoldType = VisionMeasurement;
+  using ManifoldType = eqvio::VisionMeasurement;
   using structure_category = manifold_tag;
 
-  static int GetDimension(const VisionMeasurement& y) { return y.dim(); }
+  static int GetDimension(const eqvio::VisionMeasurement& y) { return y.dim(); }
 
-  static VisionMeasurement Retract(
-      const VisionMeasurement& y, const TangentVector& v,
+  static eqvio::VisionMeasurement Retract(
+      const eqvio::VisionMeasurement& y, const TangentVector& v,
       OptionalJacobian<Eigen::Dynamic, Eigen::Dynamic> H1 = {},
       OptionalJacobian<Eigen::Dynamic, Eigen::Dynamic> H2 = {}) {
     return y.retract(v, H1, H2);
   }
 
   static TangentVector Local(
-      const VisionMeasurement& y, const VisionMeasurement& other,
+      const eqvio::VisionMeasurement& y, const eqvio::VisionMeasurement& other,
       OptionalJacobian<Eigen::Dynamic, Eigen::Dynamic> H1 = {},
       OptionalJacobian<Eigen::Dynamic, Eigen::Dynamic> H2 = {}) {
     return y.localCoordinates(other, H1, H2);
   }
 
-  static void Print(const VisionMeasurement& y, const std::string& s = "") {
+  static void Print(const eqvio::VisionMeasurement& y,
+                    const std::string& s = "") {
     y.print(s);
   }
 
-  static bool Equals(const VisionMeasurement& y1, const VisionMeasurement& y2,
-                     double tol = 1e-9) {
+  static bool Equals(const eqvio::VisionMeasurement& y1,
+                     const eqvio::VisionMeasurement& y2, double tol = 1e-9) {
     return y1.equals(y2, tol);
   }
 };
 
 template <>
-struct traits<const VisionMeasurement> : traits<VisionMeasurement> {};
+struct traits<const eqvio::VisionMeasurement>
+    : traits<eqvio::VisionMeasurement> {};
 
 }  // namespace gtsam
