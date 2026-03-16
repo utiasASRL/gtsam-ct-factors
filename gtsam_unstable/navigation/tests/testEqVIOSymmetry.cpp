@@ -251,9 +251,9 @@ VIOGroup Group3b() {
 Matrix NumericalDerivativeWrtGroup(const VIOSymmetry& phi, const VIOGroup& X,
                                    const VIOState& xi, const VIOState& y0,
                                    double h = 1e-6) {
-  Matrix H = Matrix::Zero(y0.dim(), static_cast<int>(groupDim(X)));
-  for (int j = 0; j < static_cast<int>(groupDim(X)); ++j) {
-    Vector dx = Vector::Zero(static_cast<int>(groupDim(X)));
+  Matrix H = Matrix::Zero(y0.dim(), static_cast<int>(Dim_groupTangent(X)));
+  for (int j = 0; j < static_cast<int>(Dim_groupTangent(X)); ++j) {
+    Vector dx = Vector::Zero(static_cast<int>(Dim_groupTangent(X)));
     dx(j) = h;
     const VIOState yPlus = phi(xi, X.retract(dx));
     dx(j) = -h;

@@ -42,10 +42,10 @@ Vector3 SOT3ApplyInverse(const SOT3& Q, const Vector3& p) {
 }
 
 Pose3 APose(const VIOGroup& X) {
-  return Pose3(groupA(X).rotation(), groupA(X).x(0));
+  return Pose3(A_sensorKinematics(X).rotation(), A_sensorKinematics(X).x(0));
 }
 
-Vector3 AW(const VIOGroup& X) { return groupA(X).x(1); }
+Vector3 AW(const VIOGroup& X) { return A_sensorKinematics(X).x(1); }
 
 VIOSE23 MakeA(const Rot3& R, const Point3& x0, const Vector3& w) {
   VIOSE23::Matrix3K x;
@@ -62,8 +62,8 @@ Rot3 RotationFromTwoVectors(const Vector3& from, const Vector3& to) {
 
 std::vector<int> QIdsForMeasurement(const VIOGroup& X,
                                     const VisionMeasurement& measurement) {
-  if (groupN(X) == 0) return {};
-  if (measurement.size() != groupN(X)) {
+  if (N_landmarkCount(X) == 0) return {};
+  if (measurement.size() != N_landmarkCount(X)) {
     throw std::invalid_argument(
         "outputGroupAction: measurement count must match group landmark count");
   }
@@ -73,7 +73,7 @@ std::vector<int> QIdsForMeasurement(const VIOGroup& X,
 Matrix NumericalDerivativeActionWrtGroup(
     const std::function<VIOState(const VIOGroup&)>& f, const VIOGroup& X,
     const VIOState& y0, double h = 1e-6) {
-  const int n = static_cast<int>(groupDim(X));
+  const int n = static_cast<int>(Dim_groupTangent(X));
   const int m = y0.dim();
   Matrix H = Matrix::Zero(m, n);
 
@@ -99,27 +99,27 @@ VIOSensorState sensorStateGroupAction(const VIOGroup& X,
   const Vector3 w = AW(X);
 
   VIOSensorState out;
-  out.inputBias = sensor.inputBias + groupBeta(X);
+  out.inputBias = sensor.inputBias + Beta_biasOffset(X);
   out.pose = sensor.pose.compose(A);
   out.velocity = A.rotation().unrotate(sensor.velocity - w);
   out.cameraOffset =
-      A.inverse().compose(sensor.cameraOffset).compose(groupB(X));
+      A.inverse().compose(sensor.cameraOffset).compose(B_cameraExtrinsics(X));
   return out;
 }
 
 VIOState stateGroupAction(const VIOGroup& X, const VIOState& state) {
-  if (groupN(X) != state.n()) {
+  if (N_landmarkCount(X) != state.n()) {
     throw std::invalid_argument(
         "stateGroupAction: group and state landmark counts do not match");
   }
 
   VIOState out;
   out.sensor = sensorStateGroupAction(X, state.sensor);
-  out.cameraLandmarks.resize(groupN(X));
+  out.cameraLandmarks.resize(N_landmarkCount(X));
 
-  for (size_t i = 0; i < groupN(X); ++i) {
+  for (size_t i = 0; i < N_landmarkCount(X); ++i) {
     out.cameraLandmarks[i].p =
-        SOT3ApplyInverse(groupQ(X)[i], state.cameraLandmarks[i].p);
+        SOT3ApplyInverse(Q_landmarkTransforms(X)[i], state.cameraLandmarks[i].p);
     out.cameraLandmarks[i].id = state.cameraLandmarks[i].id;
   }
 
@@ -135,19 +135,19 @@ VisionMeasurement outputGroupAction(const VIOGroup& X,
   }
 
   const std::vector<int> qIds = QIdsForMeasurement(X, measurement);
-  if (qIds.size() != groupN(X)) {
+  if (qIds.size() != N_landmarkCount(X)) {
     throw std::invalid_argument(
         "outputGroupAction: invalid Q-to-id mapping cardinality");
   }
 
-  for (size_t i = 0; i < groupN(X); ++i) {
+  for (size_t i = 0; i < N_landmarkCount(X); ++i) {
     const int id = qIds[i];
     const auto it = measurement.find(id);
     if (it == measurement.end()) continue;
 
     const Vector3 bearing = camera->undistortPoint(it->second);
     const Vector3 rotated =
-        SOT3Rotation(groupQ(X)[i]).matrix().transpose() * bearing;
+        SOT3Rotation(Q_landmarkTransforms(X)[i]).matrix().transpose() * bearing;
     out[id] = camera->projectPoint(rotated);
   }
 
@@ -299,7 +299,7 @@ VIOState VIOSymmetry::operator()(
     Matrix66 HtmpCamera, Hcamera;
     const Pose3 tmp = A.inverse().compose(xi.sensor.cameraOffset, {},
                                           HtmpCamera);
-    (void)tmp.compose(groupB(X), Hcamera, {});
+    (void)tmp.compose(B_cameraExtrinsics(X), Hcamera, {});
     H_xi->block<6, 6>(15, 15) = Hcamera * HtmpCamera;
 
     H_xi->block<6, 6>(0, 0).setIdentity();
@@ -308,8 +308,8 @@ VIOState VIOSymmetry::operator()(
     for (size_t i = 0; i < xi.n(); ++i) {
       const int row = VIOSensorState::CompDim + 3 * static_cast<int>(i);
       H_xi->block<3, 3>(row, row) =
-          (1.0 / SOT3Scale(groupQ(X)[i])) *
-          SOT3Rotation(groupQ(X)[i]).matrix().transpose();
+          (1.0 / SOT3Scale(Q_landmarkTransforms(X)[i])) *
+          SOT3Rotation(Q_landmarkTransforms(X)[i]).matrix().transpose();
     }
   }
 

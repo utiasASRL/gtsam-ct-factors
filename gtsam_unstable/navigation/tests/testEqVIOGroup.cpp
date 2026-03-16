@@ -167,18 +167,18 @@ TEST(VIOGroup, Concept) {
 // Verifies identity sizing and factor accessors.
 TEST(VIOGroup, ConstructorsAndAccessors) {
   const VIOGroup empty = makeVIOGroupIdentity();
-  EXPECT_LONGS_EQUAL(0, groupN(empty));
-  EXPECT_LONGS_EQUAL(21, groupDim(empty));
+  EXPECT_LONGS_EQUAL(0, N_landmarkCount(empty));
+  EXPECT_LONGS_EQUAL(21, Dim_groupTangent(empty));
 
   const VIOGroup identity3 = makeVIOGroupIdentity(3);
-  EXPECT_LONGS_EQUAL(3, groupN(identity3));
-  EXPECT_LONGS_EQUAL(33, groupDim(identity3));
+  EXPECT_LONGS_EQUAL(3, N_landmarkCount(identity3));
+  EXPECT_LONGS_EQUAL(33, Dim_groupTangent(identity3));
 
   const VIOGroup g = MakeG3();
-  EXPECT(assert_equal(kA1, groupA(g)));
-  EXPECT(assert_equal(kBeta1.vector(), groupBeta(g).vector()));
-  EXPECT(assert_equal(kB1, groupB(g)));
-  EXPECT(assert_equal(MakeQ3A(), groupQ(g)));
+  EXPECT(assert_equal(kA1, A_sensorKinematics(g)));
+  EXPECT(assert_equal(kBeta1.vector(), Beta_biasOffset(g).vector()));
+  EXPECT(assert_equal(kB1, B_cameraExtrinsics(g)));
+  EXPECT(assert_equal(MakeQ3A(), Q_landmarkTransforms(g)));
 }
 
 // Verifies compose, between, and inverse behavior.
@@ -187,11 +187,14 @@ TEST(VIOGroup, GroupOperations) {
   const VIOGroup g2 = MakeG3b();
   const VIOGroup composed = g1.compose(g2);
 
-  EXPECT(assert_equal(groupA(g1).compose(groupA(g2)), groupA(composed)));
-  EXPECT(assert_equal((groupBeta(g1) + groupBeta(g2)).vector(),
-                      groupBeta(composed).vector()));
-  EXPECT(assert_equal(groupB(g1).compose(groupB(g2)), groupB(composed)));
-  EXPECT(assert_equal(groupQ(g1).compose(groupQ(g2)), groupQ(composed)));
+  EXPECT(assert_equal(A_sensorKinematics(g1).compose(A_sensorKinematics(g2)),
+                      A_sensorKinematics(composed)));
+  EXPECT(assert_equal((Beta_biasOffset(g1) + Beta_biasOffset(g2)).vector(),
+                      Beta_biasOffset(composed).vector()));
+  EXPECT(assert_equal(B_cameraExtrinsics(g1).compose(B_cameraExtrinsics(g2)),
+                      B_cameraExtrinsics(composed)));
+  EXPECT(assert_equal(Q_landmarkTransforms(g1).compose(Q_landmarkTransforms(g2)),
+                      Q_landmarkTransforms(composed)));
 
   const VIOGroup between = g1.between(g2);
   EXPECT(assert_equal(g1.inverse() * g2, between));
@@ -212,8 +215,9 @@ TEST(VIOGroup, ExpmapLogmapAndAdjoint) {
   EXPECT(assert_equal(xi1, VIOGroup::Logmap(g1), 1e-9));
   EXPECT(assert_equal(xi3, VIOGroup::Logmap(g3), 1e-9));
 
-  VIOGroup core(VIOSensorCore(groupA(g3), groupBeta(g3)),
-                VIOLandmarkCore(groupB(g3), groupQ(g3)));
+  VIOGroup core(VIOSensorCore(A_sensorKinematics(g3), Beta_biasOffset(g3)),
+                VIOLandmarkCore(B_cameraExtrinsics(g3),
+                                Q_landmarkTransforms(g3)));
   EXPECT(assert_equal(core.AdjointMap(), g3.AdjointMap(), 1e-9));
 }
 

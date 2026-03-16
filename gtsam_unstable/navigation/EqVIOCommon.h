@@ -223,22 +223,35 @@ inline Vector measurementDifference(const VisionMeasurement& lhs,
 }
 
 /// Readable accessors for the composed ProductLieGroup VIOGroup.
-inline const VIOSE23& groupA(const VIOGroup& X) { return X.first.first; }
+inline const VIOSE23& A_sensorKinematics(const VIOGroup& X) {
+  return X.first.first;
+}
 
-inline const VIOBias& groupBeta(const VIOGroup& X) { return X.first.second; }
+inline const VIOBias& Beta_biasOffset(const VIOGroup& X) {
+  return X.first.second;
+}
 
-inline const Pose3& groupB(const VIOGroup& X) { return X.second.first; }
+inline const Pose3& B_cameraExtrinsics(const VIOGroup& X) {
+  return X.second.first;
+}
 
-inline const VIOLandmarkGroup& groupQ(const VIOGroup& X) {
+inline const VIOLandmarkGroup& Q_landmarkTransforms(const VIOGroup& X) {
   return X.second.second;
 }
 
-inline size_t groupN(const VIOGroup& X) { return groupQ(X).size(); }
-inline size_t groupDim(const VIOGroup& X) { return 21 + 4 * groupN(X); }
+inline size_t N_landmarkCount(const VIOGroup& X) {
+  return Q_landmarkTransforms(X).size();
+}
+inline size_t Dim_groupTangent(const VIOGroup& X) {
+  return 21 + 4 * N_landmarkCount(X);
+}
 
-inline VIOGroup makeVIOGroup(const VIOSE23& A, const VIOBias& beta,
-                             const Pose3& B, const VIOLandmarkGroup& Q) {
-  return VIOGroup(VIOSensorCore(A, beta), VIOLandmarkCore(B, Q));
+inline VIOGroup makeVIOGroup(const VIOSE23& sensor_kinematics,
+                             const VIOBias& bias_offset,
+                             const Pose3& camera_extrinsics,
+                             const VIOLandmarkGroup& landmark_transforms) {
+  return VIOGroup(VIOSensorCore(sensor_kinematics, bias_offset),
+                  VIOLandmarkCore(camera_extrinsics, landmark_transforms));
 }
 
 inline VIOGroup makeVIOGroupIdentity(size_t n = 0) {
