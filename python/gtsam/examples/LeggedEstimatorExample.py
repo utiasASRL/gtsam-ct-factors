@@ -48,7 +48,7 @@ FOOT_COLORS = ("#d62728", "#2ca02c", "#1f77b4", "#ff7f0e")
 
 
 def legged_staircase_dataset_dir() -> Path:
-    return Path(gtsam.__path__[0]) / "Data" / "legged_staircase"
+    return Path(gtsam.findExampleDataFile("legged_staircase/metadata.csv")).parent
 
 
 def load_legged_csv_dataset(dataset_dir: Path | None = None) -> Dict[str, object]:
@@ -298,10 +298,14 @@ def _contact_frame_row(
         "imu_position": imu_position.tolist(),
         "imu_rotation": np.asarray(imu_rotation.matrix(), dtype=float).tolist(),
         "body_position": np.asarray(world_T_body.translation(), dtype=float).tolist(),
-        "body_rotation": np.asarray(world_T_body.rotation().matrix(), dtype=float).tolist(),
+        "body_rotation": np.asarray(
+            world_T_body.rotation().matrix(), dtype=float
+        ).tolist(),
         "active_feet": active_feet,
         "active_footholds": active_footholds.T.tolist(),
-        "active_foot_colors": [FOOT_COLORS[index % len(FOOT_COLORS)] for index in active_feet],
+        "active_foot_colors": [
+            FOOT_COLORS[index % len(FOOT_COLORS)] for index in active_feet
+        ],
         "breadcrumb_positions": [list(item["position"]) for item in breadcrumbs],
         "breadcrumb_colors": [
             FOOT_COLORS[int(item["foot"]) % len(FOOT_COLORS)] for item in breadcrumbs
@@ -574,7 +578,9 @@ def _frame_durations_ms(
     return durations_ms
 
 
-def _render_figure_frames_to_gif(figure, output_path: str | Path, durations_ms: Sequence[int]):
+def _render_figure_frames_to_gif(
+    figure, output_path: str | Path, durations_ms: Sequence[int]
+):
     from PIL import Image
     import plotly.graph_objects as go
     import plotly.io as pio
@@ -746,7 +752,9 @@ def make_contact_side_animation(
     plotted_frames = []
     all_points = []
     for index, frame in enumerate(displayed_frames):
-        traces = _side_animation_frame_traces(frame, axis_length, show_legend=(index == 0))
+        traces = _side_animation_frame_traces(
+            frame, axis_length, show_legend=(index == 0)
+        )
         plotted_frames.append(
             go.Frame(
                 name=str(index),
@@ -967,9 +975,7 @@ def replay_legged_estimator(
             active_feet = {contact.foot for contact in event.active_contacts}
             for foot, foothold in list(active_footholds_by_foot.items()):
                 if foot not in active_feet:
-                    breadcrumbs.append(
-                        {"foot": foot, "position": foothold.tolist()}
-                    )
+                    breadcrumbs.append({"foot": foot, "position": foothold.tolist()})
                     del active_footholds_by_foot[foot]
             update_terrain_height(current_time)
             estimator.processContacts(event.active_contacts)
