@@ -38,6 +38,8 @@
 #include <cassert>
 #include <cmath>
 #include <stdexcept>
+#include <tuple>
+#include <type_traits>
 #include <vector>
 
 namespace gtsam {
@@ -137,7 +139,7 @@ struct GTSAM_UNSTABLE_EXPORT IMUInput {
  * @brief Camera model used by EqVIO measurement functions.
  *
  * We reuse GTSAM's existing `PinholeCamera<Cal3_S2>` instead of defining a new
- * camera class here.
+ * camera class here, and try to keep helper functions minimal.
  *
  * More general camera models (distortion, fisheye, etc.) are intentionally not
  * used here because EqVIO also needs:
@@ -240,20 +242,6 @@ inline size_t N_landmarkCount(const VioGroup& X) {
 }
 inline size_t Dim_groupTangent(const VioGroup& X) {
   return 21 + 4 * N_landmarkCount(X);
-}
-
-/// Read-only decomposition view for structured bindings.
-struct VioGroupView {
-  const Se23& A_sensorKinematics;
-  const Bias& Beta_biasOffset;
-  const Pose3& B_cameraExtrinsics;
-  const LandmarkGroup& Q_landmarkTransforms;
-};
-
-/// Decompose VioGroup into named read-only references.
-inline VioGroupView decomposeVioGroup(const VioGroup& X) {
-  return {A_sensorKinematics(X), Beta_biasOffset(X), B_cameraExtrinsics(X),
-          Q_landmarkTransforms(X)};
 }
 
 inline VioGroup makeVioGroup(const Se23& sensor_kinematics,
