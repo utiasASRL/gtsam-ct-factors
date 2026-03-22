@@ -1,0 +1,229 @@
+/* ----------------------------------------------------------------------------
+
+ * GTSAM Copyright 2010, Georgia Tech Research Corporation,
+ * Atlanta, Georgia 30332-0415
+ * All Rights Reserved
+ * Authors: Frank Dellaert, et al. (see THANKS for the full author list)
+
+ * See LICENSE for the license information
+
+ * -------------------------------------------------------------------------- */
+
+/// @file EqVIOFilterCsvReplay.cpp
+/// @brief Replay preprocessed EqVIO CSV data without feature tracking.
+
+#include <gtsam_unstable/navigation/EqVIOCsv.h>
+#include <gtsam_unstable/navigation/EqVIOFilter.h>
+
+#include <algorithm>
+#include <cmath>
+#include <iomanip>
+#include <iostream>
+
+using namespace gtsam;
+using namespace gtsam::eqvio;
+
+namespace {
+
+struct HardcodedGroundTruth {
+  static Vector3 position() { return Vector3(-0.954631, -0.101702, 0.179862); }
+  static Vector3 velocity() { return Vector3(-0.120739, -0.314283, 0.119599); }
+};
+
+double metadataFiniteDouble(const EqVIOCsvLog& log, const std::string& key,
+                            double fallback) {
+  const double v = metadataDouble(log, key, fallback);
+  if (!std::isfinite(v)) return fallback;
+  return v;
+}
+
+void propagateBufferedImu(EqVIOFilter& filter, std::vector<IMUInput>& imuBuffer,
+                          double& currentTime, double targetTime) {
+  if (!filter.isInitialized() || imuBuffer.empty() ||
+      targetTime <= currentTime) {
+    return;
+  }
+
+  const double tRef = currentTime;
+  double accumulatedTime = 0.0;
+  IMUInput accumulatedVelocity = IMUInput::Zero();
+  for (size_t i = 0; i < imuBuffer.size(); ++i) {
+    const double t0 = std::max(imuBuffer[i].stamp, tRef);
+    const double t1 =
+        i + 1 < imuBuffer.size() ? std::min(imuBuffer[i + 1].stamp, targetTime)
+                                 : targetTime;
+    const double dt = std::max(t1 - t0, 0.0);
+    accumulatedTime += dt;
+    accumulatedVelocity = accumulatedVelocity + imuBuffer[i] * dt;
+  }
+
+  if (accumulatedTime > 0.0) {
+    accumulatedVelocity = accumulatedVelocity * (1.0 / accumulatedTime);
+    filter.propagateCovariance(accumulatedVelocity, accumulatedTime);
+
+    for (size_t i = 0; i < imuBuffer.size(); ++i) {
+      const double t0 = std::max(imuBuffer[i].stamp, tRef);
+      const double t1 =
+          i + 1 < imuBuffer.size() ? std::min(imuBuffer[i + 1].stamp, targetTime)
+                                   : targetTime;
+      const double dt = std::max(t1 - t0, 0.0);
+      if (dt > 0.0) {
+        filter.propagateState(imuBuffer[i], dt);
+        currentTime += dt;
+      }
+    }
+  }
+
+  auto it = std::find_if(imuBuffer.begin(), imuBuffer.end(),
+                         [targetTime](const IMUInput& imu) {
+                           return imu.stamp >= targetTime;
+                         });
+  if (it != imuBuffer.begin()) {
+    --it;
+    imuBuffer.erase(imuBuffer.begin(), it);
+  }
+}
+
+}  // namespace
+
+int main(int argc, char** argv) {
+  if (argc < 2) {
+    std::cerr << "Usage:\n  " << argv[0] << " <processed_eqvio_stream.csv>\n";
+    return 1;
+  }
+
+  const std::string csvPath = argv[1];
+
+  try {
+    const EqVIOCsvLog log = readEqVIOCsv(csvPath);
+
+    EqVIOFilterParams params;
+    params.initialPointDepth = metadataFiniteDouble(
+        log, "eqf.initial_point_depth", params.initialPointDepth);
+    params.initialPointVariance = metadataFiniteDouble(
+        log, "eqf.initial_point_variance", params.initialPointVariance);
+    params.measurementNoiseVariance = metadataFiniteDouble(
+        log, "eqf.measurement_noise_variance_norm",
+        params.measurementNoiseVariance);
+    params.outlierThresholdAbs = metadataFiniteDouble(
+        log, "eqf.outlier_threshold_abs", params.outlierThresholdAbs);
+    params.outlierThresholdAbs = metadataFiniteDouble(
+        log, "eqf.outlier_threshold_abs_norm", params.outlierThresholdAbs);
+    params.outlierThresholdProb = metadataFiniteDouble(
+        log, "eqf.outlier_threshold_prob", params.outlierThresholdProb);
+    params.featureRetention = metadataFiniteDouble(
+        log, "eqf.feature_retention", params.featureRetention);
+
+    params.biasOmegaProcessVariance = metadataFiniteDouble(
+        log, "eqf.process_var_bias_omega", params.biasOmegaProcessVariance);
+    params.biasAccelProcessVariance = metadataFiniteDouble(
+        log, "eqf.process_var_bias_accel", params.biasAccelProcessVariance);
+    params.attitudeProcessVariance = metadataFiniteDouble(
+        log, "eqf.process_var_attitude", params.attitudeProcessVariance);
+    params.positionProcessVariance = metadataFiniteDouble(
+        log, "eqf.process_var_position", params.positionProcessVariance);
+    params.velocityProcessVariance = metadataFiniteDouble(
+        log, "eqf.process_var_velocity", params.velocityProcessVariance);
+    params.cameraAttitudeProcessVariance = metadataFiniteDouble(
+        log, "eqf.process_var_cam_attitude", params.cameraAttitudeProcessVariance);
+    params.cameraPositionProcessVariance = metadataFiniteDouble(
+        log, "eqf.process_var_cam_position", params.cameraPositionProcessVariance);
+    params.pointProcessVariance = metadataFiniteDouble(
+        log, "eqf.process_var_point", params.pointProcessVariance);
+
+    params.inputNoise.setZero();
+    params.inputNoise.block<3, 3>(0, 0).setIdentity();
+    params.inputNoise.block<3, 3>(3, 3).setIdentity();
+    params.inputNoise.block<3, 3>(6, 6).setIdentity();
+    params.inputNoise.block<3, 3>(9, 9).setIdentity();
+    params.inputNoise.block<3, 3>(0, 0) *=
+        metadataFiniteDouble(log, "eqf.input_var_gyr",
+                             params.inputNoise(0, 0));
+    params.inputNoise.block<3, 3>(3, 3) *=
+        metadataFiniteDouble(log, "eqf.input_var_acc",
+                             params.inputNoise(3, 3));
+    params.inputNoise.block<3, 3>(6, 6) *=
+        metadataFiniteDouble(log, "eqf.input_var_gyr_bias_walk",
+                             params.inputNoise(6, 6));
+    params.inputNoise.block<3, 3>(9, 9) *=
+        metadataFiniteDouble(log, "eqf.input_var_acc_bias_walk",
+                             params.inputNoise(9, 9));
+
+    SensorState sensor;
+    sensor.inputBias = Bias::Identity();
+    sensor.pose = Pose3::Identity();
+    sensor.velocity.setZero();
+    sensor.cameraOffset = cameraExtrinsicsFromMetadata(log).value_or(Pose3::Identity());
+    State xi0(sensor, {});
+    Matrix Sigma0 = Matrix::Identity(xi0.dim(), xi0.dim());
+    Sigma0.block<3, 3>(0, 0) *= metadataFiniteDouble(
+        log, "eqf.initial_var_bias_omega", 0.1);
+    Sigma0.block<3, 3>(3, 3) *= metadataFiniteDouble(
+        log, "eqf.initial_var_bias_accel", 0.1);
+    Sigma0.block<3, 3>(6, 6) *= metadataFiniteDouble(
+        log, "eqf.initial_var_attitude", 1e-4);
+    Sigma0.block<3, 3>(9, 9) *= metadataFiniteDouble(
+        log, "eqf.initial_var_position", 1e-4);
+    Sigma0.block<3, 3>(12, 12) *= metadataFiniteDouble(
+        log, "eqf.initial_var_velocity", 1e-2);
+    Sigma0.block<3, 3>(15, 15) *= metadataFiniteDouble(
+        log, "eqf.initial_var_cam_attitude", 1e-5);
+    Sigma0.block<3, 3>(18, 18) *= metadataFiniteDouble(
+        log, "eqf.initial_var_cam_position", 1e-4);
+
+    EqVIOFilter filter(params);
+    filter.setReferenceState(xi0, Sigma0);
+    auto camera = std::make_shared<CameraModel>(
+        Pose3::Identity(), Cal3_S2(1.0, 1.0, 0.0, 0.0, 0.0));
+
+    size_t imuCount = 0;
+    size_t visionFrameCount = 0;
+    size_t visionFeatureCount = 0;
+    double currentTime = -1.0;
+    std::vector<IMUInput> imuBuffer;
+    for (const EqVIOCsvEvent& event : log.events) {
+      if (event.type == EqVIOCsvEvent::Type::Imu) {
+        if (!filter.isInitialized()) {
+          filter.initializeFromIMU(event.imu);
+          currentTime = event.imu.stamp;
+        }
+        if (filter.isInitialized()) imuBuffer.push_back(event.imu);
+        ++imuCount;
+      } else {
+        propagateBufferedImu(filter, imuBuffer, currentTime, event.tAbs);
+        const Matrix R =
+            Matrix::Identity(static_cast<int>(2 * event.vision.size()),
+                             static_cast<int>(2 * event.vision.size())) *
+            params.measurementNoiseVariance;
+        filter.correct(event.vision, camera, R);
+        ++visionFrameCount;
+        visionFeatureCount += event.vision.size();
+      }
+    }
+
+    const State estimate = filter.stateEstimate();
+    std::cout << "CSV replay complete.\n";
+    std::cout << "Events: " << log.events.size() << ", IMU: " << imuCount
+              << ", vision frames: " << visionFrameCount
+              << ", vision features: " << visionFeatureCount << "\n";
+    std::cout << "Measurement noise variance (normalized): "
+              << params.measurementNoiseVariance << "\n";
+    std::cout << std::setprecision(17);
+    std::cout << "Filter time: " << currentTime << "\n";
+    std::cout << std::setprecision(10);
+    std::cout << "Landmarks: " << estimate.n() << "\n";
+    std::cout << "Pose translation: "
+              << estimate.sensor.pose.translation().transpose() << "\n";
+    std::cout << "GT pose translation: "
+              << HardcodedGroundTruth::position().transpose() << "\n";
+    std::cout << "Velocity: " << estimate.sensor.velocity.transpose() << "\n";
+    std::cout << "GT velocity: "
+              << HardcodedGroundTruth::velocity().transpose() << "\n";
+
+  } catch (const std::exception& e) {
+    std::cerr << "EqVIOFilterCsvReplay failed: " << e.what() << "\n";
+    return 2;
+  }
+
+  return 0;
+}

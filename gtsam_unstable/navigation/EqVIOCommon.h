@@ -39,7 +39,6 @@
 #include <cmath>
 #include <stdexcept>
 #include <tuple>
-#include <type_traits>
 #include <vector>
 
 namespace gtsam {
@@ -87,10 +86,10 @@ struct GTSAM_UNSTABLE_EXPORT IMUInput {
   using Vector12 = Eigen::Matrix<double, 12, 1>;
 
   double stamp = -1.0;
-  Vector3 gyr = Z_3x1;
-  Vector3 acc = Z_3x1;
-  Vector3 gyrBiasVel = Z_3x1;
-  Vector3 accBiasVel = Z_3x1;
+  Vector3 gyr = Vector3::Zero();
+  Vector3 acc = Vector3::Zero();
+  Vector3 gyrBiasVel = Vector3::Zero();
+  Vector3 accBiasVel = Vector3::Zero();
 
   /// Return a zero-initialized input with invalid timestamp.
   static IMUInput Zero() { return IMUInput(); }
@@ -139,7 +138,7 @@ struct GTSAM_UNSTABLE_EXPORT IMUInput {
  * @brief Camera model used by EqVIO measurement functions.
  *
  * We reuse GTSAM's existing `PinholeCamera<Cal3_S2>` instead of defining a new
- * camera class here, and try to keep helper functions minimal.
+ * camera class here.
  *
  * More general camera models (distortion, fisheye, etc.) are intentionally not
  * used here because EqVIO also needs:
@@ -244,7 +243,7 @@ inline size_t Dim_groupTangent(const VioGroup& X) {
   return 21 + 4 * N_landmarkCount(X);
 }
 
-/// Decompose VioGroup into (A, Beta, B, Q) references for structured bindings.
+// Decompose VioGroup into (A, Beta, B, Q) references for structured bindings.
 inline auto decompose(const VioGroup& X) {
   return std::tie(A_sensorKinematics(X), Beta_biasOffset(X),
                   B_cameraExtrinsics(X), Q_landmarkTransforms(X));
@@ -266,3 +265,62 @@ inline VioGroup makeVioGroupIdentity(size_t n = 0) {
 }  // namespace eqvio
 
 }  // namespace gtsam
+
+namespace gtsam {
+
+template <size_t I>
+inline decltype(auto) get(eqvio::VioGroup& X) {
+  static_assert(I < 4, "VioGroup index out of range");
+  if constexpr (I == 0) {
+    return (X.first.first);
+  } else if constexpr (I == 1) {
+    return (X.first.second);
+  } else if constexpr (I == 2) {
+    return (X.second.first);
+  } else {
+    return (X.second.second);
+  }
+}
+
+template <size_t I>
+inline decltype(auto) get(const eqvio::VioGroup& X) {
+  static_assert(I < 4, "VioGroup index out of range");
+  if constexpr (I == 0) {
+    return (X.first.first);
+  } else if constexpr (I == 1) {
+    return (X.first.second);
+  } else if constexpr (I == 2) {
+    return (X.second.first);
+  } else {
+    return (X.second.second);
+  }
+}
+
+}  // namespace gtsam
+
+namespace std {
+
+template <>
+struct tuple_size<gtsam::eqvio::VioGroup> : std::integral_constant<size_t, 4> {};
+
+template <>
+struct tuple_element<0, gtsam::eqvio::VioGroup> {
+  using type = gtsam::eqvio::Se23;
+};
+
+template <>
+struct tuple_element<1, gtsam::eqvio::VioGroup> {
+  using type = gtsam::eqvio::Bias;
+};
+
+template <>
+struct tuple_element<2, gtsam::eqvio::VioGroup> {
+  using type = gtsam::Pose3;
+};
+
+template <>
+struct tuple_element<3, gtsam::eqvio::VioGroup> {
+  using type = gtsam::eqvio::LandmarkGroup;
+};
+
+}  // namespace std
