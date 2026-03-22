@@ -277,7 +277,7 @@ VioGroup Group3b() {
       LandmarkGroup({q1, q2, q3}));
 }
 
-Matrix NumericalDerivativeWrtGroup(const VIOSymmetry& phi, const VioGroup& X,
+Matrix NumericalDerivativeWrtGroup(const Symmetry& phi, const VioGroup& X,
                                    const State& xi, const State& y0,
                                    double h = 1e-6) {
   Matrix H = Matrix::Zero(y0.dim(), static_cast<int>(Dim_groupTangent(X)));
@@ -293,7 +293,7 @@ Matrix NumericalDerivativeWrtGroup(const VIOSymmetry& phi, const VioGroup& X,
   return H;
 }
 
-Matrix NumericalDerivativeWrtState(const VIOSymmetry& phi, const VioGroup& X,
+Matrix NumericalDerivativeWrtState(const Symmetry& phi, const VioGroup& X,
                                    const State& xi, const State& y0,
                                    double h = 1e-6) {
   Matrix H = Matrix::Zero(y0.dim(), xi.dim());
@@ -312,9 +312,9 @@ Matrix NumericalDerivativeWrtState(const VIOSymmetry& phi, const VioGroup& X,
 }  // namespace
 
 //******************************************************************************
-// Verifies the right-action law for VIOSymmetry.
-TEST(VIOSymmetry, RightActionLaw) {
-  const VIOSymmetry phi;
+// Verifies the right-action law for Symmetry.
+TEST(Symmetry, RightActionLaw) {
+  const Symmetry phi;
   const State xi = State3();
   const VioGroup X1 = Group3();
   const VioGroup X2 = Group3b();
@@ -323,8 +323,8 @@ TEST(VIOSymmetry, RightActionLaw) {
 
 //******************************************************************************
 // Verifies action Jacobians against numerical derivatives for n=0.
-TEST(VIOSymmetry, JacobiansN0) {
-  const VIOSymmetry phi;
+TEST(Symmetry, JacobiansN0) {
+  const Symmetry phi;
   const VioGroup X = Group0();
   const State xi = State0();
 
@@ -339,8 +339,8 @@ TEST(VIOSymmetry, JacobiansN0) {
 
 //******************************************************************************
 // Verifies action Jacobians against numerical derivatives for n=3.
-TEST(VIOSymmetry, JacobiansN3) {
-  const VIOSymmetry phi;
+TEST(Symmetry, JacobiansN3) {
+  const Symmetry phi;
   const VioGroup X = Group3();
   const State xi = State3();
 
@@ -355,7 +355,7 @@ TEST(VIOSymmetry, JacobiansN3) {
 
 //******************************************************************************
 // Verifies eqvio-ported state action identity and composition checks.
-TEST(VIOSymmetry, StateActionEqvioPort) {
+TEST(Symmetry, StateActionEqvioPort) {
   srand(0);
   const std::vector<int> ids = {0, 1, 2, 3, 4};
   const VioGroup groupId = makeVioGroupIdentity(ids.size());
@@ -378,7 +378,7 @@ TEST(VIOSymmetry, StateActionEqvioPort) {
 
 //******************************************************************************
 // Verifies eqvio-ported output action identity and composition checks.
-TEST(VIOSymmetry, OutputActionEqvioPort) {
+TEST(Symmetry, OutputActionEqvioPort) {
   srand(0);
   const std::vector<int> ids = {0, 1, 2, 3, 4};
   const VioGroup groupId = makeVioGroupIdentity(ids.size());
@@ -403,7 +403,7 @@ TEST(VIOSymmetry, OutputActionEqvioPort) {
 
 //******************************************************************************
 // Verifies measurement equivariance under group action.
-TEST(VIOSymmetry, OutputEquivarianceEqvioPort) {
+TEST(Symmetry, OutputEquivarianceEqvioPort) {
   srand(0);
   const std::vector<int> ids = {0, 1, 2, 3, 4, 5};
   const auto camera = CreateDefaultCamera();
@@ -423,7 +423,7 @@ TEST(VIOSymmetry, OutputEquivarianceEqvioPort) {
 
 //******************************************************************************
 // Verifies discrete lift update matches direct integration.
-TEST(VIOSymmetry, LiftAndIntegrationSanity) {
+TEST(Symmetry, LiftAndIntegrationSanity) {
   const State xi = State3();
   IMUInput imu;
   imu.gyr = Vector3(0.03, -0.02, 0.01);

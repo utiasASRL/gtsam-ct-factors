@@ -96,8 +96,5 @@ struct GTSAM_UNSTABLE_EXPORT Symmetry
       const;
 };
 
-// Backward-compatible name used by existing tests and call sites.
-using VIOSymmetry = Symmetry;
-
 }  // namespace eqvio
 }  // namespace gtsam
