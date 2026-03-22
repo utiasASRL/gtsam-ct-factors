@@ -17,9 +17,6 @@
 
 #include <gtsam_unstable/navigation/EqVIOState.h>
 
-#include <iostream>
-#include <stdexcept>
-
 namespace gtsam {
 namespace eqvio {
 

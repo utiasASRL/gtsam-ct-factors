@@ -17,12 +17,10 @@
 
 
 #include <gtsam_unstable/navigation/EqVIOSymmetry.h>
+#include <gtsam/base/numericalDerivative.h>
 
-#include <algorithm>
-#include <cmath>
 #include <functional>
 #include <stdexcept>
-#include <string>
 
 namespace gtsam {
 namespace eqvio {
@@ -85,22 +83,34 @@ Matrix NumericalDerivativeActionWrtGroup(
   return H;
 }
 
-Matrix23 E3ProjectSphereDiff(const Vector3& eta) {
+constexpr double kStereoChartDiffDelta = 1e-6;
+
+Vector2 E3ProjectSphere(const Vector3& eta) {
   static const Matrix23 I23 = Matrix23::Identity();
   static const Vector3 e3 = Vector3::UnitZ();
-  Matrix23 diff =
-      I23 * (Matrix3::Identity() * (1.0 - eta.z()) + (eta - e3) * e3.transpose());
-  diff /= std::pow(1.0 - e3.dot(eta), 2.0);
-  return diff;
+  return I23 * (eta - e3) / (1.0 - e3.dot(eta));
+}
+
+Vector3 E3ProjectSphereInv(const Vector2& y) {
+  static const Vector3 e3 = Vector3::UnitZ();
+  const Vector3 yBar = (Vector3() << y, 0.0).finished();
+  return e3 + 2.0 / (yBar.squaredNorm() + 1.0) * (yBar - e3);
+}
+
+Matrix23 E3ProjectSphereDiff(const Vector3& eta) {
+  const std::function<Vector2(const Vector3&)> f = [](const Vector3& x) {
+    return E3ProjectSphere(x);
+  };
+  return gtsam::numericalDerivative11<Vector2, Vector3, 3>(
+      f, eta, kStereoChartDiffDelta);
 }
 
 Matrix32 E3ProjectSphereInvDiff(const Vector2& y) {
-  Matrix32 diff;
-  diff.block<2, 2>(0, 0) =
-      Matrix2::Identity() * (y.squaredNorm() + 1.0) - 2.0 * y * y.transpose();
-  diff.block<1, 2>(2, 0) = 2.0 * y.transpose();
-  diff *= 2.0 / std::pow(y.squaredNorm() + 1.0, 2.0);
-  return diff;
+  const std::function<Vector3(const Vector2&)> f = [](const Vector2& x) {
+    return E3ProjectSphereInv(x);
+  };
+  return gtsam::numericalDerivative11<Vector3, Vector2, 2>(
+      f, y, kStereoChartDiffDelta);
 }
 
 Matrix23 SphereChartStereoDiff0(const Vector3& pole) {

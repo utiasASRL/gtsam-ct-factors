@@ -14,14 +14,8 @@
 
 #include <gtsam_unstable/navigation/EqVIOFilter.h>
 
-#include <algorithm>
 #include <cassert>
-#include <cmath>
-#include <map>
-#include <numeric>
-#include <set>
 #include <stdexcept>
-#include <string>
 
 namespace gtsam {
 namespace eqvio {
