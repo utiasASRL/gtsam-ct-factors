@@ -136,50 +136,6 @@ TEST(VIOEqFMatricesInvDepth, ShapesAndFinite) {
   }
 }
 
-//******************************************************************************
-TEST(VIOEqFMatricesInvDepth, StateChartRoundTrip) {
-  const EqFCoordinateSuite& suite = EqFCoordinateSuite_invdepth;
-
-  for (const State& xi0 : std::vector<State>{State1(), State3()}) {
-    const Vector eps = Vector::LinSpaced(xi0.dim(), -1e-3, 1e-3);
-    const State xi = suite.stateChartInv(eps, xi0);
-    const Vector epsRecovered = suite.stateChart(xi, xi0);
-    EXPECT(assert_equal(eps, epsRecovered, 1e-8));
-  }
-}
-
-//******************************************************************************
-TEST(VIOEqFMatricesInvDepth, SmallStepDiscreteConsistency) {
-  const EqFCoordinateSuite& suite = EqFCoordinateSuite_invdepth;
-
-  const State xi0 = State3();
-  const VioGroup X = Group3();
-  const IMUInput imu = ImuFixture();
-
-  const double dt = 1e-6;
-  const Matrix A = suite.stateMatrixA(X, xi0, imu);
-  const Matrix Phi = suite.stateMatrixADiscrete(X, xi0, imu, dt);
-  const Matrix PhiApprox = Matrix::Identity(xi0.dim(), xi0.dim()) + dt * A;
-
-  EXPECT(assert_equal(PhiApprox, Phi, 1e-4));
-}
-
-//******************************************************************************
-TEST(VIOEqFMatricesInvDepth, InnovationLiftConsistency) {
-  const EqFCoordinateSuite& suite = EqFCoordinateSuite_invdepth;
-
-  for (const State& xi0 : std::vector<State>{State1(), State3()}) {
-    const Vector gamma = Vector::LinSpaced(xi0.dim(), -0.1, 0.1);
-    const double eps = 1e-3;
-    const Vector lift = suite.liftInnovation(eps * gamma, xi0);
-    const VioGroup dCont = VioGroup::Expmap(lift);
-    const VioGroup dDisc = suite.liftInnovationDiscrete(eps * gamma, xi0);
-
-    const Vector err = dCont.localCoordinates(dDisc);
-    EXPECT(err.norm() < 5e-3);
-  }
-}
-
 int main() {
   TestResult tr;
   return TestRegistry::runAllTests(tr);

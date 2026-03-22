@@ -122,15 +122,18 @@ void EqVIOFilter::propagateCovariance(const IMUInput& imu, double dt) {
   if (!initialized_ || dt <= 0.0) {
     return;
   }
-  const Matrix A0t =
+  const Matrix A =
       EqFCoordinateSuite_invdepth.stateMatrixA(view_.X, view_.xi0, imu);
-  const Matrix Bt = EqFCoordinateSuite_invdepth.inputMatrixB(view_.X, view_.xi0);
-  const Matrix A0tExp =
-      Matrix::Identity(view_.xi0.dim(), view_.xi0.dim()) + dt * A0t;
-  view_.Sigma = A0tExp * view_.Sigma * A0tExp.transpose() +
-                dt * (Bt * params_.inputNoise * Bt.transpose() +
-                      stateProcessNoise(view_.xi0.n()));
-  setErrorCovariance(view_.Sigma);
+  const Matrix B = EqFCoordinateSuite_invdepth.inputMatrixB(view_.X, view_.xi0);
+  const Matrix Qc =
+      B * params_.inputNoise * B.transpose() + stateProcessNoise(view_.xi0.n());
+
+  auto zeroLift = [this](const State&) -> Vector {
+    return Vector::Zero(static_cast<int>(Dim_groupTangent(view_.X)));
+  };
+
+  Base::template predictWithJacobian<1>(zeroLift, A, Qc, dt);
+  syncFromBase();
 }
 
 void EqVIOFilter::propagateState(const IMUInput& imu, double dt) {

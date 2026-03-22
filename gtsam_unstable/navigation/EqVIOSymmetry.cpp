@@ -85,47 +85,6 @@ Matrix NumericalDerivativeActionWrtGroup(
   return H;
 }
 
-Matrix NumericalDifferential(const std::function<Vector(const Vector&)>& f,
-                             const Vector& x, double h = 1e-6) {
-  const int n = static_cast<int>(x.size());
-  const Vector y = f(x);
-  const int m = static_cast<int>(y.size());
-
-  Matrix J = Matrix::Zero(m, n);
-  for (int j = 0; j < n; ++j) {
-    Vector dx = Vector::Zero(n);
-    dx(j) = h;
-    J.col(j) = (f(x + dx) - f(x - dx)) / (2.0 * h);
-  }
-  return J;
-}
-
-void CheckStateChartAlignment(const State& Xi, const State& Xi0,
-                              const char* context) {
-  if (Xi.n() != Xi0.n()) {
-    throw std::invalid_argument(std::string(context) +
-                                ": landmark counts do not match");
-  }
-  for (size_t i = 0; i < Xi.n(); ++i) {
-    if (Xi.cameraLandmarks[i].id != Xi0.cameraLandmarks[i].id) {
-      throw std::invalid_argument(std::string(context) +
-                                  ": landmark ids are not aligned");
-    }
-  }
-}
-
-Vector2 E3ProjectSphere(const Vector3& eta) {
-  static const Matrix23 I23 = Matrix23::Identity();
-  static const Vector3 e3 = Vector3::UnitZ();
-  return I23 * (eta - e3) / (1.0 - e3.dot(eta));
-}
-
-Vector3 E3ProjectSphereInv(const Vector2& y) {
-  static const Vector3 e3 = Vector3::UnitZ();
-  const Vector3 yBar = (Vector3() << y, 0.0).finished();
-  return e3 + 2.0 / (yBar.squaredNorm() + 1.0) * (yBar - e3);
-}
-
 Matrix23 E3ProjectSphereDiff(const Vector3& eta) {
   static const Matrix23 I23 = Matrix23::Identity();
   static const Vector3 e3 = Vector3::UnitZ();
@@ -144,18 +103,6 @@ Matrix32 E3ProjectSphereInvDiff(const Vector2& y) {
   return diff;
 }
 
-Vector2 SphereChartStereo(const Vector3& eta, const Vector3& pole) {
-  const Rot3 sphereRot = RotationFromTwoVectors(-pole, Vector3::UnitZ());
-  const Vector3 etaRotated = sphereRot.matrix() * eta;
-  return E3ProjectSphere(etaRotated);
-}
-
-Vector3 SphereChartStereoInv(const Vector2& y, const Vector3& pole) {
-  const Vector3 etaRotated = E3ProjectSphereInv(y);
-  const Rot3 sphereRot = RotationFromTwoVectors(-pole, Vector3::UnitZ());
-  return sphereRot.matrix().transpose() * etaRotated;
-}
-
 Matrix23 SphereChartStereoDiff0(const Vector3& pole) {
   const Rot3 sphereRot = RotationFromTwoVectors(-pole, Vector3::UnitZ());
   const Vector3 etaRotated = sphereRot.matrix() * pole;
@@ -165,28 +112,6 @@ Matrix23 SphereChartStereoDiff0(const Vector3& pole) {
 Matrix32 SphereChartStereoInvDiff0(const Vector3& pole) {
   const Rot3 sphereRot = RotationFromTwoVectors(-pole, Vector3::UnitZ());
   return sphereRot.matrix().transpose() * E3ProjectSphereInvDiff(Vector2::Zero());
-}
-
-Vector3 PointChartInvDepth(const Point3& q, const Point3& q0) {
-  const double rho = 1.0 / q.norm();
-  const double rho0 = 1.0 / q0.norm();
-  const Vector3 y = q * rho;
-  const Vector3 y0 = q0 * rho0;
-
-  Vector3 eps;
-  eps.head<2>() = SphereChartStereo(y, y0);
-  eps(2) = rho - rho0;
-  return eps;
-}
-
-Point3 PointChartInvDepthInv(const Vector3& eps, const Point3& q0) {
-  const double rho0 = 1.0 / q0.norm();
-  const Vector3 y0 = q0 * rho0;
-  const Vector3 y = SphereChartStereoInv(eps.head<2>(), y0);
-
-  double rho = eps(2) + rho0;
-  if (rho <= 0.0) rho = 1e-6;
-  return y / rho;
 }
 
 Matrix3 ConvEucToInvDepth(const Point3& q0) {
@@ -208,45 +133,6 @@ Matrix3 ConvInvDepthToEuc(const Point3& q0) {
   M.block<3, 2>(0, 0) = SphereChartStereoInvDiff0(y0) / rho0;
   M.block<3, 1>(0, 2) = -y0 / (rho0 * rho0);
   return M;
-}
-
-Vector StateChartInvDepth(const State& Xi, const State& Xi0) {
-  CheckStateChartAlignment(Xi, Xi0, "stateChart_invdepth");
-
-  Vector eps = Vector::Zero(Xi0.dim());
-  eps.segment<6>(0) = (Xi.sensor.inputBias - Xi0.sensor.inputBias).vector();
-  eps.segment<6>(6) = Xi0.sensor.pose.localCoordinates(Xi.sensor.pose);
-  eps.segment<3>(12) = Xi.sensor.velocity - Xi0.sensor.velocity;
-  eps.segment<6>(15) =
-      Xi0.sensor.cameraOffset.localCoordinates(Xi.sensor.cameraOffset);
-
-  for (size_t i = 0; i < Xi0.n(); ++i) {
-    eps.segment<3>(SensorState::CompDim + 3 * static_cast<int>(i)) =
-        PointChartInvDepth(Xi.cameraLandmarks[i].p, Xi0.cameraLandmarks[i].p);
-  }
-  return eps;
-}
-
-State StateChartInvDepthInv(const Vector& eps, const State& Xi0) {
-  if (eps.size() != Xi0.dim()) {
-    throw std::invalid_argument(
-        "stateChartInv_invdepth: chart vector dimension mismatch");
-  }
-
-  State Xi;
-  Xi.sensor.inputBias = Xi0.sensor.inputBias + eps.segment<6>(0);
-  Xi.sensor.pose = Xi0.sensor.pose.retract(eps.segment<6>(6));
-  Xi.sensor.velocity = Xi0.sensor.velocity + eps.segment<3>(12);
-  Xi.sensor.cameraOffset = Xi0.sensor.cameraOffset.retract(eps.segment<6>(15));
-
-  Xi.cameraLandmarks.resize(Xi0.n());
-  for (size_t i = 0; i < Xi0.n(); ++i) {
-    const int k = SensorState::CompDim + 3 * static_cast<int>(i);
-    Xi.cameraLandmarks[i].id = Xi0.cameraLandmarks[i].id;
-    Xi.cameraLandmarks[i].p =
-        PointChartInvDepthInv(eps.segment<3>(k), Xi0.cameraLandmarks[i].p);
-  }
-  return Xi;
 }
 
 Matrix EqFInputMatrixB_invdepth(const VioGroup& X, const State& xi0);
@@ -421,42 +307,6 @@ Vector liftInnovation_invdepth(const Vector& totalInnovation,
   }
 
   return lift;
-}
-
-VioGroup liftInnovationDiscrete_invdepth(const Vector& totalInnovation,
-                                         const State& xi0) {
-  if (totalInnovation.size() != xi0.dim()) {
-    throw std::invalid_argument(
-        "liftInnovationDiscrete_invdepth: innovation dimension mismatch");
-  }
-
-  const Bias beta(totalInnovation.segment<6>(0));
-  const Pose3 A_pose = Pose3::Expmap(totalInnovation.segment<6>(6));
-  const Vector3 w = xi0.sensor.velocity -
-                    A_pose.rotation().matrix() *
-                        (xi0.sensor.velocity + totalInnovation.segment<3>(12));
-
-  const Pose3 B = xi0.sensor.cameraOffset.inverse()
-                      .compose(A_pose)
-                      .compose(xi0.sensor.cameraOffset)
-                      .compose(Pose3::Expmap(totalInnovation.segment<6>(15)));
-
-  std::vector<SOT3> Q;
-  Q.reserve(xi0.n());
-
-  for (size_t i = 0; i < xi0.n(); ++i) {
-    const Point3 qi0 = xi0.cameraLandmarks[i].p;
-    const Point3 qi1 =
-        PointChartInvDepthInv(totalInnovation.segment<3>(
-                                  SensorState::CompDim + 3 * static_cast<int>(i)),
-                              qi0);
-    const Rot3 R = RotationFromTwoVectors(qi1.normalized(), qi0.normalized());
-    const double a = qi0.norm() / qi1.norm();
-    Q.emplace_back(MakeSOT3(SO3(R.matrix()), a));
-  }
-
-  return makeVioGroup(MakeA(A_pose.rotation(), A_pose.translation(), w), beta, B,
-                      LandmarkGroup(Q));
 }
 
 }  // namespace
@@ -657,13 +507,10 @@ VisionMeasurement measureSystemState(
 }
 
 const EqFCoordinateSuite EqFCoordinateSuite_invdepth{
-    StateChartInvDepth,
-    StateChartInvDepthInv,
     EqFStateMatrixA_invdepth,
     EqFInputMatrixB_invdepth,
     EqFoutputMatrixCiStar_invdepth,
-    liftInnovation_invdepth,
-    liftInnovationDiscrete_invdepth};
+    liftInnovation_invdepth};
 
 Matrix EqFCoordinateSuite::outputMatrixC(
     const State& xi0, const VioGroup& X, const VisionMeasurement& y,
@@ -710,24 +557,6 @@ Matrix EqFCoordinateSuite::outputMatrixC(
     throw std::runtime_error("EqFCoordinateSuite::outputMatrixC produced NaN/Inf");
   }
   return C;
-}
-
-Matrix EqFCoordinateSuite::stateMatrixADiscrete(const VioGroup& X,
-                                                const State& xi0,
-                                                const IMUInput& imuVel,
-                                                double dt) const {
-  auto a0Discrete = [&](const Vector& epsilon) {
-    const State xiE = stateChartInv(epsilon, xi0);
-    const State xiHat = stateGroupAction(X, xi0);
-    const State xi = stateGroupAction(X, xiE);
-    const VioGroup lambdaTilde =
-        liftVelocityDiscrete(xi, imuVel, dt) *
-        liftVelocityDiscrete(xiHat, imuVel, dt).inverse();
-    const State xiE1 = stateGroupAction(X * lambdaTilde * X.inverse(), xiE);
-    return stateChart(xiE1, xi0);
-  };
-
-  return NumericalDifferential(a0Discrete, Vector::Zero(xi0.dim()));
 }
 
 Matrix23 EqFCoordinateSuite::outputMatrixCi(

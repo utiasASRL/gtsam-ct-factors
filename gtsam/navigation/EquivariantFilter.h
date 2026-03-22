@@ -71,8 +71,6 @@ class EquivariantFilter : public ManifoldEKF<M> {
   G g_;  // Group element estimate
 
  protected:
-  /// @return Current reference manifold state.
-  const M& referenceState() const { return xi_ref_; }
 
   /// Recompute Dphi0 and innovation lift matrix from current reference state.
   void recomputeActionDifferentials() {

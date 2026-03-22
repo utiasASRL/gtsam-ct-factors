@@ -57,8 +57,6 @@ GTSAM_UNSTABLE_EXPORT VisionMeasurement measureSystemState(
 
 /// InvDepth EqF coordinate suite and associated matrices/lifts.
 struct GTSAM_UNSTABLE_EXPORT EqFCoordinateSuite {
-  std::function<Vector(const State&, const State&)> stateChart;
-  std::function<State(const Vector&, const State&)> stateChartInv;
   std::function<Matrix(const VioGroup&, const State&, const IMUInput&)>
       stateMatrixA;
   std::function<Matrix(const VioGroup&, const State&)> inputMatrixB;
@@ -67,15 +65,11 @@ struct GTSAM_UNSTABLE_EXPORT EqFCoordinateSuite {
                          const Point2&)>
       outputMatrixCiStar;
   std::function<Vector(const Vector&, const State&)> liftInnovation;
-  std::function<VioGroup(const Vector&, const State&)> liftInnovationDiscrete;
 
   Matrix outputMatrixC(const State& xi0, const VioGroup& X,
                        const VisionMeasurement& y,
                        const std::shared_ptr<const CameraModel>& camera,
                        bool useEquivariance = true) const;
-
-  Matrix stateMatrixADiscrete(const VioGroup& X, const State& xi0,
-                              const IMUInput& imuVel, double dt) const;
 
   Matrix23 outputMatrixCi(const Point3& q0, const SOT3& QHat,
                           const std::shared_ptr<const CameraModel>& camera)
