@@ -268,12 +268,6 @@ void EqVIOFilter::addNewLandmarks(
       Matrix::Identity(3 * static_cast<int>(newLandmarks.size()),
                        3 * static_cast<int>(newLandmarks.size())) *
       params_.initialPointVariance;
-  addLandmarksInternal(newLandmarks, newLandmarksCov);
-}
-
-void EqVIOFilter::addLandmarksInternal(std::vector<Landmark>& newLandmarks,
-                                       const Matrix& newLandmarkCov) {
-  if (newLandmarks.empty()) return;
 
   view_.xi0.cameraLandmarks.insert(view_.xi0.cameraLandmarks.end(),
                                    newLandmarks.begin(), newLandmarks.end());
@@ -295,7 +289,7 @@ void EqVIOFilter::addLandmarksInternal(std::vector<Landmark>& newLandmarks,
   view_.Sigma.conservativeResize(oldSize + 3 * newN, oldSize + 3 * newN);
   view_.Sigma.block(oldSize, 0, 3 * newN, oldSize).setZero();
   view_.Sigma.block(0, oldSize, oldSize, 3 * newN).setZero();
-  view_.Sigma.block(oldSize, oldSize, 3 * newN, 3 * newN) = newLandmarkCov;
+  view_.Sigma.block(oldSize, oldSize, 3 * newN, 3 * newN) = newLandmarksCov;
 
   syncBase(true);
 }
@@ -363,8 +357,7 @@ Matrix3 EqVIOFilter::getLandmarkCovById(int id) const {
 }
 
 Matrix2 EqVIOFilter::outputCovarianceById(
-    int id, const Point2&,
-    const std::shared_ptr<const CameraModel>& camera) const {
+    int id, const std::shared_ptr<const CameraModel>& camera) const {
   const Matrix3 lmCov = getLandmarkCovById(id);
   const auto it = std::find_if(
       view_.xi0.cameraLandmarks.begin(), view_.xi0.cameraLandmarks.end(),
@@ -421,7 +414,7 @@ void EqVIOFilter::removeOutliers(
     if (itHat == yHat.end()) continue;
     const Point2 yTildeI = yI - itHat->second;
 
-    const Matrix2 outputCov = outputCovarianceById(lmId, measurement.at(lmId), camera);
+    const Matrix2 outputCov = outputCovarianceById(lmId, camera);
     const double errProb = yTildeI.transpose() * outputCov.inverse() * yTildeI;
     if (errProb > params_.outlierThresholdProb) {
       probabilisticOutliers[lmId] = errProb;

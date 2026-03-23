@@ -106,8 +106,6 @@ class GTSAM_UNSTABLE_EXPORT EqVIOFilter
 
   void addNewLandmarks(const VisionMeasurement& measurement,
                        const std::shared_ptr<const CameraModel>& camera);
-  void addLandmarksInternal(std::vector<Landmark>& newLandmarks,
-                            const Matrix& newLandmarkCov);
   void removeLandmarkByIndex(int idx);
   void removeLandmarkById(int id);
   void removeOldLandmarks(const std::vector<int>& measurementIds);
@@ -116,8 +114,7 @@ class GTSAM_UNSTABLE_EXPORT EqVIOFilter
   void removeInvalidLandmarksNow();
   Matrix3 getLandmarkCovById(int id) const;
   Matrix2 outputCovarianceById(
-      int id, const Point2& y,
-      const std::shared_ptr<const CameraModel>& camera) const;
+      int id, const std::shared_ptr<const CameraModel>& camera) const;
 
   void update(const VisionMeasurement& measurement,
               const std::shared_ptr<const CameraModel>& camera,
