@@ -7,7 +7,7 @@ All Rights Reserved
 See LICENSE for the license information
 
 Generate paper-ready plots for the Bayes-tree covariance benchmarks.
-Author: Frank Dellaert
+Author: Codex 5.4, prompted by Frank Dellaert
 """
 
 import argparse
@@ -35,9 +35,10 @@ def to_float(rows, fields):
             row[field] = float(row[field])
         row["query_size"] = int(row["query_size"])
         row["queries"] = int(row["queries"])
-        row["support_cliques"] = int(row["support_cliques"])
-        row["compressed_cliques"] = int(row["compressed_cliques"])
-        row["reduced_state_dim"] = int(row["reduced_state_dim"])
+        row["repeats"] = int(row["repeats"])
+        row["support_cliques"] = float(row["support_cliques"])
+        row["compressed_cliques"] = float(row["compressed_cliques"])
+        row["reduced_state_dim"] = float(row["reduced_state_dim"])
     return rows
 
 
@@ -224,7 +225,7 @@ def plot_small_queries(rows, output_path):
                 "w20000\nMETIS",
             ],
         )
-        ax.set_ylabel("Median query time (ms)")
+        ax.set_ylabel("Median per-query mean time (ms)")
         ax.set_yscale("log")
         ax.grid(True, axis="y", alpha=0.3)
     handles, labels = axes[0].get_legend_handles_labels()
@@ -301,7 +302,7 @@ def plot_ordering(rows, output_path):
         ax.set_title(dataset_label(dataset))
         ax.set_xlabel("Local-window query size")
         ax.set_xticks(query_sizes, [str(size) for size in query_sizes])
-        ax.set_ylabel("Median query time (ms)")
+        ax.set_ylabel("Median per-query mean time (ms)")
         ax.set_yscale("log")
         ax.grid(True, axis="y", alpha=0.3)
     handles, labels = axes[0].get_legend_handles_labels()
@@ -349,7 +350,7 @@ def plot_structure(rows, output_path):
         )
         ax.set_title(dataset_label(dataset))
         ax.set_xlabel("Query size")
-        ax.set_ylabel("Count / dimension")
+        ax.set_ylabel("Median count / dimension")
         ax.grid(True, alpha=0.3)
     handles, labels = axes[0].get_legend_handles_labels()
     figure.legend(handles, labels, loc="upper center", ncol=3, frameon=False)
@@ -767,9 +768,12 @@ def main():
             load_rows(input_path),
             [
                 "median_total_ms",
-                "total_total_ms",
+                "sum_query_mean_total_ms",
                 "median_reduction_ms",
                 "median_extraction_ms",
+                "support_cliques",
+                "compressed_cliques",
+                "reduced_state_dim",
             ],
         )
     )

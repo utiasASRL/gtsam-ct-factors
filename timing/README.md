@@ -24,12 +24,14 @@ Run from `build/`:
 ```bash
 ./timing/timeBayesTreeCovariance \
   --datasets w100.graph,w10000.graph,w20000.txt \
+  --repeats 10 \
   --output-dir ../timing/results/bayes_tree_covariance
 ```
 
 This writes:
 
 - `timing/results/bayes_tree_covariance/raw.csv`
+- `timing/results/bayes_tree_covariance/per_query.csv`
 - `timing/results/bayes_tree_covariance/summary.csv`
 
 The generated CSVs now include the small-query families used to benchmark the
@@ -80,6 +82,14 @@ This generates:
 
 - The benchmark timings measure covariance-query work after optimization and
   linearization.
+- Each distinct query is run once as an untimed warmup and then `--repeats`
+  times as measured repetitions.
+- `raw.csv` stores one row per measured repetition.
+- `per_query.csv` stores one row per distinct query, aggregating repeated
+  timings by per-query means.
+- `summary.csv` stores one row per query family bucket, aggregating the
+  per-query means and structural statistics by medians across the sampled
+  queries.
 - The `results-smallq.pdf` figure summarizes the `Q = 1` and `Q = 2` query
   families; the larger performance figures focus on `Q > 2`, where Steiner
   localization changes the asymptotic behavior.

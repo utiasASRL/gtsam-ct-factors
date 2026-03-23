@@ -12,7 +12,7 @@
  * @file    timeBayesTreeCovariance.cpp
  * @brief   Benchmark Bayes-tree covariance recovery variants.
  * @date    March 2026
- * @author  Frank Dellaert
+ * @author  Codex 5.4, prompted by Frank Dellaert
  */
 
 #include <gtsam/config.h>
@@ -77,9 +77,72 @@ struct RawResult {
   string variant;
   size_t querySize = 0;
   size_t queryIndex = 0;
+  size_t repeatIndex = 0;
   double totalMs = 0.0;
   double reductionMs = 0.0;
   double extractionMs = 0.0;
+  size_t supportCliques = 0;
+  size_t compressedCliques = 0;
+  size_t reducedStateDim = 0;
+};
+
+/// Grouping key for per-query aggregation across repeated timings.
+struct PerQueryKey {
+  string dataset;
+  string ordering;
+  string family;
+  string mode;
+  string variant;
+  size_t querySize = 0;
+  size_t queryIndex = 0;
+
+  bool operator==(const PerQueryKey& other) const {
+    return dataset == other.dataset && ordering == other.ordering &&
+           family == other.family && mode == other.mode &&
+           variant == other.variant && querySize == other.querySize &&
+           queryIndex == other.queryIndex;
+  }
+};
+
+/// Hash function for PerQueryKey.
+struct PerQueryKeyHash {
+  size_t operator()(const PerQueryKey& key) const {
+    size_t seed = std::hash<string>()(key.dataset);
+    seed ^= std::hash<string>()(key.ordering) + 0x9e3779b9 + (seed << 6) +
+            (seed >> 2);
+    seed ^= std::hash<string>()(key.family) + 0x9e3779b9 + (seed << 6) +
+            (seed >> 2);
+    seed ^=
+        std::hash<string>()(key.mode) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+    seed ^= std::hash<string>()(key.variant) + 0x9e3779b9 + (seed << 6) +
+            (seed >> 2);
+    seed ^= std::hash<size_t>()(key.querySize) + 0x9e3779b9 + (seed << 6) +
+            (seed >> 2);
+    seed ^= std::hash<size_t>()(key.queryIndex) + 0x9e3779b9 + (seed << 6) +
+            (seed >> 2);
+    return seed;
+  }
+};
+
+/// Aggregated result for one fixed query across repeated timing samples.
+struct PerQueryResult {
+  string dataset;
+  string ordering;
+  string family;
+  string mode;
+  string variant;
+  size_t querySize = 0;
+  size_t queryIndex = 0;
+  size_t repeats = 0;
+  double meanTotalMs = 0.0;
+  double meanReductionMs = 0.0;
+  double meanExtractionMs = 0.0;
+  double medianTotalMs = 0.0;
+  double medianReductionMs = 0.0;
+  double medianExtractionMs = 0.0;
+  double stddevTotalMs = 0.0;
+  double stddevReductionMs = 0.0;
+  double stddevExtractionMs = 0.0;
   size_t supportCliques = 0;
   size_t compressedCliques = 0;
   size_t reducedStateDim = 0;
@@ -121,12 +184,13 @@ struct SummaryKeyHash {
 
 /// Aggregated timing samples for one SummaryKey.
 struct SummaryValue {
-  vector<double> totalMs;
-  vector<double> reductionMs;
-  vector<double> extractionMs;
-  size_t supportCliques = 0;
-  size_t compressedCliques = 0;
-  size_t reducedStateDim = 0;
+  vector<double> queryMeanTotalMs;
+  vector<double> queryMeanReductionMs;
+  vector<double> queryMeanExtractionMs;
+  vector<double> supportCliques;
+  vector<double> compressedCliques;
+  vector<double> reducedStateDim;
+  size_t repeats = 0;
 };
 
 /// Return a deduplicated, sorted key list.
@@ -377,6 +441,29 @@ double median(vector<double> values) {
   return values[mid];
 }
 
+/// Compute the arithmetic mean of a sample vector.
+double mean(const vector<double>& values) {
+  if (values.empty()) {
+    return 0.0;
+  }
+  const double sum = accumulate(values.begin(), values.end(), 0.0);
+  return sum / static_cast<double>(values.size());
+}
+
+/// Compute the population standard deviation of a sample vector.
+double stddev(const vector<double>& values) {
+  if (values.size() < 2) {
+    return 0.0;
+  }
+  const double sampleMean = mean(values);
+  double sumSquares = 0.0;
+  for (double value : values) {
+    const double delta = value - sampleMean;
+    sumSquares += delta * delta;
+  }
+  return sqrt(sumSquares / static_cast<double>(values.size()));
+}
+
 /// Sample representative starting indices across a window range.
 vector<size_t> sampledStarts(size_t maxStartInclusive, size_t maxQueries,
                              size_t stride = 1) {
@@ -438,8 +525,9 @@ vector<QueryCase> generateSinglePoseQueries(const KeyVector& poseKeys,
   if (poseKeys.empty()) {
     return queries;
   }
-  for (size_t start : sampledStarts(poseKeys.size() - 1, maxQueries,
-                                    max<size_t>(1, poseKeys.size() / maxQueries))) {
+  for (size_t start :
+       sampledStarts(poseKeys.size() - 1, maxQueries,
+                     max<size_t>(1, poseKeys.size() / maxQueries))) {
     QueryCase query;
     query.family = "single_pose";
     query.querySize = 1;
@@ -571,7 +659,8 @@ RawResult benchmarkQuery(const string& datasetName, const string& orderingLabel,
                          const GaussianFactorGraph& linearGraph,
                          const GaussianBayesTree& bayesTree,
                          const Ordering& fullOrdering, const Values& values,
-                         const QueryCase& query, size_t queryIndex) {
+                         const QueryCase& query, size_t queryIndex,
+                         size_t repeatIndex) {
   const KeyVector orderedKeys = uniqueSortedKeys(query.keys);
   const SupportStats supportStats = analyzeSupport(bayesTree, orderedKeys);
 
@@ -587,9 +676,8 @@ RawResult benchmarkQuery(const string& datasetName, const string& orderingLabel,
     if (variant == Variant::LegacyDense || variant == Variant::SteinerDense) {
       recovered = information.inverse();
     } else {
-      recovered =
-          information.selfadjointView<Eigen::Upper>().llt().solve(
-              Matrix::Identity(information.rows(), information.cols()));
+      recovered = information.selfadjointView<Eigen::Upper>().llt().solve(
+          Matrix::Identity(information.rows(), information.cols()));
     }
     const auto extractionEnd = chrono::steady_clock::now();
 
@@ -604,10 +692,12 @@ RawResult benchmarkQuery(const string& datasetName, const string& orderingLabel,
     result.variant = variantName(variant);
     result.querySize = query.querySize;
     result.queryIndex = queryIndex;
+    result.repeatIndex = repeatIndex;
     result.reductionMs =
         chrono::duration<double, milli>(reductionEnd - reductionStart).count();
     result.extractionMs =
-        chrono::duration<double, milli>(extractionEnd - extractionStart).count();
+        chrono::duration<double, milli>(extractionEnd - extractionStart)
+            .count();
     result.totalMs = result.reductionMs + result.extractionMs;
     result.supportCliques = 1;
     result.compressedCliques = 1;
@@ -619,8 +709,10 @@ RawResult benchmarkQuery(const string& datasetName, const string& orderingLabel,
   GaussianFactorGraph reducedGraph =
       orderedKeys.size() == 2
           ? pairReducedFactorGraph(bayesTree, orderedKeys)
-          : ((variant == Variant::LegacyDense || variant == Variant::LegacySolve)
-                 ? legacyReducedFactorGraph(linearGraph, fullOrdering, orderedKeys)
+          : ((variant == Variant::LegacyDense ||
+              variant == Variant::LegacySolve)
+                 ? legacyReducedFactorGraph(linearGraph, fullOrdering,
+                                            orderedKeys)
                  : steinerReducedFactorGraph(bayesTree, orderedKeys));
   const auto reductionEnd = chrono::steady_clock::now();
 
@@ -677,6 +769,7 @@ RawResult benchmarkQuery(const string& datasetName, const string& orderingLabel,
   result.variant = variantName(variant);
   result.querySize = query.querySize;
   result.queryIndex = queryIndex;
+  result.repeatIndex = repeatIndex;
   result.reductionMs =
       chrono::duration<double, milli>(reductionEnd - reductionStart).count();
   result.extractionMs =
@@ -693,6 +786,7 @@ void writeRawCsv(const filesystem::path& path,
                  const vector<RawResult>& results) {
   ofstream os(path);
   os << "dataset,ordering,query_family,mode,variant,query_size,query_index,"
+        "repeat_index,"
         "total_ms,reduction_ms,extraction_ms,support_cliques,compressed_"
         "cliques,"
         "reduced_state_dim\n";
@@ -700,21 +794,31 @@ void writeRawCsv(const filesystem::path& path,
   for (const auto& result : results) {
     os << result.dataset << ',' << result.ordering << ',' << result.family
        << ',' << result.mode << ',' << result.variant << ',' << result.querySize
-       << ',' << result.queryIndex << ',' << result.totalMs << ','
-       << result.reductionMs << ',' << result.extractionMs << ','
-       << result.supportCliques << ',' << result.compressedCliques << ','
-       << result.reducedStateDim << '\n';
+       << ',' << result.queryIndex << ',' << result.repeatIndex << ','
+       << result.totalMs << ',' << result.reductionMs << ','
+       << result.extractionMs << ',' << result.supportCliques << ','
+       << result.compressedCliques << ',' << result.reducedStateDim << '\n';
   }
 }
 
-/// Write aggregated benchmark statistics to CSV.
-void writeSummaryCsv(const filesystem::path& path,
-                     const vector<RawResult>& results) {
-  unordered_map<SummaryKey, SummaryValue, SummaryKeyHash> summary;
+/// Aggregate repeated raw timings into one row per distinct query.
+vector<PerQueryResult> aggregatePerQueryResults(
+    const vector<RawResult>& results) {
+  struct PerQuerySamples {
+    vector<double> totalMs;
+    vector<double> reductionMs;
+    vector<double> extractionMs;
+    size_t supportCliques = 0;
+    size_t compressedCliques = 0;
+    size_t reducedStateDim = 0;
+  };
+
+  unordered_map<PerQueryKey, PerQuerySamples, PerQueryKeyHash> perQuery;
   for (const auto& result : results) {
-    const SummaryKey key{result.dataset, result.ordering, result.family,
-                         result.mode,    result.variant,  result.querySize};
-    auto& value = summary[key];
+    const PerQueryKey key{result.dataset,   result.ordering, result.family,
+                          result.mode,      result.variant,  result.querySize,
+                          result.queryIndex};
+    auto& value = perQuery[key];
     value.totalMs.push_back(result.totalMs);
     value.reductionMs.push_back(result.reductionMs);
     value.extractionMs.push_back(result.extractionMs);
@@ -723,21 +827,94 @@ void writeSummaryCsv(const filesystem::path& path,
     value.reducedStateDim = result.reducedStateDim;
   }
 
+  vector<PerQueryResult> aggregated;
+  aggregated.reserve(perQuery.size());
+  for (const auto& [key, value] : perQuery) {
+    PerQueryResult result;
+    result.dataset = key.dataset;
+    result.ordering = key.ordering;
+    result.family = key.family;
+    result.mode = key.mode;
+    result.variant = key.variant;
+    result.querySize = key.querySize;
+    result.queryIndex = key.queryIndex;
+    result.repeats = value.totalMs.size();
+    result.meanTotalMs = mean(value.totalMs);
+    result.meanReductionMs = mean(value.reductionMs);
+    result.meanExtractionMs = mean(value.extractionMs);
+    result.medianTotalMs = median(value.totalMs);
+    result.medianReductionMs = median(value.reductionMs);
+    result.medianExtractionMs = median(value.extractionMs);
+    result.stddevTotalMs = stddev(value.totalMs);
+    result.stddevReductionMs = stddev(value.reductionMs);
+    result.stddevExtractionMs = stddev(value.extractionMs);
+    result.supportCliques = value.supportCliques;
+    result.compressedCliques = value.compressedCliques;
+    result.reducedStateDim = value.reducedStateDim;
+    aggregated.push_back(result);
+  }
+  return aggregated;
+}
+
+/// Write per-query aggregated timing results to CSV.
+void writePerQueryCsv(const filesystem::path& path,
+                      const vector<PerQueryResult>& results) {
   ofstream os(path);
-  os << "dataset,ordering,query_family,mode,variant,query_size,queries,"
-        "median_total_ms,total_total_ms,median_reduction_ms,median_extraction_"
-        "ms,"
+  os << "dataset,ordering,query_family,mode,variant,query_size,query_index,"
+        "repeats,mean_total_ms,mean_reduction_ms,mean_extraction_ms,"
+        "median_total_ms,median_reduction_ms,median_extraction_ms,"
+        "stddev_total_ms,stddev_reduction_ms,stddev_extraction_ms,"
         "support_cliques,compressed_cliques,reduced_state_dim\n";
   os << fixed << setprecision(6);
+  for (const auto& result : results) {
+    os << result.dataset << ',' << result.ordering << ',' << result.family
+       << ',' << result.mode << ',' << result.variant << ',' << result.querySize
+       << ',' << result.queryIndex << ',' << result.repeats << ','
+       << result.meanTotalMs << ',' << result.meanReductionMs << ','
+       << result.meanExtractionMs << ',' << result.medianTotalMs << ','
+       << result.medianReductionMs << ',' << result.medianExtractionMs << ','
+       << result.stddevTotalMs << ',' << result.stddevReductionMs << ','
+       << result.stddevExtractionMs << ',' << result.supportCliques << ','
+       << result.compressedCliques << ',' << result.reducedStateDim << '\n';
+  }
+}
+
+/// Write family-level summary statistics aggregated from per-query results.
+void writeSummaryCsv(const filesystem::path& path,
+                     const vector<PerQueryResult>& results) {
+  unordered_map<SummaryKey, SummaryValue, SummaryKeyHash> summary;
+  for (const auto& result : results) {
+    const SummaryKey key{result.dataset, result.ordering, result.family,
+                         result.mode,    result.variant,  result.querySize};
+    auto& value = summary[key];
+    value.queryMeanTotalMs.push_back(result.meanTotalMs);
+    value.queryMeanReductionMs.push_back(result.meanReductionMs);
+    value.queryMeanExtractionMs.push_back(result.meanExtractionMs);
+    value.supportCliques.push_back(static_cast<double>(result.supportCliques));
+    value.compressedCliques.push_back(
+        static_cast<double>(result.compressedCliques));
+    value.reducedStateDim.push_back(
+        static_cast<double>(result.reducedStateDim));
+    value.repeats = result.repeats;
+  }
+
+  ofstream os(path);
+  os << "dataset,ordering,query_family,mode,variant,query_size,queries,repeats,"
+        "median_total_ms,sum_query_mean_total_ms,median_reduction_ms,"
+        "median_extraction_ms,support_cliques,compressed_cliques,"
+        "reduced_state_dim\n";
+  os << fixed << setprecision(6);
   for (const auto& [key, value] : summary) {
-    const double totalTime =
-        accumulate(value.totalMs.begin(), value.totalMs.end(), 0.0);
+    const double totalTime = accumulate(value.queryMeanTotalMs.begin(),
+                                        value.queryMeanTotalMs.end(), 0.0);
     os << key.dataset << ',' << key.ordering << ',' << key.family << ','
        << key.mode << ',' << key.variant << ',' << key.querySize << ','
-       << value.totalMs.size() << ',' << median(value.totalMs) << ','
-       << totalTime << ',' << median(value.reductionMs) << ','
-       << median(value.extractionMs) << ',' << value.supportCliques << ','
-       << value.compressedCliques << ',' << value.reducedStateDim << '\n';
+       << value.queryMeanTotalMs.size() << ',' << value.repeats << ','
+       << median(value.queryMeanTotalMs) << ',' << totalTime << ','
+       << median(value.queryMeanReductionMs) << ','
+       << median(value.queryMeanExtractionMs) << ','
+       << median(value.supportCliques) << ',' << median(value.compressedCliques)
+       << ',' << median(value.reducedStateDim) << '\n';
   }
 }
 
@@ -750,6 +927,13 @@ string argumentOrDefault(char** begin, char** end, const string& flag,
     }
   }
   return defaultValue;
+}
+
+/// Read an unsigned integer argument from argv or return a default value.
+size_t sizeTArgumentOrDefault(char** begin, char** end, const string& flag,
+                              size_t defaultValue) {
+  return static_cast<size_t>(
+      stoull(argumentOrDefault(begin, end, flag, to_string(defaultValue))));
 }
 
 /// Split a comma-separated argument into individual values.
@@ -777,6 +961,8 @@ int main(int argc, char** argv) {
           .string());
   const vector<string> datasets = splitCommaSeparated(argumentOrDefault(
       argv, argv + argc, "--datasets", "w100.graph,w10000.graph,w20000.txt"));
+  const size_t repeats =
+      sizeTArgumentOrDefault(argv, argv + argc, "--repeats", 10);
 
   filesystem::create_directories(outputDir);
 
@@ -826,9 +1012,14 @@ int main(int argc, char** argv) {
              {Variant::LegacyDense, Variant::SteinerDense, Variant::LegacySolve,
               Variant::SteinerSolve}) {
           try {
-            rawResults.push_back(benchmarkQuery(
-                datasetName, orderingName(orderingType), variant, linearGraph,
-                bayesTree, ordering, result, query, queryIndex));
+            (void)benchmarkQuery(datasetName, orderingName(orderingType),
+                                 variant, linearGraph, bayesTree, ordering,
+                                 result, query, queryIndex, 0);
+            for (size_t repeatIndex = 0; repeatIndex < repeats; ++repeatIndex) {
+              rawResults.push_back(benchmarkQuery(
+                  datasetName, orderingName(orderingType), variant, linearGraph,
+                  bayesTree, ordering, result, query, queryIndex, repeatIndex));
+            }
           } catch (const std::exception& error) {
             cerr << "Failure for dataset=" << datasetName
                  << " ordering=" << orderingName(orderingType)
@@ -844,7 +1035,10 @@ int main(int argc, char** argv) {
   }
 
   writeRawCsv(outputDir / "raw.csv", rawResults);
-  writeSummaryCsv(outputDir / "summary.csv", rawResults);
+  const vector<PerQueryResult> perQueryResults =
+      aggregatePerQueryResults(rawResults);
+  writePerQueryCsv(outputDir / "per_query.csv", perQueryResults);
+  writeSummaryCsv(outputDir / "summary.csv", perQueryResults);
   cout << "Wrote benchmark results to " << outputDir << endl;
   return 0;
 }
