@@ -431,9 +431,6 @@ TEST(Symmetry, LiftAndIntegrationSanity) {
   imu.gyrBiasVel = Vector3(0.01, 0.0, -0.02);
   imu.accBiasVel = Vector3(-0.01, 0.02, 0.0);
 
-  const Vector l = liftVelocity(xi, imu);
-  EXPECT_LONGS_EQUAL(33, l.size());
-
   const double dt = 1e-3;
   const VioGroup delta = liftVelocityDiscrete(xi, imu, dt);
   const State xiLifted = stateGroupAction(delta, xi);

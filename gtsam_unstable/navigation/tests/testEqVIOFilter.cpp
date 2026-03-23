@@ -9,7 +9,11 @@
 
  * -------------------------------------------------------------------------- */
 
-/// @file testEqVIOFilter.cpp
+/**
+ * @file testEqVIOFilter.cpp
+ * @brief Unit tests for the EqVIOFilter.
+ * @author Rohan Bansal
+ */
 
 #include <CppUnitLite/TestHarness.h>
 #include <gtsam/base/TestableAssertions.h>

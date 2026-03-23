@@ -72,20 +72,20 @@ class EquivariantFilter : public ManifoldEKF<M> {
 
  protected:
 
-  /// Recompute Dphi0 and innovation lift matrix from current reference state.
-  void recomputeActionDifferentials() {
-    act_on_ref_ = typename Symmetry::Orbit(xi_ref_);
-    const G identity_at_g = traits<G>::Compose(g_.inverse(), g_);
-    act_on_ref_(identity_at_g, &Dphi0_);
-    InnovationLift_ = Dphi0_.completeOrthogonalDecomposition().pseudoInverse();
-  }
-
   /// Reset reference, covariance, and group estimate; sync manifold state.
   void resetReferenceAndGroup(const M& xi_ref, const CovarianceM& P,
                               const G& g) {
     xi_ref_ = xi_ref;
     g_ = g;
-    recomputeActionDifferentials();
+
+    // -- Recompute Dphi0 and innovation lift matrix from current reference
+    // state.
+    act_on_ref_ = typename Symmetry::Orbit(xi_ref_);
+    const G identity_at_g = traits<G>::Compose(g_.inverse(), g_);
+    act_on_ref_(identity_at_g, &Dphi0_);
+    InnovationLift_ = Dphi0_.completeOrthogonalDecomposition().pseudoInverse();
+    // --
+
     if constexpr (DimM == Eigen::Dynamic) {
       this->n_ = traits<M>::GetDimension(xi_ref_);
       this->I_ = MatrixM::Identity(this->n_, this->n_);

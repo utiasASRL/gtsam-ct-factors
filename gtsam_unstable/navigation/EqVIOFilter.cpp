@@ -9,8 +9,11 @@
 
  * -------------------------------------------------------------------------- */
 
-/// @file EqVIOFilter.cpp
-/// @brief Standalone equivariant VIO filter for gtsam_unstable.
+/**
+ * @file EqVIOFilter.cpp
+ * @brief Standalone equivariant VIO filter.
+ * @author Rohan Bansal
+ */
 
 #include <gtsam_unstable/navigation/EqVIOFilter.h>
 

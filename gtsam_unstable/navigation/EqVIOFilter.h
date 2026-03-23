@@ -9,8 +9,11 @@
 
  * -------------------------------------------------------------------------- */
 
-/// @file EqVIOFilter.h
-/// @brief Standalone equivariant VIO filter for gtsam_unstable.
+/**
+ * @file EqVIOFilter.h
+ * @brief Standalone equivariant VIO filter.
+ * @author Rohan Bansal
+ */
 
 #pragma once
 
@@ -60,7 +63,7 @@ class GTSAM_UNSTABLE_EXPORT EqVIOFilter
   };
 
  private:
- EqVIOFilterParams params_;
+  EqVIOFilterParams params_;
   View view_;
   bool initialized_ = false;
 

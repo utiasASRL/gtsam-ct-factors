@@ -462,39 +462,6 @@ VisionMeasurement outputGroupAction(const VioGroup& X,
   return out;
 }
 
-Vector liftVelocity(const State& state, const IMUInput& velocity) {
-  const size_t N = state.n();
-  Vector lift = Vector::Zero(21 + 4 * static_cast<int>(N));
-
-  const SensorState& sensor = state.sensor;
-  const IMUInput v_est = velocity - sensor.inputBias;
-
-  Vector6 U_A;
-  U_A << v_est.gyr, sensor.velocity;
-  const Vector6 U_B = sensor.cameraOffset.inverse().AdjointMap() * U_A;
-  const Vector3 u_w = -v_est.acc + sensor.gravityDir() * GRAVITY_CONSTANT;
-
-  lift.segment<6>(0) = U_A;
-  lift.segment<3>(6) = u_w;
-  lift.segment<6>(9) << velocity.accBiasVel, velocity.gyrBiasVel;
-  lift.segment<6>(15) = U_B;
-
-  const Vector6 U_C = sensor.cameraOffset.inverse().AdjointMap() * U_A;
-  const Vector3 omegaC = U_C.head<3>();
-  const Vector3 vC = U_C.tail<3>();
-
-  // Lift the landmark transform velocities
-  for (size_t i = 0; i < N; ++i) {
-    const Vector3 p = state.cameraLandmarks[i].p;
-    Vector4 W;
-    W.head<3>() = omegaC + Rot3::Hat(p) * vC / p.squaredNorm();
-    W(3) = p.dot(vC) / p.squaredNorm();
-    lift.segment<4>(21 + 4 * static_cast<int>(i)) = W;
-  }
-
-  return lift;
-}
-
 VioGroup liftVelocityDiscrete(const State& state, const IMUInput& velocity,
                               double dt) {
   const SensorState& sensor = state.sensor;

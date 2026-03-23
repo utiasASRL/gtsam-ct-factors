@@ -9,10 +9,14 @@
 
  * -------------------------------------------------------------------------- */
 
-/// @file EqVIOFilterCsvReplay.cpp
-/// @brief Replay preprocessed EqVIO CSV data without feature tracking.
+/**
+ * @file EqVIOFilterExample.cpp
+ * @brief Run the EqVIOFilter on 10 seconds of the EuRoC MAV Vicon Room 1 dataset.
+ * @author Rohan Bansal
+ */
 
 #include <gtsam_unstable/navigation/EqVIOFilter.h>
+#include <gtsam/slam/dataset.h>
 
 #include <algorithm>
 #include <cctype>
@@ -287,13 +291,9 @@ void propagateBufferedImu(EqVIOFilter& filter, std::vector<IMUInput>& imuBuffer,
 
 }  // namespace
 
-int main(int argc, char** argv) {
-  if (argc < 2) {
-    std::cerr << "Usage:\n  " << argv[0] << " <processed_eqvio_stream.csv>\n";
-    return 1;
-  }
-
-  const std::string csvPath = argv[1];
+int main() {
+  const std::string csvPath =
+      findExampleDataFile("EqVIOdata_eurocmav_room1_10sec.csv");
 
   try {
     const ReplayLog log = readReplayCsv(csvPath);
