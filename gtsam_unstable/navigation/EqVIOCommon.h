@@ -48,17 +48,12 @@ namespace eqvio {
 /// Similarity transform group element represented as `(SO3, log_scale)`.
 using SOT3 = ProductLieGroup<SO3, double>;
 
-/// Extended pose with rotation, position, and velocity columns.
 using Se23 = ExtendedPose3<2>;
-/// IMU bias type used by EqVIO.
 using Bias = imuBias::ConstantBias;
-/// Dynamic product of per-landmark `SOT3` transforms.
+/// See eq. (22) in arXiv:2205.01980v3 for VI-SLAM Group defn.
 using LandmarkGroup = PowerLieGroup<SOT3, Eigen::Dynamic>;
-/// Sensor-side group block `(Se23, Bias)`.
 using SensorCore = ProductLieGroup<Se23, Bias>;
-/// Landmark-side group block `(camera extrinsics, landmark transforms)`.
 using LandmarkCore = ProductLieGroup<Pose3, LandmarkGroup>;
-/// Full EqVIO group `(SensorCore, LandmarkCore)`.
 using VioGroup = ProductLieGroup<SensorCore, LandmarkCore>;
 
 /// Approximate gravitational acceleration magnitude in m/s^2.

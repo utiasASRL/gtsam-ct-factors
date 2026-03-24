@@ -142,15 +142,80 @@ Matrix3 ConvInvDepthToEuc(const Point3& q0) {
   return M;
 }
 
-Matrix _EqFInputMatrixB(const VioGroup& X, const State& xi0);
+/// Base per-feature output Jacobian before inverse-depth chart conversion.
+Matrix23 _EqFoutputMatrixCiStarBase(
+    const Point3& q0, const SOT3& QHat,
+    const std::shared_ptr<const CameraModel>& camera, const Point2& y) {
+  if (!camera) {
+    throw std::invalid_argument("EqFoutputMatrixCiStar_base: null camera");
+  }
 
-/// Internal implementation of EqF state matrix `A` in inverse-depth coordinates.
-Matrix _EqFStateMatrixA(const VioGroup& X, const State& xi0,
-                        const IMUInput& imuVel) {
+  using Matrix43 = Eigen::Matrix<double, 4, 3>;
+  using Matrix34 = Eigen::Matrix<double, 3, 4>;
+  using Matrix24 = Eigen::Matrix<double, 2, 4>;
+
+  const Vector3 qHat = SOT3ApplyInverse(QHat, q0);
+  const Vector3 yHat = qHat.normalized();
+
+  Matrix43 m2g = Matrix43::Zero();
+  m2g.block<3, 3>(0, 0) = -Rot3::Hat(q0);
+  m2g.row(3) = -q0.transpose();
+  m2g /= q0.squaredNorm();
+
+  const auto DRho = [&camera](const Vector3& yVec) -> Matrix24 {
+    Matrix34 DRhoVec = Matrix34::Zero();
+    DRhoVec.block<3, 3>(0, 0) = Rot3::Hat(yVec);
+    return projectionJacobian(*camera, yVec) * DRhoVec;
+  };
+
+  const Vector3 yTru = undistortPoint(*camera, y);
+  const Matrix24 drhoSym = 0.5 * (DRho(yTru) + DRho(yHat));
+  const Matrix44 adjQInv = QHat.inverse().AdjointMap();
+  return drhoSym * adjQInv * m2g;
+}
+
+/// Internal innovation lift used by `liftInnovation`.
+Vector _liftInnovation(const Vector& totalInnovation, const State& xi0) {
+  if (totalInnovation.size() != xi0.dim()) {
+    throw std::invalid_argument(
+        "liftInnovation: innovation dimension mismatch");
+  }
+
+  const int N = static_cast<int>(xi0.n());
+  Vector lift = Vector::Zero(21 + 4 * N);
+
+  lift.segment<6>(9) = totalInnovation.segment<6>(0);
+  lift.segment<6>(0) = totalInnovation.segment<6>(6);
+
+  const Vector3 gammaV = totalInnovation.segment<3>(12);
+  lift.segment<3>(6) = -gammaV - Rot3::Hat(lift.segment<3>(0)) * xi0.sensor.velocity;
+
+  lift.segment<6>(15) =
+      totalInnovation.segment<6>(15) +
+      xi0.sensor.cameraOffset.inverse().AdjointMap() * lift.segment<6>(0);
+
+  for (int i = 0; i < N; ++i) {
+    const Point3 qi0 = xi0.cameraLandmarks[static_cast<size_t>(i)].p;
+    const Vector3 gammaQi0 =
+        ConvInvDepthToEuc(qi0) *
+        totalInnovation.segment<3>(SensorState::CompDim + 3 * i);
+
+    lift.segment<3>(21 + 4 * i) = -qi0.cross(gammaQi0) / qi0.squaredNorm();
+    lift(21 + 4 * i + 3) = -qi0.dot(gammaQi0) / qi0.squaredNorm();
+  }
+
+  return lift;
+}
+
+}  // namespace
+
+/// EqF state matrix construction in inverse-depth coordinates.
+Matrix EqFStateMatrixA(const VioGroup& X, const State& xi0,
+                       const IMUInput& imuVel) {
   const int N = static_cast<int>(xi0.n());
   Matrix A0t = Matrix::Zero(xi0.dim(), xi0.dim());
 
-  const Matrix B = _EqFInputMatrixB(X, xi0);
+  const Matrix B = EqFInputMatrixB(X, xi0);
   A0t.block(0, 0, xi0.dim(), 3) = -B.block(0, 3, xi0.dim(), 3);
   A0t.block(0, 3, xi0.dim(), 3) = -B.block(0, 0, xi0.dim(), 3);
   A0t.block<3, 3>(9, 12).setIdentity();
@@ -213,8 +278,8 @@ Matrix _EqFStateMatrixA(const VioGroup& X, const State& xi0,
   return A0t;
 }
 
-/// Internal implementation of EqF input matrix `B` in inverse-depth coordinates.
-Matrix _EqFInputMatrixB(const VioGroup& X, const State& xi0) {
+/// EqF input matrix construction in inverse-depth coordinates.
+Matrix EqFInputMatrixB(const VioGroup& X, const State& xi0) {
   const int N = static_cast<int>(xi0.n());
   Matrix Bt = Matrix::Zero(xi0.dim(), IMUInput::CompDim);
 
@@ -245,40 +310,8 @@ Matrix _EqFInputMatrixB(const VioGroup& X, const State& xi0) {
   return Bt;
 }
 
-/// Base per-feature output Jacobian before inverse-depth chart conversion.
-Matrix23 _EqFoutputMatrixCiStarBase(
-    const Point3& q0, const SOT3& QHat,
-    const std::shared_ptr<const CameraModel>& camera, const Point2& y) {
-  if (!camera) {
-    throw std::invalid_argument("EqFoutputMatrixCiStar_base: null camera");
-  }
-
-  using Matrix43 = Eigen::Matrix<double, 4, 3>;
-  using Matrix34 = Eigen::Matrix<double, 3, 4>;
-  using Matrix24 = Eigen::Matrix<double, 2, 4>;
-
-  const Vector3 qHat = SOT3ApplyInverse(QHat, q0);
-  const Vector3 yHat = qHat.normalized();
-
-  Matrix43 m2g = Matrix43::Zero();
-  m2g.block<3, 3>(0, 0) = -Rot3::Hat(q0);
-  m2g.row(3) = -q0.transpose();
-  m2g /= q0.squaredNorm();
-
-  const auto DRho = [&camera](const Vector3& yVec) -> Matrix24 {
-    Matrix34 DRhoVec = Matrix34::Zero();
-    DRhoVec.block<3, 3>(0, 0) = Rot3::Hat(yVec);
-    return projectionJacobian(*camera, yVec) * DRhoVec;
-  };
-
-  const Vector3 yTru = undistortPoint(*camera, y);
-  const Matrix24 drhoSym = 0.5 * (DRho(yTru) + DRho(yHat));
-  const Matrix44 adjQInv = QHat.inverse().AdjointMap();
-  return drhoSym * adjQInv * m2g;
-}
-
 /// Per-feature equivariant output Jacobian in inverse-depth coordinates.
-Matrix23 _EqFoutputMatrixCiStar(
+Matrix23 EqFoutputMatrixCiStar(
     const Point3& q0, const SOT3& QHat,
     const std::shared_ptr<const CameraModel>& camera, const Point2& y) {
   const double r0 = q0.norm();
@@ -287,59 +320,6 @@ Matrix23 _EqFoutputMatrixCiStar(
   ind2euc.block<3, 2>(0, 0) = r0 * SphereChartStereoInvDiff0(y0);
   ind2euc.block<3, 1>(0, 2) = -r0 * q0;
   return _EqFoutputMatrixCiStarBase(q0, QHat, camera, y) * ind2euc;
-}
-
-/// Internal innovation lift used by `liftInnovation`.
-Vector _liftInnovation(const Vector& totalInnovation, const State& xi0) {
-  if (totalInnovation.size() != xi0.dim()) {
-    throw std::invalid_argument(
-        "liftInnovation: innovation dimension mismatch");
-  }
-
-  const int N = static_cast<int>(xi0.n());
-  Vector lift = Vector::Zero(21 + 4 * N);
-
-  lift.segment<6>(9) = totalInnovation.segment<6>(0);
-  lift.segment<6>(0) = totalInnovation.segment<6>(6);
-
-  const Vector3 gammaV = totalInnovation.segment<3>(12);
-  lift.segment<3>(6) = -gammaV - Rot3::Hat(lift.segment<3>(0)) * xi0.sensor.velocity;
-
-  lift.segment<6>(15) =
-      totalInnovation.segment<6>(15) +
-      xi0.sensor.cameraOffset.inverse().AdjointMap() * lift.segment<6>(0);
-
-  for (int i = 0; i < N; ++i) {
-    const Point3 qi0 = xi0.cameraLandmarks[static_cast<size_t>(i)].p;
-    const Vector3 gammaQi0 =
-        ConvInvDepthToEuc(qi0) *
-        totalInnovation.segment<3>(SensorState::CompDim + 3 * i);
-
-    lift.segment<3>(21 + 4 * i) = -qi0.cross(gammaQi0) / qi0.squaredNorm();
-    lift(21 + 4 * i + 3) = -qi0.dot(gammaQi0) / qi0.squaredNorm();
-  }
-
-  return lift;
-}
-
-}  // namespace
-
-/// Public wrapper for EqF state matrix construction.
-Matrix EqFStateMatrixA(const VioGroup& X, const State& xi0,
-                       const IMUInput& imuVel) {
-  return _EqFStateMatrixA(X, xi0, imuVel);
-}
-
-/// Public wrapper for EqF input matrix construction.
-Matrix EqFInputMatrixB(const VioGroup& X, const State& xi0) {
-  return _EqFInputMatrixB(X, xi0);
-}
-
-/// Public wrapper for per-feature equivariant output Jacobian.
-Matrix23 EqFoutputMatrixCiStar(
-    const Point3& q0, const SOT3& QHat,
-    const std::shared_ptr<const CameraModel>& camera, const Point2& y) {
-  return _EqFoutputMatrixCiStar(q0, QHat, camera, y);
 }
 
 /// Compute per-feature output Jacobian from predicted measurement.

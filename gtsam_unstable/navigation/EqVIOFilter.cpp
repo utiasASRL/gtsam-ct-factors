@@ -41,30 +41,6 @@ Vector _measurementVector(const VisionMeasurement& measurement) {
   return v;
 }
 
-/**
- * @brief Compute `lhs - rhs` residual for two id-aligned measurement maps.
- * @throws std::invalid_argument if map sizes or ids do not match exactly.
- */
-Vector _measurementDifference(const VisionMeasurement& lhs,
-                              const VisionMeasurement& rhs) {
-  if (lhs.size() != rhs.size()) {
-    throw std::invalid_argument("measurementDifference: size mismatch");
-  }
-
-  Vector diff = Vector::Zero(static_cast<int>(2 * lhs.size()));
-  auto itL = lhs.begin();
-  auto itR = rhs.begin();
-  int i = 0;
-  for (; itL != lhs.end(); ++itL, ++itR) {
-    if (itL->first != itR->first) {
-      throw std::invalid_argument("measurementDifference: id mismatch");
-    }
-    diff.segment<2>(2 * i) = itL->second - itR->second;
-    ++i;
-  }
-  return diff;
-}
-
 }  // namespace
 
 /// Default constructor delegates to explicit-params constructor.
@@ -523,7 +499,6 @@ void EqVIOFilter::update(const VisionMeasurement& measurement,
   if (measurement.empty()) return;
 
   const VisionMeasurement estimatedMeasurement = measureSystemState(stateEstimate(), camera);
-  Vector yTilde = _measurementDifference(measurement, estimatedMeasurement);
   const Matrix Ct = EqFoutputMatrixC(snapshot_.xi0, snapshot_.X, measurement, camera,
                                      true);
   const Matrix Rused =
