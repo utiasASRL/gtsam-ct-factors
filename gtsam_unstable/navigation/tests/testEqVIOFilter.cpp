@@ -151,6 +151,7 @@ State integrateSystemFunction(const State& state, const IMUInput& velocity,
 
 }  // namespace
 
+// Verifies landmark insertion/removal logic stays consistent with measurement ids.
 TEST(EqVIOFilter, DynamicLandmarksAddRemove) {
   EqVIOFilterParams params;
   params.initialPointDepth = 5.0;
@@ -189,6 +190,7 @@ TEST(EqVIOFilter, DynamicLandmarksAddRemove) {
   EXPECT_LONGS_EQUAL(1, est.cameraLandmarks.front().id);
 }
 
+// Verifies IMU-based initialization and basic propagation produce finite covariance.
 TEST(EqVIOFilter, InitAndPropagation) {
   EqVIOFilterParams params;
 
@@ -215,6 +217,7 @@ TEST(EqVIOFilter, InitAndPropagation) {
   EXPECT(filter.snapshot().Sigma.array().isFinite().all());
 }
 
+// Verifies short propagation sequence matches direct system-function integration.
 TEST(EqVIOFilter, ParityShortSequence) {
   EqVIOFilterParams params;
 
@@ -252,6 +255,7 @@ TEST(EqVIOFilter, ParityShortSequence) {
   EXPECT(eps.norm() < 2e-5);
 }
 
+// Verifies vision update keeps landmark count and covariance numerically valid.
 TEST(EqVIOFilter, VisionUpdate) {
   EqVIOFilterParams params;
 
@@ -275,6 +279,7 @@ TEST(EqVIOFilter, VisionUpdate) {
   EXPECT(filter.snapshot().Sigma.array().isFinite().all());
 }
 
+// End-to-end smoke test for repeated propagate/correct cycles.
 TEST(EqVIOFilter, Smoke) {
   EqVIOFilterParams params;
 
@@ -314,6 +319,7 @@ TEST(EqVIOFilter, Smoke) {
   EXPECT(filter.snapshot().Sigma.array().isFinite().all());
 }
 
+// Verifies EqF linearization matrices have expected shapes and finite entries.
 TEST(VIOEqFMatrices, ShapesAndFinite) {
   const auto camera =
       std::make_shared<CameraModel>(Pose3::Identity(), Cal3_S2(1, 1, 0, 0, 0));

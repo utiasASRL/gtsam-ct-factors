@@ -45,7 +45,9 @@ struct GTSAM_UNSTABLE_EXPORT Landmark {
   /// Stable landmark identifier used for ordering/alignment.
   int id = -1;
 
+  /// Print landmark contents for debugging.
   void print(const std::string& s = "") const;
+  /// Equality test with absolute tolerance on point coordinates and exact id match.
   bool equals(const Landmark& other, double tol = 1e-9) const;
 };
 
@@ -69,7 +71,9 @@ struct GTSAM_UNSTABLE_EXPORT SensorState {
   /// Unit gravity direction expressed in the body frame.
   Vector3 gravityDir() const;
 
+  /// Print sensor state contents for debugging.
   void print(const std::string& s = "") const;
+  /// Equality test with tolerance on all manifold/vector components.
   bool equals(const SensorState& other, double tol = 1e-9) const;
 };
 
@@ -92,7 +96,9 @@ class GTSAM_UNSTABLE_EXPORT State {
 
   /// Number of landmarks.
   size_t n() const;
+  /// Total chart dimension `21 + 3*n()`.
   int dim() const;
+  /// Landmark ids in contiguous state storage order.
   std::vector<int> ids() const;
 
   /// Retract in the state chart.
@@ -102,7 +108,9 @@ class GTSAM_UNSTABLE_EXPORT State {
   TangentVector localCoordinates(const State& other, ChartJacobian H1 = {},
                                  ChartJacobian H2 = {}) const;
 
+  /// Print full state including sensor block and all landmarks.
   void print(const std::string& s = "") const;
+  /// Equality test with tolerance for sensor and landmark components.
   bool equals(const State& other, double tol = 1e-9) const;
 };
 

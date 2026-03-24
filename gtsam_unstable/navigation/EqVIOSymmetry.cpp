@@ -27,16 +27,19 @@ namespace eqvio {
 
 namespace {
 
+/// Extract body transform component `bTb'` from full group element.
 Pose3 bTbPrimeFromGroup(const VioGroup& X) {
   const Se23& A = std::get<0>(decompose(X));
   return Pose3(A.rotation(), A.x(0));
 }
 
+/// Extract translational velocity offset `w` from Se23 block.
 Vector3 AW(const VioGroup& X) {
   const Se23& A = std::get<0>(decompose(X));
   return A.x(1);
 }
 
+/// Build Se23 element from rotation, translation, and velocity columns.
 Se23 MakeA(const Rot3& R, const Point3& x0, const Vector3& w) {
   Se23::Matrix3K x;
   x.col(0) = x0;
@@ -73,18 +76,21 @@ Matrix NumericalDerivativeActionWrtGroup(
   return H;
 }
 
+/// Stereographic chart from unit sphere (excluding north pole) to R^2.
 Vector2 E3ProjectSphere(const Vector3& eta) {
   static const Matrix23 I23 = Matrix23::Identity();
   static const Vector3 e3 = Vector3::UnitZ();
   return I23 * (eta - e3) / (1.0 - e3.dot(eta));
 }
 
+/// Inverse stereographic chart from R^2 back to unit sphere.
 Vector3 E3ProjectSphereInv(const Vector2& y) {
   static const Vector3 e3 = Vector3::UnitZ();
   const Vector3 yBar = (Vector3() << y, 0.0).finished();
   return e3 + 2.0 / (yBar.squaredNorm() + 1.0) * (yBar - e3);
 }
 
+/// Jacobian of stereographic chart (computed numerically at runtime).
 Matrix23 E3ProjectSphereDiff(const Vector3& eta) {
   const std::function<Vector2(const Vector3&)> f = [](const Vector3& x) {
     return E3ProjectSphere(x);
@@ -92,6 +98,7 @@ Matrix23 E3ProjectSphereDiff(const Vector3& eta) {
   return gtsam::numericalDerivative11<Vector2, Vector3, 3>(f, eta, 1e-6);
 }
 
+/// Jacobian of inverse stereographic chart (computed numerically at runtime).
 Matrix32 E3ProjectSphereInvDiff(const Vector2& y) {
   const std::function<Vector3(const Vector2&)> f = [](const Vector2& x) {
     return E3ProjectSphereInv(x);
@@ -99,17 +106,20 @@ Matrix32 E3ProjectSphereInvDiff(const Vector2& y) {
   return gtsam::numericalDerivative11<Vector3, Vector2, 2>(f, y, 1e-6);
 }
 
+/// Differential of sphere chart at the nominal point associated with `pole`.
 Matrix23 SphereChartStereoDiff0(const Vector3& pole) {
   const Rot3 sphereRot = RotationFromTwoVectors(-pole, Vector3::UnitZ());
   const Vector3 etaRotated = sphereRot.matrix() * pole;
   return E3ProjectSphereDiff(etaRotated) * sphereRot.matrix();
 }
 
+/// Differential of inverse sphere chart at zero in local coordinates.
 Matrix32 SphereChartStereoInvDiff0(const Vector3& pole) {
   const Rot3 sphereRot = RotationFromTwoVectors(-pole, Vector3::UnitZ());
   return sphereRot.matrix().transpose() * E3ProjectSphereInvDiff(Vector2::Zero());
 }
 
+/// Convert Euclidean landmark perturbation to inverse-depth local coordinates.
 Matrix3 ConvEucToInvDepth(const Point3& q0) {
   const double rho0 = 1.0 / q0.norm();
   const Vector3 y0 = q0 * rho0;
@@ -121,6 +131,7 @@ Matrix3 ConvEucToInvDepth(const Point3& q0) {
   return M;
 }
 
+/// Convert inverse-depth local perturbation back to Euclidean perturbation.
 Matrix3 ConvInvDepthToEuc(const Point3& q0) {
   const double rho0 = 1.0 / q0.norm();
   const Vector3 y0 = q0 * rho0;
@@ -133,6 +144,7 @@ Matrix3 ConvInvDepthToEuc(const Point3& q0) {
 
 Matrix _EqFInputMatrixB(const VioGroup& X, const State& xi0);
 
+/// Internal implementation of EqF state matrix `A` in inverse-depth coordinates.
 Matrix _EqFStateMatrixA(const VioGroup& X, const State& xi0,
                         const IMUInput& imuVel) {
   const int N = static_cast<int>(xi0.n());
@@ -201,6 +213,7 @@ Matrix _EqFStateMatrixA(const VioGroup& X, const State& xi0,
   return A0t;
 }
 
+/// Internal implementation of EqF input matrix `B` in inverse-depth coordinates.
 Matrix _EqFInputMatrixB(const VioGroup& X, const State& xi0) {
   const int N = static_cast<int>(xi0.n());
   Matrix Bt = Matrix::Zero(xi0.dim(), IMUInput::CompDim);
@@ -232,6 +245,7 @@ Matrix _EqFInputMatrixB(const VioGroup& X, const State& xi0) {
   return Bt;
 }
 
+/// Base per-feature output Jacobian before inverse-depth chart conversion.
 Matrix23 _EqFoutputMatrixCiStarBase(
     const Point3& q0, const SOT3& QHat,
     const std::shared_ptr<const CameraModel>& camera, const Point2& y) {
@@ -263,6 +277,7 @@ Matrix23 _EqFoutputMatrixCiStarBase(
   return drhoSym * adjQInv * m2g;
 }
 
+/// Per-feature equivariant output Jacobian in inverse-depth coordinates.
 Matrix23 _EqFoutputMatrixCiStar(
     const Point3& q0, const SOT3& QHat,
     const std::shared_ptr<const CameraModel>& camera, const Point2& y) {
@@ -274,6 +289,7 @@ Matrix23 _EqFoutputMatrixCiStar(
   return _EqFoutputMatrixCiStarBase(q0, QHat, camera, y) * ind2euc;
 }
 
+/// Internal innovation lift used by `liftInnovation`.
 Vector _liftInnovation(const Vector& totalInnovation, const State& xi0) {
   if (totalInnovation.size() != xi0.dim()) {
     throw std::invalid_argument(
@@ -308,21 +324,25 @@ Vector _liftInnovation(const Vector& totalInnovation, const State& xi0) {
 
 }  // namespace
 
+/// Public wrapper for EqF state matrix construction.
 Matrix EqFStateMatrixA(const VioGroup& X, const State& xi0,
                        const IMUInput& imuVel) {
   return _EqFStateMatrixA(X, xi0, imuVel);
 }
 
+/// Public wrapper for EqF input matrix construction.
 Matrix EqFInputMatrixB(const VioGroup& X, const State& xi0) {
   return _EqFInputMatrixB(X, xi0);
 }
 
+/// Public wrapper for per-feature equivariant output Jacobian.
 Matrix23 EqFoutputMatrixCiStar(
     const Point3& q0, const SOT3& QHat,
     const std::shared_ptr<const CameraModel>& camera, const Point2& y) {
   return _EqFoutputMatrixCiStar(q0, QHat, camera, y);
 }
 
+/// Compute per-feature output Jacobian from predicted measurement.
 Matrix23 EqFoutputMatrixCi(
     const Point3& q0, const SOT3& QHat,
     const std::shared_ptr<const CameraModel>& camera) {
@@ -334,6 +354,7 @@ Matrix23 EqFoutputMatrixCi(
   return EqFoutputMatrixCiStar(q0, QHat, camera, yHat);
 }
 
+/// Assemble full stacked output matrix for currently observed landmarks.
 Matrix EqFoutputMatrixC(
     const State& xi0, const VioGroup& X, const VisionMeasurement& y,
     const std::shared_ptr<const CameraModel>& camera, bool useEquivariance) {
@@ -380,10 +401,12 @@ Matrix EqFoutputMatrixC(
   return C;
 }
 
+/// Lift innovation from chart coordinates to group tangent coordinates.
 Vector liftInnovation(const Vector& totalInnovation, const State& xi0) {
   return _liftInnovation(totalInnovation, xi0);
 }
 
+/// Apply right action on sensor block only.
 SensorState sensorStateGroupAction(const VioGroup& X,
                                       const SensorState& sensor) {
   const Bias& Beta = std::get<1>(decompose(X));
@@ -400,6 +423,7 @@ SensorState sensorStateGroupAction(const VioGroup& X,
   return out;
 }
 
+/// Apply right action on full state with sensor and landmark components.
 State stateGroupAction(const VioGroup& X, const State& state) {
   const LandmarkGroup& Q = std::get<3>(decompose(X));
   if (Q.size() != state.n()) {
@@ -420,6 +444,7 @@ State stateGroupAction(const VioGroup& X, const State& state) {
   return out;
 }
 
+/// Discrete-time lifted system increment from IMU input and current state.
 VioGroup liftVelocityDiscrete(const State& state, const IMUInput& velocity,
                               double dt) {
   const SensorState& sensor = state.sensor;
@@ -463,7 +488,10 @@ VioGroup liftVelocityDiscrete(const State& state, const IMUInput& velocity,
   return makeVioGroup(b0Tb1Kinematics, beta, c0Tc1, Q);
 }
 
-/// Predict ideal normalized image measurements from current landmark state.
+/**
+ * @brief Predict ideal normalized image measurements from current state.
+ * @throws std::invalid_argument if `camera` is null.
+ */
 VisionMeasurement measureSystemState(
     const State& state, const std::shared_ptr<const CameraModel>& camera) {
   if (!camera) {
@@ -478,6 +506,7 @@ VisionMeasurement measureSystemState(
   return out;
 }
 
+/// Evaluate symmetry action and optionally compute Jacobians w.r.t. state and group.
 State Symmetry::operator()(
     const State& xi, const VioGroup& X,
     OptionalJacobian<Eigen::Dynamic, Eigen::Dynamic> H_xi,

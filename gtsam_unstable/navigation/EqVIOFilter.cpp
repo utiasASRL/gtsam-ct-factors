@@ -25,6 +25,12 @@ namespace eqvio {
 
 namespace {
 
+/**
+ * @brief Stack a landmark-id-ordered measurement map into a dense vector.
+ *
+ * The order follows the `std::map` key ordering, which matches all other
+ * EqVIO measurement matrix assembly paths.
+ */
 Vector _measurementVector(const VisionMeasurement& measurement) {
   Vector v = Vector::Zero(static_cast<int>(2 * measurement.size()));
   int i = 0;
@@ -35,6 +41,10 @@ Vector _measurementVector(const VisionMeasurement& measurement) {
   return v;
 }
 
+/**
+ * @brief Compute `lhs - rhs` residual for two id-aligned measurement maps.
+ * @throws std::invalid_argument if map sizes or ids do not match exactly.
+ */
 Vector _measurementDifference(const VisionMeasurement& lhs,
                               const VisionMeasurement& rhs) {
   if (lhs.size() != rhs.size()) {
@@ -57,8 +67,15 @@ Vector _measurementDifference(const VisionMeasurement& lhs,
 
 }  // namespace
 
+/// Default constructor delegates to explicit-params constructor.
 EqVIOFilter::EqVIOFilter() : EqVIOFilter(EqVIOFilterParams()) {}
 
+/**
+ * @brief Construct filter with given parameter bundle and identity initial state.
+ *
+ * The internal snapshot is initialized and pushed into the base
+ * `EquivariantFilter` storage via `syncBase(true)`.
+ */
 EqVIOFilter::EqVIOFilter(const EqVIOFilterParams& params)
     : Base(State(), defaultCovariance(0), makeVioGroupIdentity()),
       params_(params) {
@@ -72,6 +89,11 @@ EqVIOFilter::EqVIOFilter(const EqVIOFilterParams& params)
   syncBase(true);
 }
 
+/**
+ * @brief Construct filter from explicit reference state and covariance.
+ *
+ * The group estimate is initialized to identity for `xi0.n()` landmarks.
+ */
 EqVIOFilter::EqVIOFilter(const State& xi0, const Matrix& Sigma0,
                          const EqVIOFilterParams& params)
     : Base(State(), defaultCovariance(0), makeVioGroupIdentity()),
@@ -83,6 +105,12 @@ EqVIOFilter::EqVIOFilter(const State& xi0, const Matrix& Sigma0,
   syncBase(true);
 }
 
+/**
+ * @brief Initialize reference attitude from measured gravity direction.
+ *
+ * This method sets bias and velocity to nominal zeros and computes the shortest
+ * rotation mapping measured acceleration to world +Z.
+ */
 void EqVIOFilter::initializeFromIMU(const IMUInput& imu) {
   snapshot_.xi0.sensor.inputBias = Bias::Identity();
   snapshot_.xi0.sensor.pose = Pose3::Identity();
@@ -99,17 +127,20 @@ void EqVIOFilter::initializeFromIMU(const IMUInput& imu) {
   syncBase(true);
 }
 
+/// Replace current reference state/covariance after dimension validation.
 void EqVIOFilter::setReferenceState(const State& xi0, const Matrix& Sigma0) {
-  if (Sigma0.rows() != xi0.dim() || Sigma0.cols() != xi0.dim()) {
-    throw std::invalid_argument(
-        "EqVIOFilter::setReferenceState: covariance dimension mismatch");
-  }
   snapshot_.xi0 = xi0;
   snapshot_.X = makeVioGroupIdentity(xi0.n());
   snapshot_.Sigma = Sigma0;
   syncBase(true);
 }
 
+/**
+ * @brief Propagate covariance and state over buffered IMU intervals.
+ *
+ * Covariance uses the time-weighted averaged IMU input over all positive `dt`.
+ * State integration is then applied per-segment to preserve replay semantics.
+ */
 void EqVIOFilter::propagate(const std::vector<IMUInput>& imuInputs,
                             const std::vector<double>& dts) {
   if (!initialized_ || imuInputs.empty()) {
@@ -142,6 +173,7 @@ void EqVIOFilter::propagate(const std::vector<IMUInput>& imuInputs,
   }
 }
 
+/// Covariance-only propagation through linearized EqF error dynamics.
 void EqVIOFilter::propagateCovariance(const IMUInput& imu, double dt) {
   if (!initialized_ || dt <= 0.0) {
     return;
@@ -159,6 +191,7 @@ void EqVIOFilter::propagateCovariance(const IMUInput& imu, double dt) {
   syncFromBase();
 }
 
+/// State-only propagation through lifted discrete system increment.
 void EqVIOFilter::propagateState(const IMUInput& imu, double dt) {
   if (!initialized_ || dt <= 0.0) {
     return;
@@ -172,6 +205,16 @@ void EqVIOFilter::propagateState(const IMUInput& imu, double dt) {
   syncFromBase();
 }
 
+/**
+ * @brief Visual update entry point including feature management.
+ *
+ * The update sequence is:
+ * 1. Drop stale landmarks,
+ * 2. Reject outliers and remove them from filter state,
+ * 3. Add newly observed landmarks,
+ * 4. Perform EKF-like correction,
+ * 5. Remove numerically invalid landmarks.
+ */
 void EqVIOFilter::correct(const VisionMeasurement& measurement,
                           const std::shared_ptr<const CameraModel>& camera,
                           const Matrix& R) {
@@ -198,15 +241,21 @@ void EqVIOFilter::correct(const VisionMeasurement& measurement,
   assert(!snapshot_.Sigma.hasNaN());
 }
 
+/// Return current physical-state estimate by applying group action to reference state.
 State EqVIOFilter::stateEstimate() const {
   return stateGroupAction(snapshot_.X, snapshot_.xi0);
 }
 
+/// Identity covariance helper sized for current sensor + landmark dimensions.
 Matrix EqVIOFilter::defaultCovariance(size_t nLandmarks) {
   const int d = SensorState::CompDim + 3 * static_cast<int>(nLandmarks);
   return Matrix::Identity(d, d);
 }
 
+/**
+ * @brief Push local snapshot into the `EquivariantFilter` base.
+ * @param resetReference If true, reset base reference state; otherwise only sync estimate/covariance.
+ */
 void EqVIOFilter::syncBase(bool resetReference) {
   if (resetReference) {
     resetReferenceAndGroup(snapshot_.xi0, snapshot_.Sigma, snapshot_.X);
@@ -217,11 +266,13 @@ void EqVIOFilter::syncBase(bool resetReference) {
   setErrorCovariance(snapshot_.Sigma);
 }
 
+/// Pull group estimate and covariance from the `EquivariantFilter` base into local snapshot.
 void EqVIOFilter::syncFromBase() {
   snapshot_.X = groupEstimate();
   snapshot_.Sigma = errorCovariance();
 }
 
+/// Build block-diagonal process covariance from scalar per-component variances.
 Matrix EqVIOFilter::stateProcessNoise(size_t nLandmarks) const {
   Matrix Q = Matrix::Identity(
       SensorState::CompDim + 3 * static_cast<int>(nLandmarks),
@@ -241,13 +292,16 @@ Matrix EqVIOFilter::stateProcessNoise(size_t nLandmarks) const {
   return Q;
 }
 
+/**
+ * @brief Insert unseen landmarks from current vision measurement.
+ *
+ * New landmarks are initialized from normalized bearing at `initialPointDepth`,
+ * corresponding covariance is appended, and group/covariance dimensions are expanded.
+ */
 void EqVIOFilter::addNewLandmarks(
     const VisionMeasurement& measurement,
     const std::shared_ptr<const CameraModel>& camera) {
   if (measurement.empty()) return;
-  if (!camera) {
-    throw std::invalid_argument("EqVIOFilter::addNewLandmarks: null camera");
-  }
 
   std::vector<Landmark> newLandmarks;
   const std::vector<int> existingIds = snapshot_.xi0.ids();
@@ -294,6 +348,7 @@ void EqVIOFilter::addNewLandmarks(
   syncBase(true);
 }
 
+/// Remove any landmarks that are absent from the current measurement id list.
 void EqVIOFilter::removeOldLandmarks(const std::vector<int>& measurementIds) {
   const std::vector<int> existingIds = snapshot_.xi0.ids();
   std::vector<int> lostIndices(existingIds.size());
@@ -316,6 +371,7 @@ void EqVIOFilter::removeOldLandmarks(const std::vector<int>& measurementIds) {
   }
 }
 
+/// Remove landmark at index `idx` from state, group, and covariance.
 void EqVIOFilter::removeLandmarkByIndex(int idx) {
   snapshot_.xi0.cameraLandmarks.erase(snapshot_.xi0.cameraLandmarks.begin() + idx);
 
@@ -336,6 +392,7 @@ void EqVIOFilter::removeLandmarkByIndex(int idx) {
   syncBase(true);
 }
 
+/// Remove landmark with matching integer id.
 void EqVIOFilter::removeLandmarkById(int id) {
   const auto it = std::find_if(
       snapshot_.xi0.cameraLandmarks.begin(), snapshot_.xi0.cameraLandmarks.end(),
@@ -345,6 +402,7 @@ void EqVIOFilter::removeLandmarkById(int id) {
       static_cast<int>(std::distance(snapshot_.xi0.cameraLandmarks.begin(), it)));
 }
 
+/// Return 3x3 landmark-state covariance block for the specified id.
 Matrix3 EqVIOFilter::getLandmarkCovById(int id) const {
   const auto it = std::find_if(
       snapshot_.xi0.cameraLandmarks.begin(), snapshot_.xi0.cameraLandmarks.end(),
@@ -356,6 +414,7 @@ Matrix3 EqVIOFilter::getLandmarkCovById(int id) const {
                                  SensorState::CompDim + 3 * i);
 }
 
+/// Project landmark covariance through output Jacobian into 2x2 image-space covariance.
 Matrix2 EqVIOFilter::outputCovarianceById(
     int id, const std::shared_ptr<const CameraModel>& camera) const {
   const Matrix3 lmCov = getLandmarkCovById(id);
@@ -373,6 +432,7 @@ Matrix2 EqVIOFilter::outputCovarianceById(
   return C0i * lmCov * C0i.transpose();
 }
 
+/// Remove landmarks with non-finite or extreme SOT3 scale factors.
 void EqVIOFilter::removeInvalidLandmarksNow() {
   const LandmarkGroup& Q = std::get<3>(decompose(snapshot_.X));
   std::set<int> invalidIds;
@@ -387,6 +447,12 @@ void EqVIOFilter::removeInvalidLandmarksNow() {
   }
 }
 
+/**
+ * @brief Reject outliers using absolute residual and Mahalanobis-style tests.
+ *
+ * At most `(1 - featureRetention)` fraction of currently measured features are
+ * removed, prioritized by largest residual score.
+ */
 void EqVIOFilter::removeOutliers(
     VisionMeasurement& measurement,
     const std::shared_ptr<const CameraModel>& camera) {
@@ -445,24 +511,22 @@ void EqVIOFilter::removeOutliers(
   }
 }
 
+/**
+ * @brief Apply innovation update for matched measurements.
+ *
+ * If `outputGainMatrix` is not a valid measurement covariance shape, the method
+ * falls back to isotropic `measurementNoiseVariance`.
+ */
 void EqVIOFilter::update(const VisionMeasurement& measurement,
                          const std::shared_ptr<const CameraModel>& camera,
                          const Matrix& outputGainMatrix) {
   if (measurement.empty()) return;
-  if (!camera) {
-    throw std::invalid_argument("EqVIOFilter::update: null camera");
-  }
+
   const VisionMeasurement estimatedMeasurement =
       measureSystemState(stateEstimate(), camera);
-  Vector yTilde;
-  try {
-    yTilde = _measurementDifference(measurement, estimatedMeasurement);
-  } catch (const std::exception& e) {
-    throw std::invalid_argument(std::string("EqVIOFilter::update: ") + e.what());
-  }
+  Vector yTilde = _measurementDifference(measurement, estimatedMeasurement);
   const Matrix Ct = EqFoutputMatrixC(snapshot_.xi0, snapshot_.X, measurement, camera,
                                      true);
-
   const Matrix Rused =
       (outputGainMatrix.rows() == Ct.rows() && outputGainMatrix.cols() == Ct.rows())
           ? outputGainMatrix

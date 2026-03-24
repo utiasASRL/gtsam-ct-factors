@@ -37,11 +37,18 @@ using namespace gtsam::eqvio;
 
 namespace {
 
+/**
+ * @brief Hardcoded reference values used for a lightweight smoke-style replay check.
+ *
+ * These correspond to the expected terminal pose/velocity for the bundled
+ * 10-second EuRoC replay file.
+ */
 struct HardcodedGroundTruth {
   static Vector3 position() { return Vector3(-0.954631, -0.101702, 0.179862); }
   static Vector3 velocity() { return Vector3(-0.120739, -0.314283, 0.119599); }
 };
 
+/// One replay stream item: either an IMU sample or an aggregated vision frame.
 struct ReplayEvent {
   enum class Type { Imu, VisionFrame };
   Type type = Type::Imu;
@@ -52,11 +59,13 @@ struct ReplayEvent {
   VisionMeasurement vision;
 };
 
+/// Parsed CSV replay log including metadata and ordered event sequence.
 struct ReplayLog {
   std::map<std::string, std::string> metadata;
   std::vector<ReplayEvent> events;
 };
 
+/// Trim leading/trailing ASCII whitespace.
 std::string trim(const std::string& s) {
   size_t b = 0;
   while (b < s.size() && std::isspace(static_cast<unsigned char>(s[b]))) ++b;
@@ -65,6 +74,7 @@ std::string trim(const std::string& s) {
   return s.substr(b, e - b);
 }
 
+/// Split a CSV line by commas and trim each field.
 std::vector<std::string> splitCsvLine(const std::string& line) {
   std::vector<std::string> cols;
   std::stringstream ss(line);
@@ -75,6 +85,16 @@ std::vector<std::string> splitCsvLine(const std::string& line) {
   return cols;
 }
 
+/**
+ * @brief Read EqVIO replay CSV and convert to strongly typed event stream.
+ *
+ * The parser expects rows tagged by `row_type`:
+ * - `meta`: key/value metadata.
+ * - `imu`: one IMU sample.
+ * - `vision_feature`: one feature observation, aggregated by `seq` into a frame.
+ *
+ * @throws std::invalid_argument if required columns are missing or row data is inconsistent.
+ */
 ReplayLog readReplayCsv(const std::string& csvPath) {
   std::ifstream in(csvPath);
   if (!in.is_open()) {
@@ -205,6 +225,7 @@ ReplayLog readReplayCsv(const std::string& csvPath) {
   return log;
 }
 
+/// Parse one metadata scalar key with fallback on missing/invalid values.
 double metadataDouble(const ReplayLog& log, const std::string& key,
                       double fallback) {
   const auto it = log.metadata.find(key);
@@ -216,12 +237,17 @@ double metadataDouble(const ReplayLog& log, const std::string& key,
   }
 }
 
+/// Parse one metadata scalar key and require finite result, otherwise fallback.
 double metadataFiniteDouble(const ReplayLog& log, const std::string& key,
                             double fallback) {
   const double v = metadataDouble(log, key, fallback);
   return std::isfinite(v) ? v : fallback;
 }
 
+/**
+ * @brief Parse camera extrinsics from metadata keys `T_ci_*` if available.
+ * @return `std::nullopt` when any extrinsic field is missing or quaternion is invalid.
+ */
 std::optional<Pose3> cameraExtrinsicsFromMetadata(const ReplayLog& log) {
   const std::vector<std::string> keys = {"T_ci_tx", "T_ci_ty", "T_ci_tz",
                                          "T_ci_qw", "T_ci_qx", "T_ci_qy",
@@ -249,6 +275,12 @@ std::optional<Pose3> cameraExtrinsicsFromMetadata(const ReplayLog& log) {
   return Pose3(Rot3::Quaternion(qw, qx, qy, qz), Point3(tx, ty, tz));
 }
 
+/**
+ * @brief Prepared IMU propagation data extracted from a rolling IMU buffer.
+ *
+ * `imuInputs[i]` is held for duration `dts[i]`. `trimCount` indicates how many
+ * leading IMU entries can be dropped from the caller-owned buffer after use.
+ */
 struct BufferedImuPropagation {
   std::vector<IMUInput> imuInputs;
   std::vector<double> dts;
@@ -256,6 +288,12 @@ struct BufferedImuPropagation {
   size_t trimCount = 0;
 };
 
+/**
+ * @brief Convert buffered absolute-timestamp IMU samples into hold segments.
+ *
+ * The returned segments cover `[currentTime, targetTime]` by clipping each hold
+ * interval and preserving the existing replay semantics used by this example.
+ */
 BufferedImuPropagation makeBufferedImuPropagation(
     const std::vector<IMUInput>& imuBuffer, double currentTime,
     double targetTime) {
@@ -290,6 +328,7 @@ BufferedImuPropagation makeBufferedImuPropagation(
   return out;
 }
 
+/// Build runtime filter params from replay metadata, falling back to defaults for missing entries.
 EqVIOFilterParams paramsFromMetadata(const ReplayLog& log) {
   EqVIOFilterParams params;
   params.initialPointDepth =
@@ -341,6 +380,7 @@ EqVIOFilterParams paramsFromMetadata(const ReplayLog& log) {
   return params;
 }
 
+/// Construct initial reference state using identity sensor state plus optional camera extrinsics metadata.
 State initialReferenceState(const ReplayLog& log) {
   SensorState sensor;
   sensor.inputBias = Bias::Identity();
@@ -350,6 +390,7 @@ State initialReferenceState(const ReplayLog& log) {
   return State(sensor, {});
 }
 
+/// Construct initial covariance from metadata overrides with sensible defaults.
 Matrix initialCovarianceFromMetadata(const ReplayLog& log, const State& xi0) {
   Matrix Sigma0 = Matrix::Identity(xi0.dim(), xi0.dim());
   Sigma0.block<3, 3>(0, 0) *=
@@ -369,6 +410,7 @@ Matrix initialCovarianceFromMetadata(const ReplayLog& log, const State& xi0) {
   return Sigma0;
 }
 
+/// Print compact replay statistics and terminal estimate summary.
 void printSummary(const ReplayLog& log, const EqVIOFilterParams& params,
                   double currentTime, size_t imuCount, size_t visionFrameCount,
                   size_t visionFeatureCount, const State& estimate) {
@@ -393,6 +435,13 @@ void printSummary(const ReplayLog& log, const EqVIOFilterParams& params,
 
 }  // namespace
 
+/**
+ * @brief Run EqVIO filter replay on bundled EuRoC-derived CSV data.
+ *
+ * This example loads the dataset using `findExampleDataFile`, initializes the
+ * filter from metadata, replays all IMU and vision events, and prints a final
+ * summary for quick validation.
+ */
 int main() {
   const std::string csvPath =
       findExampleDataFile("EqVIOdata_eurocmav_room1_10sec.csv");
@@ -419,7 +468,7 @@ int main() {
           filter.initializeFromIMU(event.imu);
           currentTime = event.imu.stamp;
         }
-        
+
         imuBuffer.push_back(event.imu);
         ++imuCount;
       } else {

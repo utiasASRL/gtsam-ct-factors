@@ -27,19 +27,36 @@
 namespace gtsam {
 namespace eqvio {
 
-/// Right group action on the sensor-only block.
+/**
+ * @brief Right action of `VioGroup` on the sensor-only state block.
+ *
+ * Applies bias, body pose/velocity, and camera extrinsic transforms while
+ * preserving the EqVIO right-action convention.
+ */
 GTSAM_UNSTABLE_EXPORT SensorState sensorStateGroupAction(
     const VioGroup& X, const SensorState& sensor);
-/// Right group action on full state.
+/**
+ * @brief Right action of `VioGroup` on full EqVIO state.
+ *
+ * Applies `sensorStateGroupAction` to the sensor block and SOT3 inverse action
+ * to each landmark state.
+ */
 GTSAM_UNSTABLE_EXPORT State stateGroupAction(const VioGroup& X,
                                                 const State& state);
 
-/// Discrete-time lift map from IMU velocity to VioGroup increment.
+/**
+ * @brief Discrete lift map from IMU input to a `VioGroup` increment.
+ *
+ * This is the discrete propagation primitive used by `EqVIOFilter::propagateState`.
+ */
 GTSAM_UNSTABLE_EXPORT VioGroup liftVelocityDiscrete(const State& state,
                                                     const IMUInput& velocity,
                                                     double dt);
 
-/// Generate ideal camera measurements from state.
+/**
+ * @brief Generate ideal image measurements by projecting all landmarks.
+ * @throws std::invalid_argument if `camera` is null.
+ */
 GTSAM_UNSTABLE_EXPORT VisionMeasurement measureSystemState(
     const State& state, const std::shared_ptr<const CameraModel>& camera);
 
@@ -54,18 +71,23 @@ GTSAM_UNSTABLE_EXPORT VisionMeasurement measureSystemState(
  */
 GTSAM_UNSTABLE_EXPORT Matrix EqFStateMatrixA(
     const VioGroup& X, const State& xi0, const IMUInput& imuVel);
+/// EqF input matrix that maps IMU driving noise into chart error coordinates.
 GTSAM_UNSTABLE_EXPORT Matrix EqFInputMatrixB(
     const VioGroup& X, const State& xi0);
+/// Per-landmark equivariant output Jacobian using observed measurement `y`.
 GTSAM_UNSTABLE_EXPORT Matrix23 EqFoutputMatrixCiStar(
     const Point3& q0, const SOT3& QHat,
     const std::shared_ptr<const CameraModel>& camera, const Point2& y);
+/// Per-landmark output Jacobian using predicted measurement from current state.
 GTSAM_UNSTABLE_EXPORT Matrix23 EqFoutputMatrixCi(
     const Point3& q0, const SOT3& QHat,
     const std::shared_ptr<const CameraModel>& camera);
+/// Stacked output matrix for all currently observed landmarks.
 GTSAM_UNSTABLE_EXPORT Matrix EqFoutputMatrixC(
     const State& xi0, const VioGroup& X, const VisionMeasurement& y,
     const std::shared_ptr<const CameraModel>& camera,
     bool useEquivariance = true);
+/// Map state innovation in chart coordinates to group tangent innovation.
 GTSAM_UNSTABLE_EXPORT Vector liftInnovation(const Vector& totalInnovation,
                                             const State& xi0);
 
@@ -74,7 +96,13 @@ struct GTSAM_UNSTABLE_EXPORT Symmetry
     : public GroupAction<Symmetry, VioGroup, State> {
   static constexpr ActionType type = ActionType::Right;
 
-  /// Evaluate right action phi(xi, X).
+  /**
+   * @brief Evaluate right action `phi(xi, X)`.
+   * @param xi State argument.
+   * @param X Group argument.
+   * @param H_xi Optional Jacobian w.r.t. state argument.
+   * @param H_X Optional Jacobian w.r.t. group argument.
+   */
   State operator()(const State& xi, const VioGroup& X,
                       OptionalJacobian<Eigen::Dynamic, Eigen::Dynamic> H_xi = {},
                       OptionalJacobian<Eigen::Dynamic, Eigen::Dynamic> H_X = {})

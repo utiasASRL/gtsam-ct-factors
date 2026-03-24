@@ -45,13 +45,20 @@
 namespace gtsam {
 namespace eqvio {
 
+/// Similarity transform group element represented as `(SO3, log_scale)`.
 using SOT3 = ProductLieGroup<SO3, double>;
 
+/// Extended pose with rotation, position, and velocity columns.
 using Se23 = ExtendedPose3<2>;
+/// IMU bias type used by EqVIO.
 using Bias = imuBias::ConstantBias;
+/// Dynamic product of per-landmark `SOT3` transforms.
 using LandmarkGroup = PowerLieGroup<SOT3, Eigen::Dynamic>;
+/// Sensor-side group block `(Se23, Bias)`.
 using SensorCore = ProductLieGroup<Se23, Bias>;
+/// Landmark-side group block `(camera extrinsics, landmark transforms)`.
 using LandmarkCore = ProductLieGroup<Pose3, LandmarkGroup>;
+/// Full EqVIO group `(SensorCore, LandmarkCore)`.
 using VioGroup = ProductLieGroup<SensorCore, LandmarkCore>;
 
 /// Approximate gravitational acceleration magnitude in m/s^2.
@@ -237,9 +244,11 @@ inline const LandmarkGroup& Q_landmarkTransforms(const VioGroup& X) {
   return X.second.second;
 }
 
+/// Number of landmark transform factors in a `VioGroup`.
 inline size_t N_landmarkCount(const VioGroup& X) {
   return Q_landmarkTransforms(X).size();
 }
+/// Group tangent dimension `21 + 4*n` for `n` landmarks.
 inline size_t Dim_groupTangent(const VioGroup& X) {
   return 21 + 4 * N_landmarkCount(X);
 }
@@ -250,6 +259,12 @@ inline auto decompose(const VioGroup& X) {
                   B_cameraExtrinsics(X), Q_landmarkTransforms(X));
 }
 
+/**
+ * @brief Construct a `VioGroup` from its four semantic factors.
+ *
+ * This helper centralizes the nested `ProductLieGroup` constructor layout and
+ * keeps call sites readable.
+ */
 inline VioGroup makeVioGroup(const Se23& sensor_kinematics,
                              const Bias& bias_offset,
                              const Pose3& camera_extrinsics,
@@ -258,6 +273,7 @@ inline VioGroup makeVioGroup(const Se23& sensor_kinematics,
                   LandmarkCore(camera_extrinsics, landmark_transforms));
 }
 
+/// Construct identity `VioGroup` with configurable landmark count.
 inline VioGroup makeVioGroupIdentity(size_t n = 0) {
   return makeVioGroup(Se23::Identity(), Bias::Identity(), Pose3::Identity(),
                       LandmarkGroup(n));
