@@ -249,19 +249,24 @@ std::optional<Pose3> cameraExtrinsicsFromMetadata(const ReplayLog& log) {
   return Pose3(Rot3::Quaternion(qw, qx, qy, qz), Point3(tx, ty, tz));
 }
 
-void propagateBufferedImu(EqVIOFilter& filter, std::vector<IMUInput>& imuBuffer,
-                          double& currentTime, double targetTime) {
-  if (!filter.isInitialized() || imuBuffer.empty() ||
-      targetTime <= currentTime) {
-    return;
+struct BufferedImuPropagation {
+  std::vector<IMUInput> imuInputs;
+  std::vector<double> dts;
+  double propagatedTime = 0.0;
+  size_t trimCount = 0;
+};
+
+BufferedImuPropagation makeBufferedImuPropagation(
+    const std::vector<IMUInput>& imuBuffer, double currentTime,
+    double targetTime) {
+  BufferedImuPropagation out;
+  if (imuBuffer.empty() || targetTime <= currentTime) {
+    return out;
   }
 
   const double tRef = currentTime;
-  std::vector<IMUInput> imuInputs;
-  std::vector<double> dts;
-  imuInputs.reserve(imuBuffer.size());
-  dts.reserve(imuBuffer.size());
-  double propagatedTime = 0.0;
+  out.imuInputs.reserve(imuBuffer.size());
+  out.dts.reserve(imuBuffer.size());
   for (size_t i = 0; i < imuBuffer.size(); ++i) {
     const double t0 = std::max(imuBuffer[i].stamp, tRef);
     const double t1 =
@@ -269,14 +274,9 @@ void propagateBufferedImu(EqVIOFilter& filter, std::vector<IMUInput>& imuBuffer,
                                  : targetTime;
     const double dt = std::max(t1 - t0, 0.0);
     if (dt <= 0.0) continue;
-    imuInputs.push_back(imuBuffer[i]);
-    dts.push_back(dt);
-    propagatedTime += dt;
-  }
-
-  if (!imuInputs.empty()) {
-    filter.propagate(imuInputs, dts);
-    currentTime += propagatedTime;
+    out.imuInputs.push_back(imuBuffer[i]);
+    out.dts.push_back(dt);
+    out.propagatedTime += dt;
   }
 
   auto it = std::find_if(imuBuffer.begin(), imuBuffer.end(),
@@ -285,8 +285,110 @@ void propagateBufferedImu(EqVIOFilter& filter, std::vector<IMUInput>& imuBuffer,
                          });
   if (it != imuBuffer.begin()) {
     --it;
-    imuBuffer.erase(imuBuffer.begin(), it);
+    out.trimCount = static_cast<size_t>(std::distance(imuBuffer.begin(), it));
   }
+  return out;
+}
+
+EqVIOFilterParams paramsFromMetadata(const ReplayLog& log) {
+  EqVIOFilterParams params;
+  params.initialPointDepth =
+      metadataFiniteDouble(log, "eqf.initial_point_depth", params.initialPointDepth);
+  params.initialPointVariance = metadataFiniteDouble(
+      log, "eqf.initial_point_variance", params.initialPointVariance);
+  params.measurementNoiseVariance = metadataFiniteDouble(
+      log, "eqf.measurement_noise_variance_norm", params.measurementNoiseVariance);
+  params.outlierThresholdAbs =
+      metadataFiniteDouble(log, "eqf.outlier_threshold_abs", params.outlierThresholdAbs);
+  params.outlierThresholdAbs = metadataFiniteDouble(
+      log, "eqf.outlier_threshold_abs_norm", params.outlierThresholdAbs);
+  params.outlierThresholdProb = metadataFiniteDouble(
+      log, "eqf.outlier_threshold_prob", params.outlierThresholdProb);
+  params.featureRetention =
+      metadataFiniteDouble(log, "eqf.feature_retention", params.featureRetention);
+
+  params.biasOmegaProcessVariance = metadataFiniteDouble(
+      log, "eqf.process_var_bias_omega", params.biasOmegaProcessVariance);
+  params.biasAccelProcessVariance = metadataFiniteDouble(
+      log, "eqf.process_var_bias_accel", params.biasAccelProcessVariance);
+  params.attitudeProcessVariance = metadataFiniteDouble(
+      log, "eqf.process_var_attitude", params.attitudeProcessVariance);
+  params.positionProcessVariance = metadataFiniteDouble(
+      log, "eqf.process_var_position", params.positionProcessVariance);
+  params.velocityProcessVariance = metadataFiniteDouble(
+      log, "eqf.process_var_velocity", params.velocityProcessVariance);
+  params.cameraAttitudeProcessVariance = metadataFiniteDouble(
+      log, "eqf.process_var_cam_attitude", params.cameraAttitudeProcessVariance);
+  params.cameraPositionProcessVariance = metadataFiniteDouble(
+      log, "eqf.process_var_cam_position", params.cameraPositionProcessVariance);
+  params.pointProcessVariance =
+      metadataFiniteDouble(log, "eqf.process_var_point", params.pointProcessVariance);
+
+  params.inputNoise.setZero();
+  params.inputNoise.block<3, 3>(0, 0).setIdentity();
+  params.inputNoise.block<3, 3>(3, 3).setIdentity();
+  params.inputNoise.block<3, 3>(6, 6).setIdentity();
+  params.inputNoise.block<3, 3>(9, 9).setIdentity();
+  params.inputNoise.block<3, 3>(0, 0) *=
+      metadataFiniteDouble(log, "eqf.input_var_gyr", params.inputNoise(0, 0));
+  params.inputNoise.block<3, 3>(3, 3) *=
+      metadataFiniteDouble(log, "eqf.input_var_acc", params.inputNoise(3, 3));
+  params.inputNoise.block<3, 3>(6, 6) *= metadataFiniteDouble(
+      log, "eqf.input_var_gyr_bias_walk", params.inputNoise(6, 6));
+  params.inputNoise.block<3, 3>(9, 9) *= metadataFiniteDouble(
+      log, "eqf.input_var_acc_bias_walk", params.inputNoise(9, 9));
+
+  return params;
+}
+
+State initialReferenceState(const ReplayLog& log) {
+  SensorState sensor;
+  sensor.inputBias = Bias::Identity();
+  sensor.pose = Pose3::Identity();
+  sensor.velocity.setZero();
+  sensor.cameraOffset = cameraExtrinsicsFromMetadata(log).value_or(Pose3::Identity());
+  return State(sensor, {});
+}
+
+Matrix initialCovarianceFromMetadata(const ReplayLog& log, const State& xi0) {
+  Matrix Sigma0 = Matrix::Identity(xi0.dim(), xi0.dim());
+  Sigma0.block<3, 3>(0, 0) *=
+      metadataFiniteDouble(log, "eqf.initial_var_bias_omega", 0.1);
+  Sigma0.block<3, 3>(3, 3) *=
+      metadataFiniteDouble(log, "eqf.initial_var_bias_accel", 0.1);
+  Sigma0.block<3, 3>(6, 6) *=
+      metadataFiniteDouble(log, "eqf.initial_var_attitude", 1e-4);
+  Sigma0.block<3, 3>(9, 9) *=
+      metadataFiniteDouble(log, "eqf.initial_var_position", 1e-4);
+  Sigma0.block<3, 3>(12, 12) *=
+      metadataFiniteDouble(log, "eqf.initial_var_velocity", 1e-2);
+  Sigma0.block<3, 3>(15, 15) *=
+      metadataFiniteDouble(log, "eqf.initial_var_cam_attitude", 1e-5);
+  Sigma0.block<3, 3>(18, 18) *=
+      metadataFiniteDouble(log, "eqf.initial_var_cam_position", 1e-4);
+  return Sigma0;
+}
+
+void printSummary(const ReplayLog& log, const EqVIOFilterParams& params,
+                  double currentTime, size_t imuCount, size_t visionFrameCount,
+                  size_t visionFeatureCount, const State& estimate) {
+  std::cout << "CSV replay complete.\n";
+  std::cout << "Events: " << log.events.size() << ", IMU: " << imuCount
+            << ", vision frames: " << visionFrameCount
+            << ", vision features: " << visionFeatureCount << "\n";
+  std::cout << "Measurement noise variance (normalized): "
+            << params.measurementNoiseVariance << "\n";
+  std::cout << std::setprecision(17);
+  std::cout << "Filter time: " << currentTime << "\n";
+  std::cout << std::setprecision(10);
+  std::cout << "Landmarks: " << estimate.n() << "\n";
+  std::cout << "Pose translation: "
+            << estimate.sensor.pose.translation().transpose() << "\n";
+  std::cout << "GT pose translation: "
+            << HardcodedGroundTruth::position().transpose() << "\n";
+  std::cout << "Velocity: " << estimate.sensor.velocity.transpose() << "\n";
+  std::cout << "GT velocity: "
+            << HardcodedGroundTruth::velocity().transpose() << "\n";
 }
 
 }  // namespace
@@ -297,77 +399,9 @@ int main() {
 
   try {
     const ReplayLog log = readReplayCsv(csvPath);
-
-    EqVIOFilterParams params;
-    params.initialPointDepth = metadataFiniteDouble(
-        log, "eqf.initial_point_depth", params.initialPointDepth);
-    params.initialPointVariance = metadataFiniteDouble(
-        log, "eqf.initial_point_variance", params.initialPointVariance);
-    params.measurementNoiseVariance = metadataFiniteDouble(
-        log, "eqf.measurement_noise_variance_norm",
-        params.measurementNoiseVariance);
-    params.outlierThresholdAbs = metadataFiniteDouble(
-        log, "eqf.outlier_threshold_abs", params.outlierThresholdAbs);
-    params.outlierThresholdAbs = metadataFiniteDouble(
-        log, "eqf.outlier_threshold_abs_norm", params.outlierThresholdAbs);
-    params.outlierThresholdProb = metadataFiniteDouble(
-        log, "eqf.outlier_threshold_prob", params.outlierThresholdProb);
-    params.featureRetention =
-        metadataFiniteDouble(log, "eqf.feature_retention", params.featureRetention);
-
-    params.biasOmegaProcessVariance = metadataFiniteDouble(
-        log, "eqf.process_var_bias_omega", params.biasOmegaProcessVariance);
-    params.biasAccelProcessVariance = metadataFiniteDouble(
-        log, "eqf.process_var_bias_accel", params.biasAccelProcessVariance);
-    params.attitudeProcessVariance = metadataFiniteDouble(
-        log, "eqf.process_var_attitude", params.attitudeProcessVariance);
-    params.positionProcessVariance = metadataFiniteDouble(
-        log, "eqf.process_var_position", params.positionProcessVariance);
-    params.velocityProcessVariance = metadataFiniteDouble(
-        log, "eqf.process_var_velocity", params.velocityProcessVariance);
-    params.cameraAttitudeProcessVariance = metadataFiniteDouble(
-        log, "eqf.process_var_cam_attitude", params.cameraAttitudeProcessVariance);
-    params.cameraPositionProcessVariance = metadataFiniteDouble(
-        log, "eqf.process_var_cam_position", params.cameraPositionProcessVariance);
-    params.pointProcessVariance =
-        metadataFiniteDouble(log, "eqf.process_var_point", params.pointProcessVariance);
-
-    params.inputNoise.setZero();
-    params.inputNoise.block<3, 3>(0, 0).setIdentity();
-    params.inputNoise.block<3, 3>(3, 3).setIdentity();
-    params.inputNoise.block<3, 3>(6, 6).setIdentity();
-    params.inputNoise.block<3, 3>(9, 9).setIdentity();
-    params.inputNoise.block<3, 3>(0, 0) *=
-        metadataFiniteDouble(log, "eqf.input_var_gyr", params.inputNoise(0, 0));
-    params.inputNoise.block<3, 3>(3, 3) *=
-        metadataFiniteDouble(log, "eqf.input_var_acc", params.inputNoise(3, 3));
-    params.inputNoise.block<3, 3>(6, 6) *= metadataFiniteDouble(
-        log, "eqf.input_var_gyr_bias_walk", params.inputNoise(6, 6));
-    params.inputNoise.block<3, 3>(9, 9) *= metadataFiniteDouble(
-        log, "eqf.input_var_acc_bias_walk", params.inputNoise(9, 9));
-
-    SensorState sensor;
-    sensor.inputBias = Bias::Identity();
-    sensor.pose = Pose3::Identity();
-    sensor.velocity.setZero();
-    sensor.cameraOffset =
-        cameraExtrinsicsFromMetadata(log).value_or(Pose3::Identity());
-    State xi0(sensor, {});
-    Matrix Sigma0 = Matrix::Identity(xi0.dim(), xi0.dim());
-    Sigma0.block<3, 3>(0, 0) *=
-        metadataFiniteDouble(log, "eqf.initial_var_bias_omega", 0.1);
-    Sigma0.block<3, 3>(3, 3) *=
-        metadataFiniteDouble(log, "eqf.initial_var_bias_accel", 0.1);
-    Sigma0.block<3, 3>(6, 6) *=
-        metadataFiniteDouble(log, "eqf.initial_var_attitude", 1e-4);
-    Sigma0.block<3, 3>(9, 9) *=
-        metadataFiniteDouble(log, "eqf.initial_var_position", 1e-4);
-    Sigma0.block<3, 3>(12, 12) *=
-        metadataFiniteDouble(log, "eqf.initial_var_velocity", 1e-2);
-    Sigma0.block<3, 3>(15, 15) *=
-        metadataFiniteDouble(log, "eqf.initial_var_cam_attitude", 1e-5);
-    Sigma0.block<3, 3>(18, 18) *=
-        metadataFiniteDouble(log, "eqf.initial_var_cam_position", 1e-4);
+    const EqVIOFilterParams params = paramsFromMetadata(log);
+    const State xi0 = initialReferenceState(log);
+    const Matrix Sigma0 = initialCovarianceFromMetadata(log, xi0);
 
     EqVIOFilter filter(params);
     filter.setReferenceState(xi0, Sigma0);
@@ -385,10 +419,24 @@ int main() {
           filter.initializeFromIMU(event.imu);
           currentTime = event.imu.stamp;
         }
-        if (filter.isInitialized()) imuBuffer.push_back(event.imu);
+        
+        imuBuffer.push_back(event.imu);
         ++imuCount;
       } else {
-        propagateBufferedImu(filter, imuBuffer, currentTime, event.tAbs);
+        const BufferedImuPropagation step =
+            makeBufferedImuPropagation(imuBuffer, currentTime, event.tAbs);
+        if (filter.isInitialized() && !step.imuInputs.empty()) {
+          filter.propagate(step.imuInputs, step.dts);
+          currentTime += step.propagatedTime;
+        }
+        if (step.trimCount > 0) {
+          imuBuffer.erase(
+              imuBuffer.begin(),
+              imuBuffer.begin() +
+                  static_cast<std::vector<IMUInput>::difference_type>(
+                      step.trimCount));
+        }
+
         const Matrix R =
             Matrix::Identity(static_cast<int>(2 * event.vision.size()),
                              static_cast<int>(2 * event.vision.size())) *
@@ -399,27 +447,11 @@ int main() {
       }
     }
 
-    const State estimate = filter.stateEstimate();
-    std::cout << "CSV replay complete.\n";
-    std::cout << "Events: " << log.events.size() << ", IMU: " << imuCount
-              << ", vision frames: " << visionFrameCount
-              << ", vision features: " << visionFeatureCount << "\n";
-    std::cout << "Measurement noise variance (normalized): "
-              << params.measurementNoiseVariance << "\n";
-    std::cout << std::setprecision(17);
-    std::cout << "Filter time: " << currentTime << "\n";
-    std::cout << std::setprecision(10);
-    std::cout << "Landmarks: " << estimate.n() << "\n";
-    std::cout << "Pose translation: "
-              << estimate.sensor.pose.translation().transpose() << "\n";
-    std::cout << "GT pose translation: "
-              << HardcodedGroundTruth::position().transpose() << "\n";
-    std::cout << "Velocity: " << estimate.sensor.velocity.transpose() << "\n";
-    std::cout << "GT velocity: "
-              << HardcodedGroundTruth::velocity().transpose() << "\n";
+    printSummary(log, params, currentTime, imuCount, visionFrameCount,
+                 visionFeatureCount, filter.stateEstimate());
 
   } catch (const std::exception& e) {
-    std::cerr << "EqVIOFilterCsvReplay failed: " << e.what() << "\n";
+    std::cerr << "EqVIOFilterExample failed: " << e.what() << "\n";
     return 2;
   }
 

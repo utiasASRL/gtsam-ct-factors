@@ -212,7 +212,7 @@ TEST(EqVIOFilter, InitAndPropagation) {
   VisionMeasurement meas;
   filter.correct(meas, camera);
 
-  EXPECT(filter.view().Sigma.array().isFinite().all());
+  EXPECT(filter.snapshot().Sigma.array().isFinite().all());
 }
 
 TEST(EqVIOFilter, ParityShortSequence) {
@@ -272,7 +272,7 @@ TEST(EqVIOFilter, VisionUpdate) {
   filter.correct(meas, camera);
 
   EXPECT_LONGS_EQUAL(1, filter.stateEstimate().n());
-  EXPECT(filter.view().Sigma.array().isFinite().all());
+  EXPECT(filter.snapshot().Sigma.array().isFinite().all());
 }
 
 TEST(EqVIOFilter, Smoke) {
@@ -309,9 +309,9 @@ TEST(EqVIOFilter, Smoke) {
 
   const State est = filter.stateEstimate();
   EXPECT_LONGS_EQUAL(2, est.n());
-  EXPECT_LONGS_EQUAL(xi0.dim(), filter.view().Sigma.rows());
-  EXPECT_LONGS_EQUAL(xi0.dim(), filter.view().Sigma.cols());
-  EXPECT(filter.view().Sigma.array().isFinite().all());
+  EXPECT_LONGS_EQUAL(xi0.dim(), filter.snapshot().Sigma.rows());
+  EXPECT_LONGS_EQUAL(xi0.dim(), filter.snapshot().Sigma.cols());
+  EXPECT(filter.snapshot().Sigma.array().isFinite().all());
 }
 
 TEST(VIOEqFMatrices, ShapesAndFinite) {

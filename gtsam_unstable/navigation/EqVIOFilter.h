@@ -54,8 +54,8 @@ class GTSAM_UNSTABLE_EXPORT EqVIOFilter
  public:
   using Base = EquivariantFilter<State, Symmetry>;
 
-  /// Internal filter state view.
-  struct View {
+  /// Internal filter state snapshot.
+  struct Snapshot {
     State xi0;
     VioGroup X = makeVioGroupIdentity();
     Matrix Sigma =
@@ -64,7 +64,7 @@ class GTSAM_UNSTABLE_EXPORT EqVIOFilter
 
  private:
   EqVIOFilterParams params_;
-  View view_;
+  Snapshot snapshot_;
   bool initialized_ = false;
 
  public:
@@ -90,8 +90,8 @@ class GTSAM_UNSTABLE_EXPORT EqVIOFilter
   State stateEstimate() const;
   /// True after IMU-based initialization.
   bool isInitialized() const { return initialized_; }
-  /// Access internal reference/group/covariance state.
-  const View& view() const { return view_; }
+  /// Access internal reference/group/covariance snapshot.
+  const Snapshot& snapshot() const { return snapshot_; }
 
  private:
   static Matrix defaultCovariance(size_t nLandmarks);
