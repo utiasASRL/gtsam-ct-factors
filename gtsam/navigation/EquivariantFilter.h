@@ -72,6 +72,14 @@ class EquivariantFilter : public ManifoldEKF<M> {
 
  protected:
 
+  /**
+   * @brief Synchronization hooks for derived filters with dynamic runtime structure.
+   *
+   * Most fixed-dimension filters can rely on the public predict/update path only.
+   * These functions are primarily for dynamic cases (for example variable-size
+   * state/group representations) where derived classes need to resize/reset.
+   */
+
   /// Reset reference, covariance, and group estimate; sync manifold state.
   void resetReferenceAndGroup(const M& xi_ref, const CovarianceM& P,
                               const G& g) {

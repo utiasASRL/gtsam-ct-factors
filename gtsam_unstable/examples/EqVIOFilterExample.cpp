@@ -443,41 +443,54 @@ void printSummary(const ReplayLog& log, const EqVIOFilterParams& params,
  * summary for quick validation.
  */
 int main() {
+  // Resolve the bundled replay file from the example data search paths.
   const std::string csvPath =
       findExampleDataFile("EqVIOdata_eurocmav_room1_10sec.csv");
 
   try {
+    // Parse events and metadata, then construct filter configuration and initial conditions.
     const ReplayLog log = readReplayCsv(csvPath);
     const EqVIOFilterParams params = paramsFromMetadata(log);
     const State xi0 = initialReferenceState(log);
     const Matrix Sigma0 = initialCovarianceFromMetadata(log, xi0);
 
+    // Create filter and set reference-state chart origin/covariance.
     EqVIOFilter filter(params);
     filter.setReferenceState(xi0, Sigma0);
+    // Replay file stores normalized coordinates, so use identity intrinsics/extrinsics camera.
     auto camera = std::make_shared<CameraModel>(
         Pose3::Identity(), Cal3_S2(1.0, 1.0, 0.0, 0.0, 0.0));
 
+    // Runtime counters and timing for final summary output.
     size_t imuCount = 0;
     size_t visionFrameCount = 0;
     size_t visionFeatureCount = 0;
+    // Current propagated filter time; starts once first IMU initializes gravity alignment.
     double currentTime = -1.0;
+    // Rolling IMU buffer consumed at each vision timestamp.
     std::vector<IMUInput> imuBuffer;
+
+    // Replay all events in sequence: IMU samples buffer propagation input, vision triggers correction.
     for (const ReplayEvent& event : log.events) {
       if (event.type == ReplayEvent::Type::Imu) {
         if (!filter.isInitialized()) {
+          // One-time gravity-based attitude initialization from first IMU sample.
           filter.initializeFromIMU(event.imu);
           currentTime = event.imu.stamp;
         }
 
+        // Keep all IMU events; buffered integration slices these into piecewise holds.
         imuBuffer.push_back(event.imu);
         ++imuCount;
       } else {
+        // Propagate to this frame time using buffered IMU holds.
         const BufferedImuPropagation step =
             makeBufferedImuPropagation(imuBuffer, currentTime, event.tAbs);
         if (filter.isInitialized() && !step.imuInputs.empty()) {
           filter.propagate(step.imuInputs, step.dts);
           currentTime += step.propagatedTime;
         }
+        // Drop IMU samples already consumed by propagation, keep boundary sample for continuity.
         if (step.trimCount > 0) {
           imuBuffer.erase(
               imuBuffer.begin(),
@@ -486,6 +499,7 @@ int main() {
                       step.trimCount));
         }
 
+        // Build isotropic vision noise for this frame and apply one correction step.
         const Matrix R =
             Matrix::Identity(static_cast<int>(2 * event.vision.size()),
                              static_cast<int>(2 * event.vision.size())) *
@@ -496,6 +510,7 @@ int main() {
       }
     }
 
+    // Report replay statistics and terminal estimate against hardcoded reference values.
     printSummary(log, params, currentTime, imuCount, visionFrameCount,
                  visionFeatureCount, filter.stateEstimate());
 
