@@ -500,6 +500,19 @@ TEST( IncrementalFixedLagSmoother, ExampleWithFactorRemoval )
   //
   // Both bugs were fixed in PR #2474.
   add_x_check_keep_every_y(9, 3);
+
+  // In the lines below:
+  //
+  //   - First we add a new value, and leave it ready to be removed in the
+  //     following update;
+  //
+  //   - Then we advance the time enough so that this value becomes both unused
+  //     and marginalizable.
+  //
+  // This setup exposed another bug, also fixed on PR #2474.
+  add_x_check_keep_every_y(1, 3);
+  i = 16;
+  add_x_check_keep_every_y(1, 1);
 }
 
 int main() {
