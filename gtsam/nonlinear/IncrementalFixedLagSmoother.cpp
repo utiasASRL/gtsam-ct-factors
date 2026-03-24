@@ -117,6 +117,18 @@ FixedLagSmoother::Result IncrementalFixedLagSmoother::update(
     // database
     eraseKeyTimestampMap(KeyVector{isamResult_.unusedKeys.begin(),
                                    isamResult_.unusedKeys.end()});
+
+    if (marginalizableKeys.size() > 0) {
+      // Remove keys that became unused after update from the marginalizable
+      // keys to avoid marginalizing keys that have been removed from ISAM2.
+      marginalizableKeys.erase(
+          std::remove_if(marginalizableKeys.begin(), marginalizableKeys.end(),
+                         [&](const auto& key) {
+                           return isamResult_.unusedKeys.find(key) !=
+                                  isamResult_.unusedKeys.end();
+                         }),
+          marginalizableKeys.end());
+    }
   }
 
   if (debug) {
