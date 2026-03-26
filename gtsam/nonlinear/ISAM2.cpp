@@ -199,8 +199,23 @@ void ISAM2::recalculateBatch(const ISAM2UpdateParams& updateParams,
   gttic(ordering);
   Ordering order;
   if (updateParams.constrainedKeys) {
-    order = Ordering::ColamdConstrained(affectedFactorsVarIndex,
-                                        *updateParams.constrainedKeys);
+    // Need to check for unusedKeys and filter them out from constrainedKeys
+    FastMap<Key, int> constraintGroups;
+    if (result->unusedKeys.empty()) {
+      // All keys being used, no need to filter
+      constraintGroups = *updateParams.constrainedKeys;
+    } else {
+      // Remove unused keys from the constraints
+      for (auto it = updateParams.constrainedKeys->begin(),
+                last = updateParams.constrainedKeys->end();
+           it != last; it++) {
+        if (result->unusedKeys.find(it->first) == result->unusedKeys.end()) {
+          constraintGroups.insert(*it);
+        }
+      }
+    }
+    order =
+        Ordering::ColamdConstrained(affectedFactorsVarIndex, constraintGroups);
   } else {
     if (theta_.size() > result->observedKeys.size()) {
       // Only if some variables are unconstrained
