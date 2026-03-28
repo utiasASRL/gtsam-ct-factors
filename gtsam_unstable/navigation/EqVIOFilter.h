@@ -94,9 +94,9 @@ class GTSAM_UNSTABLE_EXPORT EqVIOFilter
   void initializeFromIMU(const IMUInput& imu);
   /**
    * @brief Set reference state and covariance explicitly.
-   * @throws std::invalid_argument if covariance dimensions do not match `xi0`.
+   * @throws std::invalid_argument if covariance dimensions do not match `xi_ref`.
    */
-  void setReferenceState(const State& xi0, const Matrix& Sigma0);
+  void setReferenceState(const State& xi_ref, const Matrix& Sigma0);
 
   /**
    * @brief Propagate filter state across a sequence of IMU hold intervals.
@@ -125,7 +125,7 @@ class GTSAM_UNSTABLE_EXPORT EqVIOFilter
                const std::shared_ptr<const CameraModel>& camera,
                const Matrix& R = Matrix());
 
-  /// Return the current full state estimate `phi(xi0, X)`.
+  /// Return the current full state estimate `phi(xi_ref, X)`.
   State stateEstimate() const;
   /// True after IMU-based initialization.
   bool isInitialized() const { return initialized_; }

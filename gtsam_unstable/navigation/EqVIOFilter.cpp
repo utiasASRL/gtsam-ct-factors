@@ -82,10 +82,10 @@ EqVIOFilter::EqVIOFilter(const State& xi0, const Matrix& Sigma0,
  * rotation mapping measured acceleration to world +Z.
  */
 void EqVIOFilter::initializeFromIMU(const IMUInput& imu) {
-  State xi0 = referenceState();
-  xi0.sensor.inputBias = Bias::Identity();
-  xi0.sensor.pose = Pose3::Identity();
-  xi0.sensor.velocity.setZero();
+  State xi_ref = referenceState();
+  xi_ref.sensor.inputBias = Bias::Identity();
+  xi_ref.sensor.pose = Pose3::Identity();
+  xi_ref.sensor.velocity.setZero();
 
   Vector3 approxGravity = imu.acc;
   if (approxGravity.norm() < 1e-9) approxGravity = Vector3::UnitZ();
@@ -93,14 +93,14 @@ void EqVIOFilter::initializeFromIMU(const IMUInput& imu) {
   Quaternion q;
   q.setFromTwoVectors(approxGravity.normalized(), Vector3::UnitZ());
   const Rot3 R0(q);
-  xi0.sensor.pose = Pose3(R0, Point3::Zero());
+  xi_ref.sensor.pose = Pose3(R0, Point3::Zero());
   initialized_ = true;
-  resetReferenceAndGroup(xi0, errorCovariance(), groupEstimate());
+  resetReferenceAndGroup(xi_ref, errorCovariance(), groupEstimate());
 }
 
 /// Replace current reference state/covariance after dimension validation.
-void EqVIOFilter::setReferenceState(const State& xi0, const Matrix& Sigma0) {
-  resetReferenceAndGroup(xi0, Sigma0, makeVioGroupIdentity(xi0.n()));
+void EqVIOFilter::setReferenceState(const State& xi_ref, const Matrix& Sigma0) {
+  resetReferenceAndGroup(xi_ref, Sigma0, makeVioGroupIdentity(xi_ref.n()));
 }
 
 /**
@@ -266,8 +266,8 @@ void EqVIOFilter::addNewLandmarks(
                        3 * static_cast<int>(newLandmarks.size())) *
       params_.initialPointVariance;
 
-  State xi0 = referenceState();
-  xi0.cameraLandmarks.insert(xi0.cameraLandmarks.end(), newLandmarks.begin(),
+  State xi_ref = referenceState();
+  xi_ref.cameraLandmarks.insert(xi_ref.cameraLandmarks.end(), newLandmarks.begin(),
                              newLandmarks.end());
 
   const auto& [A, Beta, B, Q] = decompose(groupEstimate());
@@ -290,7 +290,7 @@ void EqVIOFilter::addNewLandmarks(
   Sigma.block(0, oldSize, oldSize, 3 * newN).setZero();
   Sigma.block(oldSize, oldSize, 3 * newN, 3 * newN) = newLandmarksCov;
 
-  resetReferenceAndGroup(xi0, Sigma, X);
+  resetReferenceAndGroup(xi_ref, Sigma, X);
 }
 
 /// Remove any landmarks that are absent from the current measurement id list.
@@ -318,8 +318,8 @@ void EqVIOFilter::removeOldLandmarks(const std::vector<int>& measurementIds) {
 
 /// Remove landmark at index `idx` from state, group, and covariance.
 void EqVIOFilter::removeLandmarkByIndex(int idx) {
-  State xi0 = referenceState();
-  xi0.cameraLandmarks.erase(xi0.cameraLandmarks.begin() + idx);
+  State xi_ref = referenceState();
+  xi_ref.cameraLandmarks.erase(xi_ref.cameraLandmarks.begin() + idx);
 
   const auto& [A, Beta, B, Q] = decompose(groupEstimate());
 
@@ -336,7 +336,7 @@ void EqVIOFilter::removeLandmarkByIndex(int idx) {
   removeRows(Sigma, SensorState::CompDim + 3 * idx, 3);
   removeCols(Sigma, SensorState::CompDim + 3 * idx, 3);
 
-  resetReferenceAndGroup(xi0, Sigma, X);
+  resetReferenceAndGroup(xi_ref, Sigma, X);
 }
 
 /// Remove landmark with matching integer id.
