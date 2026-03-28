@@ -214,7 +214,7 @@ TEST(EqVIOFilter, InitAndPropagation) {
   VisionMeasurement meas;
   filter.correct(meas, camera);
 
-  EXPECT(filter.snapshot().Sigma.array().isFinite().all());
+  EXPECT(filter.errorCovariance().array().isFinite().all());
 }
 
 // Verifies short propagation sequence matches direct system-function integration.
@@ -276,7 +276,7 @@ TEST(EqVIOFilter, VisionUpdate) {
   filter.correct(meas, camera);
 
   EXPECT_LONGS_EQUAL(1, filter.stateEstimate().n());
-  EXPECT(filter.snapshot().Sigma.array().isFinite().all());
+  EXPECT(filter.errorCovariance().array().isFinite().all());
 }
 
 // End-to-end smoke test for repeated propagate/correct cycles.
@@ -314,9 +314,9 @@ TEST(EqVIOFilter, Smoke) {
 
   const State est = filter.stateEstimate();
   EXPECT_LONGS_EQUAL(2, est.n());
-  EXPECT_LONGS_EQUAL(xi0.dim(), filter.snapshot().Sigma.rows());
-  EXPECT_LONGS_EQUAL(xi0.dim(), filter.snapshot().Sigma.cols());
-  EXPECT(filter.snapshot().Sigma.array().isFinite().all());
+  EXPECT_LONGS_EQUAL(xi0.dim(), filter.errorCovariance().rows());
+  EXPECT_LONGS_EQUAL(xi0.dim(), filter.errorCovariance().cols());
+  EXPECT(filter.errorCovariance().array().isFinite().all());
 }
 
 // Verifies EqF linearization matrices have expected shapes and finite entries.

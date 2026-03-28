@@ -100,14 +100,8 @@ class EquivariantFilter : public ManifoldEKF<M> {
     this->X_ = act_on_ref_(g_);
   }
 
-  /// Set group estimate and update manifold state through the action.
-  void setGroupEstimateAndSyncState(const G& g) {
-    g_ = g;
-    this->X_ = act_on_ref_(g_);
-  }
-
-  /// Set error covariance directly.
-  void setErrorCovariance(const CovarianceM& P) { this->P_ = P; }
+  /// Access current reference state used as the EqF chart origin.
+  const M& referenceState() const { return xi_ref_; }
 
  public:
   /**

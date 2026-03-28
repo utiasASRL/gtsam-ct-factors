@@ -64,11 +64,6 @@ struct GTSAM_UNSTABLE_EXPORT EqVIOFilterParams {
 /**
  * @brief Standalone EqVIO filter built on top of `EquivariantFilter`.
  *
- * The filter maintains an internal snapshot `(xi0, X, Sigma)`:
- * - `xi0`: current linearization/reference state.
- * - `X`: group-valued estimate relative to `xi0`.
- * - `Sigma`: covariance in the reference-state chart.
- *
  * Prediction is split into covariance propagation (single averaged IMU segment)
  * and state propagation (piecewise IMU holds), preserving the original EqVIO
  * replay semantics while still using the base equivariant filter machinery.
@@ -78,17 +73,8 @@ class GTSAM_UNSTABLE_EXPORT EqVIOFilter
  public:
   using Base = EquivariantFilter<State, Symmetry>;
 
-  /// Internal filter state snapshot synchronized with `EquivariantFilter` base state.
-  struct Snapshot {
-    State xi0;
-    VioGroup X = makeVioGroupIdentity();
-    Matrix Sigma =
-        Matrix::Identity(SensorState::CompDim, SensorState::CompDim);
-  };
-
  private:
   EqVIOFilterParams params_;
-  Snapshot snapshot_;
   bool initialized_ = false;
 
  public:
@@ -143,8 +129,6 @@ class GTSAM_UNSTABLE_EXPORT EqVIOFilter
   State stateEstimate() const;
   /// True after IMU-based initialization.
   bool isInitialized() const { return initialized_; }
-  /// Access internal reference/group/covariance snapshot.
-  const Snapshot& snapshot() const { return snapshot_; }
 
  private:
   /// Allocate identity covariance with dimension `SensorState::CompDim + 3*nLandmarks`.
@@ -154,11 +138,6 @@ class GTSAM_UNSTABLE_EXPORT EqVIOFilter
   void propagateCovariance(const IMUInput& imu, double dt);
   /// Propagate state estimate through lifted group increment for one IMU hold.
   void propagateState(const IMUInput& imu, double dt);
-
-  /// Synchronize stored snapshot into base-class buffers; optionally reset reference state.
-  void syncBase(bool resetReference);
-  /// Synchronize local snapshot from base-class group estimate and covariance.
-  void syncFromBase();
 
   /// Build process noise matrix for current state dimension.
   Matrix stateProcessNoise(size_t nLandmarks) const;
@@ -176,7 +155,7 @@ class GTSAM_UNSTABLE_EXPORT EqVIOFilter
   void removeOutliers(VisionMeasurement& measurement,
                       const std::shared_ptr<const CameraModel>& camera);
   /// Remove landmarks whose scale component leaves a numerically safe range.
-  void removeInvalidLandmarksNow();
+  void removeInvalidLandmarks();
   /// Return 3x3 covariance block for a specific landmark id.
   Matrix3 getLandmarkCovById(int id) const;
   /// Return induced 2x2 output covariance for a specific landmark id.

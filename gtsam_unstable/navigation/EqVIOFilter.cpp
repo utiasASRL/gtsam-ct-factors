@@ -49,20 +49,17 @@ EqVIOFilter::EqVIOFilter() : EqVIOFilter(EqVIOFilterParams()) {}
 /**
  * @brief Construct filter with given parameter bundle and identity initial state.
  *
- * The internal snapshot is initialized and pushed into the base
- * `EquivariantFilter` storage via `syncBase(true)`.
+ * The base `EquivariantFilter` storage is initialized directly.
  */
 EqVIOFilter::EqVIOFilter(const EqVIOFilterParams& params)
     : Base(State(), defaultCovariance(0), makeVioGroupIdentity()),
       params_(params) {
-  snapshot_.xi0 = State();
-  snapshot_.xi0.sensor.inputBias = Bias::Identity();
-  snapshot_.xi0.sensor.pose = Pose3::Identity();
-  snapshot_.xi0.sensor.velocity.setZero();
-  snapshot_.xi0.sensor.cameraOffset = Pose3::Identity();
-  snapshot_.X = makeVioGroupIdentity();
-  snapshot_.Sigma = defaultCovariance(0);
-  syncBase(true);
+  State xi0;
+  xi0.sensor.inputBias = Bias::Identity();
+  xi0.sensor.pose = Pose3::Identity();
+  xi0.sensor.velocity.setZero();
+  xi0.sensor.cameraOffset = Pose3::Identity();
+  resetReferenceAndGroup(xi0, defaultCovariance(0), makeVioGroupIdentity());
 }
 
 /**
@@ -74,11 +71,8 @@ EqVIOFilter::EqVIOFilter(const State& xi0, const Matrix& Sigma0,
                          const EqVIOFilterParams& params)
     : Base(State(), defaultCovariance(0), makeVioGroupIdentity()),
       params_(params) {
-  snapshot_.xi0 = xi0;
-  snapshot_.X = makeVioGroupIdentity(snapshot_.xi0.n());
-  snapshot_.Sigma = Sigma0;
+  resetReferenceAndGroup(xi0, Sigma0, makeVioGroupIdentity(xi0.n()));
   initialized_ = true;
-  syncBase(true);
 }
 
 /**
@@ -88,9 +82,10 @@ EqVIOFilter::EqVIOFilter(const State& xi0, const Matrix& Sigma0,
  * rotation mapping measured acceleration to world +Z.
  */
 void EqVIOFilter::initializeFromIMU(const IMUInput& imu) {
-  snapshot_.xi0.sensor.inputBias = Bias::Identity();
-  snapshot_.xi0.sensor.pose = Pose3::Identity();
-  snapshot_.xi0.sensor.velocity.setZero();
+  State xi0 = referenceState();
+  xi0.sensor.inputBias = Bias::Identity();
+  xi0.sensor.pose = Pose3::Identity();
+  xi0.sensor.velocity.setZero();
 
   Vector3 approxGravity = imu.acc;
   if (approxGravity.norm() < 1e-9) approxGravity = Vector3::UnitZ();
@@ -98,17 +93,14 @@ void EqVIOFilter::initializeFromIMU(const IMUInput& imu) {
   Quaternion q;
   q.setFromTwoVectors(approxGravity.normalized(), Vector3::UnitZ());
   const Rot3 R0(q);
-  snapshot_.xi0.sensor.pose = Pose3(R0, Point3::Zero());
+  xi0.sensor.pose = Pose3(R0, Point3::Zero());
   initialized_ = true;
-  syncBase(true);
+  resetReferenceAndGroup(xi0, errorCovariance(), groupEstimate());
 }
 
 /// Replace current reference state/covariance after dimension validation.
 void EqVIOFilter::setReferenceState(const State& xi0, const Matrix& Sigma0) {
-  snapshot_.xi0 = xi0;
-  snapshot_.X = makeVioGroupIdentity(xi0.n());
-  snapshot_.Sigma = Sigma0;
-  syncBase(true);
+  resetReferenceAndGroup(xi0, Sigma0, makeVioGroupIdentity(xi0.n()));
 }
 
 /**
@@ -154,17 +146,16 @@ void EqVIOFilter::propagateCovariance(const IMUInput& imu, double dt) {
   if (!initialized_ || dt <= 0.0) {
     return;
   }
-  const Matrix A = EqFStateMatrixA(snapshot_.X, snapshot_.xi0, imu);
-  const Matrix B = EqFInputMatrixB(snapshot_.X, snapshot_.xi0);
+  const Matrix A = EqFStateMatrixA(groupEstimate(), referenceState(), imu);
+  const Matrix B = EqFInputMatrixB(groupEstimate(), referenceState());
   const Matrix Qc =
-      B * params_.inputNoise * B.transpose() + stateProcessNoise(snapshot_.xi0.n());
+      B * params_.inputNoise * B.transpose() + stateProcessNoise(referenceState().n());
 
   auto zeroLift = [this](const State&) -> Vector {
-    return Vector::Zero(static_cast<int>(Dim_groupTangent(snapshot_.X)));
+    return Vector::Zero(static_cast<int>(Dim_groupTangent(groupEstimate())));
   };
 
   Base::template predictWithJacobian<1>(zeroLift, A, Qc, dt);
-  syncFromBase();
 }
 
 /// State-only propagation through lifted discrete system increment.
@@ -175,10 +166,9 @@ void EqVIOFilter::propagateState(const IMUInput& imu, double dt) {
   auto liftFunctor = [imu, dt](const State& xi) -> Vector {
     return (VioGroup::Logmap(liftVelocityDiscrete(xi, imu, dt)) / dt).eval();
   };
-  const Matrix A = Matrix::Zero(snapshot_.xi0.dim(), snapshot_.xi0.dim());
-  const Matrix Qc = Matrix::Zero(snapshot_.xi0.dim(), snapshot_.xi0.dim());
+  const Matrix A = Matrix::Zero(referenceState().dim(), referenceState().dim());
+  const Matrix Qc = Matrix::Zero(referenceState().dim(), referenceState().dim());
   Base::template predictWithJacobian<1>(liftFunctor, A, Qc, dt);
-  syncFromBase();
 }
 
 /**
@@ -205,47 +195,24 @@ void EqVIOFilter::correct(const VisionMeasurement& measurement,
   addNewLandmarks(matchedMeasurement, camera);
 
   if (matchedMeasurement.empty()) {
-    syncBase(false);
     return;
   }
 
   update(matchedMeasurement, camera, R);
-  removeInvalidLandmarksNow();
+  removeInvalidLandmarks();
 
-  syncBase(false);
-
-  assert(!snapshot_.Sigma.hasNaN());
+  assert(!errorCovariance().hasNaN());
 }
 
 /// Return current physical-state estimate by applying group action to reference state.
 State EqVIOFilter::stateEstimate() const {
-  return stateGroupAction(snapshot_.X, snapshot_.xi0);
+  return stateGroupAction(groupEstimate(), referenceState());
 }
 
 /// Identity covariance helper sized for current sensor + landmark dimensions.
 Matrix EqVIOFilter::defaultCovariance(size_t nLandmarks) {
   const int d = SensorState::CompDim + 3 * static_cast<int>(nLandmarks);
   return Matrix::Identity(d, d);
-}
-
-/**
- * @brief Push local snapshot into the `EquivariantFilter` base.
- * @param resetReference If true, reset base reference state; otherwise only sync estimate/covariance.
- */
-void EqVIOFilter::syncBase(bool resetReference) {
-  if (resetReference) {
-    resetReferenceAndGroup(snapshot_.xi0, snapshot_.Sigma, snapshot_.X);
-    return;
-  }
-  // ensure referenceState().n() == N_landmarkCount(snapshot_.X))
-  setGroupEstimateAndSyncState(snapshot_.X);
-  setErrorCovariance(snapshot_.Sigma);
-}
-
-/// Pull group estimate and covariance from the `EquivariantFilter` base into local snapshot.
-void EqVIOFilter::syncFromBase() {
-  snapshot_.X = groupEstimate();
-  snapshot_.Sigma = errorCovariance();
 }
 
 /// Build block-diagonal process covariance from scalar per-component variances.
@@ -280,7 +247,7 @@ void EqVIOFilter::addNewLandmarks(
   if (measurement.empty()) return;
 
   std::vector<Landmark> newLandmarks;
-  const std::vector<int> existingIds = snapshot_.xi0.ids();
+  const std::vector<int> existingIds = referenceState().ids();
   for (const auto& [id, coord] : measurement) {
     if (std::find(existingIds.begin(), existingIds.end(), id) != existingIds.end()) {
       continue;
@@ -299,10 +266,11 @@ void EqVIOFilter::addNewLandmarks(
                        3 * static_cast<int>(newLandmarks.size())) *
       params_.initialPointVariance;
 
-  snapshot_.xi0.cameraLandmarks.insert(snapshot_.xi0.cameraLandmarks.end(),
-                                   newLandmarks.begin(), newLandmarks.end());
+  State xi0 = referenceState();
+  xi0.cameraLandmarks.insert(xi0.cameraLandmarks.end(), newLandmarks.begin(),
+                             newLandmarks.end());
 
-  const auto& [A, Beta, B, Q] = decompose(snapshot_.X);
+  const auto& [A, Beta, B, Q] = decompose(groupEstimate());
   std::vector<SOT3> q;
   q.reserve(Q.size() + newLandmarks.size());
   for (size_t i = 0; i < Q.size(); ++i) {
@@ -312,21 +280,22 @@ void EqVIOFilter::addNewLandmarks(
     q.push_back(SOT3::Identity());
   }
 
-  snapshot_.X = makeVioGroup(A, Beta, B, LandmarkGroup(q));
+  const VioGroup X = makeVioGroup(A, Beta, B, LandmarkGroup(q));
 
-  const int oldSize = snapshot_.Sigma.rows();
+  Matrix Sigma = errorCovariance();
+  const int oldSize = Sigma.rows();
   const int newN = static_cast<int>(newLandmarks.size());
-  snapshot_.Sigma.conservativeResize(oldSize + 3 * newN, oldSize + 3 * newN);
-  snapshot_.Sigma.block(oldSize, 0, 3 * newN, oldSize).setZero();
-  snapshot_.Sigma.block(0, oldSize, oldSize, 3 * newN).setZero();
-  snapshot_.Sigma.block(oldSize, oldSize, 3 * newN, 3 * newN) = newLandmarksCov;
+  Sigma.conservativeResize(oldSize + 3 * newN, oldSize + 3 * newN);
+  Sigma.block(oldSize, 0, 3 * newN, oldSize).setZero();
+  Sigma.block(0, oldSize, oldSize, 3 * newN).setZero();
+  Sigma.block(oldSize, oldSize, 3 * newN, 3 * newN) = newLandmarksCov;
 
-  syncBase(true);
+  resetReferenceAndGroup(xi0, Sigma, X);
 }
 
 /// Remove any landmarks that are absent from the current measurement id list.
 void EqVIOFilter::removeOldLandmarks(const std::vector<int>& measurementIds) {
-  const std::vector<int> existingIds = snapshot_.xi0.ids();
+  const std::vector<int> existingIds = referenceState().ids();
   std::vector<int> lostIndices(existingIds.size());
   std::iota(lostIndices.begin(), lostIndices.end(), 0);
   if (lostIndices.empty()) return;
@@ -349,9 +318,10 @@ void EqVIOFilter::removeOldLandmarks(const std::vector<int>& measurementIds) {
 
 /// Remove landmark at index `idx` from state, group, and covariance.
 void EqVIOFilter::removeLandmarkByIndex(int idx) {
-  snapshot_.xi0.cameraLandmarks.erase(snapshot_.xi0.cameraLandmarks.begin() + idx);
+  State xi0 = referenceState();
+  xi0.cameraLandmarks.erase(xi0.cameraLandmarks.begin() + idx);
 
-  const auto& [A, Beta, B, Q] = decompose(snapshot_.X);
+  const auto& [A, Beta, B, Q] = decompose(groupEstimate());
 
   std::vector<SOT3> q;
   q.reserve(Q.size() - 1);
@@ -360,34 +330,35 @@ void EqVIOFilter::removeLandmarkByIndex(int idx) {
     q.push_back(Q[i]);
   }
 
-  snapshot_.X = makeVioGroup(A, Beta, B, LandmarkGroup(q));
+  const VioGroup X = makeVioGroup(A, Beta, B, LandmarkGroup(q));
 
-  removeRows(snapshot_.Sigma, SensorState::CompDim + 3 * idx, 3);
-  removeCols(snapshot_.Sigma, SensorState::CompDim + 3 * idx, 3);
+  Matrix Sigma = errorCovariance();
+  removeRows(Sigma, SensorState::CompDim + 3 * idx, 3);
+  removeCols(Sigma, SensorState::CompDim + 3 * idx, 3);
 
-  syncBase(true);
+  resetReferenceAndGroup(xi0, Sigma, X);
 }
 
 /// Remove landmark with matching integer id.
 void EqVIOFilter::removeLandmarkById(int id) {
   const auto it = std::find_if(
-      snapshot_.xi0.cameraLandmarks.begin(), snapshot_.xi0.cameraLandmarks.end(),
+      referenceState().cameraLandmarks.begin(), referenceState().cameraLandmarks.end(),
       [&id](const Landmark& lm) { return lm.id == id; });
-  assert(it != snapshot_.xi0.cameraLandmarks.end());
+  assert(it != referenceState().cameraLandmarks.end());
   removeLandmarkByIndex(
-      static_cast<int>(std::distance(snapshot_.xi0.cameraLandmarks.begin(), it)));
+      static_cast<int>(std::distance(referenceState().cameraLandmarks.begin(), it)));
 }
 
 /// Return 3x3 landmark-state covariance block for the specified id.
 Matrix3 EqVIOFilter::getLandmarkCovById(int id) const {
   const auto it = std::find_if(
-      snapshot_.xi0.cameraLandmarks.begin(), snapshot_.xi0.cameraLandmarks.end(),
+      referenceState().cameraLandmarks.begin(), referenceState().cameraLandmarks.end(),
       [&id](const Landmark& lm) { return lm.id == id; });
-  assert(it != snapshot_.xi0.cameraLandmarks.end());
+  assert(it != referenceState().cameraLandmarks.end());
   const int i =
-      static_cast<int>(std::distance(snapshot_.xi0.cameraLandmarks.begin(), it));
-  return snapshot_.Sigma.block<3, 3>(SensorState::CompDim + 3 * i,
-                                 SensorState::CompDim + 3 * i);
+      static_cast<int>(std::distance(referenceState().cameraLandmarks.begin(), it));
+  return errorCovariance().block<3, 3>(SensorState::CompDim + 3 * i,
+                                       SensorState::CompDim + 3 * i);
 }
 
 /// Project landmark covariance through output Jacobian into 2x2 image-space covariance.
@@ -395,13 +366,13 @@ Matrix2 EqVIOFilter::outputCovarianceById(
     int id, const std::shared_ptr<const CameraModel>& camera) const {
   const Matrix3 lmCov = getLandmarkCovById(id);
   const auto it = std::find_if(
-      snapshot_.xi0.cameraLandmarks.begin(), snapshot_.xi0.cameraLandmarks.end(),
+      referenceState().cameraLandmarks.begin(), referenceState().cameraLandmarks.end(),
       [&id](const Landmark& lm) { return lm.id == id; });
-  assert(it != snapshot_.xi0.cameraLandmarks.end());
+  assert(it != referenceState().cameraLandmarks.end());
 
   const size_t i =
-      static_cast<size_t>(std::distance(snapshot_.xi0.cameraLandmarks.begin(), it));
-  const LandmarkGroup& Q = std::get<3>(decompose(snapshot_.X));
+      static_cast<size_t>(std::distance(referenceState().cameraLandmarks.begin(), it));
+  const LandmarkGroup& Q = std::get<3>(decompose(groupEstimate()));
   const SOT3& Q_i = Q[i];
 
   const Matrix23 C0i = EqFoutputMatrixCi(it->p, Q_i, camera);
@@ -409,13 +380,13 @@ Matrix2 EqVIOFilter::outputCovarianceById(
 }
 
 /// Remove landmarks with non-finite or extreme SOT3 scale factors.
-void EqVIOFilter::removeInvalidLandmarksNow() {
-  const LandmarkGroup& Q = std::get<3>(decompose(snapshot_.X));
+void EqVIOFilter::removeInvalidLandmarks() {
+  const LandmarkGroup& Q = std::get<3>(decompose(groupEstimate()));
   std::set<int> invalidIds;
   for (size_t i = 0; i < Q.size(); ++i) {
     const double a = SOT3Scale(Q[i]);
     if (!std::isfinite(a) || a <= 1e-8 || a > 1e8) {
-      invalidIds.insert(snapshot_.xi0.cameraLandmarks[i].id);
+      invalidIds.insert(referenceState().cameraLandmarks[i].id);
     }
   }
   for (const int id : invalidIds) {
@@ -499,8 +470,8 @@ void EqVIOFilter::update(const VisionMeasurement& measurement,
   if (measurement.empty()) return;
 
   const VisionMeasurement estimatedMeasurement = measureSystemState(stateEstimate(), camera);
-  const Matrix Ct = EqFoutputMatrixC(snapshot_.xi0, snapshot_.X, measurement, camera,
-                                     true);
+  const Matrix Ct =
+      EqFoutputMatrixC(referenceState(), groupEstimate(), measurement, camera, true);
   const Matrix Rused =
       (outputGainMatrix.rows() == Ct.rows() && outputGainMatrix.cols() == Ct.rows())
           ? outputGainMatrix
@@ -509,9 +480,8 @@ void EqVIOFilter::update(const VisionMeasurement& measurement,
   const Vector zhat = _measurementVector(estimatedMeasurement);
   const Vector z = _measurementVector(measurement);
   Base::updateWithVector(zhat, Ct, z, Rused, [this](const Vector& delta_xi) -> Vector {
-    return liftInnovation(delta_xi, snapshot_.xi0);
+    return liftInnovation(delta_xi, referenceState());
   });
-  syncFromBase();
 }
 
 }  // namespace eqvio
