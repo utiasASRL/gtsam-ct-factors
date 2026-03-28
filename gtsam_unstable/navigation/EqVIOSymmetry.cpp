@@ -17,7 +17,6 @@
 
 
 #include <gtsam_unstable/navigation/EqVIOSymmetry.h>
-#include <gtsam/base/numericalDerivative.h>
 
 #include <functional>
 #include <stdexcept>
@@ -76,34 +75,28 @@ Matrix NumericalDerivativeActionWrtGroup(
   return H;
 }
 
-/// Stereographic chart from unit sphere (excluding north pole) to R^2.
-Vector2 E3ProjectSphere(const Vector3& eta) {
-  static const Matrix23 I23 = Matrix23::Identity();
-  static const Vector3 e3 = Vector3::UnitZ();
-  return I23 * (eta - e3) / (1.0 - e3.dot(eta));
-}
-
-/// Inverse stereographic chart from R^2 back to unit sphere.
-Vector3 E3ProjectSphereInv(const Vector2& y) {
-  static const Vector3 e3 = Vector3::UnitZ();
-  const Vector3 yBar = (Vector3() << y, 0.0).finished();
-  return e3 + 2.0 / (yBar.squaredNorm() + 1.0) * (yBar - e3);
-}
-
-/// Jacobian of stereographic chart (computed numerically at runtime).
+/// Jacobian of stereographic chart in closed form.
 Matrix23 E3ProjectSphereDiff(const Vector3& eta) {
-  const std::function<Vector2(const Vector3&)> f = [](const Vector3& x) {
-    return E3ProjectSphere(x);
-  };
-  return gtsam::numericalDerivative11<Vector2, Vector3, 3>(f, eta, 1e-6);
+  const double denom = 1.0 - eta.z();
+  const double inv = 1.0 / denom;
+  const double inv2 = inv * inv;
+
+  Matrix23 J;
+  J << inv, 0.0, eta.x() * inv2, 0.0, inv, eta.y() * inv2;
+  return J;
 }
 
-/// Jacobian of inverse stereographic chart (computed numerically at runtime).
+/// Jacobian of inverse stereographic chart in closed form.
 Matrix32 E3ProjectSphereInvDiff(const Vector2& y) {
-  const std::function<Vector3(const Vector2&)> f = [](const Vector2& x) {
-    return E3ProjectSphereInv(x);
-  };
-  return gtsam::numericalDerivative11<Vector3, Vector2, 2>(f, y, 1e-6);
+  static const Matrix32 I32 =
+      (Matrix32() << 1.0, 0.0, 0.0, 1.0, 0.0, 0.0).finished();
+
+  const double s = y.squaredNorm() + 1.0;
+  const double alpha = 2.0 / s;
+  const double beta = -4.0 / (s * s);
+  const Vector3 yMinusE3(y.x(), y.y(), -1.0);
+
+  return alpha * I32 + beta * (yMinusE3 * y.transpose());
 }
 
 /// Differential of sphere chart at the nominal point associated with `pole`.

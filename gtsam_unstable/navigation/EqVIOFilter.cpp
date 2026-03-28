@@ -245,6 +245,7 @@ void EqVIOFilter::addNewLandmarks(
     const VisionMeasurement& measurement,
     const std::shared_ptr<const CameraModel>& camera) {
   if (measurement.empty()) return;
+  if (!camera) throw std::invalid_argument("EqVIOFilter::addNewLandmarks: camera is null");
 
   std::vector<Landmark> newLandmarks;
   const std::vector<int> existingIds = referenceState().ids();

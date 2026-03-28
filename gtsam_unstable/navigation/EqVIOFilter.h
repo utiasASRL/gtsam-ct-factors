@@ -92,9 +92,11 @@ class GTSAM_UNSTABLE_EXPORT EqVIOFilter
    * assumption) and aligned with world +Z.
    */
   void initializeFromIMU(const IMUInput& imu);
+  
   /**
    * @brief Set reference state and covariance explicitly.
-   * @throws std::invalid_argument if covariance dimensions do not match `xi_ref`.
+   * @param xi_ref Reference state.
+   * @param Sigma0 Covariance.
    */
   void setReferenceState(const State& xi_ref, const Matrix& Sigma0);
 
