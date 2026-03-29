@@ -96,8 +96,8 @@ class GTSAM_UNSTABLE_EXPORT EqVIOFilter
   /**
    * @brief Propagate filter state across a sequence of IMU hold intervals.
    *
-   * Covariance is propagated once using time-weighted average IMU input, then
-   * state is propagated piecewise over each `(imuInputs[i], dts[i])` hold.
+   * Each hold interval `(imuInputs[i], dts[i])` is propagated via the automatic
+   * base-class `predict(...)` path, so mean and covariance advance together.
    *
    * @param imuInputs IMU samples defining zero-order holds.
    * @param dts Hold durations (seconds), one per sample.
@@ -126,11 +126,6 @@ class GTSAM_UNSTABLE_EXPORT EqVIOFilter
  private:
   /// Allocate identity covariance with dimension `SensorState::CompDim + 3*nLandmarks`.
   static Matrix defaultCovariance(size_t nLandmarks);
-
-  /// Propagate covariance through linearized error dynamics for one effective IMU segment.
-  void propagateCovariance(const IMUInput& imu, double dt);
-  /// Propagate state estimate through lifted group increment for one IMU hold.
-  void propagateState(const IMUInput& imu, double dt);
 
   /// Build process noise matrix for current state dimension.
   Matrix stateProcessNoise(size_t nLandmarks) const;

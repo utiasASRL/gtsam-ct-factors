@@ -41,6 +41,39 @@ Vector _measurementVector(const VisionMeasurement& measurement) {
   return v;
 }
 
+/// Input bundle used by automatic EqF predict path for one IMU hold.
+struct _PropagationInput {
+  IMUInput imu;
+  double dt = 0.0;
+  Matrix D_lift;
+};
+
+/// Minimal input orbit for EqVIO propagation (identity action on input bundle).
+struct _PropagationInputOrbit {
+  explicit _PropagationInputOrbit(const _PropagationInput& in) : input(in) {}
+  _PropagationInput operator()(const VioGroup&) const { return input; }
+  _PropagationInput input;
+};
+
+/// Lift functor compatible with EquivariantFilter::predict automatic-A path.
+struct _PropagationLift {
+  explicit _PropagationLift(const _PropagationInput& in) : input(in) {}
+
+  Vector operator()(const State& xi,
+                    OptionalJacobian<Eigen::Dynamic, Eigen::Dynamic> H = {}) const {
+    const Vector y0 =
+        (VioGroup::Logmap(liftVelocityDiscrete(xi, input.imu, input.dt)) /
+         input.dt)
+            .eval();
+    if (H) {
+      *H = input.D_lift;
+    }
+    return y0;
+  }
+
+  _PropagationInput input;
+};
+
 }  // namespace
 
 /// Default constructor delegates to explicit-params constructor.
@@ -99,10 +132,9 @@ void EqVIOFilter::initializeFromIMU(const IMUInput& imu) {
 }
 
 /**
- * @brief Propagate covariance and state over buffered IMU intervals.
+ * @brief Propagate mean/covariance jointly over buffered IMU intervals.
  *
- * Covariance uses the time-weighted averaged IMU input over all positive `dt`.
- * State integration is then applied per-segment to preserve replay semantics.
+ * Uses the automatic base-class `predict(...)` path per positive-duration hold.
  */
 void EqVIOFilter::propagate(const std::vector<IMUInput>& imuInputs,
                             const std::vector<double>& dts) {
@@ -114,56 +146,30 @@ void EqVIOFilter::propagate(const std::vector<IMUInput>& imuInputs,
         "EqVIOFilter::propagate: imuInputs and dts size mismatch");
   }
 
-  double totalTime = 0.0;
-  IMUInput averagedImu = IMUInput::Zero();
   for (size_t i = 0; i < imuInputs.size(); ++i) {
     const double dt = dts[i];
     if (dt <= 0.0) continue;
-    totalTime += dt;
-    averagedImu = averagedImu + imuInputs[i] * dt;
+
+    const IMUInput imu = imuInputs[i];
+    const Matrix A_target = EqFStateMatrixA(groupEstimate(), referenceState(), imu);
+    Symmetry::Orbit actionAtRef(referenceState());
+    Matrix Dphi0;
+    const VioGroup identity_at_g =
+        traits<VioGroup>::Compose(groupEstimate().inverse(), groupEstimate());
+    actionAtRef(identity_at_g, &Dphi0);
+    const Matrix D_lift =
+        Dphi0.completeOrthogonalDecomposition().pseudoInverse() * A_target;
+
+    const _PropagationInput input{imu, dt, D_lift};
+    const _PropagationLift lift_u(input);
+    const _PropagationInputOrbit psi_u(input);
+
+    const Matrix B = EqFInputMatrixB(groupEstimate(), referenceState());
+    const Matrix Qc =
+        B * params_.inputNoise * B.transpose() + stateProcessNoise(referenceState().n());
+
+    Base::template predict<1>(lift_u, psi_u, Qc, dt);
   }
-  if (totalTime <= 0.0) {
-    return;
-  }
-
-  averagedImu = averagedImu * (1.0 / totalTime);
-  propagateCovariance(averagedImu, totalTime);
-
-  for (size_t i = 0; i < imuInputs.size(); ++i) {
-    const double dt = dts[i];
-    if (dt <= 0.0) continue;
-    propagateState(imuInputs[i], dt);
-  }
-}
-
-/// Covariance-only propagation through linearized EqF error dynamics.
-void EqVIOFilter::propagateCovariance(const IMUInput& imu, double dt) {
-  if (!initialized_ || dt <= 0.0) {
-    return;
-  }
-  const Matrix A = EqFStateMatrixA(groupEstimate(), referenceState(), imu);
-  const Matrix B = EqFInputMatrixB(groupEstimate(), referenceState());
-  const Matrix Qc =
-      B * params_.inputNoise * B.transpose() + stateProcessNoise(referenceState().n());
-
-  auto zeroLift = [this](const State&) -> Vector {
-    return Vector::Zero(static_cast<int>(Dim_groupTangent(groupEstimate())));
-  };
-
-  Base::template predictWithJacobian<1>(zeroLift, A, Qc, dt);
-}
-
-/// State-only propagation through lifted discrete system increment.
-void EqVIOFilter::propagateState(const IMUInput& imu, double dt) {
-  if (!initialized_ || dt <= 0.0) {
-    return;
-  }
-  auto liftFunctor = [imu, dt](const State& xi) -> Vector {
-    return (VioGroup::Logmap(liftVelocityDiscrete(xi, imu, dt)) / dt).eval();
-  };
-  const Matrix A = Matrix::Zero(referenceState().dim(), referenceState().dim());
-  const Matrix Qc = Matrix::Zero(referenceState().dim(), referenceState().dim());
-  Base::template predictWithJacobian<1>(liftFunctor, A, Qc, dt);
 }
 
 /**
