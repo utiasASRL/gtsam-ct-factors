@@ -34,16 +34,13 @@ namespace eqvio {
 /**
  * @brief One visual landmark state block.
  *
- * Stores a 3D landmark position plus its key id. The Lie/chart dimension
- * contribution is 3.
+ * Stores a 3D landmark position. The Lie/chart dimension contribution is 3.
  */
 struct GTSAM_UNSTABLE_EXPORT Landmark {
   static constexpr int CompDim = 3;
 
   /// Landmark position in world coordinates.
   Point3 p = Z_3x1;
-  /// Stable landmark identifier used for ordering/alignment.
-  Key id = 0;
 
   void print(const std::string& s = "") const;
   bool equals(const Landmark& other, double tol = 1e-9) const;
@@ -93,7 +90,6 @@ class GTSAM_UNSTABLE_EXPORT State {
   /// Number of landmarks.
   size_t n() const;
   int dim() const;
-  std::vector<Key> ids() const;
 
   /// Retract in the state chart.
   State retract(const TangentVector& v, ChartJacobian H1 = {},

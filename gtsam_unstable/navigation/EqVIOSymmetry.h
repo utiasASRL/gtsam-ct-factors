@@ -55,6 +55,17 @@ GTSAM_UNSTABLE_EXPORT VioGroup liftVelocityDiscrete(const State& state,
 
 /**
  * @brief Generate ideal image measurements by projecting all landmarks.
+ *
+ * `landmarkIds[i]` is the key assigned to `state.cameraLandmarks[i]`.
+ *
+ * @throws std::invalid_argument if `camera` is null or id count mismatches landmarks.
+ */
+GTSAM_UNSTABLE_EXPORT VisionMeasurement measureSystemState(
+    const State& state, const std::vector<Key>& landmarkIds,
+    const std::shared_ptr<const CameraModel>& camera);
+
+/**
+ * @brief Generate ideal image measurements with sequential keys `0..n-1`.
  * @throws std::invalid_argument if `camera` is null.
  */
 GTSAM_UNSTABLE_EXPORT VisionMeasurement measureSystemState(
@@ -86,7 +97,8 @@ GTSAM_UNSTABLE_EXPORT Matrix23 EqFoutputMatrixCi(
     const std::shared_ptr<const CameraModel>& camera);
 /// Stacked output matrix for all currently observed landmarks.
 GTSAM_UNSTABLE_EXPORT Matrix EqFoutputMatrixC(
-    const State& xi0, const VioGroup& X, const VisionMeasurement& y,
+    const State& xi0, const std::vector<Key>& landmarkIds, const VioGroup& X,
+    const VisionMeasurement& y,
     const std::shared_ptr<const CameraModel>& camera,
     bool useEquivariance = true);
 

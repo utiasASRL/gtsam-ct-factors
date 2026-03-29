@@ -18,7 +18,9 @@
 
 #include <gtsam_unstable/navigation/EqVIOSymmetry.h>
 
+#include <algorithm>
 #include <functional>
+#include <numeric>
 #include <stdexcept>
 
 namespace gtsam {
@@ -330,12 +332,17 @@ Matrix23 EqFoutputMatrixCi(
 
 /// Assemble full stacked output matrix for currently observed landmarks.
 Matrix EqFoutputMatrixC(
-    const State& xi0, const VioGroup& X, const VisionMeasurement& y,
+    const State& xi0, const std::vector<Key>& landmarkIds, const VioGroup& X,
+    const VisionMeasurement& y,
     const std::shared_ptr<const CameraModel>& camera, bool useEquivariance) {
   if (!camera) {
     throw std::invalid_argument("EqFoutputMatrixC: null camera");
   }
   const int M = static_cast<int>(xi0.n());
+  if (landmarkIds.size() != xi0.n()) {
+    throw std::invalid_argument(
+        "EqFoutputMatrixC: landmark id count mismatch");
+  }
   const std::vector<Key> yIds = measurementIds(y);
   const int N = static_cast<int>(yIds.size());
   const LandmarkGroup& Q = std::get<3>(decompose(X));
@@ -343,7 +350,7 @@ Matrix EqFoutputMatrixC(
   Matrix C = Matrix::Zero(2 * N, SensorState::CompDim + Landmark::CompDim * M);
 
   for (int i = 0; i < M; ++i) {
-    const Key idNum = xi0.cameraLandmarks[static_cast<size_t>(i)].id;
+    const Key idNum = landmarkIds[static_cast<size_t>(i)];
     const auto itY = std::find(yIds.begin(), yIds.end(), idNum);
     if (itY == yIds.end()) continue;
 
@@ -407,7 +414,6 @@ State stateGroupAction(const VioGroup& X, const State& state) {
   for (size_t i = 0; i < Q.size(); ++i) {
     out.cameraLandmarks[i].p =
         SOT3ApplyInverse(Q[i], state.cameraLandmarks[i].p);
-    out.cameraLandmarks[i].id = state.cameraLandmarks[i].id;
   }
 
   return out;
@@ -441,13 +447,11 @@ VioGroup liftVelocityDiscrete(const State& state, const IMUInput& velocity,
   std::vector<SOT3> q;
   q.resize(state.n());
   for (size_t i = 0; i < state.n(); ++i) {
-    const Landmark& lm0 = state.cameraLandmarks[i];
-    Landmark lm1;
-    lm1.id = lm0.id;
-    lm1.p = c1Tc0.transformFrom(lm0.p);
+    const Point3 p0 = state.cameraLandmarks[i].p;
+    const Point3 p1 = c1Tc0.transformFrom(p0);
 
-    const Rot3 R = RotationFromTwoVectors(lm1.p, lm0.p);
-    const double a = lm0.p.norm() / lm1.p.norm();
+    const Rot3 R = RotationFromTwoVectors(p1, p0);
+    const double a = p0.norm() / p1.norm();
     q[i] = MakeSOT3(SO3(R.matrix()), a);
   }
 
@@ -459,20 +463,32 @@ VioGroup liftVelocityDiscrete(const State& state, const IMUInput& velocity,
 
 /**
  * @brief Predict ideal normalized image measurements from current state.
- * @throws std::invalid_argument if `camera` is null.
+ * @throws std::invalid_argument if `camera` is null or id count mismatches landmarks.
  */
 VisionMeasurement measureSystemState(
-    const State& state, const std::shared_ptr<const CameraModel>& camera) {
+    const State& state, const std::vector<Key>& landmarkIds,
+    const std::shared_ptr<const CameraModel>& camera) {
   if (!camera) {
     throw std::invalid_argument("measureSystemState: camera model is null");
   }
+  if (landmarkIds.size() != state.n()) {
+    throw std::invalid_argument(
+        "measureSystemState: landmark id count mismatch");
+  }
 
-  // Project each landmark through the camera model
   VisionMeasurement out;
-  for (const Landmark& lm : state.cameraLandmarks) {
-    out[lm.id] = camera->project2(lm.p);
+  for (size_t i = 0; i < state.n(); ++i) {
+    out[landmarkIds[i]] = camera->project2(state.cameraLandmarks[i].p);
   }
   return out;
+}
+
+/// Predict ideal measurements with sequential keys `0..n-1`.
+VisionMeasurement measureSystemState(
+    const State& state, const std::shared_ptr<const CameraModel>& camera) {
+  std::vector<Key> ids(state.n());
+  std::iota(ids.begin(), ids.end(), 0);
+  return measureSystemState(state, ids, camera);
 }
 
 /// Evaluate symmetry action and optionally compute Jacobians w.r.t. state and group.

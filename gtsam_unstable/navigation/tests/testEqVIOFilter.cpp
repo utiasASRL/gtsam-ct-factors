@@ -36,7 +36,7 @@ State MakeState1() {
   sensor.velocity = Vector3(0.5, -0.3, 0.2);
   sensor.cameraOffset =
       Pose3(Rot3::RzRyRx(-0.08, 0.04, -0.03), Point3(0.1, 0.0, 0.05));
-  return State(sensor, {{Point3(0.3, -0.15, 4.5), 10}});
+  return State(sensor, {{Point3(0.3, -0.15, 4.5)}});
 }
 
 Se23 MakeA(const Rot3& R, const Point3& t, const Vector3& w) {
@@ -59,12 +59,12 @@ SensorState SensorFixture() {
 
 State State0() { return State(SensorFixture(), {}); }
 State State1() {
-  return State(SensorFixture(), {{Point3(0.8, -0.2, 4.5), 11}});
+  return State(SensorFixture(), {{Point3(0.8, -0.2, 4.5)}});
 }
 State State3() {
-  return State(SensorFixture(), {{Point3(0.8, -0.2, 4.5), 11},
-                                 {Point3(-0.6, 0.3, 3.8), 22},
-                                 {Point3(0.1, 0.7, 5.2), 33}});
+  return State(SensorFixture(), {{Point3(0.8, -0.2, 4.5)},
+                                 {Point3(-0.6, 0.3, 3.8)},
+                                 {Point3(0.1, 0.7, 5.2)}});
 }
 
 VioGroup Group0() { return makeVioGroupIdentity(0); }
@@ -142,7 +142,6 @@ State integrateSystemFunction(const State& state, const IMUInput& velocity,
 
   for (size_t i = 0; i < state.n(); ++i) {
     out.cameraLandmarks[i].p = c1Tc0.transformFrom(state.cameraLandmarks[i].p);
-    out.cameraLandmarks[i].id = state.cameraLandmarks[i].id;
   }
 
   out.sensor.cameraOffset = sensor.cameraOffset;
@@ -187,7 +186,6 @@ TEST(EqVIOFilter, DynamicLandmarksAddRemove) {
 
   const State est = filter.state();
   EXPECT_LONGS_EQUAL(1, est.n());
-  EXPECT_LONGS_EQUAL(1, est.cameraLandmarks.front().id);
 }
 
 // Verifies IMU-based initialization and basic propagation produce finite covariance.
@@ -288,7 +286,7 @@ TEST(EqVIOFilter, Smoke) {
   sensor.velocity.setZero();
   sensor.cameraOffset = Pose3::Identity();
 
-  State xi0(sensor, {{Point3(0.8, -0.2, 4.5), 11}, {Point3(-0.6, 0.3, 3.8), 22}});
+  State xi0(sensor, {{Point3(0.8, -0.2, 4.5)}, {Point3(-0.6, 0.3, 3.8)}});
   Matrix Sigma0 = Matrix::Identity(xi0.dim(), xi0.dim()) * 1e-3;
 
   EqVIOFilter filter(xi0, Sigma0, params);
@@ -333,7 +331,7 @@ TEST(VIOEqFMatrices, ShapesAndFinite) {
 
     const Matrix A = EqFStateMatrixA(X, xi0, imu);
     const Matrix B = EqFInputMatrixB(X, xi0);
-    const Matrix C = EqFoutputMatrixC(xi0, X, y, camera, true);
+    const Matrix C = EqFoutputMatrixC(xi0, measurementIds(y), X, y, camera, true);
 
     EXPECT_LONGS_EQUAL(xi0.dim(), A.rows());
     EXPECT_LONGS_EQUAL(xi0.dim(), A.cols());

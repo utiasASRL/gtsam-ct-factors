@@ -81,20 +81,20 @@ SensorState MakeSensor2() {
 
 std::vector<Landmark> Lms0() { return {}; }
 
-std::vector<Landmark> Lms1A() { return {{Point3(1.0, -0.5, 4.0), 11}}; }
+std::vector<Landmark> Lms1A() { return {{Point3(1.0, -0.5, 4.0)}}; }
 
-std::vector<Landmark> Lms1B() { return {{Point3(0.8, -0.3, 3.7), 11}}; }
+std::vector<Landmark> Lms1B() { return {{Point3(0.8, -0.3, 3.7)}}; }
 
 std::vector<Landmark> Lms3A() {
-  return {{Point3(1.0, -0.5, 4.0), 11},
-          {Point3(-0.6, 0.4, 3.2), 22},
-          {Point3(0.2, 0.7, 5.1), 33}};
+  return {{Point3(1.0, -0.5, 4.0)},
+          {Point3(-0.6, 0.4, 3.2)},
+          {Point3(0.2, 0.7, 5.1)}};
 }
 
 std::vector<Landmark> Lms3B() {
-  return {{Point3(0.9, -0.45, 3.8), 11},
-          {Point3(-0.5, 0.35, 3.4), 22},
-          {Point3(0.1, 0.65, 4.9), 33}};
+  return {{Point3(0.9, -0.45, 3.8)},
+          {Point3(-0.5, 0.35, 3.4)},
+          {Point3(0.1, 0.65, 4.9)}};
 }
 
 State MakeState0A() { return State(MakeSensor1(), Lms0()); }
@@ -114,7 +114,7 @@ TEST(VIOState, Concept) {
 }
 
 //******************************************************************************
-// Verifies dynamic dimensions and landmark id accessors.
+// Verifies dynamic dimensions for variable landmark counts.
 TEST(VIOState, DimensionsAndAccessors) {
   const State s0 = MakeState0A();
   const State s1 = MakeState1A();
@@ -125,11 +125,8 @@ TEST(VIOState, DimensionsAndAccessors) {
 
   EXPECT_LONGS_EQUAL(1, s1.n());
   EXPECT_LONGS_EQUAL(24, s1.dim());
-  EXPECT((s1.ids() == std::vector<Key>{11}));
-
   EXPECT_LONGS_EQUAL(3, s3.n());
   EXPECT_LONGS_EQUAL(30, s3.dim());
-  EXPECT((s3.ids() == std::vector<Key>{11, 22, 33}));
 }
 
 //******************************************************************************

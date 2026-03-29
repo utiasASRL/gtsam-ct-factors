@@ -64,9 +64,8 @@ struct EqVIOFilterParams {
 /**
  * @brief Standalone EqVIO filter built on top of `EquivariantFilter`.
  *
- * Prediction is split into covariance propagation (single averaged IMU segment)
- * and state propagation (piecewise IMU holds), preserving the original EqVIO
- * replay semantics while still using the base equivariant filter machinery.
+ * Prediction uses the base equivariant `predict(...)` path per IMU hold,
+ * while dynamic landmark add/remove bookkeeping stays in this runtime filter.
  */
 class GTSAM_UNSTABLE_EXPORT EqVIOFilter
     : public EquivariantFilter<State, Symmetry> {
@@ -76,6 +75,8 @@ class GTSAM_UNSTABLE_EXPORT EqVIOFilter
  private:
   EqVIOFilterParams params_;
   bool initialized_ = false;
+  // Runtime key ordering aligned with `cameraLandmarks` and covariance blocks.
+  std::vector<Key> landmarkKeys_;
 
  public:
   EqVIOFilter();

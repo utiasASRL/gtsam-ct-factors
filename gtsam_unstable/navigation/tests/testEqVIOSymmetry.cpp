@@ -62,7 +62,7 @@ namespace eqvio_test_util {
     for (size_t i = 0; i < ids.size(); ++i) {
       Point3 p = 10.0 * Vector3::Random();
       p.z() = std::abs(p.z()) + 1.0;
-      lms[i] = Landmark{p, ids[i]};
+      lms[i] = Landmark{p};
     }
     return State(sensor, lms);
   }
@@ -156,9 +156,6 @@ namespace eqvio_test_util {
     dist += (xi1.sensor.velocity - xi2.sensor.velocity).norm();
   
     for (size_t i = 0; i < xi1.n(); ++i) {
-      if (xi1.cameraLandmarks[i].id != xi2.cameraLandmarks[i].id) {
-        throw std::invalid_argument("StateDistance: landmark ids mismatch");
-      }
       dist += (xi1.cameraLandmarks[i].p - xi2.cameraLandmarks[i].p).norm();
     }
     return dist;
@@ -314,7 +311,6 @@ State integrateSystemFunction(const State& state, const IMUInput& velocity,
 
   for (size_t i = 0; i < state.n(); ++i) {
     out.cameraLandmarks[i].p = c1Tc0.transformFrom(state.cameraLandmarks[i].p);
-    out.cameraLandmarks[i].id = state.cameraLandmarks[i].id;
   }
 
   out.sensor.cameraOffset = sensor.cameraOffset;
@@ -324,9 +320,9 @@ State integrateSystemFunction(const State& state, const IMUInput& velocity,
 
 std::vector<Landmark> Lms0() { return {}; }
 std::vector<Landmark> Lms3() {
-  return {{Point3(1.0, -0.3, 4.2), 11},
-          {Point3(-0.7, 0.4, 3.1), 22},
-          {Point3(0.2, 0.8, 5.5), 33}};
+  return {{Point3(1.0, -0.3, 4.2)},
+          {Point3(-0.7, 0.4, 3.1)},
+          {Point3(0.2, 0.8, 5.5)}};
 }
 
 SensorState SensorA() {
@@ -523,9 +519,9 @@ TEST(Symmetry, OutputEquivarianceEqvioPort) {
     const State xi0 = RandomStateElement(ids);
 
     const VisionMeasurement y1 =
-        measureSystemState(stateGroupAction(X, xi0), camera);
+        measureSystemState(stateGroupAction(X, xi0), ids, camera);
     const VisionMeasurement y2 =
-        outputGroupAction(X, measureSystemState(xi0, camera), camera);
+        outputGroupAction(X, measureSystemState(xi0, ids, camera), camera);
     const double dist12 = MeasurementDistance(y1, y2);
     EXPECT(dist12 <= 1e-5);
   }

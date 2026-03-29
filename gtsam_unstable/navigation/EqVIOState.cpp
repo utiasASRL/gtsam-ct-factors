@@ -22,12 +22,12 @@ namespace eqvio {
 
 void Landmark::print(const std::string& s) const {
   if (!s.empty()) std::cout << s << " ";
-  std::cout << "Landmark{id=" << id << ", p=" << p.transpose() << "}"
+  std::cout << "Landmark{p=" << p.transpose() << "}"
             << std::endl;
 }
 
 bool Landmark::equals(const Landmark& other, double tol) const {
-  return id == other.id && equal_with_abs_tol(p, other.p, tol);
+  return equal_with_abs_tol(p, other.p, tol);
 }
 
 /// Gravity direction in body frame derived from current body pose.
@@ -57,13 +57,6 @@ size_t State::n() const { return cameraLandmarks.size(); }
 
 int State::dim() const {
   return SensorState::CompDim + Landmark::CompDim * static_cast<int>(n());
-}
-
-std::vector<Key> State::ids() const {
-  std::vector<Key> out;
-  out.reserve(cameraLandmarks.size());
-  for (const Landmark& lm : cameraLandmarks) out.push_back(lm.id);
-  return out;
 }
 
 State State::retract(const TangentVector& v, ChartJacobian H1,
