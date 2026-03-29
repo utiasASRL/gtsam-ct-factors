@@ -147,7 +147,7 @@ void EqVIOFilter::update(const VisionMeasurement& measurement,
     return;
   }
 
-  update(matchedMeasurement, camera, R);
+  innovationUpdate(matchedMeasurement, camera, R);
   removeInvalidLandmarks();
 
   assert(!errorCovariance().hasNaN());
@@ -177,6 +177,36 @@ Matrix EqVIOFilter::stateProcessNoise(size_t nLandmarks) const {
         params_.pointProcessVariance;
   }
   return Q;
+}
+
+/**
+ * @brief Apply innovation update for matched measurements.
+ *
+ * If `outputGainMatrix` is not a valid measurement covariance shape, the method
+ * falls back to isotropic `measurementNoiseVariance`.
+ */
+void EqVIOFilter::innovationUpdate(
+    const VisionMeasurement& measurement,
+    const std::shared_ptr<const CameraModel>& camera,
+    const Matrix& outputGainMatrix) {
+  if (measurement.empty()) return;
+
+  const VisionMeasurement estimatedMeasurement =
+      measureSystemState(state(), camera);
+  const Matrix Ct = EqFoutputMatrixC(referenceState(), groupEstimate(),
+                                     measurement, camera, true);
+  const Matrix Rused = (outputGainMatrix.rows() == Ct.rows() &&
+                        outputGainMatrix.cols() == Ct.rows())
+                           ? outputGainMatrix
+                           : Matrix::Identity(Ct.rows(), Ct.rows()) *
+                                 params_.measurementNoiseVariance;
+
+  const Vector zhat = measurementVector(estimatedMeasurement);
+  const Vector z = measurementVector(measurement);
+  Base::updateWithVector(zhat, Ct, z, Rused,
+                         [this](const Vector& delta_xi) -> Vector {
+                           return liftInnovation(delta_xi, referenceState());
+                         });
 }
 
 /**
@@ -401,32 +431,6 @@ void EqVIOFilter::removeOutliers(
     removeLandmarkById(lmId);
     measurement.erase(lmId);
   }
-}
-
-/**
- * @brief Apply innovation update for matched measurements.
- *
- * If `outputGainMatrix` is not a valid measurement covariance shape, the method
- * falls back to isotropic `measurementNoiseVariance`.
- */
-void EqVIOFilter::innovationUpdate(const VisionMeasurement& measurement,
-                         const std::shared_ptr<const CameraModel>& camera,
-                         const Matrix& outputGainMatrix) {
-  if (measurement.empty()) return;
-
-  const VisionMeasurement estimatedMeasurement = measureSystemState(state(), camera);
-  const Matrix Ct =
-      EqFoutputMatrixC(referenceState(), groupEstimate(), measurement, camera, true);
-  const Matrix Rused =
-      (outputGainMatrix.rows() == Ct.rows() && outputGainMatrix.cols() == Ct.rows())
-          ? outputGainMatrix
-          : Matrix::Identity(Ct.rows(), Ct.rows()) * params_.measurementNoiseVariance;
-
-  const Vector zhat = measurementVector(estimatedMeasurement);
-  const Vector z = measurementVector(measurement);
-  Base::updateWithVector(zhat, Ct, z, Rused, [this](const Vector& delta_xi) -> Vector {
-    return liftInnovation(delta_xi, referenceState());
-  });
 }
 
 }  // namespace eqvio
