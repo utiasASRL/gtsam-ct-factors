@@ -103,7 +103,7 @@ class GTSAM_UNSTABLE_EXPORT EqVIOFilter
    * @param dts Hold durations (seconds), one per sample.
    * @throws std::invalid_argument if input sizes differ.
    */
-  void propagate(const std::vector<IMUInput>& imuInputs,
+  void predict(const std::vector<IMUInput>& imuInputs,
                  const std::vector<double>& dts);
   /**
    * @brief Apply one visual correction step with dynamic landmark management.
@@ -116,7 +116,7 @@ class GTSAM_UNSTABLE_EXPORT EqVIOFilter
    * @param R Optional measurement covariance; if empty/wrong-sized, defaults to
    *          `measurementNoiseVariance * I`.
    */
-  void correct(const VisionMeasurement& measurement,
+  void update(const VisionMeasurement& measurement,
                const std::shared_ptr<const CameraModel>& camera,
                const Matrix& R = Matrix());
 
@@ -129,6 +129,13 @@ class GTSAM_UNSTABLE_EXPORT EqVIOFilter
 
   /// Build process noise matrix for current state dimension.
   Matrix stateProcessNoise(size_t nLandmarks) const;
+
+  /// Run innovation update on currently matched measurements.
+  void innovationUpdate(const VisionMeasurement& measurement,
+                        const std::shared_ptr<const CameraModel>& camera,
+                        const Matrix& outputGainMatrix);
+
+  // LANDMARK HELPERS
 
   /// Add unseen landmarks from current measurement and expand group/covariance.
   void addNewLandmarks(const VisionMeasurement& measurement,
@@ -150,10 +157,6 @@ class GTSAM_UNSTABLE_EXPORT EqVIOFilter
   Matrix2 outputCovarianceById(
       Key id, const std::shared_ptr<const CameraModel>& camera) const;
 
-  /// Run innovation update on currently matched measurements.
-  void update(const VisionMeasurement& measurement,
-              const std::shared_ptr<const CameraModel>& camera,
-              const Matrix& outputGainMatrix);
 };
 
 }  // namespace eqvio

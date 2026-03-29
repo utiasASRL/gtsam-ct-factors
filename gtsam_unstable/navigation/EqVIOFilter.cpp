@@ -24,60 +24,6 @@
 namespace gtsam {
 namespace eqvio {
 
-namespace {
-
-/**
- * @brief Stack a landmark-id-ordered measurement map into a dense vector.
- *
- * The order follows the `std::map` key ordering, which matches all other
- * EqVIO measurement matrix assembly paths.
- */
-Vector _measurementVector(const VisionMeasurement& measurement) {
-  Vector v = Vector::Zero(static_cast<int>(2 * measurement.size()));
-  int i = 0;
-  for (const auto& item : measurement) {
-    v.segment<2>(2 * i) = item.second;
-    ++i;
-  }
-  return v;
-}
-
-/// Minimal input-action wrapper with ABC-style `InputAction::Orbit` shape.
-struct InputAction {
-  struct Orbit {
-    explicit Orbit(const std::tuple<IMUInput, double, Matrix>& input)
-        : input_(input) {}
-    std::tuple<IMUInput, double, Matrix> operator()(const VioGroup&) const {
-      return input_;
-    }
-   private:
-    std::tuple<IMUInput, double, Matrix> input_;
-  };
-};
-
-/// Lift functor compatible with EquivariantFilter::predict automatic-A path.
-struct Lift {
-  explicit Lift(const std::tuple<IMUInput, double, Matrix>& in)
-      : imu_(std::get<0>(in)), dt_(std::get<1>(in)), D_lift_(std::get<2>(in)) {}
-
-  Vector operator()(const State& xi,
-                    OptionalJacobian<Eigen::Dynamic, Eigen::Dynamic> H = {}) const {
-    const Vector y0 =
-        (VioGroup::Logmap(liftVelocityDiscrete(xi, imu_, dt_)) / dt_)
-            .eval();
-    if (H) {
-      *H = D_lift_;
-    }
-    return y0;
-  }
-
-  IMUInput imu_;
-  double dt_;
-  Matrix D_lift_;
-};
-
-}  // namespace
-
 /// Default constructor delegates to explicit-params constructor.
 EqVIOFilter::EqVIOFilter() : EqVIOFilter(EqVIOFilterParams()) {}
 
@@ -138,7 +84,7 @@ void EqVIOFilter::initializeFromIMU(const IMUInput& imu) {
  *
  * Uses the automatic base-class `predict(...)` path per positive-duration hold.
  */
-void EqVIOFilter::propagate(const std::vector<IMUInput>& imuInputs,
+void EqVIOFilter::predict(const std::vector<IMUInput>& imuInputs,
                             const std::vector<double>& dts) {
   if (!initialized_ || imuInputs.empty()) {
     return;
@@ -184,7 +130,7 @@ void EqVIOFilter::propagate(const std::vector<IMUInput>& imuInputs,
  * 4. Perform EKF-like correction,
  * 5. Remove numerically invalid landmarks.
  */
-void EqVIOFilter::correct(const VisionMeasurement& measurement,
+void EqVIOFilter::update(const VisionMeasurement& measurement,
                           const std::shared_ptr<const CameraModel>& camera,
                           const Matrix& R) {
   if (!initialized_) {
@@ -463,7 +409,7 @@ void EqVIOFilter::removeOutliers(
  * If `outputGainMatrix` is not a valid measurement covariance shape, the method
  * falls back to isotropic `measurementNoiseVariance`.
  */
-void EqVIOFilter::update(const VisionMeasurement& measurement,
+void EqVIOFilter::innovationUpdate(const VisionMeasurement& measurement,
                          const std::shared_ptr<const CameraModel>& camera,
                          const Matrix& outputGainMatrix) {
   if (measurement.empty()) return;
@@ -476,8 +422,8 @@ void EqVIOFilter::update(const VisionMeasurement& measurement,
           ? outputGainMatrix
           : Matrix::Identity(Ct.rows(), Ct.rows()) * params_.measurementNoiseVariance;
 
-  const Vector zhat = _measurementVector(estimatedMeasurement);
-  const Vector z = _measurementVector(measurement);
+  const Vector zhat = measurementVector(estimatedMeasurement);
+  const Vector z = measurementVector(measurement);
   Base::updateWithVector(zhat, Ct, z, Rused, [this](const Vector& delta_xi) -> Vector {
     return liftInnovation(delta_xi, referenceState());
   });

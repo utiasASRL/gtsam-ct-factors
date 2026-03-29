@@ -495,7 +495,7 @@ int main() {
         const BufferedImuPropagation step =
             makeBufferedImuPropagation(imuBuffer, currentTime, event.tAbs);
         if (!step.imuInputs.empty()) {
-          filter->propagate(step.imuInputs, step.dts);
+          filter->predict(step.imuInputs, step.dts);
           currentTime += step.propagatedTime;
         }
         // Drop IMU samples already consumed by propagation, keep boundary sample for continuity.
@@ -512,7 +512,7 @@ int main() {
             Matrix::Identity(static_cast<int>(2 * event.vision.size()),
                              static_cast<int>(2 * event.vision.size())) *
             params.measurementNoiseVariance;
-        filter->correct(event.vision, camera, R);
+        filter->update(event.vision, camera, R);
         ++visionFrameCount;
         visionFeatureCount += event.vision.size();
       }

@@ -138,6 +138,13 @@ struct GTSAM_UNSTABLE_EXPORT IMUInput {
   }
 };
 
+class State;
+
+/// Discrete lift map used by EqVIO propagation helpers.
+GTSAM_UNSTABLE_EXPORT VioGroup liftVelocityDiscrete(const State& state,
+                                                    const IMUInput& velocity,
+                                                    double dt);
+
 /**
  * @brief Camera model used by EqVIO measurement functions.
  *
@@ -202,6 +209,56 @@ inline std::vector<Key> measurementIds(const VisionMeasurement& measurement) {
   }
   return ids;
 }
+
+/// Stack a landmark-id-ordered measurement map into a dense vector.
+inline Vector measurementVector(const VisionMeasurement& measurement) {
+  Vector v = Vector::Zero(static_cast<int>(2 * measurement.size()));
+  int i = 0;
+  for (const auto& item : measurement) {
+    v.segment<2>(2 * i) = item.second;
+    ++i;
+  }
+  return v;
+}
+
+/// Minimal input-action wrapper with ABC-style `InputAction::Orbit` shape.
+struct InputAction {
+  struct Orbit {
+    explicit Orbit(const std::tuple<IMUInput, double, Matrix>& input)
+        : input_(input) {}
+
+    std::tuple<IMUInput, double, Matrix> operator()(const VioGroup&) const {
+      return input_;
+    }
+
+   private:
+    std::tuple<IMUInput, double, Matrix> input_;
+  };
+};
+
+/// Lift functor compatible with EquivariantFilter::predict automatic-A path.
+struct Lift {
+  explicit Lift(const std::tuple<IMUInput, double, Matrix>& input)
+      : imu_(std::get<0>(input)),
+        dt_(std::get<1>(input)),
+        D_lift_(std::get<2>(input)) {}
+
+  Vector operator()(
+      const State& xi,
+      OptionalJacobian<Eigen::Dynamic, Eigen::Dynamic> H = {}) const {
+    const Vector y0 =
+        (VioGroup::Logmap(liftVelocityDiscrete(xi, imu_, dt_)) / dt_).eval();
+    if (H) {
+      *H = D_lift_;
+    }
+    return y0;
+  }
+
+ private:
+  IMUInput imu_;
+  double dt_;
+  Matrix D_lift_;
+};
 
 /// Remove a contiguous row block from a matrix.
 inline void removeRows(Matrix& mat, int startRow, int numRows) {

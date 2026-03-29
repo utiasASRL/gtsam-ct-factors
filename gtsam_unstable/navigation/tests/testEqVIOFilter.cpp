@@ -107,7 +107,7 @@ IMUInput ImuFixture() {
 bool IsFinite(const Matrix& M) { return M.array().isFinite().all(); }
 
 void PropagateSingle(EqVIOFilter& filter, const IMUInput& imu, double dt) {
-  filter.propagate(std::vector<IMUInput>{imu}, std::vector<double>{dt});
+  filter.predict(std::vector<IMUInput>{imu}, std::vector<double>{dt});
 }
 
 State integrateSystemFunction(const State& state, const IMUInput& velocity,
@@ -174,7 +174,7 @@ TEST(EqVIOFilter, DynamicLandmarksAddRemove) {
   meas1[1] = camera->project2(Point3(0.2, -0.1, 3.5));
   meas1[2] = camera->project2(Point3(-0.3, 0.15, 4.0));
   PropagateSingle(filter, imu1, 0.01);
-  filter.correct(meas1, camera);
+  filter.update(meas1, camera);
   EXPECT_LONGS_EQUAL(2, filter.state().n());
 
   IMUInput imu2 = imu0;
@@ -183,7 +183,7 @@ TEST(EqVIOFilter, DynamicLandmarksAddRemove) {
 
   VisionMeasurement meas2;
   meas2[1] = meas1.at(1);
-  filter.correct(meas2, camera);
+  filter.update(meas2, camera);
 
   const State est = filter.state();
   EXPECT_LONGS_EQUAL(1, est.n());
@@ -212,7 +212,7 @@ TEST(EqVIOFilter, InitAndPropagation) {
   auto camera =
       std::make_shared<CameraModel>(Pose3::Identity(), Cal3_S2(1, 1, 0, 0, 0));
   VisionMeasurement meas;
-  filter.correct(meas, camera);
+  filter.update(meas, camera);
 
   EXPECT(filter.errorCovariance().array().isFinite().all());
 }
@@ -244,7 +244,7 @@ TEST(EqVIOFilter, ParityShortSequence) {
     PropagateSingle(filter, imu, dt);
 
     VisionMeasurement emptyMeas;
-    filter.correct(emptyMeas, camera);
+    filter.update(emptyMeas, camera);
 
     manual = integrateSystemFunction(manual, imu, dt);
     t += dt;
@@ -272,7 +272,7 @@ TEST(EqVIOFilter, VisionUpdate) {
   auto camera =
       std::make_shared<CameraModel>(Pose3::Identity(), Cal3_S2(1, 1, 0, 0, 0));
   const VisionMeasurement meas = measureSystemState(filter.state(), camera);
-  filter.correct(meas, camera);
+  filter.update(meas, camera);
 
   EXPECT_LONGS_EQUAL(1, filter.state().n());
   EXPECT(filter.errorCovariance().array().isFinite().all());
@@ -307,7 +307,7 @@ TEST(EqVIOFilter, Smoke) {
 
     if (k % 5 == 0) {
       VisionMeasurement y = measureSystemState(filter.state(), camera);
-      filter.correct(y, camera);
+      filter.update(y, camera);
     }
   }
 
