@@ -29,6 +29,7 @@
 #include <gtsam/geometry/ExtendedPose3.h>
 #include <gtsam/geometry/PinholeCamera.h>
 #include <gtsam/geometry/Pose3.h>
+#include <gtsam/inference/Key.h>
 #include <gtsam/geometry/SO3.h>
 #include <gtsam/navigation/ImuBias.h>
 
@@ -190,11 +191,11 @@ inline Matrix23 projectionJacobian(const CameraModel& camera, const Vector3& y) 
 }
 
 /// Vision measurement keyed by landmark id.
-using VisionMeasurement = std::map<int, Point2>;
+using VisionMeasurement = std::map<Key, Point2>;
 
 /// Ordered landmark ids matching map iteration order.
-inline std::vector<int> measurementIds(const VisionMeasurement& measurement) {
-  std::vector<int> ids;
+inline std::vector<Key> measurementIds(const VisionMeasurement& measurement) {
+  std::vector<Key> ids;
   ids.reserve(measurement.size());
   for (const auto& item : measurement) {
     ids.push_back(item.first);

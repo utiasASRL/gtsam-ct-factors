@@ -125,11 +125,11 @@ TEST(VIOState, DimensionsAndAccessors) {
 
   EXPECT_LONGS_EQUAL(1, s1.n());
   EXPECT_LONGS_EQUAL(24, s1.dim());
-  EXPECT((s1.ids() == std::vector<int>{11}));
+  EXPECT((s1.ids() == std::vector<Key>{11}));
 
   EXPECT_LONGS_EQUAL(3, s3.n());
   EXPECT_LONGS_EQUAL(30, s3.dim());
-  EXPECT((s3.ids() == std::vector<int>{11, 22, 33}));
+  EXPECT((s3.ids() == std::vector<Key>{11, 22, 33}));
 }
 
 //******************************************************************************

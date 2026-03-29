@@ -51,7 +51,7 @@ namespace eqvio_test_util {
     return Se23(R, x);
   }
   
-  inline State RandomStateElement(const std::vector<int>& ids) {
+  inline State RandomStateElement(const std::vector<Key>& ids) {
     SensorState sensor;
     sensor.inputBias = Bias(Vector3::Random(), Vector3::Random());
     sensor.pose = Pose3::Expmap(Vector6::Random());
@@ -67,7 +67,7 @@ namespace eqvio_test_util {
     return State(sensor, lms);
   }
   
-  inline VioGroup RandomGroupElement(const std::vector<int>& ids) {
+  inline VioGroup RandomGroupElement(const std::vector<Key>& ids) {
     const Pose3 Apose = Pose3::Expmap(Vector6::Random());
     const Vector3 w = Vector3::Random();
     const Pose3 B = Pose3::Expmap(Vector6::Random());
@@ -95,11 +95,11 @@ namespace eqvio_test_util {
   }
   
   inline VisionMeasurement RandomVisionMeasurement(
-      const std::vector<int>& ids,
+      const std::vector<Key>& ids,
       const std::shared_ptr<const CameraModel>& camera) {
     VisionMeasurement measurement;
   
-    for (int id : ids) {
+    for (Key id : ids) {
       Vector3 p;
       do {
         p = Vector3::Random();
@@ -244,7 +244,7 @@ namespace {
 constexpr int kEqvioActionReps = 25;
 constexpr double kEqvioNearZero = 1e-12;
 
-std::vector<int> QIdsForMeasurement(const VioGroup& X,
+std::vector<Key> QIdsForMeasurement(const VioGroup& X,
                                     const VisionMeasurement& measurement) {
   if (N_landmarkCount(X) == 0) return {};
   if (measurement.size() != N_landmarkCount(X)) {
@@ -263,14 +263,14 @@ VisionMeasurement outputGroupAction(
     throw std::invalid_argument("outputGroupAction: camera model is null");
   }
 
-  const std::vector<int> qIds = QIdsForMeasurement(X, measurement);
+  const std::vector<Key> qIds = QIdsForMeasurement(X, measurement);
   if (qIds.size() != Q.size()) {
     throw std::invalid_argument(
         "outputGroupAction: invalid Q-to-id mapping cardinality");
   }
 
   for (size_t i = 0; i < Q.size(); ++i) {
-    const int id = qIds[i];
+    const Key id = qIds[i];
     const auto it = measurement.find(id);
     if (it == measurement.end()) continue;
 
@@ -467,7 +467,7 @@ TEST(Symmetry, JacobiansN3) {
 // Verifies eqvio-ported state action identity and composition checks.
 TEST(Symmetry, StateActionEqvioPort) {
   srand(0);
-  const std::vector<int> ids = {0, 1, 2, 3, 4};
+  const std::vector<Key> ids = {0, 1, 2, 3, 4};
   const VioGroup groupId = makeVioGroupIdentity(ids.size());
 
   for (int rep = 0; rep < kEqvioActionReps; ++rep) {
@@ -490,7 +490,7 @@ TEST(Symmetry, StateActionEqvioPort) {
 // Verifies eqvio-ported output action identity and composition checks.
 TEST(Symmetry, OutputActionEqvioPort) {
   srand(0);
-  const std::vector<int> ids = {0, 1, 2, 3, 4};
+  const std::vector<Key> ids = {0, 1, 2, 3, 4};
   const VioGroup groupId = makeVioGroupIdentity(ids.size());
   const auto camera = CreateDefaultCamera();
 
@@ -515,7 +515,7 @@ TEST(Symmetry, OutputActionEqvioPort) {
 // Verifies measurement equivariance under group action.
 TEST(Symmetry, OutputEquivarianceEqvioPort) {
   srand(0);
-  const std::vector<int> ids = {0, 1, 2, 3, 4, 5};
+  const std::vector<Key> ids = {0, 1, 2, 3, 4, 5};
   const auto camera = CreateDefaultCamera();
 
   for (int rep = 0; rep < kEqvioActionReps; ++rep) {

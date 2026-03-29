@@ -34,7 +34,7 @@ namespace eqvio {
  * EqVIO runtime implementation. All variances are per-axis scalar multipliers
  * applied to identity blocks in the corresponding covariance matrices.
  */
-struct GTSAM_UNSTABLE_EXPORT EqVIOFilterParams {
+struct EqVIOFilterParams {
   /// Initial landmark depth used when a new feature is first triangulated from bearing.
   double initialPointDepth = 10.0;
   /// Initial 3x3 covariance scalar assigned to newly inserted landmarks.
@@ -82,7 +82,7 @@ class GTSAM_UNSTABLE_EXPORT EqVIOFilter
   /// Construct with explicit parameter bundle and default identity initial state.
   explicit EqVIOFilter(const EqVIOFilterParams& params);
   /// Construct with explicit initial reference state, covariance, and parameters.
-  EqVIOFilter(const State& xi0, const Matrix& Sigma0,
+  EqVIOFilter(const State& xi_ref, const Matrix& Sigma,
               const EqVIOFilterParams& params);
 
   /**
@@ -93,13 +93,6 @@ class GTSAM_UNSTABLE_EXPORT EqVIOFilter
    */
   void initializeFromIMU(const IMUInput& imu);
   
-  /**
-   * @brief Set reference state and covariance explicitly.
-   * @param xi_ref Reference state.
-   * @param Sigma0 Covariance.
-   */
-  void setReferenceState(const State& xi_ref, const Matrix& Sigma0);
-
   /**
    * @brief Propagate filter state across a sequence of IMU hold intervals.
    *
@@ -147,20 +140,20 @@ class GTSAM_UNSTABLE_EXPORT EqVIOFilter
                        const std::shared_ptr<const CameraModel>& camera);
   /// Remove landmark by contiguous index in `cameraLandmarks`.
   void removeLandmarkByIndex(int idx);
-  /// Remove landmark by integer id.
-  void removeLandmarkById(int id);
+  /// Remove landmark by key id.
+  void removeLandmarkById(Key id);
   /// Drop landmarks not present in the current measurement id set.
-  void removeOldLandmarks(const std::vector<int>& measurementIds);
+  void removeOldLandmarks(const std::vector<Key>& measurementIds);
   /// Detect and remove outliers according to absolute/probabilistic thresholds.
   void removeOutliers(VisionMeasurement& measurement,
                       const std::shared_ptr<const CameraModel>& camera);
   /// Remove landmarks whose scale component leaves a numerically safe range.
   void removeInvalidLandmarks();
   /// Return 3x3 covariance block for a specific landmark id.
-  Matrix3 getLandmarkCovById(int id) const;
+  Matrix3 getLandmarkCovById(Key id) const;
   /// Return induced 2x2 output covariance for a specific landmark id.
   Matrix2 outputCovarianceById(
-      int id, const std::shared_ptr<const CameraModel>& camera) const;
+      Key id, const std::shared_ptr<const CameraModel>& camera) const;
 
   /// Run innovation update on currently matched measurements.
   void update(const VisionMeasurement& measurement,

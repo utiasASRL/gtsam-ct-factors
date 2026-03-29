@@ -67,11 +67,11 @@ EqVIOFilter::EqVIOFilter(const EqVIOFilterParams& params)
  *
  * The group estimate is initialized to identity for `xi0.n()` landmarks.
  */
-EqVIOFilter::EqVIOFilter(const State& xi0, const Matrix& Sigma0,
+EqVIOFilter::EqVIOFilter(const State& xi_ref, const Matrix& Sigma,
                          const EqVIOFilterParams& params)
     : Base(State(), defaultCovariance(0), makeVioGroupIdentity()),
       params_(params) {
-  resetReferenceAndGroup(xi0, Sigma0, makeVioGroupIdentity(xi0.n()));
+  resetReferenceAndGroup(xi_ref, Sigma, makeVioGroupIdentity(xi_ref.n()));
   initialized_ = true;
 }
 
@@ -96,11 +96,6 @@ void EqVIOFilter::initializeFromIMU(const IMUInput& imu) {
   xi_ref.sensor.pose = Pose3(R0, Point3::Zero());
   initialized_ = true;
   resetReferenceAndGroup(xi_ref, errorCovariance(), groupEstimate());
-}
-
-/// Replace current reference state/covariance after dimension validation.
-void EqVIOFilter::setReferenceState(const State& xi_ref, const Matrix& Sigma0) {
-  resetReferenceAndGroup(xi_ref, Sigma0, makeVioGroupIdentity(xi_ref.n()));
 }
 
 /**
@@ -243,7 +238,7 @@ void EqVIOFilter::addNewLandmarks(
   if (!camera) throw std::invalid_argument("EqVIOFilter::addNewLandmarks: camera is null");
 
   std::vector<Landmark> newLandmarks;
-  const std::vector<int> existingIds = referenceState().ids();
+  const std::vector<Key> existingIds = referenceState().ids();
   for (const auto& [id, coord] : measurement) {
     if (std::find(existingIds.begin(), existingIds.end(), id) != existingIds.end()) {
       continue;
@@ -290,17 +285,17 @@ void EqVIOFilter::addNewLandmarks(
 }
 
 /// Remove any landmarks that are absent from the current measurement id list.
-void EqVIOFilter::removeOldLandmarks(const std::vector<int>& measurementIds) {
-  const std::vector<int> existingIds = referenceState().ids();
+void EqVIOFilter::removeOldLandmarks(const std::vector<Key>& measurementIds) {
+  const std::vector<Key> existingIds = referenceState().ids();
   std::vector<int> lostIndices(existingIds.size());
   std::iota(lostIndices.begin(), lostIndices.end(), 0);
   if (lostIndices.empty()) return;
 
   const auto lostIndicesEnd = std::remove_if(
       lostIndices.begin(), lostIndices.end(), [&](const int& lidx) {
-        const int oldId = existingIds[static_cast<size_t>(lidx)];
+        const Key oldId = existingIds[static_cast<size_t>(lidx)];
         return std::any_of(measurementIds.begin(), measurementIds.end(),
-                           [&oldId](const int& measId) { return measId == oldId; });
+                           [&oldId](const Key& measId) { return measId == oldId; });
       });
   lostIndices.erase(lostIndicesEnd, lostIndices.end());
 
@@ -335,8 +330,8 @@ void EqVIOFilter::removeLandmarkByIndex(int idx) {
   resetReferenceAndGroup(xi_ref, Sigma, X);
 }
 
-/// Remove landmark with matching integer id.
-void EqVIOFilter::removeLandmarkById(int id) {
+/// Remove landmark with matching key id.
+void EqVIOFilter::removeLandmarkById(Key id) {
   const auto it = std::find_if(
       referenceState().cameraLandmarks.begin(), referenceState().cameraLandmarks.end(),
       [&id](const Landmark& lm) { return lm.id == id; });
@@ -346,7 +341,7 @@ void EqVIOFilter::removeLandmarkById(int id) {
 }
 
 /// Return 3x3 landmark-state covariance block for the specified id.
-Matrix3 EqVIOFilter::getLandmarkCovById(int id) const {
+Matrix3 EqVIOFilter::getLandmarkCovById(Key id) const {
   const auto it = std::find_if(
       referenceState().cameraLandmarks.begin(), referenceState().cameraLandmarks.end(),
       [&id](const Landmark& lm) { return lm.id == id; });
@@ -359,7 +354,7 @@ Matrix3 EqVIOFilter::getLandmarkCovById(int id) const {
 
 /// Project landmark covariance through output Jacobian into 2x2 image-space covariance.
 Matrix2 EqVIOFilter::outputCovarianceById(
-    int id, const std::shared_ptr<const CameraModel>& camera) const {
+    Key id, const std::shared_ptr<const CameraModel>& camera) const {
   const Matrix3 lmCov = getLandmarkCovById(id);
   const auto it = std::find_if(
       referenceState().cameraLandmarks.begin(), referenceState().cameraLandmarks.end(),
@@ -378,14 +373,14 @@ Matrix2 EqVIOFilter::outputCovarianceById(
 /// Remove landmarks with non-finite or extreme SOT3 scale factors.
 void EqVIOFilter::removeInvalidLandmarks() {
   const LandmarkGroup& Q = std::get<3>(decompose(groupEstimate()));
-  std::set<int> invalidIds;
+  std::set<Key> invalidIds;
   for (size_t i = 0; i < Q.size(); ++i) {
     const double a = SOT3Scale(Q[i]);
     if (!std::isfinite(a) || a <= 1e-8 || a > 1e8) {
       invalidIds.insert(referenceState().cameraLandmarks[i].id);
     }
   }
-  for (const int id : invalidIds) {
+  for (const Key id : invalidIds) {
     removeLandmarkById(id);
   }
 }
@@ -405,8 +400,8 @@ void EqVIOFilter::removeOutliers(
 
   const VisionMeasurement yHat = measureSystemState(state(), camera);
 
-  std::vector<int> proposedOutliers;
-  std::map<int, double> absoluteOutliers;
+  std::vector<Key> proposedOutliers;
+  std::map<Key, double> absoluteOutliers;
   for (const auto& [lmId, yHatI] : yHat) {
     if (measurement.count(lmId) == 0) continue;
     const double errAbs = (measurement.at(lmId) - yHatI).norm();
@@ -416,7 +411,7 @@ void EqVIOFilter::removeOutliers(
     }
   }
 
-  std::map<int, double> probabilisticOutliers;
+  std::map<Key, double> probabilisticOutliers;
   for (const auto& [lmId, yI] : measurement) {
     if (absoluteOutliers.count(lmId)) continue;
     const auto itHat = yHat.find(lmId);
@@ -432,7 +427,7 @@ void EqVIOFilter::removeOutliers(
   }
 
   std::sort(proposedOutliers.begin(), proposedOutliers.end(),
-            [&absoluteOutliers, &probabilisticOutliers](int lmId1, int lmId2) {
+            [&absoluteOutliers, &probabilisticOutliers](Key lmId1, Key lmId2) {
               if (absoluteOutliers.count(lmId1)) {
                 if (absoluteOutliers.count(lmId2)) {
                   return absoluteOutliers.at(lmId1) < absoluteOutliers.at(lmId2);
@@ -448,7 +443,7 @@ void EqVIOFilter::removeOutliers(
                            proposedOutliers.end());
   }
 
-  for (const int lmId : proposedOutliers) {
+  for (const Key lmId : proposedOutliers) {
     removeLandmarkById(lmId);
     measurement.erase(lmId);
   }

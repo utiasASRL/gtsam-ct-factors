@@ -59,8 +59,8 @@ int State::dim() const {
   return SensorState::CompDim + Landmark::CompDim * static_cast<int>(n());
 }
 
-std::vector<int> State::ids() const {
-  std::vector<int> out;
+std::vector<Key> State::ids() const {
+  std::vector<Key> out;
   out.reserve(cameraLandmarks.size());
   for (const Landmark& lm : cameraLandmarks) out.push_back(lm.id);
   return out;

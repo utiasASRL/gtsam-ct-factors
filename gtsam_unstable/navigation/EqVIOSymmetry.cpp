@@ -336,14 +336,14 @@ Matrix EqFoutputMatrixC(
     throw std::invalid_argument("EqFoutputMatrixC: null camera");
   }
   const int M = static_cast<int>(xi0.n());
-  const std::vector<int> yIds = measurementIds(y);
+  const std::vector<Key> yIds = measurementIds(y);
   const int N = static_cast<int>(yIds.size());
   const LandmarkGroup& Q = std::get<3>(decompose(X));
 
   Matrix C = Matrix::Zero(2 * N, SensorState::CompDim + Landmark::CompDim * M);
 
   for (int i = 0; i < M; ++i) {
-    const int idNum = xi0.cameraLandmarks[static_cast<size_t>(i)].id;
+    const Key idNum = xi0.cameraLandmarks[static_cast<size_t>(i)].id;
     const auto itY = std::find(yIds.begin(), yIds.end(), idNum);
     if (itY == yIds.end()) continue;
 

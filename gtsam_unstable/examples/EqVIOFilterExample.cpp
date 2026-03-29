@@ -192,7 +192,7 @@ ReplayLog readReplayCsv(const std::string& csvPath) {
       const size_t seq = parseSizeOr(getCell(cells, "seq"));
       const double tAbs = parseDoubleOr(getCell(cells, "t_abs"));
       const int frameIdx = parseIntOr(getCell(cells, "frame_idx"), -1);
-      const int id = parseIntOr(getCell(cells, "landmark_id"));
+      const Key id = static_cast<Key>(parseSizeOr(getCell(cells, "landmark_id")));
       const double u = parseDoubleOr(getCell(cells, "u_norm"));
       const double v = parseDoubleOr(getCell(cells, "v_norm"));
 
@@ -450,9 +450,9 @@ int main() {
     const State xi0 = initialReferenceState(log);
     const Matrix Sigma0 = initialCovarianceFromMetadata(log, xi0);
 
-    // Create filter and set reference-state chart origin/covariance.
-    EqVIOFilter filter(params);
-    filter.setReferenceState(xi0, Sigma0);
+    // Construct filter lazily on first IMU so gravity initialization stays the
+    // first state-alignment step after setting metadata-derived reference/covariance.
+    std::optional<EqVIOFilter> filter;
     // Replay file stores normalized coordinates, so use identity intrinsics/extrinsics camera.
     auto camera = std::make_shared<CameraModel>(
         Pose3::Identity(), Cal3_S2(1.0, 1.0, 0.0, 0.0, 0.0));
@@ -461,6 +461,8 @@ int main() {
     size_t imuCount = 0;
     size_t visionFrameCount = 0;
     size_t visionFeatureCount = 0;
+    // Tracks whether gravity-based initialization has run on the first IMU.
+    bool gravityInitialized = false;
     // Current propagated filter time; starts once first IMU initializes gravity alignment.
     double currentTime = -1.0;
     // Rolling IMU buffer consumed at each vision timestamp.
@@ -469,21 +471,31 @@ int main() {
     // Replay all events in sequence: IMU samples buffer propagation input, vision triggers correction.
     for (const ReplayEvent& event : log.events) {
       if (event.type == ReplayEvent::Type::Imu) {
-        if (!filter.isInitialized()) {
+        if (!filter) {
+          filter.emplace(xi0, Sigma0, params);
+        }
+        if (!gravityInitialized) {
           // One-time gravity-based attitude initialization from first IMU sample.
-          filter.initializeFromIMU(event.imu);
+          filter->initializeFromIMU(event.imu);
           currentTime = event.imu.stamp;
+          gravityInitialized = true;
         }
 
         // Keep all IMU events; buffered integration slices these into piecewise holds.
         imuBuffer.push_back(event.imu);
         ++imuCount;
       } else {
+        if (!gravityInitialized || !filter) {
+          ++visionFrameCount;
+          visionFeatureCount += event.vision.size();
+          continue;
+        }
+
         // Propagate to this frame time using buffered IMU holds.
         const BufferedImuPropagation step =
             makeBufferedImuPropagation(imuBuffer, currentTime, event.tAbs);
-        if (filter.isInitialized() && !step.imuInputs.empty()) {
-          filter.propagate(step.imuInputs, step.dts);
+        if (!step.imuInputs.empty()) {
+          filter->propagate(step.imuInputs, step.dts);
           currentTime += step.propagatedTime;
         }
         // Drop IMU samples already consumed by propagation, keep boundary sample for continuity.
@@ -500,15 +512,17 @@ int main() {
             Matrix::Identity(static_cast<int>(2 * event.vision.size()),
                              static_cast<int>(2 * event.vision.size())) *
             params.measurementNoiseVariance;
-        filter.correct(event.vision, camera, R);
+        filter->correct(event.vision, camera, R);
         ++visionFrameCount;
         visionFeatureCount += event.vision.size();
       }
     }
 
+    const State finalEstimate = filter ? filter->state() : xi0;
+
     // Report replay statistics and terminal estimate against hardcoded reference values.
     printSummary(log, params, currentTime, imuCount, visionFrameCount,
-                 visionFeatureCount, filter.state());
+                 visionFeatureCount, finalEstimate);
 
   } catch (const std::exception& e) {
     std::cerr << "EqVIOFilterExample failed: " << e.what() << "\n";
