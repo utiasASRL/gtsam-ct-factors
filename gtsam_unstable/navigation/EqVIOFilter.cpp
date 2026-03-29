@@ -42,22 +42,22 @@ Vector _measurementVector(const VisionMeasurement& measurement) {
   return v;
 }
 
-/// Automatic-predict input bundle `(imu, dt, D_lift)`.
-using _PropagationInput = std::tuple<IMUInput, double, Matrix>;
-
 /// Minimal input-action wrapper with ABC-style `InputAction::Orbit` shape.
 struct InputAction {
   struct Orbit {
-    explicit Orbit(const _PropagationInput& input) : input_(input) {}
-    _PropagationInput operator()(const VioGroup&) const { return input_; }
+    explicit Orbit(const std::tuple<IMUInput, double, Matrix>& input)
+        : input_(input) {}
+    std::tuple<IMUInput, double, Matrix> operator()(const VioGroup&) const {
+      return input_;
+    }
    private:
-    _PropagationInput input_;
+    std::tuple<IMUInput, double, Matrix> input_;
   };
 };
 
 /// Lift functor compatible with EquivariantFilter::predict automatic-A path.
 struct Lift {
-  explicit Lift(const _PropagationInput& in)
+  explicit Lift(const std::tuple<IMUInput, double, Matrix>& in)
       : imu_(std::get<0>(in)), dt_(std::get<1>(in)), D_lift_(std::get<2>(in)) {}
 
   Vector operator()(const State& xi,
@@ -162,7 +162,7 @@ void EqVIOFilter::propagate(const std::vector<IMUInput>& imuInputs,
     const Matrix D_lift =
         Dphi0.completeOrthogonalDecomposition().pseudoInverse() * A_target;
 
-    const _PropagationInput u{imu, dt, D_lift};
+    const std::tuple<IMUInput, double, Matrix> u{imu, dt, D_lift};
     const Lift lift_u(u);
     const InputAction::Orbit psi_u(u);
 
