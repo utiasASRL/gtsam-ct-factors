@@ -508,7 +508,7 @@ int main() {
 
     // Report replay statistics and terminal estimate against hardcoded reference values.
     printSummary(log, params, currentTime, imuCount, visionFrameCount,
-                 visionFeatureCount, filter.stateEstimate());
+                 visionFeatureCount, filter.state());
 
   } catch (const std::exception& e) {
     std::cerr << "EqVIOFilterExample failed: " << e.what() << "\n";

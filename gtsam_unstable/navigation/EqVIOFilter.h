@@ -127,8 +127,6 @@ class GTSAM_UNSTABLE_EXPORT EqVIOFilter
                const std::shared_ptr<const CameraModel>& camera,
                const Matrix& R = Matrix());
 
-  /// Return the current full state estimate `phi(xi_ref, X)`.
-  State stateEstimate() const;
   /// True after IMU-based initialization.
   bool isInitialized() const { return initialized_; }
 

@@ -175,7 +175,7 @@ TEST(EqVIOFilter, DynamicLandmarksAddRemove) {
   meas1[2] = camera->project2(Point3(-0.3, 0.15, 4.0));
   PropagateSingle(filter, imu1, 0.01);
   filter.correct(meas1, camera);
-  EXPECT_LONGS_EQUAL(2, filter.stateEstimate().n());
+  EXPECT_LONGS_EQUAL(2, filter.state().n());
 
   IMUInput imu2 = imu0;
   imu2.stamp = 0.02;
@@ -185,7 +185,7 @@ TEST(EqVIOFilter, DynamicLandmarksAddRemove) {
   meas2[1] = meas1.at(1);
   filter.correct(meas2, camera);
 
-  const State est = filter.stateEstimate();
+  const State est = filter.state();
   EXPECT_LONGS_EQUAL(1, est.n());
   EXPECT_LONGS_EQUAL(1, est.cameraLandmarks.front().id);
 }
@@ -231,7 +231,7 @@ TEST(EqVIOFilter, ParityShortSequence) {
   initImu.acc = Vector3(0.0, 0.0, GRAVITY_CONSTANT);
   filter.initializeFromIMU(initImu);
 
-  State manual = filter.stateEstimate();
+  State manual = filter.state();
   double t = 0.01;
   const double dt = 0.01;
   for (int k = 0; k < 8; ++k) {
@@ -250,7 +250,7 @@ TEST(EqVIOFilter, ParityShortSequence) {
     t += dt;
   }
 
-  const State est = filter.stateEstimate();
+  const State est = filter.state();
   const Vector eps = manual.localCoordinates(est);
   EXPECT(eps.norm() < 2e-5);
 }
@@ -271,11 +271,10 @@ TEST(EqVIOFilter, VisionUpdate) {
 
   auto camera =
       std::make_shared<CameraModel>(Pose3::Identity(), Cal3_S2(1, 1, 0, 0, 0));
-  const VisionMeasurement meas =
-      measureSystemState(filter.stateEstimate(), camera);
+  const VisionMeasurement meas = measureSystemState(filter.state(), camera);
   filter.correct(meas, camera);
 
-  EXPECT_LONGS_EQUAL(1, filter.stateEstimate().n());
+  EXPECT_LONGS_EQUAL(1, filter.state().n());
   EXPECT(filter.errorCovariance().array().isFinite().all());
 }
 
@@ -307,12 +306,12 @@ TEST(EqVIOFilter, Smoke) {
     PropagateSingle(filter, imu, dt);
 
     if (k % 5 == 0) {
-      VisionMeasurement y = measureSystemState(filter.stateEstimate(), camera);
+      VisionMeasurement y = measureSystemState(filter.state(), camera);
       filter.correct(y, camera);
     }
   }
 
-  const State est = filter.stateEstimate();
+  const State est = filter.state();
   EXPECT_LONGS_EQUAL(2, est.n());
   EXPECT_LONGS_EQUAL(xi0.dim(), filter.errorCovariance().rows());
   EXPECT_LONGS_EQUAL(xi0.dim(), filter.errorCovariance().cols());

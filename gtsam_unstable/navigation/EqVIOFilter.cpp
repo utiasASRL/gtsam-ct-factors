@@ -204,11 +204,6 @@ void EqVIOFilter::correct(const VisionMeasurement& measurement,
   assert(!errorCovariance().hasNaN());
 }
 
-/// Return current physical-state estimate by applying group action to reference state.
-State EqVIOFilter::stateEstimate() const {
-  return stateGroupAction(groupEstimate(), referenceState());
-}
-
 /// Identity covariance helper sized for current sensor + landmark dimensions.
 Matrix EqVIOFilter::defaultCovariance(size_t nLandmarks) {
   const int d = SensorState::CompDim + 3 * static_cast<int>(nLandmarks);
@@ -408,7 +403,7 @@ void EqVIOFilter::removeOutliers(
       (1.0 - params_.featureRetention) * measurement.size());
   if (!camera) return;
 
-  const VisionMeasurement yHat = measureSystemState(stateEstimate(), camera);
+  const VisionMeasurement yHat = measureSystemState(state(), camera);
 
   std::vector<int> proposedOutliers;
   std::map<int, double> absoluteOutliers;
@@ -470,7 +465,7 @@ void EqVIOFilter::update(const VisionMeasurement& measurement,
                          const Matrix& outputGainMatrix) {
   if (measurement.empty()) return;
 
-  const VisionMeasurement estimatedMeasurement = measureSystemState(stateEstimate(), camera);
+  const VisionMeasurement estimatedMeasurement = measureSystemState(state(), camera);
   const Matrix Ct =
       EqFoutputMatrixC(referenceState(), groupEstimate(), measurement, camera, true);
   const Matrix Rused =
