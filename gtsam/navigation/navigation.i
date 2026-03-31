@@ -549,11 +549,19 @@ virtual class DifferentialPseudorangeFactor : gtsam::NonlinearFactor {
 };
 
 virtual class PseudorangeFactorArm : gtsam::NonlinearFactor {
-  PseudorangeFactorArm(gtsam::Key ecefTbodyKey,
+  PseudorangeFactorArm(gtsam::Key poseKey,
                         gtsam::Key receiverClockBiasKey,
                         double measuredPseudorange,
                         const gtsam::Point3& satellitePosition,
                         const gtsam::Point3& leverArm,
+                        double satelliteClockBias,
+                        const gtsam::noiseModel::Base* model);
+  PseudorangeFactorArm(gtsam::Key poseKey,
+                        gtsam::Key receiverClockBiasKey,
+                        double measuredPseudorange,
+                        const gtsam::Point3& satellitePosition,
+                        const gtsam::Point3& leverArm,
+                        const gtsam::Pose3& ecef_T_nav,
                         double satelliteClockBias,
                         const gtsam::noiseModel::Base* model);
 
@@ -563,7 +571,7 @@ virtual class PseudorangeFactorArm : gtsam::NonlinearFactor {
   bool equals(const gtsam::NonlinearFactor& expected, double tol);
 
   // Standard Interface
-  gtsam::Vector evaluateError(const gtsam::Pose3& ecef_T_body,
+  gtsam::Vector evaluateError(const gtsam::Pose3& pose,
                               const double& receiverClockBias) const;
   const gtsam::Point3& leverArm() const;
 
@@ -572,12 +580,21 @@ virtual class PseudorangeFactorArm : gtsam::NonlinearFactor {
 };
 
 virtual class DifferentialPseudorangeFactorArm : gtsam::NonlinearFactor {
-  DifferentialPseudorangeFactorArm(gtsam::Key ecefTbodyKey,
+  DifferentialPseudorangeFactorArm(gtsam::Key poseKey,
                         gtsam::Key receiverClockBiasKey,
                         gtsam::Key differentialCorrectionKey,
                         double measuredPseudorange,
                         const gtsam::Point3& satellitePosition,
                         const gtsam::Point3& leverArm,
+                        double satelliteClockBias,
+                        const gtsam::noiseModel::Base* model);
+  DifferentialPseudorangeFactorArm(gtsam::Key poseKey,
+                        gtsam::Key receiverClockBiasKey,
+                        gtsam::Key differentialCorrectionKey,
+                        double measuredPseudorange,
+                        const gtsam::Point3& satellitePosition,
+                        const gtsam::Point3& leverArm,
+                        const gtsam::Pose3& ecef_T_nav,
                         double satelliteClockBias,
                         const gtsam::noiseModel::Base* model);
 
@@ -587,7 +604,7 @@ virtual class DifferentialPseudorangeFactorArm : gtsam::NonlinearFactor {
   bool equals(const gtsam::NonlinearFactor& expected, double tol);
 
   // Standard Interface
-  gtsam::Vector evaluateError(const gtsam::Pose3& ecef_T_body,
+  gtsam::Vector evaluateError(const gtsam::Pose3& pose,
                               const double& receiverClockBias,
                               const double& differentialCorrection) const;
   const gtsam::Point3& leverArm() const;
@@ -595,6 +612,7 @@ virtual class DifferentialPseudorangeFactorArm : gtsam::NonlinearFactor {
   // enable serialization functionality
   void serialize() const;
 };
+
 
 #include <gtsam/navigation/BarometricFactor.h>
 virtual class BarometricFactor : gtsam::NonlinearFactor {
