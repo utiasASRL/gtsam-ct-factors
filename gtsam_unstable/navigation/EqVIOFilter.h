@@ -122,14 +122,6 @@ class GTSAM_UNSTABLE_EXPORT EqVIOFilter
                const std::shared_ptr<const CameraModel>& camera,
                const Matrix& R = Matrix());
 
-  /**
-   * @brief Update using the default normalized pinhole camera.
-   *
-   * This convenience overload is primarily for lightweight bindings/examples:
-   * it uses identity pose and unit intrinsics `(fx, fy) = (1, 1)`.
-  */
-  void update(const VisionMeasurement& measurement, const Matrix& R = Matrix());
-
   /// True after IMU-based initialization.
   bool isInitialized() const { return initialized_; }
   /// Number of currently tracked landmarks.

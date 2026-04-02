@@ -160,13 +160,6 @@ void EqVIOFilter::update(const VisionMeasurement& measurement,
   assert(!errorCovariance().hasNaN());
 }
 
-/// Convenience update overload with default normalized pinhole camera.
-void EqVIOFilter::update(const VisionMeasurement& measurement, const Matrix& R) {
-  static const auto kDefaultCamera = std::make_shared<CameraModel>(
-      Pose3::Identity(), Cal3_S2(1.0, 1.0, 0.0, 0.0, 0.0));
-  update(measurement, kDefaultCamera, R);
-}
-
 /// Identity covariance helper sized for current sensor + landmark dimensions.
 Matrix EqVIOFilter::defaultCovariance(size_t nLandmarks) {
   const int d = SensorState::CompDim + 3 * static_cast<int>(nLandmarks);

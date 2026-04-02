@@ -152,36 +152,35 @@ def read_replay_csv(csv_path: str) -> ReplayLog:
             t_abs = _parse_float(row.get("t_abs"), 0.0)
 
             if row_type == "imu":
-                imu = gtsam_unstable.eqvio.IMUInput(
-                    t_abs,
-                    np.array(
-                        [
-                            _parse_float(row.get("gx")),
-                            _parse_float(row.get("gy")),
-                            _parse_float(row.get("gz")),
-                        ]
-                    ),
-                    np.array(
-                        [
-                            _parse_float(row.get("ax")),
-                            _parse_float(row.get("ay")),
-                            _parse_float(row.get("az")),
-                        ]
-                    ),
-                    np.array(
-                        [
-                            _parse_float(row.get("bgx")),
-                            _parse_float(row.get("bgy")),
-                            _parse_float(row.get("bgz")),
-                        ]
-                    ),
-                    np.array(
-                        [
-                            _parse_float(row.get("bax")),
-                            _parse_float(row.get("bay")),
-                            _parse_float(row.get("baz")),
-                        ]
-                    ),
+                imu = gtsam_unstable.eqvio.IMUInput()
+                imu.stamp = t_abs
+                imu.gyr = np.array(
+                    [
+                        _parse_float(row.get("gx")),
+                        _parse_float(row.get("gy")),
+                        _parse_float(row.get("gz")),
+                    ]
+                )
+                imu.acc = np.array(
+                    [
+                        _parse_float(row.get("ax")),
+                        _parse_float(row.get("ay")),
+                        _parse_float(row.get("az")),
+                    ]
+                )
+                imu.gyrBiasVel = np.array(
+                    [
+                        _parse_float(row.get("bgx")),
+                        _parse_float(row.get("bgy")),
+                        _parse_float(row.get("bgz")),
+                    ]
+                )
+                imu.accBiasVel = np.array(
+                    [
+                        _parse_float(row.get("bax")),
+                        _parse_float(row.get("bay")),
+                        _parse_float(row.get("baz")),
+                    ]
                 )
                 events.append(ReplayEvent(kind="imu", seq=seq, t_abs=t_abs, imu=imu))
                 continue
@@ -343,6 +342,9 @@ def main() -> None:
 
     filter_eqf: Optional[gtsam_unstable.eqvio.EqVIOFilter] = None
     measurement_noise_variance = params.measurementNoiseVariance
+    camera = gtsam.PinholeCameraCal3_S2(
+        gtsam.Pose3(), gtsam.Cal3_S2(1.0, 1.0, 0.0, 0.0, 0.0)
+    )
     imu_buffer: List[TimestampedImu] = []
     gravity_initialized = False
     current_time = -1.0
@@ -379,7 +381,7 @@ def main() -> None:
             imu_buffer = imu_buffer[step.trim_count:]
 
         R = np.eye(2 * len(event.vision)) * measurement_noise_variance
-        filter_eqf.update(event.vision, R)
+        filter_eqf.update(event.vision, camera, R)
 
     print("CSV replay complete.")
     print(

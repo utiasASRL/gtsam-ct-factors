@@ -108,16 +108,6 @@ struct GTSAM_UNSTABLE_EXPORT IMUInput {
     accBiasVel = vec.segment<3>(9);
   }
 
-  /// Construct directly from timestamped IMU components.
-  IMUInput(double stamp_, const Vector3& gyr_, const Vector3& acc_,
-           const Vector3& gyrBiasVel_ = Z_3x1,
-           const Vector3& accBiasVel_ = Z_3x1)
-      : stamp(stamp_),
-        gyr(gyr_),
-        acc(acc_),
-        gyrBiasVel(gyrBiasVel_),
-        accBiasVel(accBiasVel_) {}
-
   /// Component-wise addition.
   IMUInput operator+(const IMUInput& other) const {
     IMUInput out;

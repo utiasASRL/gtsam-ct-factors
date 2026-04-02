@@ -824,8 +824,11 @@ namespace eqvio {
 
 class IMUInput {
   IMUInput();
-  IMUInput(double stamp, const gtsam::Vector3& gyr, const gtsam::Vector3& acc,
-           const gtsam::Vector3& gyrBiasVel, const gtsam::Vector3& accBiasVel);
+  double stamp;
+  gtsam::Vector3 gyr;
+  gtsam::Vector3 acc;
+  gtsam::Vector3 gyrBiasVel;
+  gtsam::Vector3 accBiasVel;
 };
 
 class Landmark {
@@ -877,6 +880,7 @@ class EqVIOFilter {
   void predict(const std::vector<gtsam::eqvio::IMUInput>& imuInputs,
                const std::vector<double>& dts);
   void update(const std::map<gtsam::Key, gtsam::Point2>& measurement,
+              const std::shared_ptr<gtsam::eqvio::CameraModel>& camera,
               const gtsam::Matrix& R);
 
   bool isInitialized() const;
