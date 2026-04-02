@@ -122,8 +122,41 @@ class GTSAM_UNSTABLE_EXPORT EqVIOFilter
                const std::shared_ptr<const CameraModel>& camera,
                const Matrix& R = Matrix());
 
+  /**
+   * @brief Update using the default normalized pinhole camera.
+   *
+   * This convenience overload is primarily for lightweight bindings/examples:
+   * it uses identity pose and unit intrinsics `(fx, fy) = (1, 1)`.
+   */
+  void update(const VisionMeasurement& measurement, const Matrix& R = Matrix());
+
+  /// Override the reference-state camera extrinsics (body/IMU to camera).
+  void setCameraOffset(const Pose3& body_T_camera);
+  /// Override reference covariance (must match current state dimension).
+  void setReferenceCovariance(const Matrix& Sigma);
+  /// Set full IMU driving-noise covariance (expects 12x12).
+  void setInputNoise(const Matrix& inputNoise);
+  /// Set vision measurement variance used by default update path.
+  void setMeasurementNoiseVariance(double variance);
+  /// Set landmark initialization depth/variance.
+  void setInitialLandmarkParams(double depth, double variance);
+  /// Set outlier rejection thresholds and feature retention fraction.
+  void setOutlierParams(double thresholdAbs, double thresholdProb,
+                        double featureRetention);
+  /// Set process-noise variances for sensor/landmark state blocks.
+  void setProcessVariances(double biasOmega, double biasAccel, double attitude,
+                           double position, double velocity,
+                           double cameraAttitude, double cameraPosition,
+                           double point);
+
   /// True after IMU-based initialization.
   bool isInitialized() const { return initialized_; }
+  /// Number of currently tracked landmarks.
+  size_t landmarkCount() const { return state().n(); }
+  /// Current estimated body position in world frame.
+  Point3 position() const { return state().sensor.pose.translation(); }
+  /// Current estimated body velocity in world frame.
+  Vector3 velocity() const { return state().sensor.velocity; }
 
  private:
   /// Allocate identity covariance with dimension `SensorState::CompDim + 3*nLandmarks`.

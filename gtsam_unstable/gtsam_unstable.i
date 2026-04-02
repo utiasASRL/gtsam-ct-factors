@@ -815,4 +815,43 @@ virtual class ProjectionFactorRollingShutter : gtsam::NoiseModelFactor {
   void serialize() const;
 };
 
+//*************************************************************************
+// navigation (EqVIO)
+//*************************************************************************
+#include <gtsam_unstable/navigation/EqVIOFilter.h>
+namespace eqvio {
+
+class IMUInput {
+  IMUInput();
+  IMUInput(double stamp, const gtsam::Vector3& gyr, const gtsam::Vector3& acc,
+           const gtsam::Vector3& gyrBiasVel, const gtsam::Vector3& accBiasVel);
+};
+
+class EqVIOFilter {
+  EqVIOFilter();
+  void initializeFromIMU(const gtsam::eqvio::IMUInput& imu);
+  void predict(const std::vector<gtsam::eqvio::IMUInput>& imuInputs,
+               const std::vector<double>& dts);
+  void update(const std::map<gtsam::Key, gtsam::Point2>& measurement,
+              const gtsam::Matrix& R);
+  void setCameraOffset(const gtsam::Pose3& body_T_camera);
+  void setReferenceCovariance(const gtsam::Matrix& Sigma);
+  void setInputNoise(const gtsam::Matrix& inputNoise);
+  void setMeasurementNoiseVariance(double variance);
+  void setInitialLandmarkParams(double depth, double variance);
+  void setOutlierParams(double thresholdAbs, double thresholdProb,
+                        double featureRetention);
+  void setProcessVariances(double biasOmega, double biasAccel, double attitude,
+                           double position, double velocity,
+                           double cameraAttitude, double cameraPosition,
+                           double point);
+
+  bool isInitialized() const;
+  size_t landmarkCount() const;
+  gtsam::Point3 position() const;
+  gtsam::Vector3 velocity() const;
+};
+
+}  // namespace eqvio
+
 } //\namespace gtsam
