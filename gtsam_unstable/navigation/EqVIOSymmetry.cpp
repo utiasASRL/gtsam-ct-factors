@@ -15,7 +15,6 @@
  * @author Rohan Bansal
  */
 
-
 #include <gtsam_unstable/navigation/EqVIOSymmetry.h>
 
 #include <algorithm>
@@ -111,7 +110,8 @@ Matrix23 SphereChartStereoDiff0(const Vector3& pole) {
 /// Differential of inverse sphere chart at zero in local coordinates.
 Matrix32 SphereChartStereoInvDiff0(const Vector3& pole) {
   const Rot3 sphereRot = RotationFromTwoVectors(-pole, Vector3::UnitZ());
-  return sphereRot.matrix().transpose() * E3ProjectSphereInvDiff(Vector2::Zero());
+  return sphereRot.matrix().transpose() *
+         E3ProjectSphereInvDiff(Vector2::Zero());
 }
 
 /// Convert Euclidean landmark perturbation to inverse-depth local coordinates.
@@ -215,7 +215,8 @@ Matrix EqFStateMatrixA(const VioGroup& X, const State& xi0,
   A0t.block(0, 0, xi0.dim(), 3) = -B.block(0, 3, xi0.dim(), 3);
   A0t.block(0, 3, xi0.dim(), 3) = -B.block(0, 0, xi0.dim(), 3);
   A0t.block<3, 3>(9, 12).setIdentity();
-  A0t.block<3, 3>(12, 6) = -GRAVITY_CONSTANT * Rot3::Hat(xi0.sensor.gravityDir());
+  A0t.block<3, 3>(12, 6) =
+      -GRAVITY_CONSTANT * Rot3::Hat(xi0.sensor.gravityDir());
 
   const State xiHat = stateGroupAction(X, xi0);
   const IMUInput vEst = imuVel - xiHat.sensor.inputBias;
@@ -223,9 +224,8 @@ Matrix EqFStateMatrixA(const VioGroup& X, const State& xi0,
   U_I << vEst.gyr, xiHat.sensor.velocity;
 
   const Pose3 bTbPrime = bTbPrimeFromGroup(X);
-  const Vector6 commonTwist =
-      xi0.sensor.cameraOffset.inverse().AdjointMap() *
-      bTbPrime.AdjointMap() * U_I;
+  const Vector6 commonTwist = xi0.sensor.cameraOffset.inverse().AdjointMap() *
+                              bTbPrime.AdjointMap() * U_I;
   A0t.block<6, 6>(15, 15) = Pose3::adjointMap(commonTwist);
 
   const Matrix3 R_IC = xiHat.sensor.cameraOffset.rotation().matrix();
@@ -239,8 +239,8 @@ Matrix EqFStateMatrixA(const VioGroup& X, const State& xi0,
         R_bTbPrime.transpose();
   }
 
-  const Matrix66 commonTerm =
-      B_cameraExtrinsics(X).inverse().AdjointMap() * Pose3::adjointMap(commonTwist);
+  const Matrix66 commonTerm = B_cameraExtrinsics(X).inverse().AdjointMap() *
+                              Pose3::adjointMap(commonTwist);
   for (int i = 0; i < N; ++i) {
     const Point3 q0 = xi0.cameraLandmarks[static_cast<size_t>(i)].p;
     Matrix36 temp;
@@ -291,7 +291,8 @@ Matrix EqFInputMatrixB(const VioGroup& X, const State& xi0) {
   Bt.block<3, 3>(12, 0) = R_bTbPrime * Rot3::Hat(xiHat.sensor.velocity);
   Bt.block<3, 3>(12, 3) = R_bTbPrime;
 
-  const Matrix3 RT_IC = xiHat.sensor.cameraOffset.rotation().matrix().transpose();
+  const Matrix3 RT_IC =
+      xiHat.sensor.cameraOffset.rotation().matrix().transpose();
   const Point3 x_IC = xiHat.sensor.cameraOffset.translation();
   for (int i = 0; i < N; ++i) {
     const Point3 q0 = xi0.cameraLandmarks[static_cast<size_t>(i)].p;
@@ -299,17 +300,17 @@ Matrix EqFInputMatrixB(const VioGroup& X, const State& xi0) {
         SOT3ScaledRotation(Q_landmarkTransforms(X)[static_cast<size_t>(i)]);
     const Point3 qhat_i = xiHat.cameraLandmarks[static_cast<size_t>(i)].p;
     Bt.block<3, 3>(SensorState::CompDim + 3 * i, 0) =
-        ConvEucToInvDepth(q0) *
-        Qhat_i * (Rot3::Hat(qhat_i) * RT_IC + RT_IC * Rot3::Hat(x_IC));
+        ConvEucToInvDepth(q0) * Qhat_i *
+        (Rot3::Hat(qhat_i) * RT_IC + RT_IC * Rot3::Hat(x_IC));
   }
 
   return Bt;
 }
 
 /// Per-feature equivariant output Jacobian in inverse-depth coordinates.
-Matrix23 EqFoutputMatrixCiStar(
-    const Point3& q0, const SOT3& QHat,
-    const std::shared_ptr<const CameraModel>& camera, const Point2& y) {
+Matrix23 EqFoutputMatrixCiStar(const Point3& q0, const SOT3& QHat,
+                               const std::shared_ptr<const CameraModel>& camera,
+                               const Point2& y) {
   const double r0 = q0.norm();
   const Vector3 y0 = q0 / r0;
   Matrix3 ind2euc;
@@ -319,9 +320,8 @@ Matrix23 EqFoutputMatrixCiStar(
 }
 
 /// Compute per-feature output Jacobian from predicted measurement.
-Matrix23 EqFoutputMatrixCi(
-    const Point3& q0, const SOT3& QHat,
-    const std::shared_ptr<const CameraModel>& camera) {
+Matrix23 EqFoutputMatrixCi(const Point3& q0, const SOT3& QHat,
+                           const std::shared_ptr<const CameraModel>& camera) {
   if (!camera) {
     throw std::invalid_argument("EqFoutputMatrixCi: null camera");
   }
@@ -331,17 +331,16 @@ Matrix23 EqFoutputMatrixCi(
 }
 
 /// Assemble full stacked output matrix for currently observed landmarks.
-Matrix EqFoutputMatrixC(
-    const State& xi0, const std::vector<Key>& landmarkIds, const VioGroup& X,
-    const VisionMeasurement& y,
-    const std::shared_ptr<const CameraModel>& camera, bool useEquivariance) {
+Matrix EqFoutputMatrixC(const State& xi0, const std::vector<Key>& landmarkIds,
+                        const VioGroup& X, const VisionMeasurement& y,
+                        const std::shared_ptr<const CameraModel>& camera,
+                        bool useEquivariance) {
   if (!camera) {
     throw std::invalid_argument("EqFoutputMatrixC: null camera");
   }
   const int M = static_cast<int>(xi0.n());
   if (landmarkIds.size() != xi0.n()) {
-    throw std::invalid_argument(
-        "EqFoutputMatrixC: landmark id count mismatch");
+    throw std::invalid_argument("EqFoutputMatrixC: landmark id count mismatch");
   }
   const std::vector<Key> yIds = measurementIds(y);
   const int N = static_cast<int>(yIds.size());
@@ -359,19 +358,19 @@ Matrix EqFoutputMatrixC(
     const Point3& qi0 = xi0.cameraLandmarks[static_cast<size_t>(i)].p;
     const SOT3& Qk = Q[k];
 
-    const Matrix23 Ci = useEquivariance
-                            ? EqFoutputMatrixCiStar(qi0, Qk, camera, y.at(idNum))
-                            : EqFoutputMatrixCi(qi0, Qk, camera);
+    const Matrix23 Ci =
+        useEquivariance ? EqFoutputMatrixCiStar(qi0, Qk, camera, y.at(idNum))
+                        : EqFoutputMatrixCi(qi0, Qk, camera);
     if (!Ci.array().isFinite().all()) {
       const Point3 qHat = SOT3ApplyInverse(Qk, qi0);
       const Point2 yObs = y.at(idNum);
       const Vector3 yUnd = undistortPoint(*camera, yObs);
-      throw std::runtime_error(
-          "EqFoutputMatrixC: non-finite Ci for id " +
-          std::to_string(idNum) + ", qi0_norm=" + std::to_string(qi0.norm()) +
-          ", qHat_norm=" + std::to_string(qHat.norm()) +
-          ", Q_scale=" + std::to_string(SOT3Scale(Qk)) +
-          ", yUnd_norm=" + std::to_string(yUnd.norm()));
+      throw std::runtime_error("EqFoutputMatrixC: non-finite Ci for id " +
+                               std::to_string(idNum) +
+                               ", qi0_norm=" + std::to_string(qi0.norm()) +
+                               ", qHat_norm=" + std::to_string(qHat.norm()) +
+                               ", Q_scale=" + std::to_string(SOT3Scale(Qk)) +
+                               ", yUnd_norm=" + std::to_string(yUnd.norm()));
     }
     C.block<2, 3>(2 * j, SensorState::CompDim + 3 * i) = Ci;
   }
@@ -384,7 +383,7 @@ Matrix EqFoutputMatrixC(
 
 /// Apply right action on sensor block only.
 SensorState sensorStateGroupAction(const VioGroup& X,
-                                      const SensorState& sensor) {
+                                   const SensorState& sensor) {
   const Bias& Beta = std::get<1>(decompose(X));
   const Pose3& cTcPrime = std::get<2>(decompose(X));
   const Pose3 bTbPrime = bTbPrimeFromGroup(X);
@@ -426,10 +425,10 @@ VioGroup liftVelocityDiscrete(const State& state, const IMUInput& velocity,
   const IMUInput v_est = velocity - sensor.inputBias;
 
   const Rot3 dR = Rot3::Expmap(dt * v_est.gyr);
-  const Vector3 dXWorld =
-      dt * (sensor.pose.rotation() * sensor.velocity) +
-      0.5 * dt * dt *
-          (sensor.pose.rotation() * v_est.acc + Vector3(0, 0, -GRAVITY_CONSTANT));
+  const Vector3 dXWorld = dt * (sensor.pose.rotation() * sensor.velocity) +
+                          0.5 * dt * dt *
+                              (sensor.pose.rotation() * v_est.acc +
+                               Vector3(0, 0, -GRAVITY_CONSTANT));
   const Point3 dXBody = sensor.pose.rotation().unrotate(dXWorld);
   const Pose3 b0Tb1(dR, dXBody);
 
@@ -437,11 +436,11 @@ VioGroup liftVelocityDiscrete(const State& state, const IMUInput& velocity,
       v_est.acc - sensor.gravityDir() * GRAVITY_CONSTANT;
   const Vector3 w = sensor.velocity - (sensor.velocity + dt * bodyVelocityDiff);
 
-  const Pose3 c0Tc1 = sensor.cameraOffset.inverse().compose(b0Tb1).compose(
-      sensor.cameraOffset);
-  const Pose3 c1Tc0 =
-      sensor.cameraOffset.inverse().compose(b0Tb1.inverse()).compose(
-          sensor.cameraOffset);
+  const Pose3 c0Tc1 =
+      sensor.cameraOffset.inverse().compose(b0Tb1).compose(sensor.cameraOffset);
+  const Pose3 c1Tc0 = sensor.cameraOffset.inverse()
+                          .compose(b0Tb1.inverse())
+                          .compose(sensor.cameraOffset);
 
   // Construct the landmark transform velocities
   std::vector<SOT3> q;
@@ -463,7 +462,8 @@ VioGroup liftVelocityDiscrete(const State& state, const IMUInput& velocity,
 
 /**
  * @brief Predict ideal normalized image measurements from current state.
- * @throws std::invalid_argument if `camera` is null or id count mismatches landmarks.
+ * @throws std::invalid_argument if `camera` is null or id count mismatches
+ * landmarks.
  */
 VisionMeasurement measureSystemState(
     const State& state, const std::vector<Key>& landmarkIds,
@@ -491,7 +491,8 @@ VisionMeasurement measureSystemState(
   return measureSystemState(state, ids, camera);
 }
 
-/// Evaluate symmetry action and optionally compute Jacobians w.r.t. state and group.
+/// Evaluate symmetry action and optionally compute Jacobians w.r.t. state and
+/// group.
 State Symmetry::operator()(
     const State& xi, const VioGroup& X,
     OptionalJacobian<Eigen::Dynamic, Eigen::Dynamic> H_xi,

@@ -22,8 +22,7 @@ namespace eqvio {
 
 void Landmark::print(const std::string& s) const {
   if (!s.empty()) std::cout << s << " ";
-  std::cout << "Landmark{p=" << p.transpose() << "}"
-            << std::endl;
+  std::cout << "Landmark{p=" << p.transpose() << "}" << std::endl;
 }
 
 bool Landmark::equals(const Landmark& other, double tol) const {
@@ -67,13 +66,11 @@ State State::retract(const TangentVector& v, ChartJacobian H1,
   State out(*this);
 
   out.sensor.inputBias = sensor.inputBias.retract(v.segment<6>(0));
-  out.sensor.pose =
-      sensor.pose.retract(v.segment<6>(6), H1 ? &Hpose1 : nullptr,
-                          H2 ? &Hpose2 : nullptr);
+  out.sensor.pose = sensor.pose.retract(v.segment<6>(6), H1 ? &Hpose1 : nullptr,
+                                        H2 ? &Hpose2 : nullptr);
   out.sensor.velocity += v.segment<3>(12);
-  out.sensor.cameraOffset =
-      sensor.cameraOffset.retract(v.segment<6>(15), H1 ? &Hcam1 : nullptr,
-                                  H2 ? &Hcam2 : nullptr);
+  out.sensor.cameraOffset = sensor.cameraOffset.retract(
+      v.segment<6>(15), H1 ? &Hcam1 : nullptr, H2 ? &Hcam2 : nullptr);
 
   for (size_t i = 0; i < n(); ++i) {
     out.cameraLandmarks[i].p +=

@@ -58,9 +58,7 @@ SensorState SensorFixture() {
 }
 
 State State0() { return State(SensorFixture(), {}); }
-State State1() {
-  return State(SensorFixture(), {{Point3(0.8, -0.2, 4.5)}});
-}
+State State1() { return State(SensorFixture(), {{Point3(0.8, -0.2, 4.5)}}); }
 State State3() {
   return State(SensorFixture(), {{Point3(0.8, -0.2, 4.5)},
                                  {Point3(-0.6, 0.3, 3.8)},
@@ -116,15 +114,15 @@ State integrateSystemFunction(const State& state, const IMUInput& velocity,
   const SensorState& sensor = state.sensor;
   const IMUInput v_est = velocity - sensor.inputBias;
 
-  out.sensor.inputBias = Bias(
-      sensor.inputBias.accelerometer() + dt * velocity.accBiasVel,
-      sensor.inputBias.gyroscope() + dt * velocity.gyrBiasVel);
+  out.sensor.inputBias =
+      Bias(sensor.inputBias.accelerometer() + dt * velocity.accBiasVel,
+           sensor.inputBias.gyroscope() + dt * velocity.gyrBiasVel);
 
   const Rot3 dR = Rot3::Expmap(dt * v_est.gyr);
-  const Vector3 dXWorld =
-      dt * (sensor.pose.rotation() * sensor.velocity) +
-      0.5 * dt * dt *
-          (sensor.pose.rotation() * v_est.acc + Vector3(0, 0, -GRAVITY_CONSTANT));
+  const Vector3 dXWorld = dt * (sensor.pose.rotation() * sensor.velocity) +
+                          0.5 * dt * dt *
+                              (sensor.pose.rotation() * v_est.acc +
+                               Vector3(0, 0, -GRAVITY_CONSTANT));
   const Point3 dXBody = sensor.pose.rotation().unrotate(dXWorld);
   const Pose3 b0Tb1(dR, dXBody);
 
@@ -135,9 +133,9 @@ State integrateSystemFunction(const State& state, const IMUInput& velocity,
   out.sensor.velocity = out.sensor.pose.rotation().unrotate(
       sensor.pose.rotation() * sensor.velocity + dt * inertialVelocityDiff);
 
-  const Pose3 c1Tc0 =
-      sensor.cameraOffset.inverse().compose(b0Tb1.inverse()).compose(
-          sensor.cameraOffset);
+  const Pose3 c1Tc0 = sensor.cameraOffset.inverse()
+                          .compose(b0Tb1.inverse())
+                          .compose(sensor.cameraOffset);
   out.cameraLandmarks.resize(state.n());
 
   for (size_t i = 0; i < state.n(); ++i) {
@@ -150,7 +148,8 @@ State integrateSystemFunction(const State& state, const IMUInput& velocity,
 
 }  // namespace
 
-// Verifies landmark insertion/removal logic stays consistent with measurement ids.
+// Verifies landmark insertion/removal logic stays consistent with measurement
+// ids.
 TEST(EqVIOFilter, DynamicLandmarksAddRemove) {
   EqVIOFilterParams params;
   params.initialPointDepth = 5.0;
@@ -188,7 +187,8 @@ TEST(EqVIOFilter, DynamicLandmarksAddRemove) {
   EXPECT_LONGS_EQUAL(1, est.n());
 }
 
-// Verifies IMU-based initialization and basic propagation produce finite covariance.
+// Verifies IMU-based initialization and basic propagation produce finite
+// covariance.
 TEST(EqVIOFilter, InitAndPropagation) {
   EqVIOFilterParams params;
 
@@ -215,7 +215,8 @@ TEST(EqVIOFilter, InitAndPropagation) {
   EXPECT(filter.errorCovariance().array().isFinite().all());
 }
 
-// Verifies short propagation sequence matches direct system-function integration.
+// Verifies short propagation sequence matches direct system-function
+// integration.
 TEST(EqVIOFilter, ParityShortSequence) {
   EqVIOFilterParams params;
 
@@ -331,7 +332,8 @@ TEST(VIOEqFMatrices, ShapesAndFinite) {
 
     const Matrix A = EqFStateMatrixA(X, xi0, imu);
     const Matrix B = EqFInputMatrixB(X, xi0);
-    const Matrix C = EqFoutputMatrixC(xi0, measurementIds(y), X, y, camera, true);
+    const Matrix C =
+        EqFoutputMatrixC(xi0, measurementIds(y), X, y, camera, true);
 
     EXPECT_LONGS_EQUAL(xi0.dim(), A.rows());
     EXPECT_LONGS_EQUAL(xi0.dim(), A.cols());

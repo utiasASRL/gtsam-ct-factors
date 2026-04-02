@@ -20,9 +20,9 @@
 #include <gtsam/base/GroupAction.h>
 #include <gtsam/base/Matrix.h>
 #include <gtsam/base/Vector.h>
+#include <gtsam_unstable/dllexport.h>
 #include <gtsam_unstable/navigation/EqVIOCommon.h>
 #include <gtsam_unstable/navigation/EqVIOState.h>
-#include <gtsam_unstable/dllexport.h>
 
 namespace gtsam {
 namespace eqvio {
@@ -33,8 +33,8 @@ namespace eqvio {
  * Applies bias, body pose/velocity, and camera extrinsic transforms while
  * preserving the EqVIO right-action convention.
  */
-GTSAM_UNSTABLE_EXPORT SensorState sensorStateGroupAction(
-    const VioGroup& X, const SensorState& sensor);
+GTSAM_UNSTABLE_EXPORT SensorState
+sensorStateGroupAction(const VioGroup& X, const SensorState& sensor);
 /**
  * @brief Right action of `VioGroup` on full EqVIO state.
  *
@@ -42,12 +42,13 @@ GTSAM_UNSTABLE_EXPORT SensorState sensorStateGroupAction(
  * to each landmark state.
  */
 GTSAM_UNSTABLE_EXPORT State stateGroupAction(const VioGroup& X,
-                                                const State& state);
+                                             const State& state);
 
 /**
  * @brief Discrete lift map from IMU input to a `VioGroup` increment.
  *
- * This is the discrete propagation primitive used by `EqVIOFilter::propagateState`.
+ * This is the discrete propagation primitive used by
+ * `EqVIOFilter::propagateState`.
  */
 GTSAM_UNSTABLE_EXPORT VioGroup liftVelocityDiscrete(const State& state,
                                                     const IMUInput& velocity,
@@ -58,11 +59,12 @@ GTSAM_UNSTABLE_EXPORT VioGroup liftVelocityDiscrete(const State& state,
  *
  * `landmarkIds[i]` is the key assigned to `state.cameraLandmarks[i]`.
  *
- * @throws std::invalid_argument if `camera` is null or id count mismatches landmarks.
+ * @throws std::invalid_argument if `camera` is null or id count mismatches
+ * landmarks.
  */
-GTSAM_UNSTABLE_EXPORT VisionMeasurement measureSystemState(
-    const State& state, const std::vector<Key>& landmarkIds,
-    const std::shared_ptr<const CameraModel>& camera);
+GTSAM_UNSTABLE_EXPORT VisionMeasurement
+measureSystemState(const State& state, const std::vector<Key>& landmarkIds,
+                   const std::shared_ptr<const CameraModel>& camera);
 
 /**
  * @brief Generate ideal image measurements with sequential keys `0..n-1`.
@@ -82,29 +84,30 @@ GTSAM_UNSTABLE_EXPORT VisionMeasurement measureSystemState(
  */
 
 /// EqF state matrix that maps IMU input to state change.
-GTSAM_UNSTABLE_EXPORT Matrix EqFStateMatrixA(
-    const VioGroup& X, const State& xi0, const IMUInput& imuVel);
+GTSAM_UNSTABLE_EXPORT Matrix EqFStateMatrixA(const VioGroup& X,
+                                             const State& xi0,
+                                             const IMUInput& imuVel);
 /// EqF input matrix that maps IMU driving noise into chart error coordinates.
-GTSAM_UNSTABLE_EXPORT Matrix EqFInputMatrixB(
-    const VioGroup& X, const State& xi0);
+GTSAM_UNSTABLE_EXPORT Matrix EqFInputMatrixB(const VioGroup& X,
+                                             const State& xi0);
 /// Per-landmark equivariant output Jacobian using observed measurement `y`.
 GTSAM_UNSTABLE_EXPORT Matrix23 EqFoutputMatrixCiStar(
     const Point3& q0, const SOT3& QHat,
     const std::shared_ptr<const CameraModel>& camera, const Point2& y);
 /// Per-landmark output Jacobian using predicted measurement from current state.
-GTSAM_UNSTABLE_EXPORT Matrix23 EqFoutputMatrixCi(
-    const Point3& q0, const SOT3& QHat,
-    const std::shared_ptr<const CameraModel>& camera);
+GTSAM_UNSTABLE_EXPORT Matrix23
+EqFoutputMatrixCi(const Point3& q0, const SOT3& QHat,
+                  const std::shared_ptr<const CameraModel>& camera);
 /// Stacked output matrix for all currently observed landmarks.
-GTSAM_UNSTABLE_EXPORT Matrix EqFoutputMatrixC(
-    const State& xi0, const std::vector<Key>& landmarkIds, const VioGroup& X,
-    const VisionMeasurement& y,
-    const std::shared_ptr<const CameraModel>& camera,
-    bool useEquivariance = true);
-
+GTSAM_UNSTABLE_EXPORT Matrix
+EqFoutputMatrixC(const State& xi0, const std::vector<Key>& landmarkIds,
+                 const VioGroup& X, const VisionMeasurement& y,
+                 const std::shared_ptr<const CameraModel>& camera,
+                 bool useEquivariance = true);
 
 /**
- * @brief Lift EqVIO correction from state-chart coordinates to group tangent coordinates.
+ * @brief Lift EqVIO correction from state-chart coordinates to group tangent
+ * coordinates.
  *
  * EqVIO uses a specialized error chart (including inverse-depth landmark
  * coordinates) for linearization. The resulting correction `delta_xi` from the
@@ -121,11 +124,13 @@ GTSAM_UNSTABLE_EXPORT Matrix EqFoutputMatrixC(
  * This function applies that EqVIO-specific mapping so the correction can be
  * integrated as a valid group increment.
  *
- * @param totalInnovation Kalman correction in EqVIO chart coordinates (`21 + 3N`).
+ * @param totalInnovation Kalman correction in EqVIO chart coordinates (`21 +
+ * 3N`).
  * @param xi0 Reference state used by the chart conversion.
  * @return Group-tangent correction (`21 + 4N`) for `VioGroup::Expmap`.
  *
- * @throws std::invalid_argument if `totalInnovation` has inconsistent dimension.
+ * @throws std::invalid_argument if `totalInnovation` has inconsistent
+ * dimension.
  */
 GTSAM_UNSTABLE_EXPORT Vector liftInnovation(const Vector& totalInnovation,
                                             const State& xi0);
@@ -142,10 +147,10 @@ struct GTSAM_UNSTABLE_EXPORT Symmetry
    * @param H_xi Optional Jacobian w.r.t. state argument.
    * @param H_X Optional Jacobian w.r.t. group argument.
    */
-  State operator()(const State& xi, const VioGroup& X,
-                      OptionalJacobian<Eigen::Dynamic, Eigen::Dynamic> H_xi = {},
-                      OptionalJacobian<Eigen::Dynamic, Eigen::Dynamic> H_X = {})
-      const;
+  State operator()(
+      const State& xi, const VioGroup& X,
+      OptionalJacobian<Eigen::Dynamic, Eigen::Dynamic> H_xi = {},
+      OptionalJacobian<Eigen::Dynamic, Eigen::Dynamic> H_X = {}) const;
 };
 
 }  // namespace eqvio

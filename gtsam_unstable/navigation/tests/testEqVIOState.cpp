@@ -39,24 +39,20 @@ void testChartDerivativesN(TestResult& result_, const std::string& name_,
   OJ none;
   const V w12 = T::Local(t1, t2);
   EXPECT(assert_equal<State>(t2, T::Retract(t1, w12, H1, H2)));
-  EXPECT(assert_equal(
-      numericalDerivative41<State, State, V, OJ, OJ, N>(T::Retract, t1, w12,
-                                                         none, none),
-      H1, 1e-5));
-  EXPECT(assert_equal(
-      numericalDerivative42<State, State, V, OJ, OJ, N>(T::Retract, t1, w12,
-                                                         none, none),
-      H2, 1e-5));
+  EXPECT(assert_equal(numericalDerivative41<State, State, V, OJ, OJ, N>(
+                          T::Retract, t1, w12, none, none),
+                      H1, 1e-5));
+  EXPECT(assert_equal(numericalDerivative42<State, State, V, OJ, OJ, N>(
+                          T::Retract, t1, w12, none, none),
+                      H2, 1e-5));
 
   EXPECT(assert_equal(w12, T::Local(t1, t2, H1, H2), 1e-9));
-  EXPECT(assert_equal(
-      numericalDerivative41<V, State, State, OJ, OJ, N>(T::Local, t1, t2, none,
-                                                         none),
-      H1, 1e-5));
-  EXPECT(assert_equal(
-      numericalDerivative42<V, State, State, OJ, OJ, N>(T::Local, t1, t2, none,
-                                                         none),
-      H2, 1e-5));
+  EXPECT(assert_equal(numericalDerivative41<V, State, State, OJ, OJ, N>(
+                          T::Local, t1, t2, none, none),
+                      H1, 1e-5));
+  EXPECT(assert_equal(numericalDerivative42<V, State, State, OJ, OJ, N>(
+                          T::Local, t1, t2, none, none),
+                      H2, 1e-5));
 }
 
 SensorState MakeSensor1() {

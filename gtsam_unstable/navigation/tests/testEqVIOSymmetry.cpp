@@ -17,8 +17,8 @@
 
 #include <CppUnitLite/TestHarness.h>
 #include <gtsam/base/GroupAction.h>
-#include <gtsam/base/TestableAssertions.h>
 #include <gtsam/base/Matrix.h>
+#include <gtsam/base/TestableAssertions.h>
 #include <gtsam/base/Vector.h>
 #include <gtsam/geometry/Pose3.h>
 #include <gtsam/geometry/SO3.h>
@@ -26,211 +26,213 @@
 #include <gtsam_unstable/navigation/EqVIOState.h>
 #include <gtsam_unstable/navigation/EqVIOSymmetry.h>
 
+#include <algorithm>
 #include <cmath>
 #include <cstdlib>
+#include <functional>
+#include <limits>
 #include <memory>
 #include <stdexcept>
 #include <vector>
-#include <algorithm>
-#include <functional>
-#include <limits>
 
 using namespace gtsam;
 using namespace gtsam::eqvio;
 
 namespace eqvio_test_util {
-  inline std::shared_ptr<const CameraModel> CreateDefaultCamera() {
-    return std::make_shared<CameraModel>(
-        Pose3::Identity(), Cal3_S2(450.0, 450.0, 0.0, 400.0, 240.0));
+inline std::shared_ptr<const CameraModel> CreateDefaultCamera() {
+  return std::make_shared<CameraModel>(
+      Pose3::Identity(), Cal3_S2(450.0, 450.0, 0.0, 400.0, 240.0));
+}
+
+inline Se23 MakeA(const Rot3& R, const Point3& t, const Vector3& w) {
+  Se23::Matrix3K x;
+  x.col(0) = t;
+  x.col(1) = w;
+  return Se23(R, x);
+}
+
+inline State RandomStateElement(const std::vector<Key>& ids) {
+  SensorState sensor;
+  sensor.inputBias = Bias(Vector3::Random(), Vector3::Random());
+  sensor.pose = Pose3::Expmap(Vector6::Random());
+  sensor.velocity = Vector3::Random();
+  sensor.cameraOffset = Pose3::Expmap(Vector6::Random());
+
+  std::vector<Landmark> lms(ids.size());
+  for (size_t i = 0; i < ids.size(); ++i) {
+    Point3 p = 10.0 * Vector3::Random();
+    p.z() = std::abs(p.z()) + 1.0;
+    lms[i] = Landmark{p};
   }
-  
-  inline Se23 MakeA(const Rot3& R, const Point3& t, const Vector3& w) {
-    Se23::Matrix3K x;
-    x.col(0) = t;
-    x.col(1) = w;
-    return Se23(R, x);
-  }
-  
-  inline State RandomStateElement(const std::vector<Key>& ids) {
-    SensorState sensor;
-    sensor.inputBias = Bias(Vector3::Random(), Vector3::Random());
-    sensor.pose = Pose3::Expmap(Vector6::Random());
-    sensor.velocity = Vector3::Random();
-    sensor.cameraOffset = Pose3::Expmap(Vector6::Random());
-  
-    std::vector<Landmark> lms(ids.size());
-    for (size_t i = 0; i < ids.size(); ++i) {
-      Point3 p = 10.0 * Vector3::Random();
-      p.z() = std::abs(p.z()) + 1.0;
-      lms[i] = Landmark{p};
-    }
-    return State(sensor, lms);
-  }
-  
-  inline VioGroup RandomGroupElement(const std::vector<Key>& ids) {
-    const Pose3 Apose = Pose3::Expmap(Vector6::Random());
-    const Vector3 w = Vector3::Random();
-    const Pose3 B = Pose3::Expmap(Vector6::Random());
-    const Bias beta(Vector3::Random(), Vector3::Random());
-  
-    std::vector<SOT3> Q(ids.size());
-    for (size_t i = 0; i < ids.size(); ++i) {
-      const double scale = 2.0 * static_cast<double>(rand()) / RAND_MAX + 1.0;
-      const double yaw = 0.3 * (2.0 * static_cast<double>(rand()) / RAND_MAX - 1.0);
-      Q[i] = SOT3(SO3::Expmap(Vector3(0.0, 0.0, yaw)), std::log(scale));
-    }
-  
-    return makeVioGroup(MakeA(Apose.rotation(), Apose.translation(), w), beta,
-                        B, LandmarkGroup(Q));
-  }
-  
-  inline IMUInput RandomVelocityElement() {
-    IMUInput vel;
-    vel.gyr = Vector3::Random();
-    vel.acc = Vector3::Random();
-    vel.gyrBiasVel = Vector3::Random();
-    vel.accBiasVel = Vector3::Random();
-    vel.stamp = 0.0;
-    return vel;
-  }
-  
-  inline VisionMeasurement RandomVisionMeasurement(
-      const std::vector<Key>& ids,
-      const std::shared_ptr<const CameraModel>& camera) {
-    VisionMeasurement measurement;
-  
-    for (Key id : ids) {
-      Vector3 p;
-      do {
-        p = Vector3::Random();
-      } while (p.norm() < 1e-9);
-      p.normalize();
-      while (p.z() < 1e-1) {
-        p = Vector3::Random().normalized();
-      }
-      measurement[id] = camera->project2(p);
-    }
-    return measurement;
+  return State(sensor, lms);
+}
+
+inline VioGroup RandomGroupElement(const std::vector<Key>& ids) {
+  const Pose3 Apose = Pose3::Expmap(Vector6::Random());
+  const Vector3 w = Vector3::Random();
+  const Pose3 B = Pose3::Expmap(Vector6::Random());
+  const Bias beta(Vector3::Random(), Vector3::Random());
+
+  std::vector<SOT3> Q(ids.size());
+  for (size_t i = 0; i < ids.size(); ++i) {
+    const double scale = 2.0 * static_cast<double>(rand()) / RAND_MAX + 1.0;
+    const double yaw =
+        0.3 * (2.0 * static_cast<double>(rand()) / RAND_MAX - 1.0);
+    Q[i] = SOT3(SO3::Expmap(Vector3(0.0, 0.0, yaw)), std::log(scale));
   }
 
-  inline Vector MeasurementVector(const VisionMeasurement& measurement) {
-    Vector y = Vector::Zero(2 * static_cast<int>(measurement.size()));
-    int i = 0;
-    for (const auto& [id, p] : measurement) {
-      (void)id;
-      y.segment<2>(2 * i) << p.x(), p.y();
-      ++i;
-    }
-    return y;
-  }
+  return makeVioGroup(MakeA(Apose.rotation(), Apose.translation(), w), beta, B,
+                      LandmarkGroup(Q));
+}
 
-  inline Vector MeasurementDifference(const VisionMeasurement& y1,
-                                      const VisionMeasurement& y2) {
-    if (y1.size() != y2.size()) {
-      throw std::invalid_argument("MeasurementDifference: size mismatch");
+inline IMUInput RandomVelocityElement() {
+  IMUInput vel;
+  vel.gyr = Vector3::Random();
+  vel.acc = Vector3::Random();
+  vel.gyrBiasVel = Vector3::Random();
+  vel.accBiasVel = Vector3::Random();
+  vel.stamp = 0.0;
+  return vel;
+}
+
+inline VisionMeasurement RandomVisionMeasurement(
+    const std::vector<Key>& ids,
+    const std::shared_ptr<const CameraModel>& camera) {
+  VisionMeasurement measurement;
+
+  for (Key id : ids) {
+    Vector3 p;
+    do {
+      p = Vector3::Random();
+    } while (p.norm() < 1e-9);
+    p.normalize();
+    while (p.z() < 1e-1) {
+      p = Vector3::Random().normalized();
     }
-    Vector diff = Vector::Zero(2 * static_cast<int>(y1.size()));
-    int i = 0;
-    for (const auto& [id, p1] : y1) {
-      const auto it = y2.find(id);
-      if (it == y2.end()) {
-        throw std::invalid_argument("MeasurementDifference: id mismatch");
-      }
-      diff.segment<2>(2 * i) << p1.x() - it->second.x(), p1.y() - it->second.y();
-      ++i;
-    }
-    return diff;
+    measurement[id] = camera->project2(p);
   }
-  
-  inline double LogNorm(const VioGroup& X) { return VioGroup::Logmap(X).norm(); }
-  
-  inline double StateDistance(const State& xi1, const State& xi2) {
-    if (xi1.n() != xi2.n()) {
-      throw std::invalid_argument("StateDistance: landmark count mismatch");
-    }
-  
-    double dist = 0.0;
-    dist += xi1.sensor.inputBias.localCoordinates(xi2.sensor.inputBias).norm();
-    dist += xi1.sensor.pose.localCoordinates(xi2.sensor.pose).norm();
-    dist += xi1.sensor.cameraOffset.localCoordinates(xi2.sensor.cameraOffset).norm();
-    dist += (xi1.sensor.velocity - xi2.sensor.velocity).norm();
-  
-    for (size_t i = 0; i < xi1.n(); ++i) {
-      dist += (xi1.cameraLandmarks[i].p - xi2.cameraLandmarks[i].p).norm();
-    }
-    return dist;
+  return measurement;
+}
+
+inline Vector MeasurementVector(const VisionMeasurement& measurement) {
+  Vector y = Vector::Zero(2 * static_cast<int>(measurement.size()));
+  int i = 0;
+  for (const auto& [id, p] : measurement) {
+    (void)id;
+    y.segment<2>(2 * i) << p.x(), p.y();
+    ++i;
   }
-  
-  inline double MeasurementDistance(const VisionMeasurement& y1,
+  return y;
+}
+
+inline Vector MeasurementDifference(const VisionMeasurement& y1,
                                     const VisionMeasurement& y2) {
-    Vector y1vec = MeasurementVector(y1);
-    Vector y2vec = MeasurementVector(y2);
-    const double scale = std::max(1.0, std::max(y1vec.norm(), y2vec.norm()));
-    const Vector diff = MeasurementDifference(y1, y2);
-    return diff.norm() / scale;
+  if (y1.size() != y2.size()) {
+    throw std::invalid_argument("MeasurementDifference: size mismatch");
   }
-  
-  inline Matrix NumericalDifferential(const std::function<Vector(const Vector&)>& f,
-                                      const Vector& x0, double h) {
-    const int n = static_cast<int>(x0.size());
-    const Vector y0 = f(x0);
-    const int m = static_cast<int>(y0.size());
-    Matrix J = Matrix::Zero(m, n);
-    for (int j = 0; j < n; ++j) {
-      Vector dx = Vector::Zero(n);
-      dx(j) = h;
-      J.col(j) = (f(x0 + dx) - f(x0 - dx)) / (2.0 * h);
+  Vector diff = Vector::Zero(2 * static_cast<int>(y1.size()));
+  int i = 0;
+  for (const auto& [id, p1] : y1) {
+    const auto it = y2.find(id);
+    if (it == y2.end()) {
+      throw std::invalid_argument("MeasurementDifference: id mismatch");
     }
-    return J;
+    diff.segment<2>(2 * i) << p1.x() - it->second.x(), p1.y() - it->second.y();
+    ++i;
   }
-  
-  inline bool MatrixClose(const Matrix& A, const Matrix& B, double h = -1.0) {
-    if (A.rows() != B.rows() || A.cols() != B.cols()) return false;
-    if (!A.array().isFinite().all() || !B.array().isFinite().all()) return false;
-  
-    if (h < 0.0) h = std::cbrt(std::numeric_limits<double>::epsilon());
-  
-    for (int i = 0; i < A.rows(); ++i) {
-      for (int j = 0; j < A.cols(); ++j) {
-        const double tol = std::max(h, h * 1e1 * std::abs(A(i, j)));
-        if (std::abs(A(i, j) - B(i, j)) > tol) return false;
-      }
+  return diff;
+}
+
+inline double LogNorm(const VioGroup& X) { return VioGroup::Logmap(X).norm(); }
+
+inline double StateDistance(const State& xi1, const State& xi2) {
+  if (xi1.n() != xi2.n()) {
+    throw std::invalid_argument("StateDistance: landmark count mismatch");
+  }
+
+  double dist = 0.0;
+  dist += xi1.sensor.inputBias.localCoordinates(xi2.sensor.inputBias).norm();
+  dist += xi1.sensor.pose.localCoordinates(xi2.sensor.pose).norm();
+  dist +=
+      xi1.sensor.cameraOffset.localCoordinates(xi2.sensor.cameraOffset).norm();
+  dist += (xi1.sensor.velocity - xi2.sensor.velocity).norm();
+
+  for (size_t i = 0; i < xi1.n(); ++i) {
+    dist += (xi1.cameraLandmarks[i].p - xi2.cameraLandmarks[i].p).norm();
+  }
+  return dist;
+}
+
+inline double MeasurementDistance(const VisionMeasurement& y1,
+                                  const VisionMeasurement& y2) {
+  Vector y1vec = MeasurementVector(y1);
+  Vector y2vec = MeasurementVector(y2);
+  const double scale = std::max(1.0, std::max(y1vec.norm(), y2vec.norm()));
+  const Vector diff = MeasurementDifference(y1, y2);
+  return diff.norm() / scale;
+}
+
+inline Matrix NumericalDifferential(
+    const std::function<Vector(const Vector&)>& f, const Vector& x0, double h) {
+  const int n = static_cast<int>(x0.size());
+  const Vector y0 = f(x0);
+  const int m = static_cast<int>(y0.size());
+  Matrix J = Matrix::Zero(m, n);
+  for (int j = 0; j < n; ++j) {
+    Vector dx = Vector::Zero(n);
+    dx(j) = h;
+    J.col(j) = (f(x0 + dx) - f(x0 - dx)) / (2.0 * h);
+  }
+  return J;
+}
+
+inline bool MatrixClose(const Matrix& A, const Matrix& B, double h = -1.0) {
+  if (A.rows() != B.rows() || A.cols() != B.cols()) return false;
+  if (!A.array().isFinite().all() || !B.array().isFinite().all()) return false;
+
+  if (h < 0.0) h = std::cbrt(std::numeric_limits<double>::epsilon());
+
+  for (int i = 0; i < A.rows(); ++i) {
+    for (int j = 0; j < A.cols(); ++j) {
+      const double tol = std::max(h, h * 1e1 * std::abs(A(i, j)));
+      if (std::abs(A(i, j) - B(i, j)) > tol) return false;
     }
-    return true;
+  }
+  return true;
+}
+
+inline Vector liftVelocity(const State& state, const IMUInput& velocity) {
+  const size_t N = state.n();
+  Vector lift = Vector::Zero(21 + 4 * static_cast<int>(N));
+
+  const SensorState& sensor = state.sensor;
+  const IMUInput v_est = velocity - sensor.inputBias;
+
+  Vector6 U_A;
+  U_A << v_est.gyr, sensor.velocity;
+  const Vector6 U_B = sensor.cameraOffset.inverse().AdjointMap() * U_A;
+  const Vector3 u_w = -v_est.acc + sensor.gravityDir() * GRAVITY_CONSTANT;
+
+  lift.segment<6>(0) = U_A;
+  lift.segment<3>(6) = u_w;
+  lift.segment<6>(9) << velocity.accBiasVel, velocity.gyrBiasVel;
+  lift.segment<6>(15) = U_B;
+
+  const Vector6 U_C = sensor.cameraOffset.inverse().AdjointMap() * U_A;
+  const Vector3 omegaC = U_C.head<3>();
+  const Vector3 vC = U_C.tail<3>();
+
+  // Lift the landmark transform velocities
+  for (size_t i = 0; i < N; ++i) {
+    const Vector3 p = state.cameraLandmarks[i].p;
+    Vector4 W;
+    W.head<3>() = omegaC + Rot3::Hat(p) * vC / p.squaredNorm();
+    W(3) = p.dot(vC) / p.squaredNorm();
+    lift.segment<4>(21 + 4 * static_cast<int>(i)) = W;
   }
 
-  inline Vector liftVelocity(const State& state, const IMUInput& velocity) {
-    const size_t N = state.n();
-    Vector lift = Vector::Zero(21 + 4 * static_cast<int>(N));
-
-    const SensorState& sensor = state.sensor;
-    const IMUInput v_est = velocity - sensor.inputBias;
-
-    Vector6 U_A;
-    U_A << v_est.gyr, sensor.velocity;
-    const Vector6 U_B = sensor.cameraOffset.inverse().AdjointMap() * U_A;
-    const Vector3 u_w = -v_est.acc + sensor.gravityDir() * GRAVITY_CONSTANT;
-
-    lift.segment<6>(0) = U_A;
-    lift.segment<3>(6) = u_w;
-    lift.segment<6>(9) << velocity.accBiasVel, velocity.gyrBiasVel;
-    lift.segment<6>(15) = U_B;
-
-    const Vector6 U_C = sensor.cameraOffset.inverse().AdjointMap() * U_A;
-    const Vector3 omegaC = U_C.head<3>();
-    const Vector3 vC = U_C.tail<3>();
-
-    // Lift the landmark transform velocities
-    for (size_t i = 0; i < N; ++i) {
-      const Vector3 p = state.cameraLandmarks[i].p;
-      Vector4 W;
-      W.head<3>() = omegaC + Rot3::Hat(p) * vC / p.squaredNorm();
-      W(3) = p.dot(vC) / p.squaredNorm();
-      lift.segment<4>(21 + 4 * static_cast<int>(i)) = W;
-    }
-
-    return lift;
-  }
+  return lift;
+}
 
 }  // namespace eqvio_test_util
 
@@ -285,15 +287,15 @@ State integrateSystemFunction(const State& state, const IMUInput& velocity,
   const SensorState& sensor = state.sensor;
   const IMUInput v_est = velocity - sensor.inputBias;
 
-  out.sensor.inputBias = Bias(
-      sensor.inputBias.accelerometer() + dt * velocity.accBiasVel,
-      sensor.inputBias.gyroscope() + dt * velocity.gyrBiasVel);
+  out.sensor.inputBias =
+      Bias(sensor.inputBias.accelerometer() + dt * velocity.accBiasVel,
+           sensor.inputBias.gyroscope() + dt * velocity.gyrBiasVel);
 
   const Rot3 dR = Rot3::Expmap(dt * v_est.gyr);
-  const Vector3 dXWorld =
-      dt * (sensor.pose.rotation() * sensor.velocity) +
-      0.5 * dt * dt *
-          (sensor.pose.rotation() * v_est.acc + Vector3(0, 0, -GRAVITY_CONSTANT));
+  const Vector3 dXWorld = dt * (sensor.pose.rotation() * sensor.velocity) +
+                          0.5 * dt * dt *
+                              (sensor.pose.rotation() * v_est.acc +
+                               Vector3(0, 0, -GRAVITY_CONSTANT));
   const Point3 dXBody = sensor.pose.rotation().unrotate(dXWorld);
   const Pose3 b0Tb1(dR, dXBody);
 
@@ -304,9 +306,9 @@ State integrateSystemFunction(const State& state, const IMUInput& velocity,
   out.sensor.velocity = out.sensor.pose.rotation().unrotate(
       sensor.pose.rotation() * sensor.velocity + dt * inertialVelocityDiff);
 
-  const Pose3 c1Tc0 =
-      sensor.cameraOffset.inverse().compose(b0Tb1.inverse()).compose(
-          sensor.cameraOffset);
+  const Pose3 c1Tc0 = sensor.cameraOffset.inverse()
+                          .compose(b0Tb1.inverse())
+                          .compose(sensor.cameraOffset);
   out.cameraLandmarks.resize(state.n());
 
   for (size_t i = 0; i < state.n(); ++i) {
@@ -316,7 +318,6 @@ State integrateSystemFunction(const State& state, const IMUInput& velocity,
   out.sensor.cameraOffset = sensor.cameraOffset;
   return out;
 }
-
 
 std::vector<Landmark> Lms0() { return {}; }
 std::vector<Landmark> Lms3() {

@@ -19,26 +19,25 @@
 
 #include <gtsam/base/Lie.h>
 #include <gtsam/base/Matrix.h>
-#include <gtsam/base/Vector.h>
-#include <gtsam/geometry/Point2.h>
-#include <gtsam/geometry/Point3.h>
-#include <gtsam_unstable/dllexport.h>
-
 #include <gtsam/base/ProductLieGroup.h>
+#include <gtsam/base/Vector.h>
 #include <gtsam/geometry/Cal3_S2.h>
 #include <gtsam/geometry/ExtendedPose3.h>
 #include <gtsam/geometry/PinholeCamera.h>
+#include <gtsam/geometry/Point2.h>
+#include <gtsam/geometry/Point3.h>
 #include <gtsam/geometry/Pose3.h>
-#include <gtsam/inference/Key.h>
 #include <gtsam/geometry/SO3.h>
+#include <gtsam/inference/Key.h>
 #include <gtsam/navigation/ImuBias.h>
+#include <gtsam_unstable/dllexport.h>
 
-#include <map>
-#include <memory>
-#include <string>
 #include <cassert>
 #include <cmath>
+#include <map>
+#include <memory>
 #include <stdexcept>
+#include <string>
 #include <tuple>
 #include <type_traits>
 #include <vector>
@@ -180,7 +179,8 @@ inline Vector3 undistortPoint(const CameraModel& camera, const Point2& y) {
  *
  * @throws std::invalid_argument if `y.z()` is numerically near zero.
  */
-inline Matrix23 projectionJacobian(const CameraModel& camera, const Vector3& y) {
+inline Matrix23 projectionJacobian(const CameraModel& camera,
+                                   const Vector3& y) {
   if (std::abs(y.z()) < 1e-12) {
     throw std::invalid_argument("projectionJacobian: z is near zero");
   }
@@ -285,9 +285,7 @@ inline const Se23& A_sensorKinematics(const VioGroup& X) {
   return X.first.first;
 }
 
-inline const Bias& Beta_biasOffset(const VioGroup& X) {
-  return X.first.second;
-}
+inline const Bias& Beta_biasOffset(const VioGroup& X) { return X.first.second; }
 
 inline const Pose3& B_cameraExtrinsics(const VioGroup& X) {
   return X.second.first;

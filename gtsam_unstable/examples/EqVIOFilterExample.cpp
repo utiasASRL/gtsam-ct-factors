@@ -11,12 +11,13 @@
 
 /**
  * @file EqVIOFilterExample.cpp
- * @brief Run the EqVIOFilter on 10 seconds of the EuRoC MAV Vicon Room 1 dataset.
+ * @brief Run the EqVIOFilter on 10 seconds of the EuRoC MAV Vicon Room 1
+ * dataset.
  * @author Rohan Bansal
  */
 
-#include <gtsam_unstable/navigation/EqVIOFilter.h>
 #include <gtsam/slam/dataset.h>
+#include <gtsam_unstable/navigation/EqVIOFilter.h>
 
 #include <algorithm>
 #include <array>
@@ -41,7 +42,8 @@ namespace {
 constexpr const char* kExampleName = "EqVIOFilterExample";
 
 /**
- * @brief Hardcoded reference values used for a lightweight smoke-style replay check.
+ * @brief Hardcoded reference values used for a lightweight smoke-style replay
+ * check.
  *
  * These correspond to the expected terminal pose/velocity for the bundled
  * 10-second EuRoC replay file.
@@ -112,9 +114,11 @@ int parseIntOr(const std::string& s, int fallback = 0) {
  * The parser expects rows tagged by `row_type`:
  * - `meta`: key/value metadata.
  * - `imu`: one IMU sample.
- * - `vision_feature`: one feature observation, aggregated by `seq` into a frame.
+ * - `vision_feature`: one feature observation, aggregated by `seq` into a
+ * frame.
  *
- * @throws std::invalid_argument if required columns are missing or row data is inconsistent.
+ * @throws std::invalid_argument if required columns are missing or row data is
+ * inconsistent.
  */
 ReplayLog readReplayCsv(const std::string& csvPath) {
   std::ifstream in(csvPath);
@@ -132,7 +136,7 @@ ReplayLog readReplayCsv(const std::string& csvPath) {
   for (size_t i = 0; i < header.size(); ++i) index[header[i]] = i;
 
   const std::array<const char*, 21> required = {
-      "row_type", "t_abs", "seq", "frame_idx", "landmark_id", "gx", "gy",
+      "row_type", "t_abs", "seq", "frame_idx", "landmark_id", "gx",  "gy",
       "gz",       "ax",    "ay",  "az",        "bgx",         "bgy", "bgz",
       "bax",      "bay",   "baz", "u_norm",    "v_norm",      "key", "value"};
   for (const char* key : required) {
@@ -146,7 +150,8 @@ ReplayLog readReplayCsv(const std::string& csvPath) {
                            const std::string& key) -> std::string {
     const auto it = index.find(key);
     if (it == index.end()) {
-      throw std::invalid_argument(formatError("missing required column: " + key));
+      throw std::invalid_argument(
+          formatError("missing required column: " + key));
     }
     return (it->second < cells.size()) ? cells[it->second] : "";
   };
@@ -192,7 +197,8 @@ ReplayLog readReplayCsv(const std::string& csvPath) {
       const size_t seq = parseSizeOr(getCell(cells, "seq"));
       const double tAbs = parseDoubleOr(getCell(cells, "t_abs"));
       const int frameIdx = parseIntOr(getCell(cells, "frame_idx"), -1);
-      const Key id = static_cast<Key>(parseSizeOr(getCell(cells, "landmark_id")));
+      const Key id =
+          static_cast<Key>(parseSizeOr(getCell(cells, "landmark_id")));
       const double u = parseDoubleOr(getCell(cells, "u_norm"));
       const double v = parseDoubleOr(getCell(cells, "v_norm"));
 
@@ -209,14 +215,12 @@ ReplayLog readReplayCsv(const std::string& csvPath) {
       } else {
         ReplayEvent& event = log.events[it->second];
         if (event.frameIdx != frameIdx) {
-          throw std::invalid_argument(
-              formatError("inconsistent frame_idx for vision seq=" +
-                          std::to_string(seq)));
+          throw std::invalid_argument(formatError(
+              "inconsistent frame_idx for vision seq=" + std::to_string(seq)));
         }
         if (std::abs(event.tAbs - tAbs) > 1e-9) {
-          throw std::invalid_argument(
-              formatError("inconsistent t_abs for vision seq=" +
-                          std::to_string(seq)));
+          throw std::invalid_argument(formatError(
+              "inconsistent t_abs for vision seq=" + std::to_string(seq)));
         }
         event.vision[id] = Point2(u, v);
       }
@@ -226,10 +230,9 @@ ReplayLog readReplayCsv(const std::string& csvPath) {
     throw std::invalid_argument(formatError("unknown row_type: " + rowType));
   }
 
-  std::stable_sort(log.events.begin(), log.events.end(),
-                   [](const ReplayEvent& a, const ReplayEvent& b) {
-                     return a.seq < b.seq;
-                   });
+  std::stable_sort(
+      log.events.begin(), log.events.end(),
+      [](const ReplayEvent& a, const ReplayEvent& b) { return a.seq < b.seq; });
   return log;
 }
 
@@ -254,7 +257,8 @@ double metadataFiniteDouble(const ReplayLog& log, const std::string& key,
 
 /**
  * @brief Parse camera extrinsics from metadata keys `T_ci_*` if available.
- * @return `std::nullopt` when any extrinsic field is missing or quaternion is invalid.
+ * @return `std::nullopt` when any extrinsic field is missing or quaternion is
+ * invalid.
  */
 std::optional<Pose3> cameraExtrinsicsFromMetadata(const ReplayLog& log) {
   const std::vector<std::string> keys = {"T_ci_tx", "T_ci_ty", "T_ci_tz",
@@ -315,9 +319,9 @@ BufferedImuPropagation makeBufferedImuPropagation(
   out.dts.reserve(imuBuffer.size());
   for (size_t i = 0; i < imuBuffer.size(); ++i) {
     const double t0 = std::max(imuBuffer[i].stamp, tRef);
-    const double t1 =
-        i + 1 < imuBuffer.size() ? std::min(imuBuffer[i + 1].stamp, targetTime)
-                                 : targetTime;
+    const double t1 = i + 1 < imuBuffer.size()
+                          ? std::min(imuBuffer[i + 1].stamp, targetTime)
+                          : targetTime;
     const double dt = std::max(t1 - t0, 0.0);
     if (dt <= 0.0) continue;
     out.imuInputs.push_back(imuBuffer[i]);
@@ -325,10 +329,9 @@ BufferedImuPropagation makeBufferedImuPropagation(
     out.propagatedTime += dt;
   }
 
-  auto it = std::find_if(imuBuffer.begin(), imuBuffer.end(),
-                         [targetTime](const IMUInput& imu) {
-                           return imu.stamp >= targetTime;
-                         });
+  auto it = std::find_if(
+      imuBuffer.begin(), imuBuffer.end(),
+      [targetTime](const IMUInput& imu) { return imu.stamp >= targetTime; });
   if (it != imuBuffer.begin()) {
     --it;
     out.trimCount = static_cast<size_t>(std::distance(imuBuffer.begin(), it));
@@ -336,7 +339,8 @@ BufferedImuPropagation makeBufferedImuPropagation(
   return out;
 }
 
-/// Build runtime filter params from replay metadata, falling back to defaults for missing entries.
+/// Build runtime filter params from replay metadata, falling back to defaults
+/// for missing entries.
 EqVIOFilterParams paramsFromMetadata(const ReplayLog& log) {
   EqVIOFilterParams params;
   const auto setParam = [&log](double& field,
@@ -348,7 +352,8 @@ EqVIOFilterParams paramsFromMetadata(const ReplayLog& log) {
 
   setParam(params.initialPointDepth, {"eqf.initial_point_depth"});
   setParam(params.initialPointVariance, {"eqf.initial_point_variance"});
-  setParam(params.measurementNoiseVariance, {"eqf.measurement_noise_variance_norm"});
+  setParam(params.measurementNoiseVariance,
+           {"eqf.measurement_noise_variance_norm"});
   setParam(params.outlierThresholdAbs,
            {"eqf.outlier_threshold_abs", "eqf.outlier_threshold_abs_norm"});
   setParam(params.outlierThresholdProb, {"eqf.outlier_threshold_prob"});
@@ -358,8 +363,10 @@ EqVIOFilterParams paramsFromMetadata(const ReplayLog& log) {
   setParam(params.attitudeProcessVariance, {"eqf.process_var_attitude"});
   setParam(params.positionProcessVariance, {"eqf.process_var_position"});
   setParam(params.velocityProcessVariance, {"eqf.process_var_velocity"});
-  setParam(params.cameraAttitudeProcessVariance, {"eqf.process_var_cam_attitude"});
-  setParam(params.cameraPositionProcessVariance, {"eqf.process_var_cam_position"});
+  setParam(params.cameraAttitudeProcessVariance,
+           {"eqf.process_var_cam_attitude"});
+  setParam(params.cameraPositionProcessVariance,
+           {"eqf.process_var_cam_position"});
   setParam(params.pointProcessVariance, {"eqf.process_var_point"});
 
   params.inputNoise.setZero();
@@ -367,7 +374,8 @@ EqVIOFilterParams paramsFromMetadata(const ReplayLog& log) {
     params.inputNoise.block<3, 3>(idx, idx).setIdentity();
   }
   const auto setInputVariance = [&log, &params](int idx, const char* key) {
-    const double variance = metadataFiniteDouble(log, key, params.inputNoise(idx, idx));
+    const double variance =
+        metadataFiniteDouble(log, key, params.inputNoise(idx, idx));
     params.inputNoise.block<3, 3>(idx, idx) *= variance;
   };
   setInputVariance(0, "eqf.input_var_gyr");
@@ -378,13 +386,15 @@ EqVIOFilterParams paramsFromMetadata(const ReplayLog& log) {
   return params;
 }
 
-/// Construct initial reference state using identity sensor state plus optional camera extrinsics metadata.
+/// Construct initial reference state using identity sensor state plus optional
+/// camera extrinsics metadata.
 State initialReferenceState(const ReplayLog& log) {
   SensorState sensor;
   sensor.inputBias = Bias::Identity();
   sensor.pose = Pose3::Identity();
   sensor.velocity.setZero();
-  sensor.cameraOffset = cameraExtrinsicsFromMetadata(log).value_or(Pose3::Identity());
+  sensor.cameraOffset =
+      cameraExtrinsicsFromMetadata(log).value_or(Pose3::Identity());
   return State(sensor, {});
 }
 
@@ -425,8 +435,8 @@ void printSummary(const ReplayLog& log, const EqVIOFilterParams& params,
   std::cout << "GT pose translation: "
             << HardcodedGroundTruth::position().transpose() << "\n";
   std::cout << "Velocity: " << estimate.sensor.velocity.transpose() << "\n";
-  std::cout << "GT velocity: "
-            << HardcodedGroundTruth::velocity().transpose() << "\n";
+  std::cout << "GT velocity: " << HardcodedGroundTruth::velocity().transpose()
+            << "\n";
 }
 
 }  // namespace
@@ -444,16 +454,19 @@ int main() {
       findExampleDataFile("EqVIOdata_eurocmav_room1_10sec.csv");
 
   try {
-    // Parse events and metadata, then construct filter configuration and initial conditions.
+    // Parse events and metadata, then construct filter configuration and
+    // initial conditions.
     const ReplayLog log = readReplayCsv(csvPath);
     const EqVIOFilterParams params = paramsFromMetadata(log);
     const State xi0 = initialReferenceState(log);
     const Matrix Sigma0 = initialCovarianceFromMetadata(log, xi0);
 
     // Construct filter lazily on first IMU so gravity initialization stays the
-    // first state-alignment step after setting metadata-derived reference/covariance.
+    // first state-alignment step after setting metadata-derived
+    // reference/covariance.
     std::optional<EqVIOFilter> filter;
-    // Replay file stores normalized coordinates, so use identity intrinsics/extrinsics camera.
+    // Replay file stores normalized coordinates, so use identity
+    // intrinsics/extrinsics camera.
     auto camera = std::make_shared<CameraModel>(
         Pose3::Identity(), Cal3_S2(1.0, 1.0, 0.0, 0.0, 0.0));
 
@@ -463,25 +476,29 @@ int main() {
     size_t visionFeatureCount = 0;
     // Tracks whether gravity-based initialization has run on the first IMU.
     bool gravityInitialized = false;
-    // Current propagated filter time; starts once first IMU initializes gravity alignment.
+    // Current propagated filter time; starts once first IMU initializes gravity
+    // alignment.
     double currentTime = -1.0;
     // Rolling IMU buffer consumed at each vision timestamp.
     std::vector<IMUInput> imuBuffer;
 
-    // Replay all events in sequence: IMU samples buffer propagation input, vision triggers correction.
+    // Replay all events in sequence: IMU samples buffer propagation input,
+    // vision triggers correction.
     for (const ReplayEvent& event : log.events) {
       if (event.type == ReplayEvent::Type::Imu) {
         if (!filter) {
           filter.emplace(xi0, Sigma0, params);
         }
         if (!gravityInitialized) {
-          // One-time gravity-based attitude initialization from first IMU sample.
+          // One-time gravity-based attitude initialization from first IMU
+          // sample.
           filter->initializeFromIMU(event.imu);
           currentTime = event.imu.stamp;
           gravityInitialized = true;
         }
 
-        // Keep all IMU events; buffered integration slices these into piecewise holds.
+        // Keep all IMU events; buffered integration slices these into piecewise
+        // holds.
         imuBuffer.push_back(event.imu);
         ++imuCount;
       } else {
@@ -498,7 +515,8 @@ int main() {
           filter->predict(step.imuInputs, step.dts);
           currentTime += step.propagatedTime;
         }
-        // Drop IMU samples already consumed by propagation, keep boundary sample for continuity.
+        // Drop IMU samples already consumed by propagation, keep boundary
+        // sample for continuity.
         if (step.trimCount > 0) {
           imuBuffer.erase(
               imuBuffer.begin(),
@@ -507,7 +525,8 @@ int main() {
                       step.trimCount));
         }
 
-        // Build isotropic vision noise for this frame and apply one correction step.
+        // Build isotropic vision noise for this frame and apply one correction
+        // step.
         const Matrix R =
             Matrix::Identity(static_cast<int>(2 * event.vision.size()),
                              static_cast<int>(2 * event.vision.size())) *
@@ -520,7 +539,8 @@ int main() {
 
     const State finalEstimate = filter ? filter->state() : xi0;
 
-    // Report replay statistics and terminal estimate against hardcoded reference values.
+    // Report replay statistics and terminal estimate against hardcoded
+    // reference values.
     printSummary(log, params, currentTime, imuCount, visionFrameCount,
                  visionFeatureCount, finalEstimate);
 
