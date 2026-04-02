@@ -17,8 +17,8 @@
 
 #pragma once
 
+#include <gtsam/linear/Scatter.h>
 #include <gtsam/inference/Key.h>
-#include <gtsam/inference/Ordering.h>
 #include <gtsam/base/SymmetricBlockMatrix.h>
 
 namespace gtsam {
@@ -59,12 +59,8 @@ class GTSAM_EXPORT JointMarginal {
   void print(const std::string& s = "",
              const KeyFormatter& formatter = DefaultKeyFormatter) const;
 
-  /** Construct from a dense matrix, per-key dimensions, and ordered keys. */
-  JointMarginal(const Matrix& fullMatrix, const std::vector<size_t>& dims,
-                const KeyVector& keys)
-      : blockMatrix_(dims, fullMatrix),
-        keys_(keys),
-        indices_(Ordering(keys).invert()) {}
+  /// Construct from a dense matrix and its block layout.
+  JointMarginal(const Matrix& fullMatrix, const Scatter& scatter);
 };
 
 }  // namespace gtsam

@@ -21,6 +21,46 @@
 
 namespace gtsam {
 
+namespace {
+
+/* ************************************************************************* */
+std::vector<size_t> dimsFromScatter(const Scatter& scatter) {
+  std::vector<size_t> dims;
+  dims.reserve(scatter.size());
+  for (const auto& slot : scatter) {
+    dims.push_back(slot.dimension);
+  }
+  return dims;
+}
+
+/* ************************************************************************* */
+KeyVector keysFromScatter(const Scatter& scatter) {
+  KeyVector keys;
+  keys.reserve(scatter.size());
+  for (const auto& slot : scatter) {
+    keys.push_back(slot.key);
+  }
+  return keys;
+}
+
+/* ************************************************************************* */
+FastMap<Key, size_t> indicesFromScatter(const Scatter& scatter) {
+  FastMap<Key, size_t> indices;
+  size_t index = 0;
+  for (const auto& slot : scatter) {
+    indices[slot.key] = index++;
+  }
+  return indices;
+}
+
+}  // namespace
+
+/* ************************************************************************* */
+JointMarginal::JointMarginal(const Matrix& fullMatrix, const Scatter& scatter)
+    : blockMatrix_(dimsFromScatter(scatter), fullMatrix),
+      keys_(keysFromScatter(scatter)),
+      indices_(indicesFromScatter(scatter)) {}
+
 /* ************************************************************************* */
 void JointMarginal::print(const std::string& s,
                           const KeyFormatter& formatter) const {
