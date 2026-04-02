@@ -28,22 +28,16 @@ using namespace std;
 
 namespace gtsam {
 
-namespace {
-
 /* ************************************************************************* */
-// Select the elimination rule that matches the requested marginal factorization.
-GaussianFactorGraph::Eliminate eliminationFunction(
-    Marginals::Factorization factorization) {
-  if (factorization == Marginals::CHOLESKY) {
+GaussianFactorGraph::Eliminate Marginals::eliminationFunction() const {
+  if (factorization_ == CHOLESKY) {
     return EliminatePreferCholesky;
-  } else if (factorization == Marginals::QR) {
+  } else if (factorization_ == QR) {
     return EliminateQR;
   }
   throw std::runtime_error(
       "Marginals::eliminationFunction: Unknown factorization");
 }
-
-}  // namespace
 
 /* ************************************************************************* */
 Marginals::Marginals(const NonlinearFactorGraph& graph, const Values& solution, Factorization factorization)
@@ -156,28 +150,24 @@ GaussianFactor::shared_ptr Marginals::marginalFactor(Key variable) const {
 /* ************************************************************************* */
 Matrix Marginals::marginalInformation(Key variable) const {
   gttic(marginalInformation);
-  return bayesTree_.marginalInformation(variable,
-                                        eliminationFunction(factorization_));
+  return bayesTree_.marginalInformation(variable, eliminationFunction());
 }
 
 /* ************************************************************************* */
 Matrix Marginals::marginalCovariance(Key variable) const {
-  return bayesTree_.marginalCovariance(variable,
-                                       eliminationFunction(factorization_));
+  return bayesTree_.marginalCovariance(variable, eliminationFunction());
 }
 
 /* ************************************************************************* */
 JointMarginal Marginals::jointMarginalCovariance(
     const KeyVector& variables) const {
-  return bayesTree_.jointMarginalCovariance(
-      variables, eliminationFunction(factorization_));
+  return bayesTree_.jointMarginalCovariance(variables, eliminationFunction());
 }
 
 /* ************************************************************************* */
 JointMarginal Marginals::jointMarginalInformation(
     const KeyVector& variables) const {
-  return bayesTree_.jointMarginalInformation(
-      variables, eliminationFunction(factorization_));
+  return bayesTree_.jointMarginalInformation(variables, eliminationFunction());
 }
 
 /* ************************************************************************* */

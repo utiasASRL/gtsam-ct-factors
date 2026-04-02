@@ -116,17 +116,16 @@ class GTSAM_EXPORT Marginals {
   /** Compute the marginal factor of a single variable */
   GaussianFactor::shared_ptr marginalFactor(Key variable) const;
 
-  /** Compute the marginal information matrix of a single variable.
-    * Use LLt(const Matrix&) or RtR(const Matrix&) to obtain the square-root information matrix. */
+  /// Compute the marginal information matrix of a single variable.
   Matrix marginalInformation(Key variable) const;
 
-  /** Compute the marginal covariance of a single variable */
+  /// Compute the marginal covariance of a single variable.
   Matrix marginalCovariance(Key variable) const;
 
-  /** Compute the joint marginal covariance of several variables */
+  /// Compute the joint marginal covariance of several variables.
   JointMarginal jointMarginalCovariance(const KeyVector& variables) const;
 
-  /** Compute the joint marginal information of several variables */
+  /// Compute the joint marginal information of several variables.
   JointMarginal jointMarginalInformation(const KeyVector& variables) const;
 
   /** Delete cached Bayes tree shortcuts created while computing marginals */
@@ -136,6 +135,8 @@ class GTSAM_EXPORT Marginals {
   VectorValues optimize() const;
 
  protected:
+  /// Select the elimination rule that matches the requested marginal factorization.
+  GaussianFactorGraph::Eliminate eliminationFunction() const;
   
   /** Compute the Bayes Tree as a helper function to the constructor */
   void computeBayesTree();

@@ -128,19 +128,6 @@ namespace gtsam {
   }
 
   /* ************************************************************************* */
-  Matrix GaussianBayesTree::marginalInformation(Key key,
-                                                const Eliminate& eliminate) const {
-    return internal::marginalInformation(*this, key, eliminate);
-  }
-
-  /* ************************************************************************* */
-  Matrix GaussianBayesTree::marginalCovariance(Key key,
-                                               const Eliminate& eliminate) const {
-    return internal::jointMarginalCovariance(*this, KeyVector{key}, eliminate)
-        .fullMatrix();
-  }
-
-  /* ************************************************************************* */
   JointMarginal GaussianBayesTree::jointMarginalInformation(
       const KeyVector& queryKeys) const {
     return jointMarginalInformation(queryKeys, EliminatePreferCholesky);
@@ -150,18 +137,6 @@ namespace gtsam {
   JointMarginal GaussianBayesTree::jointMarginalCovariance(
       const KeyVector& queryKeys) const {
     return jointMarginalCovariance(queryKeys, EliminatePreferCholesky);
-  }
-
-  /* ************************************************************************* */
-  JointMarginal GaussianBayesTree::jointMarginalInformation(
-      const KeyVector& queryKeys, const Eliminate& eliminate) const {
-    return internal::jointMarginalInformation(*this, queryKeys, eliminate);
-  }
-
-  /* ************************************************************************* */
-  JointMarginal GaussianBayesTree::jointMarginalCovariance(
-      const KeyVector& queryKeys, const Eliminate& eliminate) const {
-    return internal::jointMarginalCovariance(*this, queryKeys, eliminate);
   }
 
 } // \namespace gtsam
