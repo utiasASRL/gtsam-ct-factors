@@ -21,6 +21,7 @@
 
 #include <gtsam/linear/GaussianBayesNet.h>
 #include <gtsam/linear/GaussianFactorGraph.h>
+#include <gtsam/linear/JointMarginal.h>
 #include <gtsam/inference/BayesTree.h>
 #include <gtsam/inference/BayesTreeCliqueBase.h>
 
@@ -125,7 +126,31 @@ namespace gtsam {
 
     /** Return the marginal on the requested variable as a covariance matrix.  See also
     *   marginalFactor(). */
+    Matrix marginalInformation(Key key) const;
+
+    /** Return the marginal on the requested variable as a covariance matrix.  See also
+    *   marginalFactor(). */
     Matrix marginalCovariance(Key key) const;
+
+    /** Return the marginal information matrix using a specific elimination rule. */
+    Matrix marginalInformation(Key key, const Eliminate& eliminate) const;
+
+    /** Return the marginal covariance matrix using a specific elimination rule. */
+    Matrix marginalCovariance(Key key, const Eliminate& eliminate) const;
+
+    /** Return the joint marginal information matrix on the requested keys. */
+    JointMarginal jointMarginalInformation(const KeyVector& queryKeys) const;
+
+    /** Return the joint marginal covariance matrix on the requested keys. */
+    JointMarginal jointMarginalCovariance(const KeyVector& queryKeys) const;
+
+    /** Return the joint marginal information matrix using a specific elimination rule. */
+    JointMarginal jointMarginalInformation(const KeyVector& queryKeys,
+                                          const Eliminate& eliminate) const;
+
+    /** Return the joint marginal covariance matrix using a specific elimination rule. */
+    JointMarginal jointMarginalCovariance(const KeyVector& queryKeys,
+                                         const Eliminate& eliminate) const;
   };
 
   /// traits

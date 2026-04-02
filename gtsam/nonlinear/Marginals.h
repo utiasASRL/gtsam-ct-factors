@@ -19,12 +19,11 @@
 #pragma once
 
 #include <gtsam/linear/GaussianBayesTree.h>
+#include <gtsam/linear/JointMarginal.h>
 #include <gtsam/nonlinear/NonlinearFactorGraph.h>
 #include <gtsam/nonlinear/Values.h>
 
 namespace gtsam {
-
-class JointMarginal;
 
 /**
  * A class for computing Gaussian marginals of variables in a NonlinearFactorGraph
@@ -143,60 +142,6 @@ class GTSAM_EXPORT Marginals {
 
   /** Compute the Bayes Tree as a helper function to the constructor */
   void computeBayesTree(const Ordering& ordering);
-};
-
-/**
- * A class to store and access a joint marginal, returned from Marginals::jointMarginalCovariance and Marginals::jointMarginalInformation
- */
-class GTSAM_EXPORT JointMarginal {
-
- protected:
-  SymmetricBlockMatrix blockMatrix_;
-  KeyVector keys_;
-  FastMap<Key, size_t> indices_;
-
- public:
-  /// Default constructor only for wrappers
-  JointMarginal() {}
-
-  /** Access a block, corresponding to a pair of variables, of the joint
-   * marginal.  Each block is accessed by its "vertical position",
-   * corresponding to the variable with nonlinear Key \c iVariable and
-   * "horizontal position", corresponding to the variable with nonlinear Key
-   * \c jVariable.
-   *
-   * For example, if we have the joint marginal on a 2D pose "x3" and a 2D
-   * landmark "l2", then jointMarginal(Symbol('x',3), Symbol('l',2)) will
-   * return the 3x2 block of the joint covariance matrix corresponding to x3
-   * and l2.
-   * @param iVariable The nonlinear Key specifying the "vertical position" of the requested block
-   * @param jVariable The nonlinear Key specifying the "horizontal position" of the requested block
-   */
-  Matrix operator()(Key iVariable, Key jVariable) const {
-    const auto indexI = indices_.at(iVariable);
-    const auto indexJ = indices_.at(jVariable);
-    return blockMatrix_.block(indexI, indexJ);
-  }
-
-  /** Synonym for operator() */
-  Matrix at(Key iVariable, Key jVariable) const {
-    return (*this)(iVariable, jVariable);
-  }
-
-  /** The full, dense covariance/information matrix of the joint marginal. */
-  Matrix fullMatrix() const {
-    return blockMatrix_.selfadjointView();
-  }
-
-  /** Print */
-  void print(const std::string& s = "", const KeyFormatter& formatter = DefaultKeyFormatter) const;
-
- protected:
-  JointMarginal(const Matrix& fullMatrix, const std::vector<size_t>& dims, const KeyVector& keys) :
-    blockMatrix_(dims, fullMatrix), keys_(keys), indices_(Ordering(keys).invert()) {}
-
-  friend class Marginals;
-
 };
 
 } /* namespace gtsam */
