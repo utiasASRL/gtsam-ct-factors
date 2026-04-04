@@ -45,10 +45,6 @@ EqVIOFilter::EqVIOFilter(const EqVIOFilterParams& params)
     : Base(State(), defaultCovariance(0), makeVioGroupIdentity()),
       params_(params) {
   State xi0;
-  xi0.sensor.inputBias = Bias::Identity();
-  xi0.sensor.pose = Pose3::Identity();
-  xi0.sensor.velocity.setZero();
-  xi0.sensor.cameraOffset = Pose3::Identity();
   resetReferenceAndGroup(xi0, defaultCovariance(0), makeVioGroupIdentity());
   setLandmarkKeys({});
 }
@@ -77,9 +73,8 @@ EqVIOFilter::EqVIOFilter(const State& xi_ref, const Matrix& Sigma,
  */
 void EqVIOFilter::initializeFromIMU(const IMUInput& imu) {
   State xi_ref = referenceState();
-  xi_ref.sensor.inputBias = Bias::Identity();
-  xi_ref.sensor.pose = Pose3::Identity();
-  xi_ref.sensor.velocity.setZero();
+  xi_ref.bias = Bias::Identity();
+  xi_ref.kinematics = Se23::Identity();
 
   Vector3 approxGravity = imu.acc;
   if (approxGravity.norm() < 1e-9) approxGravity = Vector3::UnitZ();
@@ -87,7 +82,8 @@ void EqVIOFilter::initializeFromIMU(const IMUInput& imu) {
   Quaternion q;
   q.setFromTwoVectors(approxGravity.normalized(), Vector3::UnitZ());
   const Rot3 R0(q);
-  xi_ref.sensor.pose = Pose3(R0, Point3::Zero());
+  Se23::Matrix3K x = Se23::Matrix3K::Zero();
+  xi_ref.kinematics = Se23(R0, x);
   initialized_ = true;
   resetReferenceAndGroup(xi_ref, errorCovariance(), groupEstimate());
 }
@@ -403,7 +399,9 @@ void EqVIOFilter::applyLandmarkStructureChange(
   const auto& [A, Beta, B, Q] = decompose(groupEstimate());
 
   State nextReference;
-  nextReference.sensor = currentReference.sensor;
+  nextReference.kinematics = currentReference.kinematics;
+  nextReference.bias = currentReference.bias;
+  nextReference.cameraOffset = currentReference.cameraOffset;
   nextReference.cameraLandmarks.reserve(retainedIndices.size() +
                                         newLandmarks.size());
 

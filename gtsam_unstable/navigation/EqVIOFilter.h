@@ -136,10 +136,10 @@ class GTSAM_UNSTABLE_EXPORT EqVIOFilter
   size_t landmarkCount() const { return state().n(); }
 
   /// Current estimated body position in world frame.
-  Point3 position() const { return state().sensor.pose.translation(); }
+  Point3 position() const { return state().pose().translation(); }
 
   /// Current estimated body velocity in world frame.
-  Vector3 velocity() const { return state().sensor.velocity; }
+  Vector3 velocity() const { return state().velocity(); }
 
  private:
   /// Allocate identity covariance with dimension `21 + 3*nLandmarks`.

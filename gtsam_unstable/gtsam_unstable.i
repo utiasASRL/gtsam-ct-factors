@@ -831,20 +831,15 @@ class IMUInput {
   gtsam::Vector3 accBiasVel;
 };
 
-class SensorState {
-  SensorState();
-  gtsam::imuBias::ConstantBias inputBias;
-  gtsam::Pose3 pose;
-  gtsam::Vector3 velocity;
-  gtsam::Pose3 cameraOffset;
-  gtsam::Vector3 gravityDir() const;
-};
-
 class State {
   State();
-  gtsam::eqvio::SensorState sensor;
+  gtsam::imuBias::ConstantBias bias;
+  gtsam::Pose3 cameraOffset;
   size_t n() const;
   int dim() const;
+  gtsam::Pose3 pose() const;
+  gtsam::Vector3 velocity() const;
+  gtsam::Vector3 gravityDir() const;
 };
 
 class EqVIOFilterParams {

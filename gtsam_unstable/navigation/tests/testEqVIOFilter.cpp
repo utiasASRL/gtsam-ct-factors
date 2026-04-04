@@ -29,14 +29,22 @@ using namespace gtsam::eqvio;
 
 namespace {
 
+State MakeState(const Bias& bias, const Pose3& pose, const Vector3& velocity,
+                const Pose3& cameraOffset,
+                const std::vector<Point3>& cameraLandmarks) {
+  Se23::Matrix3K x;
+  x.col(0) = pose.translation();
+  x.col(1) = velocity;
+  return State(Se23(pose.rotation(), x), bias, cameraOffset, cameraLandmarks);
+}
+
 State MakeState1() {
-  SensorState sensor;
-  sensor.inputBias = Bias(Vector3(0.03, -0.01, 0.02), Vector3(0.1, -0.2, 0.05));
-  sensor.pose = Pose3(Rot3::RzRyRx(0.2, -0.1, 0.15), Point3(0.4, -0.2, 1.0));
-  sensor.velocity = Vector3(0.5, -0.3, 0.2);
-  sensor.cameraOffset =
-      Pose3(Rot3::RzRyRx(-0.08, 0.04, -0.03), Point3(0.1, 0.0, 0.05));
-  return State(sensor, {{Point3(0.3, -0.15, 4.5)}});
+  return MakeState(
+      Bias(Vector3(0.03, -0.01, 0.02), Vector3(0.1, -0.2, 0.05)),
+      Pose3(Rot3::RzRyRx(0.2, -0.1, 0.15), Point3(0.4, -0.2, 1.0)),
+      Vector3(0.5, -0.3, 0.2),
+      Pose3(Rot3::RzRyRx(-0.08, 0.04, -0.03), Point3(0.1, 0.0, 0.05)),
+      {{Point3(0.3, -0.15, 4.5)}});
 }
 
 KeyVector Keys1() { return {42}; }
@@ -49,23 +57,33 @@ Se23 MakeA(const Rot3& R, const Point3& t, const Vector3& w) {
   return Se23(R, x);
 }
 
-SensorState SensorFixture() {
-  SensorState s;
-  s.inputBias = Bias((Vector3() << 0.01, -0.02, 0.03).finished(),
-                     (Vector3() << 0.04, -0.01, 0.02).finished());
-  s.pose = Pose3(Rot3::RzRyRx(0.1, -0.05, 0.2), Point3(0.3, -0.4, 1.2));
-  s.velocity = Vector3(0.2, -0.1, 0.05);
-  s.cameraOffset =
-      Pose3(Rot3::RzRyRx(-0.02, 0.03, -0.01), Point3(0.1, 0.02, 0.08));
-  return s;
+State State0() {
+  return MakeState(
+      Bias((Vector3() << 0.01, -0.02, 0.03).finished(),
+           (Vector3() << 0.04, -0.01, 0.02).finished()),
+      Pose3(Rot3::RzRyRx(0.1, -0.05, 0.2), Point3(0.3, -0.4, 1.2)),
+      Vector3(0.2, -0.1, 0.05),
+      Pose3(Rot3::RzRyRx(-0.02, 0.03, -0.01), Point3(0.1, 0.02, 0.08)), {});
 }
-
-State State0() { return State(SensorFixture(), {}); }
-State State1() { return State(SensorFixture(), {{Point3(0.8, -0.2, 4.5)}}); }
+State State1() {
+  return MakeState(
+      Bias((Vector3() << 0.01, -0.02, 0.03).finished(),
+           (Vector3() << 0.04, -0.01, 0.02).finished()),
+      Pose3(Rot3::RzRyRx(0.1, -0.05, 0.2), Point3(0.3, -0.4, 1.2)),
+      Vector3(0.2, -0.1, 0.05),
+      Pose3(Rot3::RzRyRx(-0.02, 0.03, -0.01), Point3(0.1, 0.02, 0.08)),
+      {{Point3(0.8, -0.2, 4.5)}});
+}
 State State3() {
-  return State(SensorFixture(), {{Point3(0.8, -0.2, 4.5)},
-                                 {Point3(-0.6, 0.3, 3.8)},
-                                 {Point3(0.1, 0.7, 5.2)}});
+  return MakeState(
+      Bias((Vector3() << 0.01, -0.02, 0.03).finished(),
+           (Vector3() << 0.04, -0.01, 0.02).finished()),
+      Pose3(Rot3::RzRyRx(0.1, -0.05, 0.2), Point3(0.3, -0.4, 1.2)),
+      Vector3(0.2, -0.1, 0.05),
+      Pose3(Rot3::RzRyRx(-0.02, 0.03, -0.01), Point3(0.1, 0.02, 0.08)),
+      {{Point3(0.8, -0.2, 4.5)},
+       {Point3(-0.6, 0.3, 3.8)},
+       {Point3(0.1, 0.7, 5.2)}});
 }
 
 VioGroup Group0() { return makeVioGroupIdentity(0); }
@@ -114,38 +132,39 @@ void PropagateSingle(EqVIOFilter& filter, const IMUInput& imu, double dt) {
 State integrateSystemFunction(const State& state, const IMUInput& velocity,
                               double dt) {
   State out;
-  const SensorState& sensor = state.sensor;
-  const IMUInput v_est = velocity - sensor.inputBias;
+  const IMUInput v_est = velocity - state.bias;
+  const Pose3 pose = state.pose();
+  const Vector3 bodyVelocity = state.velocity();
 
-  out.sensor.inputBias =
-      Bias(sensor.inputBias.accelerometer() + dt * velocity.accBiasVel,
-           sensor.inputBias.gyroscope() + dt * velocity.gyrBiasVel);
+  out.bias = Bias(state.bias.accelerometer() + dt * velocity.accBiasVel,
+                  state.bias.gyroscope() + dt * velocity.gyrBiasVel);
 
   const Rot3 dR = Rot3::Expmap(dt * v_est.gyr);
-  const Vector3 dXWorld = dt * (sensor.pose.rotation() * sensor.velocity) +
-                          0.5 * dt * dt *
-                              (sensor.pose.rotation() * v_est.acc +
-                               Vector3(0, 0, -GRAVITY_CONSTANT));
-  const Point3 dXBody = sensor.pose.rotation().unrotate(dXWorld);
+  const Vector3 dXWorld =
+      dt * (pose.rotation() * bodyVelocity) +
+      0.5 * dt * dt *
+          (pose.rotation() * v_est.acc + Vector3(0, 0, -GRAVITY_CONSTANT));
+  const Point3 dXBody = pose.rotation().unrotate(dXWorld);
   const Pose3 b0Tb1(dR, dXBody);
-
-  out.sensor.pose = sensor.pose.compose(b0Tb1);
+  const Pose3 nextPose = pose.compose(b0Tb1);
 
   const Vector3 inertialVelocityDiff =
-      sensor.pose.rotation() * v_est.acc + Vector3(0, 0, -GRAVITY_CONSTANT);
-  out.sensor.velocity = out.sensor.pose.rotation().unrotate(
-      sensor.pose.rotation() * sensor.velocity + dt * inertialVelocityDiff);
+      pose.rotation() * v_est.acc + Vector3(0, 0, -GRAVITY_CONSTANT);
+  const Vector3 nextVelocity = nextPose.rotation().unrotate(
+      pose.rotation() * bodyVelocity + dt * inertialVelocityDiff);
 
-  const Pose3 c1Tc0 = sensor.cameraOffset.inverse()
+  const Pose3 c1Tc0 = state.cameraOffset.inverse()
                           .compose(b0Tb1.inverse())
-                          .compose(sensor.cameraOffset);
+                          .compose(state.cameraOffset);
   out.cameraLandmarks.resize(state.n());
 
   for (size_t i = 0; i < state.n(); ++i) {
     out.cameraLandmarks[i] = c1Tc0.transformFrom(state.cameraLandmarks[i]);
   }
 
-  out.sensor.cameraOffset = sensor.cameraOffset;
+  out.kinematics =
+      MakeA(nextPose.rotation(), nextPose.translation(), nextVelocity);
+  out.cameraOffset = state.cameraOffset;
   return out;
 }
 
@@ -286,13 +305,8 @@ TEST(EqVIOFilter, VisionUpdate) {
 TEST(EqVIOFilter, Smoke) {
   EqVIOFilterParams params;
 
-  SensorState sensor;
-  sensor.inputBias = Bias::Identity();
-  sensor.pose = Pose3::Identity();
-  sensor.velocity.setZero();
-  sensor.cameraOffset = Pose3::Identity();
-
-  State xi0(sensor, {{Point3(0.8, -0.2, 4.5)}, {Point3(-0.6, 0.3, 3.8)}});
+  State xi0(Se23::Identity(), Bias::Identity(), Pose3::Identity(),
+            {{Point3(0.8, -0.2, 4.5)}, {Point3(-0.6, 0.3, 3.8)}});
   Matrix Sigma0 = Matrix::Identity(xi0.dim(), xi0.dim()) * 1e-3;
 
   EqVIOFilter filter(xi0, Sigma0, Keys2(), params);

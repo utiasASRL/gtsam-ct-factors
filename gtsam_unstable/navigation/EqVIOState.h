@@ -31,28 +31,6 @@
 namespace gtsam {
 namespace eqvio {
 
-/**
- * @brief Sensor-side EqVIO state block (bias, body pose, velocity, extrinsics).
- *
- * This is the 21D sensor component of the full EqVIO state manifold.
- */
-struct GTSAM_UNSTABLE_EXPORT SensorState {
-  /// IMU bias state.
-  Bias inputBias = Bias::Identity();
-  /// Body/IMU pose in world frame.
-  Pose3 pose = Pose3::Identity();
-  /// Body/IMU translational velocity in world frame.
-  Vector3 velocity = Vector3::Zero();
-  /// Camera pose relative to IMU/body frame.
-  Pose3 cameraOffset = Pose3::Identity();
-
-  /// Unit gravity direction expressed in the body frame.
-  Vector3 gravityDir() const;
-
-  void print(const std::string& s = "") const;
-  bool equals(const SensorState& other, double tol = 1e-9) const;
-};
-
 /// Dimension of the dynamic EqVIO state with `landmarkCount` landmarks.
 inline int stateDim(size_t landmarkCount) {
   return 21 + 3 * static_cast<int>(landmarkCount);
@@ -67,17 +45,30 @@ class GTSAM_UNSTABLE_EXPORT State {
   using Jacobian = Matrix;
   using ChartJacobian = OptionalJacobian<Eigen::Dynamic, Eigen::Dynamic>;
 
-  SensorState sensor;
+  /// Body pose/velocity block stored as SE_2(3).
+  Se23 kinematics = Se23::Identity();
+  /// IMU bias state.
+  Bias bias = Bias::Identity();
+  /// Camera pose relative to IMU/body frame.
+  Pose3 cameraOffset = Pose3::Identity();
+  /// Landmark states in inverse-depth coordinates.
   std::vector<Point3> cameraLandmarks;
 
   /// Construct default-initialized state.
   State() = default;
-  /// Construct from explicit sensor and landmark blocks.
-  State(const SensorState& sensor_, const std::vector<Point3>& lms);
+  /// Construct from explicit kinematics, bias, extrinsics, and landmarks.
+  State(const Se23& kinematics_, const Bias& bias_, const Pose3& cameraOffset_,
+        const std::vector<Point3>& lms);
 
   /// Number of landmarks.
   size_t n() const;
   int dim() const;
+  /// Body/IMU pose in world frame.
+  Pose3 pose() const;
+  /// Body/IMU translational velocity in world frame.
+  Vector3 velocity() const;
+  /// Unit gravity direction expressed in the body frame.
+  Vector3 gravityDir() const;
 
   /// Retract in the state chart.
   State retract(const TangentVector& v, ChartJacobian H1 = {},

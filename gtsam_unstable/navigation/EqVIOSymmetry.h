@@ -28,18 +28,10 @@ namespace gtsam {
 namespace eqvio {
 
 /**
- * @brief Right action of `VioGroup` on the sensor-only state block.
- *
- * Applies bias, body pose/velocity, and camera extrinsic transforms while
- * preserving the EqVIO right-action convention.
- */
-GTSAM_UNSTABLE_EXPORT SensorState
-sensorStateGroupAction(const VioGroup& X, const SensorState& sensor);
-/**
  * @brief Right action of `VioGroup` on full EqVIO state.
  *
- * Applies `sensorStateGroupAction` to the sensor block and SOT3 inverse action
- * to each landmark state.
+ * Applies the sensor-side right action to `kinematics`, `bias`, and
+ * `cameraOffset`, and the SOT3 inverse action to each landmark state.
  */
 GTSAM_UNSTABLE_EXPORT State stateGroupAction(const VioGroup& X,
                                              const State& state);

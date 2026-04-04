@@ -20,32 +20,37 @@
 namespace gtsam {
 namespace eqvio {
 
-/// Gravity direction in body frame derived from current body pose.
-Vector3 SensorState::gravityDir() const {
-  return pose.rotation().unrotate(Vector3::UnitZ());
+namespace {
+
+Se23 makeKinematics(const Pose3& pose, const Vector3& velocity) {
+  Se23::Matrix3K x;
+  x.col(0) = pose.translation();
+  x.col(1) = velocity;
+  return Se23(pose.rotation(), x);
 }
 
-void SensorState::print(const std::string& s) const {
-  if (!s.empty()) std::cout << s << std::endl;
-  gtsam::print(Vector(inputBias.vector()), "  inputBias");
-  pose.print("  pose");
-  gtsam::print(Vector(velocity), "  velocity");
-  cameraOffset.print("  cameraOffset");
-}
+}  // namespace
 
-bool SensorState::equals(const SensorState& other, double tol) const {
-  return inputBias.equals(other.inputBias, tol) &&
-         pose.equals(other.pose, tol) &&
-         equal_with_abs_tol(velocity, other.velocity, tol) &&
-         cameraOffset.equals(other.cameraOffset, tol);
-}
-
-State::State(const SensorState& sensor_, const std::vector<Point3>& lms)
-    : sensor(sensor_), cameraLandmarks(lms) {}
+State::State(const Se23& kinematics_, const Bias& bias_,
+             const Pose3& cameraOffset_, const std::vector<Point3>& lms)
+    : kinematics(kinematics_),
+      bias(bias_),
+      cameraOffset(cameraOffset_),
+      cameraLandmarks(lms) {}
 
 size_t State::n() const { return cameraLandmarks.size(); }
 
 int State::dim() const { return stateDim(n()); }
+
+Pose3 State::pose() const {
+  return Pose3(kinematics.rotation(), kinematics.x(0));
+}
+
+Vector3 State::velocity() const { return kinematics.x(1); }
+
+Vector3 State::gravityDir() const {
+  return kinematics.rotation().unrotate(Vector3::UnitZ());
+}
 
 State State::retract(const TangentVector& v, ChartJacobian H1,
                      ChartJacobian H2) const {
@@ -53,12 +58,15 @@ State State::retract(const TangentVector& v, ChartJacobian H1,
 
   Matrix66 Hpose1, Hpose2, Hcam1, Hcam2;
   State out(*this);
+  const Pose3 currentPose = pose();
+  const Vector3 currentVelocity = velocity();
 
-  out.sensor.inputBias = sensor.inputBias.retract(v.segment<6>(0));
-  out.sensor.pose = sensor.pose.retract(v.segment<6>(6), H1 ? &Hpose1 : nullptr,
-                                        H2 ? &Hpose2 : nullptr);
-  out.sensor.velocity += v.segment<3>(12);
-  out.sensor.cameraOffset = sensor.cameraOffset.retract(
+  out.bias = bias.retract(v.segment<6>(0));
+  const Pose3 nextPose = currentPose.retract(
+      v.segment<6>(6), H1 ? &Hpose1 : nullptr, H2 ? &Hpose2 : nullptr);
+  const Vector3 nextVelocity = currentVelocity + v.segment<3>(12);
+  out.kinematics = makeKinematics(nextPose, nextVelocity);
+  out.cameraOffset = cameraOffset.retract(
       v.segment<6>(15), H1 ? &Hcam1 : nullptr, H2 ? &Hcam2 : nullptr);
 
   for (size_t i = 0; i < n(); ++i) {
@@ -99,13 +107,17 @@ State::TangentVector State::localCoordinates(const State& other,
 
   Matrix66 Hpose1, Hpose2, Hcam1, Hcam2;
   TangentVector out = Vector::Zero(d);
+  const Pose3 thisPose = pose();
+  const Pose3 otherPose = other.pose();
+  const Vector3 thisVelocity = velocity();
+  const Vector3 otherVelocity = other.velocity();
 
-  out.segment<6>(0) = sensor.inputBias.localCoordinates(other.sensor.inputBias);
-  out.segment<6>(6) = sensor.pose.localCoordinates(
-      other.sensor.pose, H1 ? &Hpose1 : nullptr, H2 ? &Hpose2 : nullptr);
-  out.segment<3>(12) = other.sensor.velocity - sensor.velocity;
-  out.segment<6>(15) = sensor.cameraOffset.localCoordinates(
-      other.sensor.cameraOffset, H1 ? &Hcam1 : nullptr, H2 ? &Hcam2 : nullptr);
+  out.segment<6>(0) = bias.localCoordinates(other.bias);
+  out.segment<6>(6) = thisPose.localCoordinates(
+      otherPose, H1 ? &Hpose1 : nullptr, H2 ? &Hpose2 : nullptr);
+  out.segment<3>(12) = otherVelocity - thisVelocity;
+  out.segment<6>(15) = cameraOffset.localCoordinates(
+      other.cameraOffset, H1 ? &Hcam1 : nullptr, H2 ? &Hcam2 : nullptr);
 
   for (size_t i = 0; i < n(); ++i) {
     out.segment<3>(21 + 3 * static_cast<int>(i)) =
@@ -142,7 +154,10 @@ State::TangentVector State::localCoordinates(const State& other,
 void State::print(const std::string& s) const {
   if (!s.empty()) std::cout << s << std::endl;
   std::cout << "State(dim=" << dim() << ", n=" << n() << ")" << std::endl;
-  sensor.print("  sensor");
+  gtsam::print(Vector(bias.vector()), "  bias");
+  pose().print("  pose");
+  gtsam::print(Vector(velocity()), "  velocity");
+  cameraOffset.print("  cameraOffset");
   for (size_t i = 0; i < cameraLandmarks.size(); ++i) {
     std::cout << "  landmark[" << i << "] " << cameraLandmarks[i].transpose()
               << std::endl;
@@ -151,7 +166,9 @@ void State::print(const std::string& s) const {
 
 bool State::equals(const State& other, double tol) const {
   if (cameraLandmarks.size() != other.cameraLandmarks.size()) return false;
-  if (!sensor.equals(other.sensor, tol)) return false;
+  if (!bias.equals(other.bias, tol)) return false;
+  if (!kinematics.equals(other.kinematics, tol)) return false;
+  if (!cameraOffset.equals(other.cameraOffset, tol)) return false;
   for (size_t i = 0; i < cameraLandmarks.size(); ++i) {
     if (!equal_with_abs_tol(cameraLandmarks[i], other.cameraLandmarks[i],
                             tol)) {

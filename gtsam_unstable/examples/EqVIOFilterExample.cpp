@@ -88,13 +88,10 @@ EqVIOFilterParams paramsFromMetadata(const replay::MetadataMap& metadata) {
 
 /// Construct initial reference state using metadata-provided camera extrinsics.
 State initialReferenceState(const replay::MetadataMap& metadata) {
-  SensorState sensor;
-  sensor.inputBias = Bias::Identity();
-  sensor.pose = Pose3::Identity();
-  sensor.velocity.setZero();
-  sensor.cameraOffset =
-      replay::cameraExtrinsicsFromMetadata(metadata).value_or(Pose3::Identity());
-  return State(sensor, {});
+  return State(Se23::Identity(), Bias::Identity(),
+               replay::cameraExtrinsicsFromMetadata(metadata).value_or(
+                   Pose3::Identity()),
+               {});
 }
 
 /// Print compact replay statistics and terminal estimate summary.
@@ -102,8 +99,8 @@ void printSummary(const EqVIOFilterParams& params, double currentTime,
                   size_t imuCount, size_t visionFrameCount,
                   size_t visionFeatureCount, const State& estimate) {
   std::cout << "CSV replay complete.\n";
-  std::cout << "Events: " << (imuCount + visionFrameCount) << ", IMU: "
-            << imuCount << ", vision frames: " << visionFrameCount
+  std::cout << "Events: " << (imuCount + visionFrameCount)
+            << ", IMU: " << imuCount << ", vision frames: " << visionFrameCount
             << ", vision features: " << visionFeatureCount << "\n";
   std::cout << "Measurement noise variance (normalized): "
             << params.measurementNoiseVariance << "\n";
@@ -111,11 +108,11 @@ void printSummary(const EqVIOFilterParams& params, double currentTime,
   std::cout << "Filter time: " << currentTime << "\n";
   std::cout << std::setprecision(10);
   std::cout << "Landmarks: " << estimate.n() << "\n";
-  std::cout << "Pose translation: "
-            << estimate.sensor.pose.translation().transpose() << "\n";
+  std::cout << "Pose translation: " << estimate.pose().translation().transpose()
+            << "\n";
   std::cout << "GT pose translation: "
             << HardcodedGroundTruth::position().transpose() << "\n";
-  std::cout << "Velocity: " << estimate.sensor.velocity.transpose() << "\n";
+  std::cout << "Velocity: " << estimate.velocity().transpose() << "\n";
   std::cout << "GT velocity: " << HardcodedGroundTruth::velocity().transpose()
             << "\n";
 }
@@ -126,7 +123,7 @@ void printSummary(const EqVIOFilterParams& params, double currentTime,
  * @brief Run EqVIO filter replay on bundled EuRoC-derived CSV data.
  */
 int main() {
-    const std::string csvPath =
+  const std::string csvPath =
       findExampleDataFile("EqVIOdata_eurocmav_room1_10sec.csv");
 
   try {
@@ -170,17 +167,17 @@ int main() {
       }
 
       const replay::BufferedImuPropagation step =
-          replay::makeBufferedImuPropagation(imuBuffer, currentTime, event.tAbs);
+          replay::makeBufferedImuPropagation(imuBuffer, currentTime,
+                                             event.tAbs);
       if (!step.imuInputs.empty()) {
         filter->predict(step.imuInputs, step.dts);
         currentTime += step.propagatedTime;
       }
       if (step.trimCount > 0) {
-        imuBuffer.erase(
-            imuBuffer.begin(),
-            imuBuffer.begin() +
-                static_cast<std::vector<IMUInput>::difference_type>(
-                    step.trimCount));
+        imuBuffer.erase(imuBuffer.begin(),
+                        imuBuffer.begin() +
+                            static_cast<std::vector<IMUInput>::difference_type>(
+                                step.trimCount));
       }
 
       const Matrix R =

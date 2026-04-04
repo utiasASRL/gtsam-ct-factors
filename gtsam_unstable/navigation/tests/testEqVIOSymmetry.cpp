@@ -51,20 +51,23 @@ inline Se23 MakeA(const Rot3& R, const Point3& t, const Vector3& w) {
   return Se23(R, x);
 }
 
-inline State RandomStateElement(const KeyVector& ids) {
-  SensorState sensor;
-  sensor.inputBias = Bias(Vector3::Random(), Vector3::Random());
-  sensor.pose = Pose3::Expmap(Vector6::Random());
-  sensor.velocity = Vector3::Random();
-  sensor.cameraOffset = Pose3::Expmap(Vector6::Random());
+inline State MakeState(const Bias& bias, const Pose3& pose,
+                       const Vector3& velocity, const Pose3& cameraOffset,
+                       const std::vector<Point3>& cameraLandmarks) {
+  return State(MakeA(pose.rotation(), pose.translation(), velocity), bias,
+               cameraOffset, cameraLandmarks);
+}
 
+inline State RandomStateElement(const KeyVector& ids) {
   std::vector<Point3> lms(ids.size());
   for (size_t i = 0; i < ids.size(); ++i) {
     Point3 p = 10.0 * Vector3::Random();
     p.z() = std::abs(p.z()) + 1.0;
     lms[i] = p;
   }
-  return State(sensor, lms);
+  return MakeState(Bias(Vector3::Random(), Vector3::Random()),
+                   Pose3::Expmap(Vector6::Random()), Vector3::Random(),
+                   Pose3::Expmap(Vector6::Random()), lms);
 }
 
 inline VioGroup RandomGroupElement(const KeyVector& ids) {
@@ -150,11 +153,10 @@ inline double StateDistance(const State& xi1, const State& xi2) {
   }
 
   double dist = 0.0;
-  dist += xi1.sensor.inputBias.localCoordinates(xi2.sensor.inputBias).norm();
-  dist += xi1.sensor.pose.localCoordinates(xi2.sensor.pose).norm();
-  dist +=
-      xi1.sensor.cameraOffset.localCoordinates(xi2.sensor.cameraOffset).norm();
-  dist += (xi1.sensor.velocity - xi2.sensor.velocity).norm();
+  dist += xi1.bias.localCoordinates(xi2.bias).norm();
+  dist += xi1.pose().localCoordinates(xi2.pose()).norm();
+  dist += xi1.cameraOffset.localCoordinates(xi2.cameraOffset).norm();
+  dist += (xi1.velocity() - xi2.velocity()).norm();
 
   for (size_t i = 0; i < xi1.n(); ++i) {
     dist += (xi1.cameraLandmarks[i] - xi2.cameraLandmarks[i]).norm();
@@ -204,20 +206,19 @@ inline Vector liftVelocity(const State& state, const IMUInput& velocity) {
   const size_t N = state.n();
   Vector lift = Vector::Zero(21 + 4 * static_cast<int>(N));
 
-  const SensorState& sensor = state.sensor;
-  const IMUInput v_est = velocity - sensor.inputBias;
+  const IMUInput v_est = velocity - state.bias;
 
   Vector6 U_A;
-  U_A << v_est.gyr, sensor.velocity;
-  const Vector6 U_B = sensor.cameraOffset.inverse().AdjointMap() * U_A;
-  const Vector3 u_w = -v_est.acc + sensor.gravityDir() * GRAVITY_CONSTANT;
+  U_A << v_est.gyr, state.velocity();
+  const Vector6 U_B = state.cameraOffset.inverse().AdjointMap() * U_A;
+  const Vector3 u_w = -v_est.acc + state.gravityDir() * GRAVITY_CONSTANT;
 
   lift.segment<6>(0) = U_A;
   lift.segment<3>(6) = u_w;
   lift.segment<6>(9) << velocity.accBiasVel, velocity.gyrBiasVel;
   lift.segment<6>(15) = U_B;
 
-  const Vector6 U_C = sensor.cameraOffset.inverse().AdjointMap() * U_A;
+  const Vector6 U_C = state.cameraOffset.inverse().AdjointMap() * U_A;
   const Vector3 omegaC = U_C.head<3>();
   const Vector3 vC = U_C.tail<3>();
 
@@ -283,38 +284,39 @@ VisionMeasurement outputGroupAction(
 State integrateSystemFunction(const State& state, const IMUInput& velocity,
                               double dt) {
   State out;
-  const SensorState& sensor = state.sensor;
-  const IMUInput v_est = velocity - sensor.inputBias;
+  const IMUInput v_est = velocity - state.bias;
+  const Pose3 pose = state.pose();
+  const Vector3 bodyVelocity = state.velocity();
 
-  out.sensor.inputBias =
-      Bias(sensor.inputBias.accelerometer() + dt * velocity.accBiasVel,
-           sensor.inputBias.gyroscope() + dt * velocity.gyrBiasVel);
+  out.bias = Bias(state.bias.accelerometer() + dt * velocity.accBiasVel,
+                  state.bias.gyroscope() + dt * velocity.gyrBiasVel);
 
   const Rot3 dR = Rot3::Expmap(dt * v_est.gyr);
-  const Vector3 dXWorld = dt * (sensor.pose.rotation() * sensor.velocity) +
-                          0.5 * dt * dt *
-                              (sensor.pose.rotation() * v_est.acc +
-                               Vector3(0, 0, -GRAVITY_CONSTANT));
-  const Point3 dXBody = sensor.pose.rotation().unrotate(dXWorld);
+  const Vector3 dXWorld =
+      dt * (pose.rotation() * bodyVelocity) +
+      0.5 * dt * dt *
+          (pose.rotation() * v_est.acc + Vector3(0, 0, -GRAVITY_CONSTANT));
+  const Point3 dXBody = pose.rotation().unrotate(dXWorld);
   const Pose3 b0Tb1(dR, dXBody);
-
-  out.sensor.pose = sensor.pose.compose(b0Tb1);
+  const Pose3 nextPose = pose.compose(b0Tb1);
 
   const Vector3 inertialVelocityDiff =
-      sensor.pose.rotation() * v_est.acc + Vector3(0, 0, -GRAVITY_CONSTANT);
-  out.sensor.velocity = out.sensor.pose.rotation().unrotate(
-      sensor.pose.rotation() * sensor.velocity + dt * inertialVelocityDiff);
+      pose.rotation() * v_est.acc + Vector3(0, 0, -GRAVITY_CONSTANT);
+  const Vector3 nextVelocity = nextPose.rotation().unrotate(
+      pose.rotation() * bodyVelocity + dt * inertialVelocityDiff);
 
-  const Pose3 c1Tc0 = sensor.cameraOffset.inverse()
+  const Pose3 c1Tc0 = state.cameraOffset.inverse()
                           .compose(b0Tb1.inverse())
-                          .compose(sensor.cameraOffset);
+                          .compose(state.cameraOffset);
   out.cameraLandmarks.resize(state.n());
 
   for (size_t i = 0; i < state.n(); ++i) {
     out.cameraLandmarks[i] = c1Tc0.transformFrom(state.cameraLandmarks[i]);
   }
 
-  out.sensor.cameraOffset = sensor.cameraOffset;
+  out.kinematics =
+      MakeA(nextPose.rotation(), nextPose.translation(), nextVelocity);
+  out.cameraOffset = state.cameraOffset;
   return out;
 }
 
@@ -325,18 +327,20 @@ std::vector<Point3> Lms3() {
           {Point3(0.2, 0.8, 5.5)}};
 }
 
-SensorState SensorA() {
-  SensorState s;
-  s.inputBias = Bias(Vector3(0.01, -0.02, 0.04), Vector3(0.05, -0.04, 0.03));
-  s.pose = Pose3(Rot3::RzRyRx(0.1, -0.2, 0.25), Point3(0.4, -0.1, 1.0));
-  s.velocity = Vector3(0.3, -0.2, 0.1);
-  s.cameraOffset =
-      Pose3(Rot3::RzRyRx(-0.03, 0.05, -0.02), Point3(0.1, 0.02, 0.07));
-  return s;
+State State0() {
+  return MakeState(
+      Bias(Vector3(0.01, -0.02, 0.04), Vector3(0.05, -0.04, 0.03)),
+      Pose3(Rot3::RzRyRx(0.1, -0.2, 0.25), Point3(0.4, -0.1, 1.0)),
+      Vector3(0.3, -0.2, 0.1),
+      Pose3(Rot3::RzRyRx(-0.03, 0.05, -0.02), Point3(0.1, 0.02, 0.07)), Lms0());
 }
-
-State State0() { return State(SensorA(), Lms0()); }
-State State3() { return State(SensorA(), Lms3()); }
+State State3() {
+  return MakeState(
+      Bias(Vector3(0.01, -0.02, 0.04), Vector3(0.05, -0.04, 0.03)),
+      Pose3(Rot3::RzRyRx(0.1, -0.2, 0.25), Point3(0.4, -0.1, 1.0)),
+      Vector3(0.3, -0.2, 0.1),
+      Pose3(Rot3::RzRyRx(-0.03, 0.05, -0.02), Point3(0.1, 0.02, 0.07)), Lms3());
+}
 
 VioGroup Group0() {
   const Rot3 R = Rot3::RzRyRx(0.02, -0.03, 0.04);
