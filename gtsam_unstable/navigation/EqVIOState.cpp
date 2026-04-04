@@ -45,7 +45,7 @@ State::State(const SensorState& sensor_, const std::vector<Point3>& lms)
 
 size_t State::n() const { return cameraLandmarks.size(); }
 
-int State::dim() const { return 21 + 3 * static_cast<int>(n()); }
+int State::dim() const { return stateDim(n()); }
 
 State State::retract(const TangentVector& v, ChartJacobian H1,
                      ChartJacobian H2) const {

@@ -25,6 +25,16 @@
 namespace gtsam {
 namespace eqvio {
 
+namespace {
+
+inline int dense(size_t n) { return static_cast<int>(n); }
+
+inline int landmarkOffset(size_t landmarkIndex) {
+  return 21 + 3 * dense(landmarkIndex);
+}
+
+}  // namespace
+
 /**
  * @brief Construct filter with given parameter bundle and identity initial
  * state.
@@ -158,14 +168,14 @@ void EqVIOFilter::update(const VisionMeasurement& measurement,
 
 /// Identity covariance helper sized for current sensor + landmark dimensions.
 Matrix EqVIOFilter::defaultCovariance(size_t nLandmarks) {
-  const int d = 21 + 3 * static_cast<int>(nLandmarks);
+  const int d = static_cast<int>(stateDim(nLandmarks));
   return Matrix::Identity(d, d);
 }
 
 /// Build block-diagonal process covariance from scalar per-component variances.
 Matrix EqVIOFilter::stateProcessNoise(size_t nLandmarks) const {
-  Matrix Q = Matrix::Identity(21 + 3 * static_cast<int>(nLandmarks),
-                              21 + 3 * static_cast<int>(nLandmarks));
+  const int d = static_cast<int>(stateDim(nLandmarks));
+  Matrix Q = Matrix::Identity(d, d);
   Q.block<3, 3>(0, 0) *= params_.biasOmegaProcessVariance;
   Q.block<3, 3>(3, 3) *= params_.biasAccelProcessVariance;
   Q.block<3, 3>(6, 6) *= params_.attitudeProcessVariance;
@@ -174,8 +184,8 @@ Matrix EqVIOFilter::stateProcessNoise(size_t nLandmarks) const {
   Q.block<3, 3>(15, 15) *= params_.cameraAttitudeProcessVariance;
   Q.block<3, 3>(18, 18) *= params_.cameraPositionProcessVariance;
   if (nLandmarks > 0) {
-    Q.block(21, 21, 3 * static_cast<int>(nLandmarks),
-            3 * static_cast<int>(nLandmarks)) *= params_.pointProcessVariance;
+    const int landmarkDim = 3 * dense(nLandmarks);
+    Q.block(21, 21, landmarkDim, landmarkDim) *= params_.pointProcessVariance;
   }
   return Q;
 }
@@ -433,31 +443,30 @@ void EqVIOFilter::applyLandmarkStructureChange(
 Matrix EqVIOFilter::rebuildCovariance(
     const std::vector<size_t>& retainedIndices, size_t newLandmarkCount) const {
   const Matrix& currentCovariance = errorCovariance();
-  const int retainedLandmarkCount = static_cast<int>(retainedIndices.size());
-  const int newLandmarkBlockCount = static_cast<int>(newLandmarkCount);
+  const int newLandmarkBlockCount = dense(newLandmarkCount);
   const int newDimension =
-      21 + 3 * (retainedLandmarkCount + newLandmarkBlockCount);
+      static_cast<int>(stateDim(retainedIndices.size() + newLandmarkCount));
 
   Matrix rebuilt = Matrix::Zero(newDimension, newDimension);
   rebuilt.block(0, 0, 21, 21) = currentCovariance.block(0, 0, 21, 21);
 
   for (size_t newI = 0; newI < retainedIndices.size(); ++newI) {
-    const int srcI = 21 + 3 * static_cast<int>(retainedIndices[newI]);
-    const int dstI = 21 + 3 * static_cast<int>(newI);
+    const int srcI = landmarkOffset(retainedIndices[newI]);
+    const int dstI = landmarkOffset(newI);
 
     rebuilt.block(0, dstI, 21, 3) = currentCovariance.block(0, srcI, 21, 3);
     rebuilt.block(dstI, 0, 3, 21) = currentCovariance.block(srcI, 0, 3, 21);
 
     for (size_t newJ = 0; newJ < retainedIndices.size(); ++newJ) {
-      const int srcJ = 21 + 3 * static_cast<int>(retainedIndices[newJ]);
-      const int dstJ = 21 + 3 * static_cast<int>(newJ);
+      const int srcJ = landmarkOffset(retainedIndices[newJ]);
+      const int dstJ = landmarkOffset(newJ);
       rebuilt.block(dstI, dstJ, 3, 3) =
           currentCovariance.block(srcI, srcJ, 3, 3);
     }
   }
 
   if (newLandmarkBlockCount > 0) {
-    const int newOffset = 21 + 3 * retainedLandmarkCount;
+    const int newOffset = landmarkOffset(retainedIndices.size());
     rebuilt.block(newOffset, newOffset, 3 * newLandmarkBlockCount,
                   3 * newLandmarkBlockCount) =
         Matrix::Identity(3 * newLandmarkBlockCount, 3 * newLandmarkBlockCount) *

@@ -27,6 +27,16 @@ namespace eqvio {
 
 namespace {
 
+inline int dense(size_t n) { return static_cast<int>(n); }
+
+inline int denseDimension(const VioGroup& X) {
+  return static_cast<int>(Dim_groupTangent(X));
+}
+
+inline int stateLandmarkOffset(size_t landmarkIndex) {
+  return 21 + 3 * dense(landmarkIndex);
+}
+
 /// Extract body transform component `bTb'` from full group element.
 Pose3 bTbPrimeFromGroup(const VioGroup& X) {
   const Se23& A = std::get<0>(decompose(X));
@@ -58,7 +68,7 @@ Rot3 RotationFromTwoVectors(const Vector3& from, const Vector3& to) {
 Matrix NumericalDerivativeActionWrtGroup(
     const std::function<State(const VioGroup&)>& f, const VioGroup& X,
     const State& y0, double h = 1e-6) {
-  const int n = static_cast<int>(Dim_groupTangent(X));
+  const int n = denseDimension(X);
   const int m = y0.dim();
   Matrix H = Matrix::Zero(m, n);
 
@@ -178,7 +188,7 @@ Vector liftInnovation(const Vector& totalInnovation, const State& xi0) {
         "liftInnovation: innovation dimension mismatch");
   }
 
-  const int N = static_cast<int>(xi0.n());
+  const size_t N = xi0.n();
   Vector lift = Vector::Zero(21 + 4 * N);
 
   lift.segment<6>(9) = totalInnovation.segment<6>(0);
@@ -192,13 +202,13 @@ Vector liftInnovation(const Vector& totalInnovation, const State& xi0) {
       totalInnovation.segment<6>(15) +
       xi0.sensor.cameraOffset.inverse().AdjointMap() * lift.segment<6>(0);
 
-  for (int i = 0; i < N; ++i) {
-    const Point3 qi0 = xi0.cameraLandmarks[static_cast<size_t>(i)];
-    const Vector3 gammaQi0 =
-        ConvInvDepthToEuc(qi0) * totalInnovation.segment<3>(21 + 3 * i);
-
-    lift.segment<3>(21 + 4 * i) = -qi0.cross(gammaQi0) / qi0.squaredNorm();
-    lift(21 + 4 * i + 3) = -qi0.dot(gammaQi0) / qi0.squaredNorm();
+  for (size_t i = 0; i < N; ++i) {
+    const Point3 qi0 = xi0.cameraLandmarks[i];
+    const Vector3 gammaQi0 = ConvInvDepthToEuc(qi0) *
+                             totalInnovation.segment<3>(stateLandmarkOffset(i));
+    const int offset = 21 + 4 * dense(i);
+    lift.segment<3>(offset) = -qi0.cross(gammaQi0) / qi0.squaredNorm();
+    lift(offset + 3) = -qi0.dot(gammaQi0) / qi0.squaredNorm();
   }
 
   return lift;
@@ -207,7 +217,7 @@ Vector liftInnovation(const Vector& totalInnovation, const State& xi0) {
 /// EqF state matrix construction in inverse-depth coordinates.
 Matrix EqFStateMatrixA(const VioGroup& X, const State& xi0,
                        const IMUInput& imuVel) {
-  const int N = static_cast<int>(xi0.n());
+  const size_t N = xi0.n();
   Matrix A0t = Matrix::Zero(xi0.dim(), xi0.dim());
 
   const Matrix B = EqFInputMatrixB(X, xi0);
@@ -229,41 +239,38 @@ Matrix EqFStateMatrixA(const VioGroup& X, const State& xi0,
 
   const Matrix3 R_IC = xiHat.sensor.cameraOffset.rotation().matrix();
   const Matrix3 R_bTbPrime = bTbPrime.rotation().matrix();
-  for (int i = 0; i < N; ++i) {
-    const Point3 q0 = xi0.cameraLandmarks[static_cast<size_t>(i)];
-    const Matrix3 Qhat_i =
-        SOT3ScaledRotation(Q_landmarkTransforms(X)[static_cast<size_t>(i)]);
-    A0t.block<3, 3>(21 + 3 * i, 12) = -ConvEucToInvDepth(q0) * Qhat_i *
-                                      R_IC.transpose() * R_bTbPrime.transpose();
+  for (size_t i = 0; i < N; ++i) {
+    const Point3 q0 = xi0.cameraLandmarks[i];
+    const Matrix3 Qhat_i = SOT3ScaledRotation(Q_landmarkTransforms(X)[i]);
+    A0t.block<3, 3>(stateLandmarkOffset(i), 12) = -ConvEucToInvDepth(q0) *
+                                                  Qhat_i * R_IC.transpose() *
+                                                  R_bTbPrime.transpose();
   }
 
   const Matrix66 commonTerm = B_cameraExtrinsics(X).inverse().AdjointMap() *
                               Pose3::adjointMap(commonTwist);
-  for (int i = 0; i < N; ++i) {
-    const Point3 q0 = xi0.cameraLandmarks[static_cast<size_t>(i)];
+  for (size_t i = 0; i < N; ++i) {
+    const Point3 q0 = xi0.cameraLandmarks[i];
     Matrix36 temp;
-    temp << Rot3::Hat(q0) *
-                SOT3Rotation(Q_landmarkTransforms(X)[static_cast<size_t>(i)])
-                    .matrix(),
-        -SOT3Scale(Q_landmarkTransforms(X)[static_cast<size_t>(i)]) *
-            SOT3Rotation(Q_landmarkTransforms(X)[static_cast<size_t>(i)])
-                .matrix();
-    A0t.block<3, 6>(21 + 3 * i, 15) = ConvEucToInvDepth(q0) * temp * commonTerm;
+    temp << Rot3::Hat(q0) * SOT3Rotation(Q_landmarkTransforms(X)[i]).matrix(),
+        -SOT3Scale(Q_landmarkTransforms(X)[i]) *
+            SOT3Rotation(Q_landmarkTransforms(X)[i]).matrix();
+    A0t.block<3, 6>(stateLandmarkOffset(i), 15) =
+        ConvEucToInvDepth(q0) * temp * commonTerm;
   }
 
   const Vector6 U_C = xiHat.sensor.cameraOffset.inverse().AdjointMap() * U_I;
   const Vector3 v_C = U_C.tail<3>();
-  for (int i = 0; i < N; ++i) {
-    const Point3 q0 = xi0.cameraLandmarks[static_cast<size_t>(i)];
-    const Matrix3 Qhat_i =
-        SOT3ScaledRotation(Q_landmarkTransforms(X)[static_cast<size_t>(i)]);
-    const Point3 qhat_i = xiHat.cameraLandmarks[static_cast<size_t>(i)];
+  for (size_t i = 0; i < N; ++i) {
+    const Point3 q0 = xi0.cameraLandmarks[i];
+    const Matrix3 Qhat_i = SOT3ScaledRotation(Q_landmarkTransforms(X)[i]);
+    const Point3 qhat_i = xiHat.cameraLandmarks[i];
     const Matrix3 A_qi =
         -Qhat_i *
         (Rot3::Hat(qhat_i) * Rot3::Hat(v_C) - 2.0 * v_C * qhat_i.transpose() +
          qhat_i * v_C.transpose()) *
         Qhat_i.inverse() * (1.0 / qhat_i.squaredNorm());
-    A0t.block<3, 3>(21 + 3 * i, 21 + 3 * i) =
+    A0t.block<3, 3>(stateLandmarkOffset(i), stateLandmarkOffset(i)) =
         ConvEucToInvDepth(q0) * A_qi * ConvInvDepthToEuc(q0);
   }
 
@@ -272,7 +279,7 @@ Matrix EqFStateMatrixA(const VioGroup& X, const State& xi0,
 
 /// EqF input matrix construction in inverse-depth coordinates.
 Matrix EqFInputMatrixB(const VioGroup& X, const State& xi0) {
-  const int N = static_cast<int>(xi0.n());
+  const size_t N = xi0.n();
   Matrix Bt = Matrix::Zero(xi0.dim(), 12);
 
   const State xiHat = stateGroupAction(X, xi0);
@@ -290,12 +297,11 @@ Matrix EqFInputMatrixB(const VioGroup& X, const State& xi0) {
   const Matrix3 RT_IC =
       xiHat.sensor.cameraOffset.rotation().matrix().transpose();
   const Point3 x_IC = xiHat.sensor.cameraOffset.translation();
-  for (int i = 0; i < N; ++i) {
-    const Point3 q0 = xi0.cameraLandmarks[static_cast<size_t>(i)];
-    const Matrix3 Qhat_i =
-        SOT3ScaledRotation(Q_landmarkTransforms(X)[static_cast<size_t>(i)]);
-    const Point3 qhat_i = xiHat.cameraLandmarks[static_cast<size_t>(i)];
-    Bt.block<3, 3>(21 + 3 * i, 0) =
+  for (size_t i = 0; i < N; ++i) {
+    const Point3 q0 = xi0.cameraLandmarks[i];
+    const Matrix3 Qhat_i = SOT3ScaledRotation(Q_landmarkTransforms(X)[i]);
+    const Point3 qhat_i = xiHat.cameraLandmarks[i];
+    Bt.block<3, 3>(stateLandmarkOffset(i), 0) =
         ConvEucToInvDepth(q0) * Qhat_i *
         (Rot3::Hat(qhat_i) * RT_IC + RT_IC * Rot3::Hat(x_IC));
   }
@@ -334,30 +340,29 @@ Matrix EqFoutputMatrixC(const State& xi0, const KeyVector& landmarkIds,
   if (!camera) {
     throw std::invalid_argument("EqFoutputMatrixC: null camera");
   }
-  const int M = static_cast<int>(xi0.n());
+  const size_t M = xi0.n();
   if (landmarkIds.size() != xi0.n()) {
     throw std::invalid_argument("EqFoutputMatrixC: landmark id count mismatch");
   }
   const KeyVector yIds = measurementIds(y);
-  const int N = static_cast<int>(yIds.size());
+  const size_t N = yIds.size();
   const LandmarkGroup& Q = std::get<3>(decompose(X));
 
   FastMap<Key, int> rowIndexByKey;
-  for (int j = 0; j < N; ++j) {
-    rowIndexByKey[yIds[static_cast<size_t>(j)]] = j;
+  for (size_t j = 0; j < N; ++j) {
+    rowIndexByKey[yIds[j]] = dense(j);
   }
 
-  Matrix C = Matrix::Zero(2 * N, 21 + 3 * M);
+  Matrix C = Matrix::Zero(2 * dense(N), static_cast<int>(stateDim(M)));
 
-  for (int i = 0; i < M; ++i) {
-    const Key idNum = landmarkIds[static_cast<size_t>(i)];
+  for (size_t i = 0; i < M; ++i) {
+    const Key idNum = landmarkIds[i];
     const auto itRow = rowIndexByKey.find(idNum);
     if (itRow == rowIndexByKey.end()) continue;
 
-    const size_t k = static_cast<size_t>(i);
     const int j = itRow->second;
-    const Point3& qi0 = xi0.cameraLandmarks[static_cast<size_t>(i)];
-    const SOT3& Qk = Q[k];
+    const Point3& qi0 = xi0.cameraLandmarks[i];
+    const SOT3& Qk = Q[i];
 
     const Matrix23 Ci =
         useEquivariance ? EqFoutputMatrixCiStar(qi0, Qk, camera, y.at(idNum))
@@ -373,7 +378,7 @@ Matrix EqFoutputMatrixC(const State& xi0, const KeyVector& landmarkIds,
                                ", Q_scale=" + std::to_string(SOT3Scale(Qk)) +
                                ", yUnd_norm=" + std::to_string(yUnd.norm()));
     }
-    C.block<2, 3>(2 * j, 21 + 3 * i) = Ci;
+    C.block<2, 3>(2 * j, stateLandmarkOffset(i)) = Ci;
   }
 
   if (!C.array().isFinite().all()) {
@@ -514,7 +519,7 @@ State Symmetry::operator()(
 
     // Compute the Jacobian of the landmark transform velocities
     for (size_t i = 0; i < xi.n(); ++i) {
-      const int row = 21 + 3 * static_cast<int>(i);
+      const int row = stateLandmarkOffset(i);
       H_xi->block<3, 3>(row, row) =
           (1.0 / SOT3Scale(Q[i])) * SOT3Rotation(Q[i]).matrix().transpose();
     }

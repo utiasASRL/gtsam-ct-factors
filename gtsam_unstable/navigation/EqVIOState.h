@@ -53,6 +53,11 @@ struct GTSAM_UNSTABLE_EXPORT SensorState {
   bool equals(const SensorState& other, double tol = 1e-9) const;
 };
 
+/// Dimension of the dynamic EqVIO state with `landmarkCount` landmarks.
+inline int stateDim(size_t landmarkCount) {
+  return 21 + 3 * static_cast<int>(landmarkCount);
+}
+
 /// Dynamic VIO state manifold with dimension 21 + 3n.
 class GTSAM_UNSTABLE_EXPORT State {
  public:
