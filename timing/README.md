@@ -14,6 +14,7 @@ From the build directory:
 
 ```bash
 make -j6 timeBayesTreeCovariance
+make -j6 timeISAM2Covariance
 make -j6 exportBayesTreeCovarianceVisuals
 ```
 
@@ -44,6 +45,30 @@ These are timed with the same benchmark executable and appear alongside the
 larger `local_window`, `wide_separated`, `overlap_window`, and
 `selected_cross` workloads.
 
+The local query families are now sampled across the full valid trajectory range
+rather than from only the earliest windows. This makes the `w10000` versus
+`w20000` comparison reflect trajectory-wide local supports rather than a prefix
+of the trajectory.
+
+### Generate incremental `ISAM2` covariance CSV
+
+Run from `build/`:
+
+```bash
+./timing/timeISAM2Covariance \
+  --dataset w20000.txt \
+  --query-repeats 5 \
+  --output ../timing/results/bayes_tree_covariance/isam2_w20000.csv
+```
+
+This writes:
+
+- `timing/results/bayes_tree_covariance/isam2_w20000.csv`
+
+The incremental CSV contains one row per update step, recording both the
+`ISAM2.update(...)` time and the repeated query time for the pairwise joint
+covariance on `{x0, xt}`.
+
 ### Export `w100` visual data
 
 Run from `build/`:
@@ -63,6 +88,8 @@ Run from the repository root:
 ```bash
 python3 timing/plot_bayes_tree_covariance.py \
   --input timing/results/bayes_tree_covariance/summary.csv \
+  --per-query-input timing/results/bayes_tree_covariance/per_query.csv \
+  --incremental-input timing/results/bayes_tree_covariance/isam2_w20000.csv \
   --output-dir ../BayesTreeCovariance/figures/generated \
   --copy-csv-dir ../BayesTreeCovariance/data \
   --visual-data-dir timing/results/bayes_tree_covariance/visuals
@@ -74,7 +101,9 @@ This generates:
 - `results-ablation.pdf`
 - `results-ordering.pdf`
 - `results-structure.pdf`
+- `results-local-diagnostics.pdf`
 - `results-cross.pdf`
+- `results-isam2-w20000.pdf`
 - `results-w100-queries.pdf`
 - `results-w100-covariance.pdf`
 
@@ -90,6 +119,11 @@ This generates:
 - `summary.csv` stores one row per query family bucket, aggregating the
   per-query means and structural statistics by medians across the sampled
   queries.
+- The batch CSVs now also record support-width diagnostics:
+  - `max_frontal_dim`
+  - `max_separator_dim`
+- `isam2_w20000.csv` stores one row per incremental update step for the
+  sequential `ISAM2` experiment on `w20000`.
 - The `results-smallq.pdf` figure summarizes the `Q = 1` and `Q = 2` query
   families; the larger performance figures focus on `Q > 2`, where Steiner
   localization changes the asymptotic behavior.

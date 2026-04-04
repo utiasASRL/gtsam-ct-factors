@@ -39,6 +39,62 @@ def to_float(rows, fields):
         row["support_cliques"] = float(row["support_cliques"])
         row["compressed_cliques"] = float(row["compressed_cliques"])
         row["reduced_state_dim"] = float(row["reduced_state_dim"])
+        if "max_frontal_dim" in row:
+            row["max_frontal_dim"] = float(row["max_frontal_dim"])
+        if "max_separator_dim" in row:
+            row["max_separator_dim"] = float(row["max_separator_dim"])
+    return rows
+
+
+def to_per_query_float(rows):
+    """Convert per-query CSV fields to numeric types in place."""
+    for row in rows:
+        row["query_size"] = int(row["query_size"])
+        row["query_index"] = int(row["query_index"])
+        row["repeats"] = int(row["repeats"])
+        row["sample_start"] = int(row["sample_start"])
+        for field in (
+            "mean_total_ms",
+            "mean_reduction_ms",
+            "mean_extraction_ms",
+            "median_total_ms",
+            "median_reduction_ms",
+            "median_extraction_ms",
+            "stddev_total_ms",
+            "stddev_reduction_ms",
+            "stddev_extraction_ms",
+            "support_cliques",
+            "compressed_cliques",
+            "reduced_state_dim",
+            "max_frontal_dim",
+            "max_separator_dim",
+        ):
+            row[field] = float(row[field])
+    return rows
+
+
+def to_incremental_float(rows):
+    """Convert incremental timing CSV fields to numeric types in place."""
+    for row in rows:
+        row["step_index"] = int(row["step_index"])
+        row["current_key"] = int(row["current_key"])
+        row["pose_count"] = int(row["pose_count"])
+        row["factor_count"] = int(row["factor_count"])
+        row["num_cached_separator_marginals"] = int(
+            row["num_cached_separator_marginals"]
+        )
+        for field in (
+            "update_ms",
+            "query_mean_ms",
+            "query_median_ms",
+            "query_stddev_ms",
+            "support_cliques",
+            "compressed_cliques",
+            "reduced_state_dim",
+            "max_frontal_dim",
+            "max_separator_dim",
+        ):
+            row[field] = float(row[field])
     return rows
 
 
@@ -348,6 +404,12 @@ def plot_structure(rows, output_path):
             marker="^",
             label="reduced-state dimension",
         )
+        ax.plot(
+            x,
+            [row["max_separator_dim"] for row in series],
+            marker="D",
+            label="max separator dimension",
+        )
         ax.set_title(dataset_label(dataset))
         ax.set_xlabel("Query size")
         ax.set_ylabel("Median count / dimension")
@@ -427,6 +489,103 @@ def plot_selected_cross(rows, output_path):
     handles, labels = axes[0].get_legend_handles_labels()
     figure.legend(handles, labels, loc="upper center", ncol=4, frameon=False)
     figure.tight_layout(rect=(0, 0, 1, 0.88))
+    figure.savefig(output_path)
+    plt.close(figure)
+
+
+def plot_local_window_diagnostics(rows, output_path):
+    """Plot per-query diagnostics explaining local-window timing differences."""
+    subset = [
+        row
+        for row in rows
+        if row["mode"] == "joint"
+        and row["query_family"] == "local_window"
+        and row["variant"] == "steiner_solve"
+        and row["ordering"] == "COLAMD"
+        and row["query_size"] in {10, 20}
+        and row["dataset"] in {"w10000.graph", "w20000.txt"}
+    ]
+    colors = {"w10000.graph": "#b22222", "w20000.txt": "#1f5aa6"}
+
+    figure, axes = plt.subplots(1, 2, figsize=(11.5, 4.4))
+    for dataset in ("w10000.graph", "w20000.txt"):
+        dataset_rows = [row for row in subset if row["dataset"] == dataset]
+        axes[0].scatter(
+            [row["sample_start"] for row in dataset_rows],
+            [row["mean_total_ms"] for row in dataset_rows],
+            s=42,
+            alpha=0.75,
+            color=colors[dataset],
+            label=dataset_label(dataset),
+        )
+
+        axes[1].scatter(
+            [row["support_cliques"] / row["query_size"] for row in dataset_rows],
+            [row["mean_total_ms"] for row in dataset_rows],
+            s=42,
+            alpha=0.75,
+            color=colors[dataset],
+            label=dataset_label(dataset),
+        )
+
+    axes[0].set_xlabel("Sampled local-window start index")
+    axes[0].set_ylabel("Per-query mean time (ms)")
+    axes[0].set_yscale("log")
+    axes[0].grid(True, alpha=0.25)
+
+    axes[1].set_xlabel("Support cliques / query size")
+    axes[1].set_ylabel("Per-query mean time (ms)")
+    axes[1].set_yscale("log")
+    axes[1].grid(True, alpha=0.25)
+
+    handles, labels = axes[0].get_legend_handles_labels()
+    figure.legend(handles, labels, loc="upper center", ncol=2, frameon=False)
+    figure.tight_layout(rect=(0, 0, 1, 0.9))
+    figure.savefig(output_path)
+    plt.close(figure)
+
+
+def rolling_median(values, window):
+    """Return a simple centered rolling median."""
+    medians = []
+    half_window = window // 2
+    for index in range(len(values)):
+        begin = max(0, index - half_window)
+        end = min(len(values), index + half_window + 1)
+        medians.append(float(np.median(values[begin:end])))
+    return np.array(medians)
+
+
+def plot_isam2_incremental(rows, output_path):
+    """Plot ISAM2 update and pairwise covariance-query timing over time."""
+    steps = np.array([row["step_index"] for row in rows])
+    update_ms = np.array([row["update_ms"] for row in rows])
+    query_ms = np.array([row["query_mean_ms"] for row in rows])
+    update_smooth = rolling_median(update_ms, 100)
+    query_smooth = rolling_median(query_ms, 100)
+
+    figure, axes = plt.subplots(2, 1, figsize=(11.5, 6.6), sharex=True)
+
+    axes[0].plot(steps, update_ms, color="#9ecae1", linewidth=0.8, alpha=0.65)
+    axes[0].plot(
+        steps, update_smooth, color="#08519c", linewidth=2.0, label="rolling median"
+    )
+    axes[0].set_ylabel("ISAM2 update time (ms)")
+    axes[0].set_yscale("log")
+    axes[0].grid(True, alpha=0.25)
+    axes[0].legend(frameon=False, loc="upper right")
+
+    axes[1].plot(steps, query_ms, color="#fcbba1", linewidth=0.8, alpha=0.65)
+    axes[1].plot(
+        steps, query_smooth, color="#a50f15", linewidth=2.0, label="rolling median"
+    )
+    axes[1].set_xlabel("Pose index / incremental step")
+    axes[1].set_ylabel(r"Joint covariance $\{x_0, x_t\}$ time (ms)")
+    axes[1].set_yscale("log")
+    axes[1].grid(True, alpha=0.25)
+    axes[1].legend(frameon=False, loc="upper right")
+
+    figure.tight_layout()
     figure.savefig(output_path)
     plt.close(figure)
 
@@ -754,6 +913,8 @@ def main():
     """Parse arguments and generate all requested benchmark figures."""
     parser = argparse.ArgumentParser()
     parser.add_argument("--input", required=True)
+    parser.add_argument("--per-query-input", default="")
+    parser.add_argument("--incremental-input", default="")
     parser.add_argument("--output-dir", required=True)
     parser.add_argument("--copy-csv-dir", default="")
     parser.add_argument("--visual-data-dir", default="")
@@ -784,6 +945,18 @@ def main():
     plot_structure(rows, output_dir / "results-structure.pdf")
     plot_selected_cross(rows, output_dir / "results-cross.pdf")
 
+    if args.per_query_input:
+        per_query_rows = to_per_query_float(load_rows(Path(args.per_query_input)))
+        plot_local_window_diagnostics(
+            per_query_rows, output_dir / "results-local-diagnostics.pdf"
+        )
+
+    if args.incremental_input:
+        incremental_rows = to_incremental_float(load_rows(Path(args.incremental_input)))
+        plot_isam2_incremental(
+            incremental_rows, output_dir / "results-isam2-w20000.pdf"
+        )
+
     if args.visual_data_dir:
         visual_data_dir = Path(args.visual_data_dir)
         plot_w100_queries(visual_data_dir, output_dir / "results-w100-queries.pdf")
@@ -795,6 +968,12 @@ def main():
         copy_dir = Path(args.copy_csv_dir)
         copy_dir.mkdir(parents=True, exist_ok=True)
         shutil.copy2(input_path, copy_dir / input_path.name)
+        if args.per_query_input:
+            per_query_path = Path(args.per_query_input)
+            shutil.copy2(per_query_path, copy_dir / per_query_path.name)
+        if args.incremental_input:
+            incremental_path = Path(args.incremental_input)
+            shutil.copy2(incremental_path, copy_dir / incremental_path.name)
 
 
 if __name__ == "__main__":
