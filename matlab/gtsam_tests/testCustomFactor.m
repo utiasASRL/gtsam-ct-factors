@@ -28,6 +28,11 @@ EXPECT('registry create', gtsam.customFactorRegistry('count') == baselineCallbac
 errorVector = factor.unwhitenedError(initial);
 EQUALITY('custom residual', [0] - target, errorVector, tol);
 
+% Verify Jacobians using numerical derivative
+expected_H = numericalDerivative.numericalDerivative11(@(v) factor.unwhitenedError(v), initial);
+actual_H = factor.linearize(initial).jacobian();
+EQUALITY('custom jacobian', expected_H, actual_H, 1e-5);
+
 graph = NonlinearFactorGraph;
 graph.add(factor);
 optimizer = LevenbergMarquardtOptimizer(graph, initial);
