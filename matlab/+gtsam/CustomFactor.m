@@ -68,7 +68,12 @@ classdef CustomFactor < gtsam.MatlabCustomFactor
       end
 
       if isnumeric(keys)
-        keyVector = gtsam.utilities.createKeyVector(double(keys(:)));
+        % Explicitly use KeyVector and push_back to avoid losing precision
+        % with double-precision Vector utilities, which mangles Symbol keys.
+        keyVector = gtsam.KeyVector();
+        for i = 1:numel(keys)
+          keyVector.push_back(uint64(keys(i)));
+        end
         return
       end
 

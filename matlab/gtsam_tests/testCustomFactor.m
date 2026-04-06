@@ -65,7 +65,11 @@ gtsamCustomFactorCalls = gtsamCustomFactorCalls + 1;
 gtsamCustomFactorSawWrappedInputs = isa(this, 'gtsam.CustomFactor') && ...
     isa(values, 'gtsam.Values');
 
-current = values.atVector(42);
+keys = this.keys();
+if keys.at(0) ~= 42
+    error('CustomFactor:incorrectKey', 'Expected key 42, but got %d', keys.at(0));
+end
+current = values.atVector(keys.at(0));
 residual = current - [3];
 
 if nargout > 1

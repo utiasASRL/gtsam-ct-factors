@@ -161,7 +161,9 @@ The callback signature is:
 
 ```matlab
 function varargout = myErrorFunction(this, values)
-  residual = values.atVector(42) - [3];
+  % Retrieve keys from the factor object ('this')
+  keys = this.keys();
+  residual = values.atVector(keys.at(0)) - [3];
   if nargout > 1
     varargout{1} = residual;
     varargout{2} = {1};
