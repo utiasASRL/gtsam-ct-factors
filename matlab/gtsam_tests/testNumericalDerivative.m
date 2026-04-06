@@ -60,9 +60,15 @@ R = Rot3.Rodrigues(0.3, 0, 0);
 P2 = Point3(3.5, -8.2, 4.2);
 T = Pose3(R, P2);
 
-analytic_H1 = zeros(3, 6);
-analytic_H2 = zeros(3, 3);
-y = T.transformFrom(P, analytic_H1, analytic_H2);
+% Compute analytical Jacobians manually, as in C++
+R = T.rotation().matrix();
+skew = [  0      -P(3)   P(2);
+	       P(3)    0      -P(1);
+        -P(2)  P(1)     0   ];
+analytic_H1 = zeros(3,6);
+analytic_H1(:,1:3) = R * (-skew); % leftCols<3>()
+analytic_H1(:,4:6) = R;           % rightCols<3>()
+analytic_H2 = R;
 
 numerical_H1 = numericalDerivative.numericalDerivative21(h, T, P);
 numerical_H2 = numericalDerivative.numericalDerivative22(h, T, P);

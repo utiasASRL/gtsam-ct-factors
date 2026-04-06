@@ -20,13 +20,27 @@ classdef numericalDerivative
             if isnumeric(a)
                 res = a + xi;
             elseif isa(a, 'gtsam.Values')
-                % Values.retract expects VectorValues or specialized vector input
-                % The wrapped retract(VectorValues) is most direct.
-                % We assume xi is a plain vector here, matching numericalDerivative11.
-                % We need to convert the plain vector back to VectorValues.
-                % This is tricky without knowing the structure, but Values.retract(vector)
-                % might be available if wrapped.
-                res = a.retract(xi);
+                % xi is a plain column vector.
+                % We need to convert it to a VectorValues object.
+                % VectorValues.vector() concatenates vectors in key-sorted order,
+                % so we must iterate through the keys in the same order.
+                vv = gtsam.VectorValues();
+                keys = a.keys();
+                key_array = zeros(1, keys.size());
+                for i = 0:keys.size()-1
+                    key_array(i+1) = keys.at(i);
+                end
+                key_array = sort(key_array);
+                
+                zeros_vv = a.zeroVectors();
+                offset = 1;
+                for i = 1:length(key_array)
+                    key = key_array(i);
+                    d = zeros_vv.dim(key);
+                    vv.insert(key, xi(offset:offset+d-1));
+                    offset = offset + d;
+                end
+                res = a.retract(vv);
             else
                 % GTSAM objects usually provide retract
                 res = a.retract(xi);
