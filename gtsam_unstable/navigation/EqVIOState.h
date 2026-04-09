@@ -51,7 +51,7 @@ class GTSAM_UNSTABLE_EXPORT State {
   Bias bias = Bias::Identity();
   /// Camera pose relative to IMU/body frame.
   Pose3 cameraOffset = Pose3::Identity();
-  /// Landmark states in inverse-depth coordinates.
+  /// Landmark states in euclidean coordinates. Inverse-depth is used for the error chart / linearization rather than the stored state.
   std::vector<Point3> cameraLandmarks;
 
   /// Construct default-initialized state.
