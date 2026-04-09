@@ -371,9 +371,10 @@ KeyVector EqVIOFilter::detectOutliers(
     }
   }
 
-  std::sort(
-      residuals.begin(), residuals.end(),
-      [](const auto& lhs, const auto& rhs) { return lhs.second > rhs.second; });
+  std::sort(residuals.begin(), residuals.end(),
+            [](const auto& lhs, const auto& rhs) {
+              return lhs.second > rhs.second;
+            });
   if (residuals.size() > maxOutliers) {
     residuals.resize(maxOutliers);
   }
