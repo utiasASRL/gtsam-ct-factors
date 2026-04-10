@@ -46,20 +46,11 @@ using symbol_shorthand::L;
 using symbol_shorthand::X;
 
 /*
- * Test full DCSAM solve on DCMixtureFactor for 1D case.
- *
- * This is essentially identical to the `DCContinuousFactor` test above,
- but the
- * solution is obtained by calling the `DCSAM::update` functions (rather
- than
- * implemented manually as above).
+ * Test full DCSAM solve on a mixture factor
+ * (as a HybridNonlinearFactor) for 1D case.
  */
 TEST(DCSAM, SimpleMixtureFactor) {
   using namespace discrete_mixture_fixture;
-
-  // Make a symbol for a single continuous variable and add to KeyVector
-  KeyVector keys;
-  keys.push_back(x1);
 
   std::vector<NonlinearFactorValuePair> factorComponents{
       {f1(), priorNoise1()->negLogConstant()},
