@@ -194,6 +194,9 @@ actual_H = factor.linearize(initial).jacobian();
 EQUALITY('custom jacobian', expected_H, actual_H, 1e-5);
 ```
 
+Wrapped overloaded methods such as `factor.unwhitenedError` still need an
+explicit lambda when passed as callbacks in MATLAB.
+
 - Optimization usually exercises both the residual and Jacobian paths.
 - Deleting the MATLAB factor removes its callback from the MATLAB-side registry, so repeated tests in one session do not accumulate stale entries.
 - Once a MATLAB `CustomFactor` has been constructed, the mex module is intentionally kept loaded for the rest of the MATLAB session to avoid unload-time crashes while callback-backed native factors are still reachable from C++.

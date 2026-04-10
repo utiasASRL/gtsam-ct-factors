@@ -19,6 +19,19 @@ analytical_derivative = diag(2.0 * x);
 numerical_derivative = numericalDerivative.numericalDerivative11(h, x);
 EQUALITY('test_numericalDerivative11_vector', analytical_derivative, numerical_derivative, 1e-5);
 
+%% test_numericalDerivative11_values
+% Test function of one Values variable with mixed dimensions and key sorting
+key_a = 42;
+key_b = 7;
+values = Values;
+values.insert(key_a, [1.0; 2.0]);
+values.insert(key_b, [3.0]);
+h = @(v) valuesLinearCombination(v, key_a, key_b);
+analytical_derivative = [3.0, 1.0, 2.0;
+                         5.0, -4.0, 0.0];
+numerical_derivative = numericalDerivative.numericalDerivative11(h, values);
+EQUALITY('test_numericalDerivative11_values', analytical_derivative, numerical_derivative, 1e-5);
+
 %% test_numericalDerivative21
 % Test function of two variables, derivative with respect to first variable
 h = @(x1, x2) x1 * sin(x2);
@@ -75,3 +88,10 @@ numerical_H2 = numericalDerivative.numericalDerivative22(h, T, P);
 
 EQUALITY('test_numericalDerivative_with_pose_H1', analytic_H1, numerical_H1, 1e-5);
 EQUALITY('test_numericalDerivative_with_pose_H2', analytic_H2, numerical_H2, 1e-5);
+
+function y = valuesLinearCombination(values, key_a, key_b)
+a = values.atVector(key_a);
+b = values.atVector(key_b);
+y = [a(1) + 2.0 * a(2) + 3.0 * b;
+     -4.0 * a(1) + 5.0 * b];
+end
