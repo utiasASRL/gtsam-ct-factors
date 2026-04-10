@@ -39,6 +39,7 @@ class HybridValues {
   HybridValues();
   HybridValues(const gtsam::VectorValues& cv, const gtsam::DiscreteValues& dv);
   HybridValues(const gtsam::VectorValues& cv, const gtsam::DiscreteValues& dv, const gtsam::Values& v);
+  HybridValues(const gtsam::DiscreteValues& dv, const gtsam::Values& v);
 
   void print(string s = "HybridValues",
              const gtsam::KeyFormatter& keyFormatter =
@@ -481,6 +482,7 @@ class HybridSmoother {
       const gtsam::HybridNonlinearFactorGraph& graph,
       const gtsam::Values& initial,
       std::optional<size_t> maxNrLeaves = std::nullopt,
+      std::optional<size_t> marginalThreshold = std::nullopt,
       const std::optional<gtsam::Ordering> given_ordering = std::nullopt);
 
   void relinearize(
