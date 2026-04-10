@@ -377,6 +377,38 @@ class TranslationRecovery {
                     const double scale = 1.0) const;
 };
 
+#include <gtsam/sfm/GlobalPositioner.h>
+
+class GlobalPositioner {
+  GlobalPositioner(const gtsam::LevenbergMarquardtParams& lmParams);
+  GlobalPositioner();
+  gtsam::NonlinearFactorGraph buildGraph(
+      const gtsam::BinaryMeasurementsUnit3& cameraPointDirections) const;
+  void addPrior(gtsam::Key anchorCameraKey,
+                gtsam::NonlinearFactorGraph @graph,
+                const gtsam::SharedNoiseModel& priorNoiseModel) const;
+  void addPrior(gtsam::Key anchorCameraKey,
+                gtsam::NonlinearFactorGraph @graph) const;
+  gtsam::Values initializeRandomly(
+      const gtsam::KeySet& cameraKeys,
+      const gtsam::KeySet& landmarkKeys,
+      size_t numEdges,
+      const gtsam::Values& initialValues) const;
+  gtsam::Values initializeRandomly(
+      const gtsam::KeySet& cameraKeys,
+      const gtsam::KeySet& landmarkKeys,
+      size_t numEdges) const;
+  gtsam::Values run(const gtsam::BinaryMeasurementsUnit3& cameraPointDirections,
+                    const gtsam::KeySet& cameraKeys,
+                    const gtsam::KeySet& landmarkKeys,
+                    gtsam::Key anchorCameraKey,
+                    const gtsam::Values& initialValues) const;
+  gtsam::Values run(const gtsam::BinaryMeasurementsUnit3& cameraPointDirections,
+                    const gtsam::KeySet& cameraKeys,
+                    const gtsam::KeySet& landmarkKeys,
+                    gtsam::Key anchorCameraKey) const;
+};
+
 namespace gtsfm {
 
 #include <gtsam/sfm/DsfTrackGenerator.h>
