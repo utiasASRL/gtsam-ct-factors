@@ -20,6 +20,8 @@
 
 #include <gtsam/nonlinear/NoiseModelFactorN.h>
 
+#include <type_traits>
+
 namespace gtsam {
 
 // forward declaration of Range functor, assumed partially specified
@@ -60,14 +62,8 @@ class RangeFactor : public NoiseModelFactorN<A1, A2> {
   Vector evaluateError(const A1& a1, const A2& a2,
                        OptionalMatrixType H1 = OptionalNone,
                        OptionalMatrixType H2 = OptionalNone) const override {
-    Matrix Hpred1, Hpred2, Hlocal;
-    const T predicted =
-        Range<A1, A2>()(a1, a2, H1 ? &Hpred1 : nullptr, H2 ? &Hpred2 : nullptr);
-    const Vector error =
-        -traits<T>::Local(predicted, measured_, (H1 || H2) ? &Hlocal : nullptr);
-    if (H1) *H1 = -Hlocal * Hpred1;
-    if (H2) *H2 = -Hlocal * Hpred2;
-    return error;
+    const T predicted = Range<A1, A2>()(a1, a2, H1, H2);
+    return -traits<T>::Local(predicted, measured_);
   }
 
   /// print
@@ -145,17 +141,12 @@ class RangeFactorWithTransform : public NoiseModelFactorN<A1, A2> {
   Vector evaluateError(const A1& a1, const A2& a2,
                        OptionalMatrixType H1 = OptionalNone,
                        OptionalMatrixType H2 = OptionalNone) const override {
-    Matrix HposeCompose, HsensorRange, H2Range, Hlocal;
+    Matrix HposeCompose;
     const A1 nav_T_sensor =
         a1.compose(body_T_sensor_, H1 ? &HposeCompose : nullptr);
-    const T predicted =
-        Range<A1, A2>()(nav_T_sensor, a2, H1 ? &HsensorRange : nullptr,
-                        H2 ? &H2Range : nullptr);
-    const Vector error =
-        -traits<T>::Local(predicted, measured_, (H1 || H2) ? &Hlocal : nullptr);
-    if (H1) *H1 = -Hlocal * HsensorRange * HposeCompose;
-    if (H2) *H2 = -Hlocal * H2Range;
-    return error;
+    const T predicted = Range<A1, A2>()(nav_T_sensor, a2, H1, H2);
+    if (H1) *H1 *= HposeCompose;
+    return -traits<T>::Local(predicted, measured_);
   }
 
   // An evaluateError overload to accept matrices (Matrix&) and pass it to the
@@ -246,19 +237,20 @@ class RangeFactorWithTransformBias : public NoiseModelFactorN<A1, A2, T> {
                        OptionalMatrixType H1 = OptionalNone,
                        OptionalMatrixType H2 = OptionalNone,
                        OptionalMatrixType H3 = OptionalNone) const override {
-    Matrix HposeCompose, HsensorRange, H2Range, Hlocal;
+    Matrix HposeCompose;
     const A1 nav_T_sensor =
         a1.compose(body_T_sensor_, H1 ? &HposeCompose : nullptr);
-    const T predictedRange =
-        Range<A1, A2>()(nav_T_sensor, a2, H1 ? &HsensorRange : nullptr,
-                        H2 ? &H2Range : nullptr);
-    const T predictedMeasurement = predictedRange + bias;
-    const Vector error = -traits<T>::Local(
-        predictedMeasurement, measured_, (H1 || H2 || H3) ? &Hlocal : nullptr);
-    if (H1) *H1 = -Hlocal * HsensorRange * HposeCompose;
-    if (H2) *H2 = -Hlocal * H2Range;
-    if (H3) *H3 = -Hlocal;
-    return error;
+    const T predictedRange = Range<A1, A2>()(nav_T_sensor, a2, H1, H2);
+    if (H1) *H1 *= HposeCompose;
+    if (H3) {
+      if constexpr (std::is_same_v<T, double>) {
+        *H3 = Matrix1::Identity();
+      } else {
+        const int dimension = traits<T>::GetDimension(measured_);
+        *H3 = Matrix::Identity(dimension, dimension);
+      }
+    }
+    return -traits<T>::Local(predictedRange + bias, measured_);
   }
 
   /// Matrix-reference overload for evaluateError.

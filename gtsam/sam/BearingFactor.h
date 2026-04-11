@@ -18,17 +18,13 @@
 
 #pragma once
 
-#include <gtsam/base/numericalDerivative.h>
 #include <gtsam/nonlinear/NoiseModelFactorN.h>
-
-#include <type_traits>
 
 namespace gtsam {
 
 // forward declaration of Bearing functor, assumed partially specified
 template <typename A1, typename A2>
 struct Bearing;
-class Unit3;
 
 /**
  * Binary factor for a bearing measurement
@@ -80,33 +76,8 @@ struct BearingFactor : public NoiseModelFactorN<A1, A2> {
   Vector evaluateError(const A1& a1, const A2& a2,
                        OptionalMatrixType H1 = OptionalNone,
                        OptionalMatrixType H2 = OptionalNone) const override {
-    Matrix Hpred1, Hpred2;
-    const T predicted = Bearing<A1, A2>()(a1, a2, H1 ? &Hpred1 : nullptr,
-                                          H2 ? &Hpred2 : nullptr);
-    if constexpr (std::is_same_v<T, Unit3>) {
-      const auto localError = [&](const T& value) -> Vector {
-        return -traits<T>::Local(value, measured_);
-      };
-      const Vector error = localError(predicted);
-      if (H1) {
-        const Matrix HerrorPred =
-            numericalDerivative11<Vector, T>(localError, predicted);
-        *H1 = HerrorPred * Hpred1;
-      }
-      if (H2) {
-        const Matrix HerrorPred =
-            numericalDerivative11<Vector, T>(localError, predicted);
-        *H2 = HerrorPred * Hpred2;
-      }
-      return error;
-    } else {
-      Matrix Hlocal;
-      const Vector error = -traits<T>::Local(
-          predicted, measured_, (H1 || H2) ? &Hlocal : nullptr, OptionalNone);
-      if (H1) *H1 = -Hlocal * Hpred1;
-      if (H2) *H2 = -Hlocal * Hpred2;
-      return error;
-    }
+    const T predicted = Bearing<A1, A2>()(a1, a2, H1, H2);
+    return -traits<T>::Local(predicted, measured_);
   }
 
  private:

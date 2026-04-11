@@ -19,15 +19,10 @@
 
 #pragma once
 
-#include <gtsam/base/numericalDerivative.h>
 #include <gtsam/geometry/BearingRange.h>
 #include <gtsam/nonlinear/NoiseModelFactorN.h>
 
-#include <type_traits>
-
 namespace gtsam {
-
-class Unit3;
 
 /**
  * Binary factor for a bearing/range measurement
@@ -96,7 +91,6 @@ class BearingRangeFactor : public NoiseModelFactorN<A1, A2> {
     typename MakeJacobian<B, A2>::type HB2;
     typename MakeJacobian<R, A1>::type HR1;
     typename MakeJacobian<R, A2>::type HR2;
-    typename traits<R>::ChartJacobian::Jacobian HlocalR;
 
     const B predictedBearing =
         Bearing<A1, A2>()(a1, a2, H1 ? &HB1 : nullptr, H2 ? &HB2 : nullptr);
@@ -104,38 +98,18 @@ class BearingRangeFactor : public NoiseModelFactorN<A1, A2> {
         Range<A1, A2>()(a1, a2, H1 ? &HR1 : nullptr, H2 ? &HR2 : nullptr);
 
     Vector error(dimB + dimR);
-    Matrix HerrorBearing;
-    if constexpr (std::is_same_v<B, Unit3>) {
-      const auto localBearingError = [&](const B& value) -> Vector {
-        return -traits<B>::Local(value, measured_.bearing());
-      };
-      error.head(dimB) = localBearingError(predictedBearing);
-      if (H1 || H2) {
-        HerrorBearing = numericalDerivative11<Vector, B>(localBearingError,
-                                                         predictedBearing);
-      }
-    } else {
-      typename traits<B>::ChartJacobian::Jacobian HlocalB;
-      error.head(dimB) =
-          -traits<B>::Local(predictedBearing, measured_.bearing(),
-                            (H1 || H2) ? &HlocalB : nullptr, OptionalNone);
-      if (H1 || H2) {
-        HerrorBearing = -HlocalB;
-      }
-    }
-    error.tail(dimR) =
-        -traits<R>::Local(predictedRange, measured_.range(),
-                          (H1 || H2) ? &HlocalR : nullptr, OptionalNone);
+    error.head(dimB) = -traits<B>::Local(predictedBearing, measured_.bearing());
+    error.tail(dimR) = -traits<R>::Local(predictedRange, measured_.range());
 
     if (H1) {
       H1->resize(dimB + dimR, dim1);
-      H1->topRows(dimB) = HerrorBearing * HB1;
-      H1->bottomRows(dimR) = -HlocalR * HR1;
+      H1->topRows(dimB) = HB1;
+      H1->bottomRows(dimR) = HR1;
     }
     if (H2) {
       H2->resize(dimB + dimR, dim2);
-      H2->topRows(dimB) = HerrorBearing * HB2;
-      H2->bottomRows(dimR) = -HlocalR * HR2;
+      H2->topRows(dimB) = HB2;
+      H2->bottomRows(dimR) = HR2;
     }
     return error;
   }
