@@ -39,6 +39,7 @@ class HybridValues {
   HybridValues();
   HybridValues(const gtsam::VectorValues& cv, const gtsam::DiscreteValues& dv);
   HybridValues(const gtsam::VectorValues& cv, const gtsam::DiscreteValues& dv, const gtsam::Values& v);
+  HybridValues(const gtsam::DiscreteValues& dv, const gtsam::Values& v);
 
   void print(string s = "HybridValues",
              const gtsam::KeyFormatter& keyFormatter =
