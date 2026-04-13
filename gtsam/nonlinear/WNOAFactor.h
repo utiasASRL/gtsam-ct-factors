@@ -40,7 +40,7 @@ namespace gtsam {
  * This factor implements the WNOA motion prior between two
  * states (pose and velocity at times t_k and t_{k+1}). It provides
  * residuals and Jacobians consistent with the WNOA continuous-time
- * prior when discretized over the timestep `delta_t`.
+ * prior when discretized over the timestep `deltaT`.
  *
  * Template parameter `Pose` is expected to be a GTSAM pose type (e.g.
  * `Pose2`, `Pose3`) or a vector-space pose; the factor supports both Lie
@@ -79,7 +79,7 @@ class WNOAMotionFactor
   typedef NoiseModelFactorN<Pose, Velocity, Pose, Velocity> Base;
   typedef WNOAMotionFactor This;
   // Time between the two states
-  double delta_t_;
+  double deltaT_;
 
   inline static const MatrixN kIdentity = MatrixN::Identity();
   inline static const MatrixN kZero = MatrixN::Zero();
@@ -93,52 +93,56 @@ class WNOAMotionFactor
    *
    * This constructor builds a factor connecting the pose and velocity keys
    * contained in `state_k` and `state_kp1`. The internal noise model is
-   * constructed from the provided diagonal PSD vector `Q` and the timestep
+   * constructed from the provided diagonal PSD vector `q_psd_diag` and the timestep
    * computed from the two state timestamps.
    *
    * @param state_k StateData for time t_k (provides keys and timestamp).
    * @param state_kp1 StateData for time t_{k+1} (provides keys and timestamp).
-   * @param Q Diagonal power spectral density vector used to form the process
+   * @param q_psd_diag Diagonal power spectral density vector used to form the process
    * noise.
    */
   WNOAMotionFactor(const StateData& state_k, const StateData& state_kp1,
-                   const VectorN& Q)
+                   const VectorN& q_psd_diag)
       : Base() {
     // define keys
     this->keys_ = {state_k.pose, state_k.velocity, state_kp1.pose,
                    state_kp1.velocity};
     // define timestep
-    this->delta_t_ = state_kp1.time - state_k.time;
-    assert(this->delta_t_ > 0.0 &&
+    this->deltaT_ = state_kp1.time - state_k.time;
+    assert(this->deltaT_ > 0.0 &&
            "Time difference between input states must be positive.");
     // define noise model
-    this->noiseModel_ = This::buildWNOANoiseModel(this->delta_t_, Q);
+    this->noiseModel_ = This::buildWNOANoiseModel(this->deltaT_, q_psd_diag);
   }
 
   /**
    * @brief Construct a WNOA factor given explicit keys and timestep.
    *
-   * @param key1 Pose key at t_k
-   * @param key2 Velocity key at t_k
-   * @param key3 Pose key at t_{k+1}
-   * @param key4 Velocity key at t_{k+1}
-   * @param delta_t Time interval t_{k+1} - t_k (must be > 0)
-   * @param Q Diagonal PSD vector used to form the process noise.
+   * @param poseKey0 Pose key at t_k
+   * @param velKey0 Velocity key at t_k
+   * @param poseKey1 Pose key at t_{k+1}
+   * @param velKey1 Velocity key at t_{k+1}
+   * @param deltaT Time interval t_{k+1} - t_k (must be > 0)
+   * @param q_psd_diag Diagonal PSD vector used to form the process noise.
    */
-  WNOAMotionFactor(Key key1, Key key2, Key key3, Key key4, const double delta_t,
-                   const VectorN& Q)
-      : Base(This::buildWNOANoiseModel(delta_t, Q), key1, key2, key3, key4),
-        delta_t_(delta_t) {}
+  WNOAMotionFactor(Key poseKey0, Key velKey0, Key poseKey1, Key velKey1,
+                   const double deltaT, const VectorN& q_psd_diag)
+      : Base(This::buildWNOANoiseModel(deltaT, q_psd_diag), poseKey0, velKey0, poseKey1,
+             velKey1),
+        deltaT_(deltaT) {}
 
   ~WNOAMotionFactor() override {}
-  /** implement functions needed for Testable */
+
+  /// @name Testable
+  /// @{
   /** print */
   void print(
       const std::string& s = "",
       const KeyFormatter& keyFormatter = DefaultKeyFormatter) const override {
-    std::cout << s << "WNOAMotionFactor(" << keyFormatter(this->key1()) << ","
-              << keyFormatter(this->key2()) << "," << keyFormatter(this->key3())
-              << "," << keyFormatter(this->key4()) << ")\n";
+    std::cout << s << "WNOAMotionFactor(" << keyFormatter(this->poseKey0())
+              << "," << keyFormatter(this->velKey0()) << ","
+              << keyFormatter(this->poseKey1()) << ","
+              << keyFormatter(this->velKey1()) << ")\n";
     this->noiseModel_->print("  noise model: ");
   }
 
@@ -148,6 +152,7 @@ class WNOAMotionFactor
     const This* e = dynamic_cast<const This*>(&expected);
     return e != nullptr && Base::equals(*e, tol);
   }
+  /// @}
 
   /**
    * @brief Evaluate the WNOA factor residual and optional Jacobians.
@@ -178,22 +183,21 @@ class WNOAMotionFactor
     // Jacobians
     MatrixN dxi_dT1;
     MatrixN dxi_dT2;
-    MatrixN right_jac_inv;
+    MatrixN invJr;
     if (Hp1 || Hp2) {
       MatrixN dbetween_p1;
       MatrixN dbetween_p2;
       xi = traits<Pose>::Logmap(
-          traits<Pose>::Between(p1, p2, &dbetween_p1, &dbetween_p2),
-          &right_jac_inv);
-      dxi_dT1 = right_jac_inv * dbetween_p1;
-      dxi_dT2 = right_jac_inv * dbetween_p2;
+          traits<Pose>::Between(p1, p2, &dbetween_p1, &dbetween_p2), &invJr);
+      dxi_dT1 = invJr * dbetween_p1;
+      dxi_dT2 = invJr * dbetween_p2;
     } else {
-      xi = traits<Pose>::Logmap(traits<Pose>::Between(p1, p2), &right_jac_inv);
+      xi = traits<Pose>::Logmap(traits<Pose>::Between(p1, p2), &invJr);
     }
     // Compute error for local state vector (pose, velocity) in the tangent
     // space
     Vector2N err;
-    err << xi - delta_t_ * v1, right_jac_inv * v2 - v1;
+    err << xi - deltaT_ * v1, invJr * v2 - v1;
 
     // Derivative of velocity error wrt xi
     MatrixN dvErr_dxi;
@@ -218,8 +222,8 @@ class WNOAMotionFactor
     }
     if (Hv1) {
       // Derivative of error wrt velocity v1
-      *Hv1 = (Matrix(2 * dim, dim) << -delta_t_ * kIdentity, -kIdentity)
-                 .finished();
+      *Hv1 =
+          (Matrix(2 * dim, dim) << -deltaT_ * kIdentity, -kIdentity).finished();
     }
     if (Hp2) {
       // Derivative of error wrt pose p2
@@ -227,7 +231,7 @@ class WNOAMotionFactor
     }
     if (Hv2) {
       // Derivative of error wrt velocity v2
-      *Hv2 = (Matrix(2 * dim, dim) << kZero, right_jac_inv).finished();
+      *Hv2 = (Matrix(2 * dim, dim) << kZero, invJr).finished();
     }
 
     return err;
@@ -237,18 +241,18 @@ class WNOAMotionFactor
    * @brief Build the continuous-time WNOA discretized process covariance.
    *
    * Returns the 2N x 2N covariance matrix for a WNOA prior discretized over
-   * `timestep` using the diagonal PSD `Q`.
+   * `timestep` using the diagonal PSD `q_psd_diag`.
    * See (11.7) in (Barfoot, 2024) for the derivation of covariance for the WNOA
    * prior
    *
    * @param timestep Time interval over which to compute covariance
-   * @param Q Diagonal PSD vector
+   * @param q_psd_diag Diagonal PSD vector
    * @return Matrix2N Process covariance
    */
-  static Matrix2N buildWNOACovariance(double timestep, const VectorN& Q) {
+  static Matrix2N buildWNOACovariance(double timestep, const VectorN& q_psd_diag) {
     //
     Matrix2N covariance;
-    MatrixN Q_diag = Q.asDiagonal();
+    auto Q_diag = q_psd_diag.asDiagonal();
     covariance << (1.0 / 3.0 * std::pow(timestep, 3)) * Q_diag,
         (1.0 / 2.0 * std::pow(timestep, 2)) * Q_diag,
         (1.0 / 2.0 * pow(timestep, 2)) * Q_diag, timestep * Q_diag;
@@ -259,14 +263,14 @@ class WNOAMotionFactor
    * @brief Build the inverse of the WNOA discretized process covariance.
    *
    * @param timestep Time interval
-   * @param Q Diagonal PSD vector
+   * @param q_psd_diag Diagonal PSD vector
    * @return Matrix2N Inverse process covariance matrix
    */
   static Matrix2N buildInverseWNOACovariance(double timestep,
-                                             const VectorN& Q) {
+                                             const VectorN& q_psd_diag) {
     // construct the inverse covariance matrix for the WNOA factor
     Matrix2N inverse_covariance;
-    MatrixN Q_inv_diag = Q.cwiseInverse().asDiagonal();
+    auto Q_inv_diag = q_psd_diag.cwiseInverse().asDiagonal();
     inverse_covariance << (12.0 / (timestep * timestep * timestep)) *
                               Q_inv_diag,
         (-6.0 / (timestep * timestep)) * Q_inv_diag,
@@ -277,32 +281,32 @@ class WNOAMotionFactor
   }
 
   /**
-   * @brief Convenience helper to construct a Gaussian noise model from `Q`.
+   * @brief Convenience helper to construct a Gaussian noise model from `q_psd_diag`.
    *
    * The noise model uses the covariance produced by `buildWNOACovariance`.
    *
    * @param timestep Time interval
-   * @param Q Diagonal PSD vector
+   * @param q_psd_diag Diagonal PSD vector
    * @return noiseModel::Gaussian::shared_ptr Noise model built from covariance
    */
   static inline noiseModel::Gaussian::shared_ptr buildWNOANoiseModel(
-      double timestep, const VectorN& Q) {
-    return noiseModel::Gaussian::Covariance(buildWNOACovariance(timestep, Q));
+      double timestep, const VectorN& q_psd_diag) {
+    return noiseModel::Gaussian::Covariance(buildWNOACovariance(timestep, q_psd_diag));
   }
 
   /**
    * @brief Transition matrix for the WNOA prior.
    *
    * Returns the 2N x 2N transition matrix mapping the concatenated state
-   * [pose; vel] over interval `delta_t` using the standard WNOA linearization.
+   * [pose; vel] over interval `deltaT` using the standard WNOA linearization.
    *
-   * @param delta_t Time interval
+   * @param deltaT Time interval
    * @return Matrix2N Transition matrix
    */
-  static Matrix2N transitionFunction(double delta_t) {
+  static Matrix2N transitionFunction(double deltaT) {
     // Construct the transition matrix for the WNOA factor
     Matrix2N F;
-    F << kIdentity, delta_t * kIdentity, kZero, kIdentity;
+    F << kIdentity, deltaT * kIdentity, kZero, kIdentity;
     return F;
   }
 
@@ -316,23 +320,23 @@ class WNOAMotionFactor
    *
    * @param pv1 Pair (pose_k, vel_k)
    * @param pv2 Pair (pose_kp1, vel_kp1)
-   * @param delta_t Time interval
+   * @param deltaT Time interval
    * @return Matrix2N Jacobian block w.r.t. previous state
    */
   static Matrix2N computeJacobianPrev(const std::pair<Pose, Velocity>& pv1,
                                       const std::pair<Pose, Velocity>& pv2,
-                                      double delta_t) {
+                                      double deltaT) {
     // corresponds to F in (11.20) in SER
     auto& [p1, v1] = pv1;
     auto& [p2, v2] = pv2;
 
     MatrixN dbetween_p1;
     MatrixN dxi_dT1;
-    MatrixN right_jac_inv;
+    MatrixN invJr;
     VectorN xi;
     xi = traits<Pose>::Logmap(
-        traits<Pose>::Between(p1, p2, &dbetween_p1, nullptr), &right_jac_inv);
-    dxi_dT1 = right_jac_inv * dbetween_p1;
+        traits<Pose>::Between(p1, p2, &dbetween_p1, nullptr), &invJr);
+    dxi_dT1 = invJr * dbetween_p1;
     // Derivative of velocity error wrt xi
     MatrixN dvErr_dxi;
     if constexpr (std::is_same_v<typename traits<Pose>::structure_category,
@@ -346,7 +350,7 @@ class WNOAMotionFactor
     }
     Matrix2N F;
     // first column is pose, second column is velocity
-    F << dxi_dT1, -1 * delta_t * kIdentity, dvErr_dxi * dxi_dT1, -1 * kIdentity;
+    F << dxi_dT1, -1 * deltaT * kIdentity, dvErr_dxi * dxi_dT1, -1 * kIdentity;
     return F;
   }
 
@@ -360,25 +364,25 @@ class WNOAMotionFactor
    *
    * @param pv1 Pair (pose_k, vel_k)
    * @param pv2 Pair (pose_kp1, vel_kp1)
-   * @param delta_t Time interval
+   * @param deltaT Time interval
    * @return Matrix2N Jacobian block w.r.t. next state
    */
   static Matrix2N computeJacobianNext(const std::pair<Pose, Velocity>& pv1,
                                       const std::pair<Pose, Velocity>& pv2,
-                                      double delta_t) {
+                                      double deltaT) {
     // corresponds to E in (11.21) in SER
     auto& [p1, v1] = pv1;
     auto& [p2, v2] = pv2;
 
     MatrixN dxi_dT2;
     MatrixN dbetween_p2;
-    MatrixN right_jac_inv;
+    MatrixN invJr;
 
     VectorN xi;
     xi = traits<Pose>::Logmap(
-        traits<Pose>::Between(p1, p2, nullptr, &dbetween_p2), &right_jac_inv);
+        traits<Pose>::Between(p1, p2, nullptr, &dbetween_p2), &invJr);
 
-    dxi_dT2 = right_jac_inv * dbetween_p2;
+    dxi_dT2 = invJr * dbetween_p2;
     // Derivative of velocity error wrt xi
     MatrixN dvErr_dxi;
     if constexpr (std::is_same_v<typename traits<Pose>::structure_category,
@@ -392,7 +396,7 @@ class WNOAMotionFactor
     }
     Matrix2N E;
     // First column is pose, second column is velocity
-    E << dxi_dT2, kZero, dvErr_dxi * dxi_dT2, right_jac_inv;
+    E << dxi_dT2, kZero, dvErr_dxi * dxi_dT2, invJr;
     return -1 * E;
   }
 };
