@@ -22,6 +22,7 @@ class SfmTrack2d {
 virtual class SfmTrack : gtsam::SfmTrack2d {
   SfmTrack();
   SfmTrack(const gtsam::Point3& pt);
+  SfmTrack(const gtsam::Point3& pt, float r, float g, float b);
   const Point3& point3() const;
 
   Point3 p;
