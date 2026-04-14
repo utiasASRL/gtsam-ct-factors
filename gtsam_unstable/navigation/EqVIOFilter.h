@@ -40,9 +40,6 @@ struct EqVIOFilterParams {
   double initialPointDepth = 10.0;
   /// Initial 3x3 covariance scalar assigned to newly inserted landmarks.
   double initialPointVariance = 1.0;
-  /// Default pixel-space measurement noise variance used when `correct()` is
-  /// called with empty `R`.
-  double measurementNoiseVariance = 1e-4;
   /// Absolute reprojection residual threshold for outlier rejection.
   double outlierThresholdAbs = 1e8;
   /// Fraction of features to keep after ranking potential outliers (in [0, 1]).
@@ -110,17 +107,6 @@ class GTSAM_UNSTABLE_EXPORT EqVIOFilter
    * @param dt Hold duration in seconds.
    */
   void predict(const IMUInput& imu, double dt);
-
-  /**
-   * @brief Apply one visual correction step with dynamic landmark management.
-   *
-   * The method removes stale landmarks, rejects outliers, inserts new
-   * landmarks, performs update, and prunes numerically invalid landmarks.
-   *
-   * Uses `measurementNoiseVariance * I` with the correct runtime dimension.
-   */
-  void update(const VisionMeasurement& measurement,
-              const std::shared_ptr<const CameraModel>& camera);
 
   /**
    * @brief Apply one visual correction step with explicit measurement

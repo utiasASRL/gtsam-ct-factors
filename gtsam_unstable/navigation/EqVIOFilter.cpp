@@ -106,43 +106,6 @@ void EqVIOFilter::predict(const IMUInput& imu, double dt) {
 }
 
 /**
- * @brief Visual update entry point using default isotropic measurement noise.
- */
-void EqVIOFilter::update(const VisionMeasurement& measurement,
-                         const std::shared_ptr<const CameraModel>& camera) {
-  if (!initialized_) {
-    return;
-  }
-
-  VisionMeasurement matchedMeasurement = measurement;
-  reconcileLandmarks(matchedMeasurement, camera);
-
-  if (matchedMeasurement.empty()) {
-    return;
-  }
-
-  const int dim = 2 * dense(matchedMeasurement.size());
-  const Matrix matchedCovariance =
-      Matrix::Identity(dim, dim) * params_.measurementNoiseVariance;
-  innovationUpdate(matchedMeasurement, camera, matchedCovariance);
-
-  const KeyVector invalidKeys = invalidLandmarkKeys();
-  if (!invalidKeys.empty()) {
-    const KeySet invalidKeySet(invalidKeys.begin(), invalidKeys.end());
-    std::vector<size_t> retainedIndices;
-    retainedIndices.reserve(landmarkKeys_.size());
-    for (size_t i = 0; i < landmarkKeys_.size(); ++i) {
-      if (invalidKeySet.count(landmarkKeys_[i]) == 0) {
-        retainedIndices.push_back(i);
-      }
-    }
-    applyLandmarkStructureChange(retainedIndices, {});
-  }
-
-  assert(!errorCovariance().hasNaN());
-}
-
-/**
  * @brief Visual update entry point including feature management.
  *
  * The update sequence is:
@@ -155,31 +118,30 @@ void EqVIOFilter::update(const VisionMeasurement& measurement,
 void EqVIOFilter::update(const VisionMeasurement& measurement,
                          const std::shared_ptr<const CameraModel>& camera,
                          const Matrix& R) {
-  if (!initialized_) {
-    return;
-  }
-
   const int fullDim = 2 * dense(measurement.size());
-  if (R.rows() != fullDim || R.cols() != fullDim) {
+  if (R.rows() == 0 || R.cols() == 0 || R.rows() != fullDim ||
+      R.cols() != fullDim) {
     throw std::invalid_argument("EqVIOFilter::update: measurement covariance "
                                 "must be 2M x 2M");
+  }
+
+  if (!initialized_) {
+    return;
   }
 
   VisionMeasurement matchedMeasurement = measurement;
   reconcileLandmarks(matchedMeasurement, camera);
 
-  assert(matchedMeasurement.size() == measurement.size());
-  if (matchedMeasurement.size() != measurement.size()) {
-    throw std::invalid_argument(
-        "EqVIOFilter::update: explicit measurement covariance does not "
-        "support outlier filtering or measurement set changes");
-  }
-
   if (matchedMeasurement.empty()) {
     return;
   }
 
-  innovationUpdate(matchedMeasurement, camera, R);
+  const int matchedDim = 2 * dense(matchedMeasurement.size());
+  const Matrix matchedR =
+      matchedDim == fullDim
+          ? R
+          : Matrix::Identity(matchedDim, matchedDim) * R(0, 0);
+  innovationUpdate(matchedMeasurement, camera, matchedR);
 
   const KeyVector invalidKeys = invalidLandmarkKeys();
   if (!invalidKeys.empty()) {

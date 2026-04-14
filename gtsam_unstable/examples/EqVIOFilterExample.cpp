@@ -53,8 +53,6 @@ EqVIOFilterParams paramsFromMetadata(const replay::MetadataMap& metadata) {
 
   setParam(params.initialPointDepth, {"eqf.initial_point_depth"});
   setParam(params.initialPointVariance, {"eqf.initial_point_variance"});
-  setParam(params.measurementNoiseVariance,
-           {"eqf.measurement_noise_variance_norm"});
   setParam(params.outlierThresholdAbs,
            {"eqf.outlier_threshold_abs", "eqf.outlier_threshold_abs_norm"});
   setParam(params.featureRetention, {"eqf.feature_retention"});
@@ -115,8 +113,16 @@ Matrix initialCovarianceFromMetadata(const replay::MetadataMap& metadata,
   return Sigma0;
 }
 
+/// Measurement covariance scalar used by the replay example.
+double measurementNoiseVarianceFromMetadata(
+    const replay::MetadataMap& metadata) {
+  return replay::metadataFiniteDouble(metadata,
+                                      "eqf.measurement_noise_variance_norm",
+                                      1e-4);
+}
+
 /// Print compact replay statistics and terminal estimate summary.
-void printSummary(const EqVIOFilterParams& params, double currentTime,
+void printSummary(double measurementNoiseVariance, double currentTime,
                   size_t imuCount, size_t visionFrameCount,
                   size_t visionFeatureCount, const State& estimate) {
   std::cout << "CSV replay complete.\n";
@@ -124,7 +130,7 @@ void printSummary(const EqVIOFilterParams& params, double currentTime,
             << ", IMU: " << imuCount << ", vision frames: " << visionFrameCount
             << ", vision features: " << visionFeatureCount << "\n";
   std::cout << "Measurement noise variance (normalized): "
-            << params.measurementNoiseVariance << "\n";
+            << measurementNoiseVariance << "\n";
   std::cout << std::setprecision(17);
   std::cout << "Filter time: " << currentTime << "\n";
   std::cout << std::setprecision(10);
@@ -150,6 +156,8 @@ int main() {
   try {
     const replay::MetadataMap metadata = replay::readReplayMetadata(csvPath);
     const EqVIOFilterParams params = paramsFromMetadata(metadata);
+    const double measurementNoiseVariance =
+        measurementNoiseVarianceFromMetadata(metadata);
     const State xi0 = initialReferenceState(metadata);
     const Matrix Sigma0 = initialCovarianceFromMetadata(metadata, xi0);
 
@@ -204,12 +212,16 @@ int main() {
                                 step.trimCount));
       }
 
-      filter->update(event.vision, camera);
+      const Matrix R =
+          Matrix::Identity(static_cast<int>(2 * event.vision.size()),
+                           static_cast<int>(2 * event.vision.size())) *
+          measurementNoiseVariance;
+      filter->update(event.vision, camera, R);
     }
 
     const State finalEstimate = filter ? filter->state() : xi0;
-    printSummary(params, currentTime, imuCount, visionFrameCount,
-                 visionFeatureCount, finalEstimate);
+    printSummary(measurementNoiseVariance, currentTime, imuCount,
+                 visionFrameCount, visionFeatureCount, finalEstimate);
   } catch (const std::exception& e) {
     std::cerr << "EqVIOFilterExample failed: " << e.what() << "\n";
     return 2;

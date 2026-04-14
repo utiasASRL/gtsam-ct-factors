@@ -110,6 +110,12 @@ void PropagateSingle(EqVIOFilter& filter, const IMUInput& imu, double dt) {
   filter.predict(imu, dt);
 }
 
+Matrix MeasurementCovariance(const VisionMeasurement& measurement,
+                             double variance = 1e-4) {
+  const int dim = static_cast<int>(2 * measurement.size());
+  return Matrix::Identity(dim, dim) * variance;
+}
+
 State integrateSystemFunction(const State& state, const IMUInput& velocity,
                               double dt) {
   State out;
@@ -175,7 +181,7 @@ TEST(EqVIOFilter, DynamicLandmarksAddRemove) {
   meas1[1] = camera->project2(Point3(0.2, -0.1, 3.5));
   meas1[2] = camera->project2(Point3(-0.3, 0.15, 4.0));
   PropagateSingle(filter, imu1, 0.01);
-  filter.update(meas1, camera);
+  filter.update(meas1, camera, MeasurementCovariance(meas1));
   EXPECT_LONGS_EQUAL(2, filter.state().n());
 
   IMUInput imu2 = imu0;
@@ -184,10 +190,10 @@ TEST(EqVIOFilter, DynamicLandmarksAddRemove) {
 
   VisionMeasurement meas2;
   meas2[1] = meas1.at(1);
-  filter.update(meas2, camera);
+  filter.update(meas2, camera, MeasurementCovariance(meas2));
   EXPECT_LONGS_EQUAL(2, filter.state().n());
 
-  filter.update(meas2, camera);
+  filter.update(meas2, camera, MeasurementCovariance(meas2));
   EXPECT_LONGS_EQUAL(1, filter.state().n());
 }
 
@@ -213,9 +219,6 @@ TEST(EqVIOFilter, InitAndPropagation) {
 
   auto camera =
       std::make_shared<CameraModel>(Pose3::Identity(), Cal3_S2(1, 1, 0, 0, 0));
-  VisionMeasurement meas;
-  filter.update(meas, camera);
-
   EXPECT(filter.errorCovariance().array().isFinite().all());
 }
 
@@ -246,9 +249,6 @@ TEST(EqVIOFilter, ParityShortSequence) {
     imu.accBiasVel = Vector3(-0.0004, 0.0003, -0.0001);
     PropagateSingle(filter, imu, dt);
 
-    VisionMeasurement emptyMeas;
-    filter.update(emptyMeas, camera);
-
     manual = integrateSystemFunction(manual, imu, dt);
     t += dt;
   }
@@ -276,7 +276,7 @@ TEST(EqVIOFilter, VisionUpdate) {
       std::make_shared<CameraModel>(Pose3::Identity(), Cal3_S2(1, 1, 0, 0, 0));
   const VisionMeasurement meas =
       measureSystemState(filter.state(), Keys1(), camera);
-  filter.update(meas, camera);
+  filter.update(meas, camera, MeasurementCovariance(meas));
 
   EXPECT_LONGS_EQUAL(1, filter.state().n());
   EXPECT(filter.errorCovariance().array().isFinite().all());
@@ -306,7 +306,7 @@ TEST(EqVIOFilter, Smoke) {
 
     if (k % 5 == 0) {
       VisionMeasurement y = measureSystemState(filter.state(), Keys2(), camera);
-      filter.update(y, camera);
+      filter.update(y, camera, MeasurementCovariance(y));
     }
   }
 
@@ -328,7 +328,7 @@ TEST(EqVIOFilter, SeededLandmarkKeys) {
       std::make_shared<CameraModel>(Pose3::Identity(), Cal3_S2(1, 1, 0, 0, 0));
   const VisionMeasurement meas =
       measureSystemState(filter.state(), Keys1(), camera);
-  filter.update(meas, camera);
+  filter.update(meas, camera, MeasurementCovariance(meas));
 
   EXPECT_LONGS_EQUAL(1, filter.state().n());
   EXPECT(filter.errorCovariance().array().isFinite().all());
@@ -352,25 +352,50 @@ TEST(EqVIOFilter, BatchLandmarkStructureChange) {
   VisionMeasurement meas1;
   meas1[1] = camera->project2(Point3(0.2, -0.1, 3.5));
   meas1[2] = camera->project2(Point3(-0.3, 0.15, 4.0));
-  filter.update(meas1, camera);
+  filter.update(meas1, camera, MeasurementCovariance(meas1));
   EXPECT_LONGS_EQUAL(2, filter.state().n());
 
   VisionMeasurement meas2;
   meas2[2] = meas1.at(2);
   meas2[3] = camera->project2(Point3(0.4, 0.05, 4.2));
   meas2[4] = camera->project2(Point3(-0.2, -0.2, 3.7));
-  filter.update(meas2, camera);
+  filter.update(meas2, camera, MeasurementCovariance(meas2));
   EXPECT_LONGS_EQUAL(4, filter.state().n());
   EXPECT_LONGS_EQUAL(33, filter.errorCovariance().rows());
 
-  filter.update(meas2, camera);
+  filter.update(meas2, camera, MeasurementCovariance(meas2));
   EXPECT_LONGS_EQUAL(3, filter.state().n());
   EXPECT_LONGS_EQUAL(30, filter.errorCovariance().rows());
 }
 
-// Verifies explicit measurement covariance requires the measurement set to
-// remain unchanged through reconciliation.
-TEST(EqVIOFilter, ExplicitCovarianceRejectsFilteredMeasurement) {
+// Verifies the new-landmark covariance knob is exercised, not dead optionality.
+TEST(EqVIOFilter, InitialPointVarianceSeedsNewLandmarkCovariance) {
+  EqVIOFilterParams params;
+  params.initialPointDepth = 5.0;
+  params.initialPointVariance = 123.0;
+
+  EqVIOFilter filter(params);
+  auto camera =
+      std::make_shared<CameraModel>(Pose3::Identity(), Cal3_S2(1, 1, 0, 0, 0));
+
+  IMUInput imu0;
+  imu0.stamp = 0.0;
+  imu0.acc = Vector3(0.0, 0.0, GRAVITY_CONSTANT);
+  imu0.gyr = Vector3::Zero();
+  filter.initializeFromIMU(imu0);
+
+  VisionMeasurement meas;
+  meas[1] = camera->project2(Point3(0.2, -0.1, 3.5));
+  filter.update(meas, camera, MeasurementCovariance(meas, 1e12));
+
+  const Matrix landmarkCovariance =
+      filter.errorCovariance().block<3, 3>(21, 21);
+  EXPECT((landmarkCovariance.diagonal().array() > 122.0).all());
+  EXPECT((landmarkCovariance.diagonal().array() < 124.0).all());
+}
+
+// Verifies supplied R does not override the absolute-residual outlier gate.
+TEST(EqVIOFilter, AbsoluteOutlierGateWithSuppliedR) {
   EqVIOFilterParams params;
   params.outlierThresholdAbs = 1e-3;
   params.featureRetention = 0.0;
@@ -386,7 +411,9 @@ TEST(EqVIOFilter, ExplicitCovarianceRejectsFilteredMeasurement) {
   meas[key] = meas.at(key) + Point2(0.1, 0.1);
 
   const Matrix R = Matrix::Identity(2, 2) * 1e6;
-  CHECK_EXCEPTION(filter.update(meas, camera, R), std::invalid_argument);
+  filter.update(meas, camera, R);
+
+  EXPECT_LONGS_EQUAL(0, filter.state().n());
 }
 
 // Verifies explicit measurement covariance must match the input measurement.
