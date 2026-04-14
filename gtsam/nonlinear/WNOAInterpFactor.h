@@ -77,7 +77,7 @@ namespace gtsam {
  *
  * Typical usage:
  *   Construct by providing an inner NoiseModelFactor, ordered sets of
- *   estimated and interpolated StateData, and the WNOA PSD vector Q_psd.
+ *   estimated and interpolated StateData, and the WNOA PSD vector q_psd_diag.
  *   Use as a drop-in factor in a graph that references only estimated keys;
  *   call linearize/error/noiseModel as usual. When many factors share
  *   interpolation, supply PassedInterpData to avoid redundant work.
@@ -175,7 +175,7 @@ class WNOAInterpFactor : public NoiseModelFactor {
    * interpolation.
    * @param interp_states Ordered set of states to interpolate (states at query
    * times).
-   * @param Q_psd Diagonal PSD vector for the WNOA motion prior.
+   * @param q_psd_diag Diagonal PSD vector for the WNOA motion prior.
    * @param fixed_noise_model If true, do not augment the noise measurement
    * model with GP interpolation process noise. This is faster, but less
    * accurate, as it ignores interpolation uncertainty.
@@ -185,12 +185,12 @@ class WNOAInterpFactor : public NoiseModelFactor {
   WNOAInterpFactor(const NoiseModelFactor::shared_ptr inner_factor,
                    const std::set<StateData> estimated_states,
                    const std::set<StateData> interp_states,
-                   const Eigen::Matrix<double, dim, 1> Q_psd,
+                   const Eigen::Matrix<double, dim, 1> q_psd_diag,
                    const bool fixed_noise_model = false,
                    const bool precomp_interp_mats = true)
       : Base(inner_factor->noiseModel()),
         inner_factor_(inner_factor),
-        interpolator_(Q_psd),
+        interpolator_(q_psd_diag),
         fixed_noise_model_(fixed_noise_model) {
     // PROCESS INTERPOLATED STATES
     // loop through interpolated states
@@ -879,7 +879,7 @@ class WNOAInterpFactor : public NoiseModelFactor {
  * states).
  * @param interp_states Ordered set of `StateData` entries to be
  * interpolated/removed.
- * @param Q_psd Diagonal PSD vector for the WNOA motion prior (dimension must
+ * @param q_psd_diag Diagonal PSD vector for the WNOA motion prior (dimension must
  * match PoseType).
  * @param fixed_noise If true, do not augment measurement noise models for
  * interpolation.
@@ -890,7 +890,7 @@ template <class PoseType>
 NonlinearFactorGraph interpolateFactorGraph(
     const NonlinearFactorGraph& graph,
     const std::set<StateData>& estimated_states,
-    const std::set<StateData>& interp_states, Vector Q_psd,
+    const std::set<StateData>& interp_states, Vector q_psd_diag,
     bool fixed_noise = false) {
   // assert that the pose is the right kind of variable
   static_assert(
@@ -900,7 +900,7 @@ NonlinearFactorGraph interpolateFactorGraph(
                          vector_space_tag>,
       "Pose type must be either a Lie group or vector space");
   // check dimension on the power spectral density matrix
-  assert(traits<PoseType>::dimension == Q_psd.size());
+  assert(traits<PoseType>::dimension == q_psd_diag.size());
   // Create new factor graph
   NonlinearFactorGraph new_graph;
   // Add WNOA prior between all estimated states
@@ -913,7 +913,7 @@ NonlinearFactorGraph interpolateFactorGraph(
     // add factor
     auto motion_factor = std::make_shared<WNOAMotionFactor<PoseType>>(
         state_k.pose, state_k.velocity, state_kp1.pose, state_kp1.velocity,
-        del_t, Q_psd);
+        del_t, q_psd_diag);
     new_graph.add(motion_factor);
     iter_state++;
   }
@@ -974,7 +974,7 @@ NonlinearFactorGraph interpolateFactorGraph(
 
       // Define and add factor to new graph
       const auto wrapped_factor = std::make_shared<WNOAInterpFactor<PoseType>>(
-          nmfactor, factor_estimated_states, factor_interp_states, Q_psd,
+          nmfactor, factor_estimated_states, factor_interp_states, q_psd_diag,
           fixed_noise);
       new_graph.add(wrapped_factor);
     }
@@ -996,7 +996,7 @@ NonlinearFactorGraph interpolateFactorGraph(
  * @param estim_states Ordered set of estimated `StateData` used by the main
  * solve.
  * @param interp_states Ordered set of `StateData` entries to interpolate.
- * @param Q_psd Diagonal PSD vector for the WNOA motion prior.
+ * @param q_psd_diag Diagonal PSD vector for the WNOA motion prior.
  * @param covarianceMapOut Optional output pointer to receive
  * per-interpolated-state covariances.
  * @return Values A copy of `values` updated with interpolated pose and velocity
