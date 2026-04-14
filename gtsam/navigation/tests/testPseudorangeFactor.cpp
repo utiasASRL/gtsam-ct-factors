@@ -667,10 +667,8 @@ static const Point3 kSatRefBase(-5824242.10, -22935002.50, -12195510.80);
 static const Point3 kSatTargetBase(15524505.30, -6304460.20, 20851440.60);
 
 static double computeGeodist(const Point3& sat, const Point3& rcv) {
-  constexpr double OMGE = 7.2921151467e-5;
-  constexpr double C_LIGHT = 299792458.0;
-  const double r = (sat - rcv).norm();
-  return r + OMGE * (sat.x() * rcv.y() - sat.y() * rcv.x()) / C_LIGHT;
+  Point3 e;
+  return gnss::geodist(sat, rcv, e);
 }
 
 TEST(TestDDPseudorangeFactor, ZeroError) {

@@ -7,6 +7,7 @@
 
 #include <gtsam/geometry/Point3.h>
 #include <gtsam/geometry/Pose3.h>
+#include <gtsam/navigation/GnssCommon.h>
 #include <gtsam/nonlinear/NoiseModelFactorN.h>
 #include <gtsam/nonlinear/NonlinearFactor.h>
 
@@ -249,16 +250,6 @@ class GTSAM_EXPORT DDCarrierPhaseFactor
   Point3 basePos_;
   double lam_;
 
-  static constexpr double OMGE = 7.2921151467e-5;
-  static constexpr double C_LIGHT = 299792458.0;
-
-  static double geodist(const Point3& sat, const Point3& rcv, Point3& e) {
-    const Point3 dr = sat - rcv;
-    const double r = dr.norm();
-    e = dr / r;
-    return r + OMGE * (sat.x() * rcv.y() - sat.y() * rcv.x()) / C_LIGHT;
-  }
-
  public:
   using Base::evaluateError;
   typedef std::shared_ptr<DDCarrierPhaseFactor> shared_ptr;
@@ -321,10 +312,10 @@ class GTSAM_EXPORT DDCarrierPhaseFactor
     const double ddObs = (cpRovRef_ - cpBaseRef_) - (cpRovTarget_ - cpBaseTarget_);
 
     Point3 eRef, eTarget, dummy;
-    const double rRovRef = geodist(satRefRov_, pos, eRef);
-    const double rRovTarget = geodist(satTargetRov_, pos, eTarget);
-    const double rBaseRef = geodist(satRefBase_, basePos_, dummy);
-    const double rBaseTarget = geodist(satTargetBase_, basePos_, dummy);
+    const double rRovRef = gnss::geodist(satRefRov_, pos, eRef);
+    const double rRovTarget = gnss::geodist(satTargetRov_, pos, eTarget);
+    const double rBaseRef = gnss::geodist(satRefBase_, basePos_, dummy);
+    const double rBaseTarget = gnss::geodist(satTargetBase_, basePos_, dummy);
 
     const double ddModel = (rRovRef - rBaseRef) - (rRovTarget - rBaseTarget);
     const double error = ddObs - ddModel - lam_ * (ambRef - ambTarget);
@@ -384,16 +375,6 @@ class GTSAM_EXPORT DDCarrierPhaseFactorArm
   double lam_;
   Point3 bL_;
   std::optional<Pose3> ecef_T_nav_;
-
-  static constexpr double OMGE = 7.2921151467e-5;
-  static constexpr double C_LIGHT = 299792458.0;
-
-  static double geodist(const Point3& sat, const Point3& rcv, Point3& e) {
-    const Point3 dr = sat - rcv;
-    const double r = dr.norm();
-    e = dr / r;
-    return r + OMGE * (sat.x() * rcv.y() - sat.y() * rcv.x()) / C_LIGHT;
-  }
 
  public:
   using Base::evaluateError;
@@ -486,10 +467,10 @@ class GTSAM_EXPORT DDCarrierPhaseFactorArm
     const double ddObs = (cpRovRef_ - cpBaseRef_) - (cpRovTarget_ - cpBaseTarget_);
 
     Point3 eRef, eTarget, dummy;
-    const double rRovRef = geodist(satRefRov_, antennaPos, eRef);
-    const double rRovTarget = geodist(satTargetRov_, antennaPos, eTarget);
-    const double rBaseRef = geodist(satRefBase_, basePos_, dummy);
-    const double rBaseTarget = geodist(satTargetBase_, basePos_, dummy);
+    const double rRovRef = gnss::geodist(satRefRov_, antennaPos, eRef);
+    const double rRovTarget = gnss::geodist(satTargetRov_, antennaPos, eTarget);
+    const double rBaseRef = gnss::geodist(satRefBase_, basePos_, dummy);
+    const double rBaseTarget = gnss::geodist(satTargetBase_, basePos_, dummy);
 
     const double ddModel = (rRovRef - rBaseRef) - (rRovTarget - rBaseTarget);
     const double error = ddObs - ddModel - lam_ * (ambRef - ambTarget);

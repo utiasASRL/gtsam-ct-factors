@@ -9,6 +9,7 @@
 #include <gtsam/base/std_optional_serialization.h>
 #include <gtsam/geometry/Point3.h>
 #include <gtsam/geometry/Pose3.h>
+#include <gtsam/navigation/GnssCommon.h>
 #include <gtsam/nonlinear/NoiseModelFactorN.h>
 #include <gtsam/nonlinear/NonlinearFactor.h>
 
@@ -447,16 +448,6 @@ class GTSAM_EXPORT DDPseudorangeFactor : public NoiseModelFactorN<Point3> {
   Point3 satTargetBase_;    ///< Target satellite ECEF at base time [m]
   Point3 basePos_;          ///< Base station ECEF position [m]
 
-  static constexpr double OMGE = 7.2921151467e-5;
-  static constexpr double C_LIGHT = 299792458.0;
-
-  static double geodist(const Point3& sat, const Point3& rcv, Point3& e) {
-    const Point3 dr = sat - rcv;
-    const double r = dr.norm();
-    e = dr / r;
-    return r + OMGE * (sat.x() * rcv.y() - sat.y() * rcv.x()) / C_LIGHT;
-  }
-
  public:
   using Base::evaluateError;
   typedef std::shared_ptr<DDPseudorangeFactor> shared_ptr;
@@ -526,13 +517,13 @@ class GTSAM_EXPORT DDPseudorangeFactor : public NoiseModelFactorN<Point3> {
 
     // Rover: use satellite positions at rover time
     Point3 eRef, eTarget;
-    const double rRovRef = geodist(satRefRov_, pos, eRef);
-    const double rRovTarget = geodist(satTargetRov_, pos, eTarget);
+    const double rRovRef = gnss::geodist(satRefRov_, pos, eRef);
+    const double rRovTarget = gnss::geodist(satTargetRov_, pos, eTarget);
 
     // Base: use satellite positions at base time
     Point3 dummy;
-    const double rBaseRef = geodist(satRefBase_, basePos_, dummy);
-    const double rBaseTarget = geodist(satTargetBase_, basePos_, dummy);
+    const double rBaseRef = gnss::geodist(satRefBase_, basePos_, dummy);
+    const double rBaseTarget = gnss::geodist(satTargetBase_, basePos_, dummy);
 
     const double ddModel = (rRovRef - rBaseRef) - (rRovTarget - rBaseTarget);
     const double error = ddObs - ddModel;
@@ -588,16 +579,6 @@ class GTSAM_EXPORT DDPseudorangeFactorArm : public NoiseModelFactorN<Pose3> {
   Point3 basePos_;
   Point3 bL_;
   std::optional<Pose3> ecef_T_nav_;
-
-  static constexpr double OMGE = 7.2921151467e-5;
-  static constexpr double C_LIGHT = 299792458.0;
-
-  static double geodist(const Point3& sat, const Point3& rcv, Point3& e) {
-    const Point3 dr = sat - rcv;
-    const double r = dr.norm();
-    e = dr / r;
-    return r + OMGE * (sat.x() * rcv.y() - sat.y() * rcv.x()) / C_LIGHT;
-  }
 
  public:
   using Base::evaluateError;
@@ -683,10 +664,10 @@ class GTSAM_EXPORT DDPseudorangeFactorArm : public NoiseModelFactorN<Pose3> {
     const double ddObs = (prRovRef_ - prBaseRef_) - (prRovTarget_ - prBaseTarget_);
 
     Point3 eRef, eTarget, dummy;
-    const double rRovRef = geodist(satRefRov_, antennaPos, eRef);
-    const double rRovTarget = geodist(satTargetRov_, antennaPos, eTarget);
-    const double rBaseRef = geodist(satRefBase_, basePos_, dummy);
-    const double rBaseTarget = geodist(satTargetBase_, basePos_, dummy);
+    const double rRovRef = gnss::geodist(satRefRov_, antennaPos, eRef);
+    const double rRovTarget = gnss::geodist(satTargetRov_, antennaPos, eTarget);
+    const double rBaseRef = gnss::geodist(satRefBase_, basePos_, dummy);
+    const double rBaseTarget = gnss::geodist(satTargetBase_, basePos_, dummy);
 
     const double ddModel = (rRovRef - rBaseRef) - (rRovTarget - rBaseTarget);
     const double error = ddObs - ddModel;

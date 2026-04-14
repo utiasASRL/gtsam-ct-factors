@@ -8,14 +8,9 @@
 
 #include <limits>
 
-namespace {
-
-/// Speed of light in a vacuum (m/s):
-constexpr double CLIGHT = 299792458.0;
-
-}  // namespace
-
 namespace gtsam {
+
+using gnss::C_LIGHT;
 
 //***************************************************************************
 CarrierPhaseFactor::CarrierPhaseFactor(
@@ -56,7 +51,7 @@ Vector CarrierPhaseFactor::evaluateError(
   const Vector3 position_difference = receiverPosition - satPos_;
   const double range = position_difference.norm();
   const double rho =
-      range + CLIGHT * (receiverClockBias - satClkBias_) + ambiguity;
+      range + C_LIGHT * (receiverClockBias - satClkBias_) + ambiguity;
   const double error = rho - carrierPhase_;
 
   if (HreceiverPos) {
@@ -68,7 +63,7 @@ Vector CarrierPhaseFactor::evaluateError(
   }
 
   if (HreceiverClockBias) {
-    *HreceiverClockBias = I_1x1 * CLIGHT;
+    *HreceiverClockBias = I_1x1 * C_LIGHT;
   }
 
   if (Hambiguity) {
@@ -150,7 +145,7 @@ Vector CarrierPhaseFactorArm::evaluateError(
   const Vector3 position_difference = antennaPos - satPos_;
   const double range = position_difference.norm();
   const double rho =
-      range + CLIGHT * (receiverClockBias - satClkBias_) + ambiguity;
+      range + C_LIGHT * (receiverClockBias - satClkBias_) + ambiguity;
   const double error = rho - carrierPhase_;
 
   // Compute associated derivatives:
@@ -169,7 +164,7 @@ Vector CarrierPhaseFactorArm::evaluateError(
   }
 
   if (HreceiverClockBias) {
-    *HreceiverClockBias = I_1x1 * CLIGHT;
+    *HreceiverClockBias = I_1x1 * C_LIGHT;
   }
 
   if (Hambiguity) {
