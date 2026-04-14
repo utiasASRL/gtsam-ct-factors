@@ -227,10 +227,10 @@ struct traits<CarrierPhaseFactorArm>
  * both rover and base observation times, base station position, and wavelength.
  * The factor forms the double-difference internally.
  *
- * error = (cpRovRef - cpBaseRef) - (cpRovTarget - cpBaseTarget)
- *       - [(geodist(satRefRov,pos) - geodist(satRefBase,basePos))
+ * error = [(geodist(satRefRov,pos) - geodist(satRefBase,basePos))
  *        - (geodist(satTargetRov,pos) - geodist(satTargetBase,basePos))]
- *       - lam * (ambRef - ambTarget)
+ *       + lam * (ambRef - ambTarget)
+ *       - [(cpRovRef - cpBaseRef) - (cpRovTarget - cpBaseTarget)]
  *
  * @ingroup navigation
  */
@@ -318,11 +318,11 @@ class GTSAM_EXPORT DDCarrierPhaseFactor
     const double rBaseTarget = gnss::geodist(satTargetBase_, basePos_, dummy);
 
     const double ddModel = (rRovRef - rBaseRef) - (rRovTarget - rBaseTarget);
-    const double error = ddObs - ddModel - lam_ * (ambRef - ambTarget);
+    const double error = ddModel + lam_ * (ambRef - ambTarget) - ddObs;
 
-    if (Hpos) *Hpos = (Matrix(1, 3) << (eRef - eTarget).transpose()).finished();
-    if (HambRef) *HambRef = (Matrix(1, 1) << -lam_).finished();
-    if (HambTarget) *HambTarget = (Matrix(1, 1) << lam_).finished();
+    if (Hpos) *Hpos = (Matrix(1, 3) << (eTarget - eRef).transpose()).finished();
+    if (HambRef) *HambRef = (Matrix(1, 1) << lam_).finished();
+    if (HambTarget) *HambTarget = (Matrix(1, 1) << -lam_).finished();
 
     return Vector1(error);
   }
@@ -473,7 +473,7 @@ class GTSAM_EXPORT DDCarrierPhaseFactorArm
     const double rBaseTarget = gnss::geodist(satTargetBase_, basePos_, dummy);
 
     const double ddModel = (rRovRef - rBaseRef) - (rRovTarget - rBaseTarget);
-    const double error = ddObs - ddModel - lam_ * (ambRef - ambTarget);
+    const double error = ddModel + lam_ * (ambRef - ambTarget) - ddObs;
 
     if (H_pose) {
       H_pose->resize(1, 6);
@@ -482,15 +482,15 @@ class GTSAM_EXPORT DDCarrierPhaseFactorArm
       if (!ok) {
         H_pose->setZero();
       } else {
-        const Matrix13 dd_u = (eRef - eTarget).transpose();
+        const Matrix13 dd_u = (eTarget - eRef).transpose();
         Matrix16 H_ecef;
         H_ecef.block<1, 3>(0, 0) = dd_u * (-ecef_R_body * skewSymmetric(bL_));
         H_ecef.block<1, 3>(0, 3) = dd_u * ecef_R_body;
         *H_pose = has_nav ? H_ecef * H_compose : H_ecef;
       }
     }
-    if (HambRef) *HambRef = (Matrix(1, 1) << -lam_).finished();
-    if (HambTarget) *HambTarget = (Matrix(1, 1) << lam_).finished();
+    if (HambRef) *HambRef = (Matrix(1, 1) << lam_).finished();
+    if (HambTarget) *HambTarget = (Matrix(1, 1) << -lam_).finished();
 
     return Vector1(error);
   }

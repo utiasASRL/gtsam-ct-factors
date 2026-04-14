@@ -428,9 +428,9 @@ struct traits<DifferentialPseudorangeFactorArm>
  * move ~3 km/s. Using the same positions for both causes ~100m DD errors
  * when rover and base observation times differ (e.g. rover 5Hz, base 1Hz).
  *
- * error = (prRovRef - prBaseRef) - (prRovTarget - prBaseTarget)
- *       - [(geodist(satRefRov,pos) - geodist(satRefBase,basePos))
+ * error = [(geodist(satRefRov,pos) - geodist(satRefBase,basePos))
  *        - (geodist(satTargetRov,pos) - geodist(satTargetBase,basePos))]
+ *       - [(prRovRef - prBaseRef) - (prRovTarget - prBaseTarget)]
  *
  * @ingroup navigation
  */
@@ -526,10 +526,10 @@ class GTSAM_EXPORT DDPseudorangeFactor : public NoiseModelFactorN<Point3> {
     const double rBaseTarget = gnss::geodist(satTargetBase_, basePos_, dummy);
 
     const double ddModel = (rRovRef - rBaseRef) - (rRovTarget - rBaseTarget);
-    const double error = ddObs - ddModel;
+    const double error = ddModel - ddObs;
 
     if (H) {
-      *H = (Matrix(1, 3) << (eRef - eTarget).transpose()).finished();
+      *H = (Matrix(1, 3) << (eTarget - eRef).transpose()).finished();
     }
     return Vector1(error);
   }
@@ -670,7 +670,7 @@ class GTSAM_EXPORT DDPseudorangeFactorArm : public NoiseModelFactorN<Pose3> {
     const double rBaseTarget = gnss::geodist(satTargetBase_, basePos_, dummy);
 
     const double ddModel = (rRovRef - rBaseRef) - (rRovTarget - rBaseTarget);
-    const double error = ddObs - ddModel;
+    const double error = ddModel - ddObs;
 
     if (H_pose) {
       H_pose->resize(1, 6);
@@ -679,7 +679,7 @@ class GTSAM_EXPORT DDPseudorangeFactorArm : public NoiseModelFactorN<Pose3> {
       if (!ok) {
         H_pose->setZero();
       } else {
-        const Matrix13 dd_u = (eRef - eTarget).transpose();
+        const Matrix13 dd_u = (eTarget - eRef).transpose();
         Matrix16 H_ecef;
         H_ecef.block<1, 3>(0, 0) = dd_u * (-ecef_R_body * skewSymmetric(bL_));
         H_ecef.block<1, 3>(0, 3) = dd_u * ecef_R_body;
