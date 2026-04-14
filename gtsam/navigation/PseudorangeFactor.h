@@ -9,6 +9,7 @@
 #include <gtsam/base/std_optional_serialization.h>
 #include <gtsam/geometry/Point3.h>
 #include <gtsam/geometry/Pose3.h>
+#include <gtsam/navigation/GnssCommon.h>
 #include <gtsam/nonlinear/NoiseModelFactorN.h>
 #include <gtsam/nonlinear/NonlinearFactor.h>
 
@@ -427,9 +428,9 @@ struct traits<DifferentialPseudorangeFactorArm>
  * move ~3 km/s. Using the same positions for both causes ~100m DD errors
  * when rover and base observation times differ (e.g. rover 5Hz, base 1Hz).
  *
- * error = (prRovRef - prBaseRef) - (prRovTarget - prBaseTarget)
- *       - [(geodist(satRefRov,pos) - geodist(satRefBase,basePos))
+ * error = [(geodist(satRefRov,pos) - geodist(satRefBase,basePos))
  *        - (geodist(satTargetRov,pos) - geodist(satTargetBase,basePos))]
+ *       - [(prRovRef - prBaseRef) - (prRovTarget - prBaseTarget)]
  *
  * @ingroup navigation
  */
@@ -446,16 +447,6 @@ class GTSAM_EXPORT DDPseudorangeFactor : public NoiseModelFactorN<Point3> {
   Point3 satRefBase_;       ///< Ref satellite ECEF at base time [m]
   Point3 satTargetBase_;    ///< Target satellite ECEF at base time [m]
   Point3 basePos_;          ///< Base station ECEF position [m]
-
-  static constexpr double OMGE = 7.2921151467e-5;
-  static constexpr double C_LIGHT = 299792458.0;
-
-  static double geodist(const Point3& sat, const Point3& rcv, Point3& e) {
-    const Point3 dr = sat - rcv;
-    const double r = dr.norm();
-    e = dr / r;
-    return r + OMGE * (sat.x() * rcv.y() - sat.y() * rcv.x()) / C_LIGHT;
-  }
 
  public:
   using Base::evaluateError;
@@ -526,19 +517,19 @@ class GTSAM_EXPORT DDPseudorangeFactor : public NoiseModelFactorN<Point3> {
 
     // Rover: use satellite positions at rover time
     Point3 eRef, eTarget;
-    const double rRovRef = geodist(satRefRov_, pos, eRef);
-    const double rRovTarget = geodist(satTargetRov_, pos, eTarget);
+    const double rRovRef = gnss::geodist(satRefRov_, pos, eRef);
+    const double rRovTarget = gnss::geodist(satTargetRov_, pos, eTarget);
 
     // Base: use satellite positions at base time
     Point3 dummy;
-    const double rBaseRef = geodist(satRefBase_, basePos_, dummy);
-    const double rBaseTarget = geodist(satTargetBase_, basePos_, dummy);
+    const double rBaseRef = gnss::geodist(satRefBase_, basePos_, dummy);
+    const double rBaseTarget = gnss::geodist(satTargetBase_, basePos_, dummy);
 
     const double ddModel = (rRovRef - rBaseRef) - (rRovTarget - rBaseTarget);
-    const double error = ddObs - ddModel;
+    const double error = ddModel - ddObs;
 
     if (H) {
-      *H = (Matrix(1, 3) << (eRef - eTarget).transpose()).finished();
+      *H = (Matrix(1, 3) << (eTarget - eRef).transpose()).finished();
     }
     return Vector1(error);
   }
@@ -588,16 +579,6 @@ class GTSAM_EXPORT DDPseudorangeFactorArm : public NoiseModelFactorN<Pose3> {
   Point3 basePos_;
   Point3 bL_;
   std::optional<Pose3> ecef_T_nav_;
-
-  static constexpr double OMGE = 7.2921151467e-5;
-  static constexpr double C_LIGHT = 299792458.0;
-
-  static double geodist(const Point3& sat, const Point3& rcv, Point3& e) {
-    const Point3 dr = sat - rcv;
-    const double r = dr.norm();
-    e = dr / r;
-    return r + OMGE * (sat.x() * rcv.y() - sat.y() * rcv.x()) / C_LIGHT;
-  }
 
  public:
   using Base::evaluateError;
@@ -683,13 +664,13 @@ class GTSAM_EXPORT DDPseudorangeFactorArm : public NoiseModelFactorN<Pose3> {
     const double ddObs = (prRovRef_ - prBaseRef_) - (prRovTarget_ - prBaseTarget_);
 
     Point3 eRef, eTarget, dummy;
-    const double rRovRef = geodist(satRefRov_, antennaPos, eRef);
-    const double rRovTarget = geodist(satTargetRov_, antennaPos, eTarget);
-    const double rBaseRef = geodist(satRefBase_, basePos_, dummy);
-    const double rBaseTarget = geodist(satTargetBase_, basePos_, dummy);
+    const double rRovRef = gnss::geodist(satRefRov_, antennaPos, eRef);
+    const double rRovTarget = gnss::geodist(satTargetRov_, antennaPos, eTarget);
+    const double rBaseRef = gnss::geodist(satRefBase_, basePos_, dummy);
+    const double rBaseTarget = gnss::geodist(satTargetBase_, basePos_, dummy);
 
     const double ddModel = (rRovRef - rBaseRef) - (rRovTarget - rBaseTarget);
-    const double error = ddObs - ddModel;
+    const double error = ddModel - ddObs;
 
     if (H_pose) {
       H_pose->resize(1, 6);
@@ -698,7 +679,7 @@ class GTSAM_EXPORT DDPseudorangeFactorArm : public NoiseModelFactorN<Pose3> {
       if (!ok) {
         H_pose->setZero();
       } else {
-        const Matrix13 dd_u = (eRef - eTarget).transpose();
+        const Matrix13 dd_u = (eTarget - eRef).transpose();
         Matrix16 H_ecef;
         H_ecef.block<1, 3>(0, 0) = dd_u * (-ecef_R_body * skewSymmetric(bL_));
         H_ecef.block<1, 3>(0, 3) = dd_u * ecef_R_body;

@@ -9,14 +9,9 @@
 
 #include <limits>
 
-namespace {
-
-/// Speed of light in a vacuum (m/s):
-constexpr double CLIGHT = 299792458.0;
-
-}  // namespace
-
 namespace gtsam {
+
+using gnss::C_LIGHT;
 
 //***************************************************************************
 PseudorangeFactor::PseudorangeFactor(const Key receiverPositionKey,
@@ -56,7 +51,7 @@ Vector PseudorangeFactor::evaluateError(
   // Apply pseudorange equation: rho = range + c*[dt_u - dt^s]
   const Vector3 position_difference = receiverPosition - satPos_;
   const double range = position_difference.norm();
-  const double rho = range + CLIGHT * (receiverClockBias - satClkBias_);
+  const double rho = range + C_LIGHT * (receiverClockBias - satClkBias_);
   const double error = rho - pseudorange_;
 
   // Compute associated derivatives:
@@ -69,7 +64,7 @@ Vector PseudorangeFactor::evaluateError(
   }
 
   if (HreceiverClockBias) {
-    *HreceiverClockBias = I_1x1 * CLIGHT;
+    *HreceiverClockBias = I_1x1 * C_LIGHT;
   }
 
   return Vector1(error);
@@ -144,7 +139,7 @@ Vector PseudorangeFactorArm::evaluateError(
   // Apply pseudorange equation: rho = range + c*[dt_u - dt^s]
   const Vector3 position_difference = antennaPos - satPos_;
   const double range = position_difference.norm();
-  const double rho = range + CLIGHT * (receiverClockBias - satClkBias_);
+  const double rho = range + C_LIGHT * (receiverClockBias - satClkBias_);
   const double error = rho - pseudorange_;
 
   // Compute associated derivatives:
@@ -165,7 +160,7 @@ Vector PseudorangeFactorArm::evaluateError(
   }
 
   if (HreceiverClockBias) {
-    *HreceiverClockBias = I_1x1 * CLIGHT;
+    *HreceiverClockBias = I_1x1 * C_LIGHT;
   }
 
   return Vector1(error);
@@ -209,7 +204,7 @@ Vector DifferentialPseudorangeFactor::evaluateError(
     OptionalMatrixType HdifferentialCorrection) const {
   const Vector3 position_difference = receiverPosition - satPos_;
   const double range = position_difference.norm();
-  const double rho = range + CLIGHT * (receiverClock_bias - satClkBias_);
+  const double rho = range + C_LIGHT * (receiverClock_bias - satClkBias_);
   const double error = rho - pseudorange_ - differentialCorrection;
 
   if (HreceiverPos) {
@@ -221,7 +216,7 @@ Vector DifferentialPseudorangeFactor::evaluateError(
   }
 
   if (HreceiverClockBias) {
-    *HreceiverClockBias = I_1x1 * CLIGHT;
+    *HreceiverClockBias = I_1x1 * C_LIGHT;
   }
 
   if (HdifferentialCorrection) {
@@ -299,7 +294,7 @@ Vector DifferentialPseudorangeFactorArm::evaluateError(
 
   const Vector3 position_difference = antennaPos - satPos_;
   const double range = position_difference.norm();
-  const double rho = range + CLIGHT * (receiverClockBias - satClkBias_);
+  const double rho = range + C_LIGHT * (receiverClockBias - satClkBias_);
   const double error = rho - pseudorange_ - differentialCorrection;
 
   if (H_pose) {
@@ -317,7 +312,7 @@ Vector DifferentialPseudorangeFactorArm::evaluateError(
   }
 
   if (HreceiverClockBias) {
-    *HreceiverClockBias = I_1x1 * CLIGHT;
+    *HreceiverClockBias = I_1x1 * C_LIGHT;
   }
 
   if (HdifferentialCorrection) {
