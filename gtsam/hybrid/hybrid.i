@@ -557,23 +557,24 @@ class HybridJunctionTree {
 };
 
 #include <gtsam/hybrid/DCSAM.h>
-#include <gtsam/nonlinear/ISAM2Params.h>
-
 class DCSAM {
-    DCSAM();
-    DCSAM(const gtsam::ISAM2Params &isam_params);
+  DCSAM();
+  DCSAM(const gtsam::ISAM2Params& isam_params);
 
-    void update();
-    void update(
-        const gtsam::HybridNonlinearFactorGraph& graph,
-        const gtsam::HybridValues& initialGuess = gtsam::HybridValues());
-    void update(const gtsam::HybridNonlinearFactorGraph& graph,
-                const gtsam::DiscreteValues& initialGuessDiscrete);
+  void update();
+  void update(const gtsam::HybridNonlinearFactorGraph& graph,
+              const gtsam::HybridValues& initialGuess = gtsam::HybridValues());
+  void update(const gtsam::HybridNonlinearFactorGraph& graph,
+              const gtsam::DiscreteValues& initialGuessDiscrete);
 
-    gtsam::HybridValues calculateEstimate() const;
+  gtsam::HybridValues calculateEstimate() const;
 
-    const gtsam::DiscreteFactorGraph& getDiscreteFactorGraph() const;
-    const gtsam::NonlinearFactorGraph& getNonlinearFactorGraph() const;
+  const gtsam::DiscreteFactorGraph& getDiscreteFactorGraph() const;
+  const gtsam::NonlinearFactorGraph& getNonlinearFactorGraph() const;
+
+  const gtsam::VectorValues& getDelta() const;
+  double error(const gtsam::VectorValues& x) const;
+
 };
 
 }  // namespace gtsam
