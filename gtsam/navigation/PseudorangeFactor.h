@@ -479,13 +479,7 @@ class GTSAM_EXPORT DDPseudorangeFactor : public NoiseModelFactorN<Point3> {
                       const Point3& satRefRov, const Point3& satTargetRov,
                       const Point3& satRefBase, const Point3& satTargetBase,
                       const Point3& basePos,
-                      const SharedNoiseModel& model = noiseModel::Unit::Create(1))
-      : Base(model, positionKey),
-        prRovRef_(prRovRef), prBaseRef_(prBaseRef),
-        prRovTarget_(prRovTarget), prBaseTarget_(prBaseTarget),
-        satRefRov_(satRefRov), satTargetRov_(satTargetRov),
-        satRefBase_(satRefBase), satTargetBase_(satTargetBase),
-        basePos_(basePos) {}
+                      const SharedNoiseModel& model = noiseModel::Unit::Create(1));
 
   gtsam::NonlinearFactor::shared_ptr clone() const override {
     return std::static_pointer_cast<gtsam::NonlinearFactor>(
@@ -493,46 +487,13 @@ class GTSAM_EXPORT DDPseudorangeFactor : public NoiseModelFactorN<Point3> {
   }
 
   void print(const std::string& s = "", const KeyFormatter& keyFormatter =
-                                            DefaultKeyFormatter) const override {
-    std::cout << (s.empty() ? "" : s + " ") << "DDPseudorangeFactor\n";
-    Base::print("", keyFormatter);
-  }
+                                            DefaultKeyFormatter) const override;
 
-  bool equals(const NonlinearFactor& expected, double tol = 1e-9) const override {
-    const This* e = dynamic_cast<const This*>(&expected);
-    return e != nullptr && Base::equals(*e, tol) &&
-           std::abs(prRovRef_ - e->prRovRef_) < tol &&
-           std::abs(prBaseRef_ - e->prBaseRef_) < tol &&
-           std::abs(prRovTarget_ - e->prRovTarget_) < tol &&
-           std::abs(prBaseTarget_ - e->prBaseTarget_) < tol &&
-           traits<Point3>::Equals(satRefRov_, e->satRefRov_, tol) &&
-           traits<Point3>::Equals(satTargetRov_, e->satTargetRov_, tol) &&
-           traits<Point3>::Equals(satRefBase_, e->satRefBase_, tol) &&
-           traits<Point3>::Equals(satTargetBase_, e->satTargetBase_, tol) &&
-           traits<Point3>::Equals(basePos_, e->basePos_, tol);
-  }
+  bool equals(const NonlinearFactor& expected,
+              double tol = 1e-9) const override;
 
-  Vector evaluateError(const Point3& pos, OptionalMatrixType H) const override {
-    const double ddObs = (prRovRef_ - prBaseRef_) - (prRovTarget_ - prBaseTarget_);
-
-    // Rover: use satellite positions at rover time
-    Point3 eRef, eTarget;
-    const double rRovRef = gnss::geodist(satRefRov_, pos, eRef);
-    const double rRovTarget = gnss::geodist(satTargetRov_, pos, eTarget);
-
-    // Base: use satellite positions at base time
-    Point3 dummy;
-    const double rBaseRef = gnss::geodist(satRefBase_, basePos_, dummy);
-    const double rBaseTarget = gnss::geodist(satTargetBase_, basePos_, dummy);
-
-    const double ddModel = (rRovRef - rBaseRef) - (rRovTarget - rBaseTarget);
-    const double error = ddModel - ddObs;
-
-    if (H) {
-      *H = (Matrix(1, 3) << (eTarget - eRef).transpose()).finished();
-    }
-    return Vector1(error);
-  }
+  Vector evaluateError(const Point3& pos,
+                       OptionalMatrixType H) const override;
 
  private:
 #if GTSAM_ENABLE_BOOST_SERIALIZATION
@@ -599,13 +560,7 @@ class GTSAM_EXPORT DDPseudorangeFactorArm : public NoiseModelFactorN<Pose3> {
                          const Point3& satRefRov, const Point3& satTargetRov,
                          const Point3& satRefBase, const Point3& satTargetBase,
                          const Point3& basePos, const Point3& leverArm,
-                         const SharedNoiseModel& model = noiseModel::Unit::Create(1))
-      : Base(model, poseKey),
-        prRovRef_(prRovRef), prBaseRef_(prBaseRef),
-        prRovTarget_(prRovTarget), prBaseTarget_(prBaseTarget),
-        satRefRov_(satRefRov), satTargetRov_(satTargetRov),
-        satRefBase_(satRefBase), satTargetBase_(satTargetBase),
-        basePos_(basePos), bL_(leverArm) {}
+                         const SharedNoiseModel& model = noiseModel::Unit::Create(1));
 
   DDPseudorangeFactorArm(Key poseKey,
                          double prRovRef, double prBaseRef,
@@ -614,13 +569,7 @@ class GTSAM_EXPORT DDPseudorangeFactorArm : public NoiseModelFactorN<Pose3> {
                          const Point3& satRefBase, const Point3& satTargetBase,
                          const Point3& basePos, const Point3& leverArm,
                          const Pose3& ecef_T_nav,
-                         const SharedNoiseModel& model = noiseModel::Unit::Create(1))
-      : Base(model, poseKey),
-        prRovRef_(prRovRef), prBaseRef_(prBaseRef),
-        prRovTarget_(prRovTarget), prBaseTarget_(prBaseTarget),
-        satRefRov_(satRefRov), satTargetRov_(satTargetRov),
-        satRefBase_(satRefBase), satTargetBase_(satTargetBase),
-        basePos_(basePos), bL_(leverArm), ecef_T_nav_(ecef_T_nav) {}
+                         const SharedNoiseModel& model = noiseModel::Unit::Create(1));
 
   gtsam::NonlinearFactor::shared_ptr clone() const override {
     return std::static_pointer_cast<gtsam::NonlinearFactor>(
@@ -628,66 +577,13 @@ class GTSAM_EXPORT DDPseudorangeFactorArm : public NoiseModelFactorN<Pose3> {
   }
 
   void print(const std::string& s = "", const KeyFormatter& keyFormatter =
-                                            DefaultKeyFormatter) const override {
-    std::cout << (s.empty() ? "" : s + " ") << "DDPseudorangeFactorArm\n";
-    Base::print("", keyFormatter);
-  }
+                                            DefaultKeyFormatter) const override;
 
-  bool equals(const NonlinearFactor& expected, double tol = 1e-9) const override {
-    const This* e = dynamic_cast<const This*>(&expected);
-    if (e == nullptr || !Base::equals(*e, tol)) return false;
-    if (std::abs(prRovRef_ - e->prRovRef_) >= tol) return false;
-    if (std::abs(prBaseRef_ - e->prBaseRef_) >= tol) return false;
-    if (std::abs(prRovTarget_ - e->prRovTarget_) >= tol) return false;
-    if (std::abs(prBaseTarget_ - e->prBaseTarget_) >= tol) return false;
-    if (!traits<Point3>::Equals(satRefRov_, e->satRefRov_, tol)) return false;
-    if (!traits<Point3>::Equals(satTargetRov_, e->satTargetRov_, tol)) return false;
-    if (!traits<Point3>::Equals(satRefBase_, e->satRefBase_, tol)) return false;
-    if (!traits<Point3>::Equals(satTargetBase_, e->satTargetBase_, tol)) return false;
-    if (!traits<Point3>::Equals(basePos_, e->basePos_, tol)) return false;
-    if (!traits<Point3>::Equals(bL_, e->bL_, tol)) return false;
-    if (ecef_T_nav_.has_value() != e->ecef_T_nav_.has_value()) return false;
-    if (ecef_T_nav_ && !ecef_T_nav_->equals(*e->ecef_T_nav_, tol)) return false;
-    return true;
-  }
+  bool equals(const NonlinearFactor& expected,
+              double tol = 1e-9) const override;
 
-  Vector evaluateError(const Pose3& pose, OptionalMatrixType H_pose) const override {
-    Matrix66 H_compose;
-    const bool has_nav = ecef_T_nav_.has_value();
-    const Pose3 ecef_T_body = has_nav
-        ? ecef_T_nav_->compose(pose, {}, H_pose ? &H_compose : nullptr)
-        : pose;
-
-    const Matrix3 ecef_R_body = ecef_T_body.rotation().matrix();
-    const Point3 antennaPos = ecef_T_body.translation() + ecef_R_body * bL_;
-
-    const double ddObs = (prRovRef_ - prBaseRef_) - (prRovTarget_ - prBaseTarget_);
-
-    Point3 eRef, eTarget, dummy;
-    const double rRovRef = gnss::geodist(satRefRov_, antennaPos, eRef);
-    const double rRovTarget = gnss::geodist(satTargetRov_, antennaPos, eTarget);
-    const double rBaseRef = gnss::geodist(satRefBase_, basePos_, dummy);
-    const double rBaseTarget = gnss::geodist(satTargetBase_, basePos_, dummy);
-
-    const double ddModel = (rRovRef - rBaseRef) - (rRovTarget - rBaseTarget);
-    const double error = ddModel - ddObs;
-
-    if (H_pose) {
-      H_pose->resize(1, 6);
-      const bool ok = rRovRef > std::numeric_limits<double>::epsilon() &&
-                      rRovTarget > std::numeric_limits<double>::epsilon();
-      if (!ok) {
-        H_pose->setZero();
-      } else {
-        const Matrix13 dd_u = (eTarget - eRef).transpose();
-        Matrix16 H_ecef;
-        H_ecef.block<1, 3>(0, 0) = dd_u * (-ecef_R_body * skewSymmetric(bL_));
-        H_ecef.block<1, 3>(0, 3) = dd_u * ecef_R_body;
-        *H_pose = has_nav ? H_ecef * H_compose : H_ecef;
-      }
-    }
-    return Vector1(error);
-  }
+  Vector evaluateError(const Pose3& pose,
+                       OptionalMatrixType H_pose) const override;
 
   inline const Point3& leverArm() const { return bL_; }
   inline const std::optional<Pose3>& ecefTnav() const { return ecef_T_nav_; }

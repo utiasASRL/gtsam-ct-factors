@@ -776,7 +776,6 @@ virtual class CarrierPhaseFactorArm : gtsam::NonlinearFactor {
 };
 
 
-#include <gtsam/navigation/CarrierPhaseFactor.h>
 virtual class DDCarrierPhaseFactor : gtsam::NonlinearFactor {
   DDCarrierPhaseFactor(gtsam::Key positionKey, gtsam::Key ambRefKey,
                        gtsam::Key ambTargetKey,
