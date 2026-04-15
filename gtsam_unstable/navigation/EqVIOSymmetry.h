@@ -63,8 +63,8 @@ measureSystemState(const State& state, const KeyVector& landmarkIds,
  *
  * EqVIO uses an inverse-depth landmark error chart to preserve the
  * equivariant output linearization while remaining numerically stable for
- * distant points. I haven't implemented other coordinate systems (Euclid,
- * Polar) yet. van Goor et al. propose Polar as the new coordinate system
+ * distant points. Other coordinate systems (Euclid, Polar) are not yet 
+ * implemented. van Goor et al. propose Polar as the new coordinate system
  * for this use case, which is the next TODO. See arXiv:2205.01980v3, eq. 16.
  */
 

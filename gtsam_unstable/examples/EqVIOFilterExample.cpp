@@ -37,8 +37,8 @@ namespace {
  * check.
  */
 struct HardcodedGroundTruth {
-  static Vector3 position() { return Vector3(-0.954631, -0.101702, 0.179862); }
-  static Vector3 velocity() { return Vector3(-0.120739, -0.314283, 0.119599); }
+  static Vector3 position() { return Vector3(1.1576, 2.51599, 0.0838289); }
+  static Vector3 velocity() { return Vector3(0.0130831, -0.269437, 0.0995449); }
 };
 
 /// Build runtime filter params from replay metadata with fallback defaults.
@@ -151,7 +151,7 @@ void printSummary(double measurementNoiseVariance, double currentTime,
  */
 int main() {
   const std::string csvPath =
-      findExampleDataFile("EqVIOdata_eurocmav_room1_10sec.csv");
+      findExampleDataFile("eqvio_processed_30s.csv");
 
   try {
     const replay::MetadataMap metadata = replay::readReplayMetadata(csvPath);
