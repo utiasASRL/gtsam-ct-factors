@@ -314,25 +314,25 @@ typename ProductLieGroup<G, H>::TangentVector ProductLieGroup<G, H>::Logmap(
   const size_t secondDimension = p.secondDim();
   const size_t productDimension =
       combinedDimension(firstDimension, secondDimension);
-  Jacobian1 D_g_first;
-  Jacobian2 D_h_second;
-  if (Hp) {
-    D_g_first = Jacobian1::Zero(static_cast<int>(firstDimension),
-                                static_cast<int>(firstDimension));
-    D_h_second = Jacobian2::Zero(static_cast<int>(secondDimension),
-                                 static_cast<int>(secondDimension));
+  if (!Hp) {
+    typename traits<G>::TangentVector v1 = traits<G>::Logmap(p.first);
+    typename traits<H>::TangentVector v2 = traits<H>::Logmap(p.second);
+    return makeTangentVector(v1, v2, firstDimension, secondDimension);
   }
+
+  Jacobian1 D_g_first = Jacobian1::Zero(static_cast<int>(firstDimension),
+                                        static_cast<int>(firstDimension));
+  Jacobian2 D_h_second = Jacobian2::Zero(static_cast<int>(secondDimension),
+                                         static_cast<int>(secondDimension));
   typename traits<G>::TangentVector v1 =
-      traits<G>::Logmap(p.first, Hp ? &D_g_first : nullptr);
+      traits<G>::Logmap(p.first, &D_g_first);
   typename traits<H>::TangentVector v2 =
-      traits<H>::Logmap(p.second, Hp ? &D_h_second : nullptr);
+      traits<H>::Logmap(p.second, &D_h_second);
   TangentVector v = makeTangentVector(v1, v2, firstDimension, secondDimension);
-  if (Hp) {
-    *Hp = zeroJacobian(productDimension);
-    Hp->block(0, 0, firstDimension, firstDimension) = D_g_first;
-    Hp->block(firstDimension, firstDimension, secondDimension,
-              secondDimension) = D_h_second;
-  }
+  *Hp = zeroJacobian(productDimension);
+  Hp->block(0, 0, firstDimension, firstDimension) = D_g_first;
+  Hp->block(firstDimension, firstDimension, secondDimension, secondDimension) =
+      D_h_second;
   return v;
 }
 
