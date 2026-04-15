@@ -155,7 +155,7 @@ struct GTSAM_EXPORT ExpmapFunctor {
   ExpmapFunctor(const Vector3& axis, double angle);
 
   /// Rodrigues formula
-  Matrix3 expmap() const { return I_3x3 + A * W + B * WW; }
+  inline Matrix3 expmap() const { return I_3x3 + A * W + B * WW; }
 
 protected:
   void init(double nearZeroThresholdSq);
