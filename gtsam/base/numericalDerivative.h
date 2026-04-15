@@ -82,6 +82,10 @@ using OutputType =
 template <class F, class... Args>
 using EnableIfInvocable =
     std::enable_if_t<std::is_invocable_v<F&, const Args&...>, int>;
+
+template <class F, class... Args>
+using EnableIfScalarInvocable =
+    std::enable_if_t<std::is_invocable_r_v<double, F&, const Args&...>, int>;
 }  // namespace internal
 /// @}
 
@@ -109,9 +113,10 @@ using EnableIfInvocable =
  * @tparam N tangent dimension of `X`; provide explicitly for variable-size
  * manifold types
  */
-template <class X, int N = traits<X>::dimension>
-typename Eigen::Matrix<double, N, 1> numericalGradient(
-    std::function<double(const X&)> h, const X& x, double delta = 1e-5) {
+template <class X, int N = traits<X>::dimension, class F,
+          internal::EnableIfScalarInvocable<F, X> = 0>
+typename Eigen::Matrix<double, N, 1> numericalGradient(F&& h, const X& x,
+                                                       double delta = 1e-5) {
   double factor = 1.0 / (2.0 * delta);
 
   static_assert(std::is_base_of_v<gtsam::manifold_tag,
@@ -129,13 +134,20 @@ typename Eigen::Matrix<double, N, 1> numericalGradient(
   g.setZero();
   for (int j = 0; j < N; j++) {
     d(j) = delta;
-    double hxplus = h(traits<X>::Retract(x, d));
+    double hxplus = std::invoke(h, traits<X>::Retract(x, d));
     d(j) = -delta;
-    double hxmin = h(traits<X>::Retract(x, d));
+    double hxmin = std::invoke(h, traits<X>::Retract(x, d));
     d(j) = 0;
     g(j) = (hxplus - hxmin) * factor;
   }
   return g;
+}
+
+template <class X, int N = traits<X>::dimension>
+typename Eigen::Matrix<double, N, 1> numericalGradient(double (&h)(const X&),
+                                                       const X& x,
+                                                       double delta = 1e-5) {
+  return numericalGradient<X, N>([&](const X& x_) { return h(x_); }, x, delta);
 }
 
 /**
@@ -1053,210 +1065,207 @@ numericalDerivative66(Y (&h)(const X1&, const X2&, const X3&, const X4&,
  * @param delta The numerical derivative step size
  * @return n*n Hessian matrix computed via central differencing
  */
-template <class X, int N = traits<X>::dimension>
+template <class X, int N = traits<X>::dimension, class F,
+          internal::EnableIfScalarInvocable<F, X> = 0>
 inline typename internal::MatrixMN<N, N>::type numericalHessian(
-    std::function<double(const X&)> f, const X& x, double delta = 1e-5) {
+    F&& f, const X& x, double delta = 1e-5) {
   static_assert(std::is_base_of_v<gtsam::manifold_tag,
                                   typename traits<X>::structure_category>,
                 "Template argument X must be a manifold type.");
   typedef Eigen::Matrix<double, N, 1> VectorD;
   return numericalDerivative11<VectorD, X, N>(
-      [&](const X& x) { return numericalGradient<X, N>(f, x, delta); }, x,
+      [&](const X& x_) { return numericalGradient<X, N>(f, x_, delta); }, x,
       delta);
 }
 
 template <class X, int N = traits<X>::dimension>
 inline typename internal::MatrixMN<N, N>::type numericalHessian(
-    double (*f)(const X&), const X& x, double delta = 1e-5) {
-  return numericalHessian<X, N>(std::function<double(const X&)>(f), x, delta);
+    double (&f)(const X&), const X& x, double delta = 1e-5) {
+  return numericalHessian<X, N>([&](const X& x_) { return f(x_); }, x, delta);
 }
 
-/** Helper class that computes the derivative of f w.r.t. x1, centered about
- * x1_, as a function of x2
- */
-template <class X1, class X2, int N1 = traits<X1>::dimension>
-class G_x1 {
-  const std::function<double(const X1&, const X2&)>& f_;
-  X1 x1_;
-  double delta_;
-
- public:
-  typedef Eigen::Matrix<double, N1, 1> Vector;
-
-  G_x1(const std::function<double(const X1&, const X2&)>& f, const X1& x1,
-       double delta)
-      : f_(f), x1_(x1), delta_(delta) {}
-  Vector operator()(const X2& x2) {
-    return numericalGradient<X1, N1>(
-        std::bind(f_, std::placeholders::_1, std::cref(x2)), x1_, delta_);
-  }
-};
-
 template <class X1, class X2, int N1 = traits<X1>::dimension,
-          int N2 = traits<X2>::dimension>
+          int N2 = traits<X2>::dimension, class F,
+          internal::EnableIfScalarInvocable<F, X1, X2> = 0>
 inline typename internal::MatrixMN<N1, N2>::type numericalHessian212(
-    std::function<double(const X1&, const X2&)> f, const X1& x1, const X2& x2,
-    double delta = 1e-5) {
+    F&& f, const X1& x1, const X2& x2, double delta = 1e-5) {
   typedef Eigen::Matrix<double, N1, 1> Vector;
-  G_x1<X1, X2, N1> g_x1(f, x1, delta);
   return numericalDerivative11<Vector, X2, N2>(
-      std::function<Vector(const X2&)>(
-          std::bind<Vector>(std::ref(g_x1), std::placeholders::_1)),
+      [&](const X2& x2_) {
+        return numericalGradient<X1, N1>(
+            [&](const X1& x1_) { return std::invoke(f, x1_, x2_); }, x1, delta);
+      },
       x2, delta);
 }
 
 template <class X1, class X2, int N1 = traits<X1>::dimension,
           int N2 = traits<X2>::dimension>
 inline typename internal::MatrixMN<N1, N2>::type numericalHessian212(
-    double (*f)(const X1&, const X2&), const X1& x1, const X2& x2,
+    double (&f)(const X1&, const X2&), const X1& x1, const X2& x2,
     double delta = 1e-5) {
   return numericalHessian212<X1, X2, N1, N2>(
-      std::function<double(const X1&, const X2&)>(f), x1, x2, delta);
+      [&](const X1& x1_, const X2& x2_) { return f(x1_, x2_); }, x1, x2, delta);
 }
 
-template <class X1, class X2, int N1 = traits<X1>::dimension>
+template <class X1, class X2, int N1 = traits<X1>::dimension, class F,
+          internal::EnableIfScalarInvocable<F, X1, X2> = 0>
 inline typename internal::MatrixMN<N1, N1>::type numericalHessian211(
-    std::function<double(const X1&, const X2&)> f, const X1& x1, const X2& x2,
-    double delta = 1e-5) {
+    F&& f, const X1& x1, const X2& x2, double delta = 1e-5) {
   typedef Eigen::Matrix<double, N1, 1> Vector;
-  std::function<double(const X1&)> f2(
-      std::bind(f, std::placeholders::_1, std::cref(x2)));
   return numericalDerivative11<Vector, X1, N1>(
-      [&](const X1& x) { return numericalGradient<X1, N1>(f2, x, delta); }, x1,
-      delta);
+      [&](const X1& x1_) {
+        return numericalGradient<X1, N1>(
+            [&](const X1& x1__) { return std::invoke(f, x1__, x2); }, x1_,
+            delta);
+      },
+      x1, delta);
 }
 
 template <class X1, class X2, int N1 = traits<X1>::dimension>
 inline typename internal::MatrixMN<N1, N1>::type numericalHessian211(
-    double (*f)(const X1&, const X2&), const X1& x1, const X2& x2,
+    double (&f)(const X1&, const X2&), const X1& x1, const X2& x2,
     double delta = 1e-5) {
   return numericalHessian211<X1, X2, N1>(
-      std::function<double(const X1&, const X2&)>(f), x1, x2, delta);
+      [&](const X1& x1_, const X2& x2_) { return f(x1_, x2_); }, x1, x2, delta);
 }
 
-template <class X1, class X2, int N2 = traits<X2>::dimension>
+template <class X1, class X2, int N2 = traits<X2>::dimension, class F,
+          internal::EnableIfScalarInvocable<F, X1, X2> = 0>
 inline typename internal::MatrixMN<N2, N2>::type numericalHessian222(
-    std::function<double(const X1&, const X2&)> f, const X1& x1, const X2& x2,
-    double delta = 1e-5) {
+    F&& f, const X1& x1, const X2& x2, double delta = 1e-5) {
   typedef Eigen::Matrix<double, N2, 1> Vector;
-  std::function<double(const X2&)> f2(
-      std::bind(f, std::cref(x1), std::placeholders::_1));
   return numericalDerivative11<Vector, X2, N2>(
-      [&](const X2& x) { return numericalGradient<X2, N2>(f2, x, delta); }, x2,
-      delta);
+      [&](const X2& x2_) {
+        return numericalGradient<X2, N2>(
+            [&](const X2& x2__) { return std::invoke(f, x1, x2__); }, x2_,
+            delta);
+      },
+      x2, delta);
 }
 
 template <class X1, class X2, int N2 = traits<X2>::dimension>
 inline typename internal::MatrixMN<N2, N2>::type numericalHessian222(
-    double (*f)(const X1&, const X2&), const X1& x1, const X2& x2,
+    double (&f)(const X1&, const X2&), const X1& x1, const X2& x2,
     double delta = 1e-5) {
   return numericalHessian222<X1, X2, N2>(
-      std::function<double(const X1&, const X2&)>(f), x1, x2, delta);
+      [&](const X1& x1_, const X2& x2_) { return f(x1_, x2_); }, x1, x2, delta);
 }
 
 /**
  * Numerical Hessian for tenary functions
  */
 /* **************************************************************** */
-template <class X1, class X2, class X3, int N1 = traits<X1>::dimension>
+template <class X1, class X2, class X3, int N1 = traits<X1>::dimension, class F,
+          internal::EnableIfScalarInvocable<F, X1, X2, X3> = 0>
 inline typename internal::MatrixMN<N1, N1>::type numericalHessian311(
-    std::function<double(const X1&, const X2&, const X3&)> f, const X1& x1,
-    const X2& x2, const X3& x3, double delta = 1e-5) {
+    F&& f, const X1& x1, const X2& x2, const X3& x3, double delta = 1e-5) {
   typedef Eigen::Matrix<double, N1, 1> Vector;
-  std::function<double(const X1&)> f2(
-      std::bind(f, std::placeholders::_1, std::cref(x2), std::cref(x3)));
-
   return numericalDerivative11<Vector, X1, N1>(
-      [&](const X1& x) { return numericalGradient<X1, N1>(f2, x, delta); }, x1,
-      delta);
+      [&](const X1& x1_) {
+        return numericalGradient<X1, N1>(
+            [&](const X1& x1__) { return std::invoke(f, x1__, x2, x3); }, x1_,
+            delta);
+      },
+      x1, delta);
 }
 
 template <class X1, class X2, class X3, int N1 = traits<X1>::dimension>
 inline typename internal::MatrixMN<N1, N1>::type numericalHessian311(
-    double (*f)(const X1&, const X2&, const X3&), const X1& x1, const X2& x2,
+    double (&f)(const X1&, const X2&, const X3&), const X1& x1, const X2& x2,
     const X3& x3, double delta = 1e-5) {
   return numericalHessian311<X1, X2, X3, N1>(
-      std::function<double(const X1&, const X2&, const X3&)>(f), x1, x2, x3,
-      delta);
+      [&](const X1& x1_, const X2& x2_, const X3& x3_) {
+        return f(x1_, x2_, x3_);
+      },
+      x1, x2, x3, delta);
 }
 
 /* **************************************************************** */
-template <class X1, class X2, class X3, int N2 = traits<X2>::dimension>
+template <class X1, class X2, class X3, int N2 = traits<X2>::dimension, class F,
+          internal::EnableIfScalarInvocable<F, X1, X2, X3> = 0>
 inline typename internal::MatrixMN<N2, N2>::type numericalHessian322(
-    std::function<double(const X1&, const X2&, const X3&)> f, const X1& x1,
-    const X2& x2, const X3& x3, double delta = 1e-5) {
+    F&& f, const X1& x1, const X2& x2, const X3& x3, double delta = 1e-5) {
   typedef Eigen::Matrix<double, N2, 1> Vector;
-  std::function<double(const X2&)> f2(
-      std::bind(f, std::cref(x1), std::placeholders::_1, std::cref(x3)));
-
   return numericalDerivative11<Vector, X2, N2>(
-      [&](const X2& x) { return numericalGradient<X2, N2>(f2, x, delta); }, x2,
-      delta);
+      [&](const X2& x2_) {
+        return numericalGradient<X2, N2>(
+            [&](const X2& x2__) { return std::invoke(f, x1, x2__, x3); }, x2_,
+            delta);
+      },
+      x2, delta);
 }
 
 template <class X1, class X2, class X3, int N2 = traits<X2>::dimension>
 inline typename internal::MatrixMN<N2, N2>::type numericalHessian322(
-    double (*f)(const X1&, const X2&, const X3&), const X1& x1, const X2& x2,
+    double (&f)(const X1&, const X2&, const X3&), const X1& x1, const X2& x2,
     const X3& x3, double delta = 1e-5) {
   return numericalHessian322<X1, X2, X3, N2>(
-      std::function<double(const X1&, const X2&, const X3&)>(f), x1, x2, x3,
-      delta);
+      [&](const X1& x1_, const X2& x2_, const X3& x3_) {
+        return f(x1_, x2_, x3_);
+      },
+      x1, x2, x3, delta);
 }
 
 /* **************************************************************** */
-template <class X1, class X2, class X3, int N3 = traits<X3>::dimension>
+template <class X1, class X2, class X3, int N3 = traits<X3>::dimension, class F,
+          internal::EnableIfScalarInvocable<F, X1, X2, X3> = 0>
 inline typename internal::MatrixMN<N3, N3>::type numericalHessian333(
-    std::function<double(const X1&, const X2&, const X3&)> f, const X1& x1,
-    const X2& x2, const X3& x3, double delta = 1e-5) {
+    F&& f, const X1& x1, const X2& x2, const X3& x3, double delta = 1e-5) {
   typedef Eigen::Matrix<double, N3, 1> Vector;
-  std::function<double(const X3&)> f2(
-      std::bind(f, std::cref(x1), std::cref(x2), std::placeholders::_1));
-
   return numericalDerivative11<Vector, X3, N3>(
-      [&](const X3& x) { return numericalGradient<X3, N3>(f2, x, delta); }, x3,
-      delta);
+      [&](const X3& x3_) {
+        return numericalGradient<X3, N3>(
+            [&](const X3& x3__) { return std::invoke(f, x1, x2, x3__); }, x3_,
+            delta);
+      },
+      x3, delta);
 }
 
 template <class X1, class X2, class X3, int N3 = traits<X3>::dimension>
 inline typename internal::MatrixMN<N3, N3>::type numericalHessian333(
-    double (*f)(const X1&, const X2&, const X3&), const X1& x1, const X2& x2,
+    double (&f)(const X1&, const X2&, const X3&), const X1& x1, const X2& x2,
     const X3& x3, double delta = 1e-5) {
   return numericalHessian333<X1, X2, X3, N3>(
-      std::function<double(const X1&, const X2&, const X3&)>(f), x1, x2, x3,
-      delta);
+      [&](const X1& x1_, const X2& x2_, const X3& x3_) {
+        return f(x1_, x2_, x3_);
+      },
+      x1, x2, x3, delta);
 }
 
 /* **************************************************************** */
 template <class X1, class X2, class X3, int N1 = traits<X1>::dimension,
-          int N2 = traits<X2>::dimension>
+          int N2 = traits<X2>::dimension, class F,
+          internal::EnableIfScalarInvocable<F, X1, X2, X3> = 0>
 inline typename internal::MatrixMN<N1, N2>::type numericalHessian312(
-    std::function<double(const X1&, const X2&, const X3&)> f, const X1& x1,
-    const X2& x2, const X3& x3, double delta = 1e-5) {
+    F&& f, const X1& x1, const X2& x2, const X3& x3, double delta = 1e-5) {
   return numericalHessian212<X1, X2, N1, N2>(
-      std::function<double(const X1&, const X2&)>(std::bind(
-          f, std::placeholders::_1, std::placeholders::_2, std::cref(x3))),
+      [&](const X1& x1_, const X2& x2_) {
+        return std::invoke(f, x1_, x2_, x3);
+      },
       x1, x2, delta);
 }
 
 template <class X1, class X2, class X3, int N1 = traits<X1>::dimension,
-          int N3 = traits<X3>::dimension>
+          int N3 = traits<X3>::dimension, class F,
+          internal::EnableIfScalarInvocable<F, X1, X2, X3> = 0>
 inline typename internal::MatrixMN<N1, N3>::type numericalHessian313(
-    std::function<double(const X1&, const X2&, const X3&)> f, const X1& x1,
-    const X2& x2, const X3& x3, double delta = 1e-5) {
+    F&& f, const X1& x1, const X2& x2, const X3& x3, double delta = 1e-5) {
   return numericalHessian212<X1, X3, N1, N3>(
-      std::function<double(const X1&, const X3&)>(std::bind(
-          f, std::placeholders::_1, std::cref(x2), std::placeholders::_2)),
+      [&](const X1& x1_, const X3& x3_) {
+        return std::invoke(f, x1_, x2, x3_);
+      },
       x1, x3, delta);
 }
 
 template <class X1, class X2, class X3, int N2 = traits<X2>::dimension,
-          int N3 = traits<X3>::dimension>
+          int N3 = traits<X3>::dimension, class F,
+          internal::EnableIfScalarInvocable<F, X1, X2, X3> = 0>
 inline typename internal::MatrixMN<N2, N3>::type numericalHessian323(
-    std::function<double(const X1&, const X2&, const X3&)> f, const X1& x1,
-    const X2& x2, const X3& x3, double delta = 1e-5) {
+    F&& f, const X1& x1, const X2& x2, const X3& x3, double delta = 1e-5) {
   return numericalHessian212<X2, X3, N2, N3>(
-      std::function<double(const X2&, const X3&)>(std::bind(
-          f, std::cref(x1), std::placeholders::_1, std::placeholders::_2)),
+      [&](const X2& x2_, const X3& x3_) {
+        return std::invoke(f, x1, x2_, x3_);
+      },
       x2, x3, delta);
 }
 
@@ -1264,31 +1273,37 @@ inline typename internal::MatrixMN<N2, N3>::type numericalHessian323(
 template <class X1, class X2, class X3, int N1 = traits<X1>::dimension,
           int N2 = traits<X2>::dimension>
 inline typename internal::MatrixMN<N1, N2>::type numericalHessian312(
-    double (*f)(const X1&, const X2&, const X3&), const X1& x1, const X2& x2,
+    double (&f)(const X1&, const X2&, const X3&), const X1& x1, const X2& x2,
     const X3& x3, double delta = 1e-5) {
   return numericalHessian312<X1, X2, X3, N1, N2>(
-      std::function<double(const X1&, const X2&, const X3&)>(f), x1, x2, x3,
-      delta);
+      [&](const X1& x1_, const X2& x2_, const X3& x3_) {
+        return f(x1_, x2_, x3_);
+      },
+      x1, x2, x3, delta);
 }
 
 template <class X1, class X2, class X3, int N1 = traits<X1>::dimension,
           int N3 = traits<X3>::dimension>
 inline typename internal::MatrixMN<N1, N3>::type numericalHessian313(
-    double (*f)(const X1&, const X2&, const X3&), const X1& x1, const X2& x2,
+    double (&f)(const X1&, const X2&, const X3&), const X1& x1, const X2& x2,
     const X3& x3, double delta = 1e-5) {
   return numericalHessian313<X1, X2, X3, N1, N3>(
-      std::function<double(const X1&, const X2&, const X3&)>(f), x1, x2, x3,
-      delta);
+      [&](const X1& x1_, const X2& x2_, const X3& x3_) {
+        return f(x1_, x2_, x3_);
+      },
+      x1, x2, x3, delta);
 }
 
 template <class X1, class X2, class X3, int N2 = traits<X2>::dimension,
           int N3 = traits<X3>::dimension>
 inline typename internal::MatrixMN<N2, N3>::type numericalHessian323(
-    double (*f)(const X1&, const X2&, const X3&), const X1& x1, const X2& x2,
+    double (&f)(const X1&, const X2&, const X3&), const X1& x1, const X2& x2,
     const X3& x3, double delta = 1e-5) {
   return numericalHessian323<X1, X2, X3, N2, N3>(
-      std::function<double(const X1&, const X2&, const X3&)>(f), x1, x2, x3,
-      delta);
+      [&](const X1& x1_, const X2& x2_, const X3& x3_) {
+        return f(x1_, x2_, x3_);
+      },
+      x1, x2, x3, delta);
 }
 
 /// @}
