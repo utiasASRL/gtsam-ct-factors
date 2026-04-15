@@ -86,6 +86,24 @@ using EnableIfInvocable =
 template <class F, class... Args>
 using EnableIfScalarInvocable =
     std::enable_if_t<std::is_invocable_r_v<double, F&, const Args&...>, int>;
+
+template <class X, int N>
+constexpr void ValidateGradientInput() {
+  static_assert(std::is_base_of_v<gtsam::manifold_tag,
+                                  typename traits<X>::structure_category>,
+                "Template argument X must be a manifold type.");
+  static_assert(
+      N > 0,
+      "Template argument X must be fixed-size type or N must be specified.");
+}
+
+template <class Y, class X, int N>
+constexpr void ValidateUnaryDerivativeTypes() {
+  static_assert(std::is_base_of_v<gtsam::manifold_tag,
+                                  typename traits<Y>::structure_category>,
+                "Template argument Y must be a manifold type.");
+  ValidateGradientInput<X, N>();
+}
 }  // namespace internal
 /// @}
 
@@ -117,14 +135,8 @@ template <class X, int N = traits<X>::dimension, class F,
           internal::EnableIfScalarInvocable<F, X> = 0>
 typename Eigen::Matrix<double, N, 1> numericalGradient(F&& h, const X& x,
                                                        double delta = 1e-5) {
+  internal::ValidateGradientInput<X, N>();
   double factor = 1.0 / (2.0 * delta);
-
-  static_assert(std::is_base_of_v<gtsam::manifold_tag,
-                                  typename traits<X>::structure_category>,
-                "Template argument X must be a manifold type.");
-  static_assert(
-      N > 0,
-      "Template argument X must be fixed-size type or N must be specified.");
 
   // Prepare a tangent vector to perturb x with.
   Eigen::Matrix<double, N, 1> d;
@@ -134,15 +146,16 @@ typename Eigen::Matrix<double, N, 1> numericalGradient(F&& h, const X& x,
   g.setZero();
   for (int j = 0; j < N; j++) {
     d(j) = delta;
-    double hxplus = std::invoke(h, traits<X>::Retract(x, d));
+    double hx_plus = std::invoke(h, traits<X>::Retract(x, d));
     d(j) = -delta;
-    double hxmin = std::invoke(h, traits<X>::Retract(x, d));
+    double hx_min = std::invoke(h, traits<X>::Retract(x, d));
     d(j) = 0;
-    g(j) = (hxplus - hxmin) * factor;
+    g(j) = (hx_plus - hx_min) * factor;
   }
   return g;
 }
 
+/// Raw-function overload for `numericalGradient`.
 template <class X, int N = traits<X>::dimension>
 typename Eigen::Matrix<double, N, 1> numericalGradient(double (&h)(const X&),
                                                        const X& x,
@@ -169,20 +182,10 @@ typename internal::MatrixMN<traits<internal::OutputType<Y, F, X>>::dimension,
                             N>::type
 numericalDerivative11(F&& h, const X& x, double delta = 1e-5) {
   using ActualY = internal::OutputType<Y, F, X>;
+  internal::ValidateUnaryDerivativeTypes<ActualY, X, N>();
   typedef
-      typename internal::MatrixMN<traits<ActualY>::dimension, N>::type Matrix;
-
-  static_assert(std::is_base_of_v<gtsam::manifold_tag,
-                                  typename traits<ActualY>::structure_category>,
-                "Template argument Y must be a manifold type.");
+      typename internal::MatrixMN<traits<ActualY>::dimension, N>::type MatrixYN;
   typedef traits<ActualY> TraitsY;
-
-  static_assert(std::is_base_of_v<gtsam::manifold_tag,
-                                  typename traits<X>::structure_category>,
-                "Template argument X must be a manifold type.");
-  static_assert(
-      N > 0,
-      "Template argument X must be fixed-size type or N must be specified.");
   typedef traits<X> TraitsX;
 
   // get value at x, and corresponding chart
@@ -196,7 +199,7 @@ numericalDerivative11(F&& h, const X& x, double delta = 1e-5) {
   dx.setZero();
 
   // Fill in Jacobian H
-  Matrix H = Matrix::Zero(m, N);
+  MatrixYN H = MatrixYN::Zero(m, N);
   const double factor = 1.0 / (2.0 * delta);
   for (int j = 0; j < N; j++) {
     dx(j) = delta;
@@ -211,6 +214,7 @@ numericalDerivative11(F&& h, const X& x, double delta = 1e-5) {
   return H;
 }
 
+/// Raw-function overload for `numericalDerivative11`.
 template <class Y, class X, int N = traits<X>::dimension>
 typename internal::MatrixMN<traits<Y>::dimension, N>::type
 numericalDerivative11(Y (&h)(const X&), const X& x, double delta = 1e-5) {
@@ -221,8 +225,7 @@ numericalDerivative11(Y (&h)(const X&), const X& x, double delta = 1e-5) {
 /**
  * Compute numerical derivative in argument 1 of binary function
  * @param h binary function yielding m-vector
- * @param x1 n-dimensional first argument value
- * @param x2 second argument value
+ * @param x1, x2 argument values; differentiate with respect to `x1`
  * @param delta increment for numerical derivative
  * @return m*n Jacobian computed via central differencing
  * @tparam int N is the dimension of the X1 input value if variable dimension
@@ -235,16 +238,11 @@ typename internal::MatrixMN<
     traits<internal::OutputType<Y, F, X1, X2>>::dimension, N>::type
 numericalDerivative21(F&& h, const X1& x1, const X2& x2, double delta = 1e-5) {
   using ActualY = internal::OutputType<Y, F, X1, X2>;
-  static_assert(std::is_base_of_v<gtsam::manifold_tag,
-                                  typename traits<ActualY>::structure_category>,
-                "Template argument Y must be a manifold type.");
-  static_assert(std::is_base_of_v<gtsam::manifold_tag,
-                                  typename traits<X1>::structure_category>,
-                "Template argument X1 must be a manifold type.");
   return numericalDerivative11<ActualY, X1, N>(
       [&](const X1& x1_) { return std::invoke(h, x1_, x2); }, x1, delta);
 }
 
+/// Raw-function overload for `numericalDerivative21`.
 template <class Y, class X1, class X2, int N = traits<X1>::dimension>
 typename internal::MatrixMN<traits<Y>::dimension, N>::type
 numericalDerivative21(Y (&h)(const X1&, const X2&), const X1& x1, const X2& x2,
@@ -256,8 +254,7 @@ numericalDerivative21(Y (&h)(const X1&, const X2&), const X1& x1, const X2& x2,
 /**
  * Compute numerical derivative in argument 2 of binary function
  * @param h binary function yielding m-vector
- * @param x1 first argument value
- * @param x2 n-dimensional second argument value
+ * @param x1, x2 argument values; differentiate with respect to `x2`
  * @param delta increment for numerical derivative
  * @return m*n Jacobian computed via central differencing
  * @tparam int N is the dimension of the X2 input value if variable dimension
@@ -270,16 +267,11 @@ typename internal::MatrixMN<
     traits<internal::OutputType<Y, F, X1, X2>>::dimension, N>::type
 numericalDerivative22(F&& h, const X1& x1, const X2& x2, double delta = 1e-5) {
   using ActualY = internal::OutputType<Y, F, X1, X2>;
-  //  static_assert( (std::is_base_of<gtsam::manifold_tag, typename
-  //  traits<X1>::structure_category>::value),
-  //       "Template argument X1 must be a manifold type.");
-  static_assert(std::is_base_of_v<gtsam::manifold_tag,
-                                  typename traits<X2>::structure_category>,
-                "Template argument X2 must be a manifold type.");
   return numericalDerivative11<ActualY, X2, N>(
       [&](const X2& x2_) { return std::invoke(h, x1, x2_); }, x2, delta);
 }
 
+/// Raw-function overload for `numericalDerivative22`.
 template <class Y, class X1, class X2, int N = traits<X2>::dimension>
 typename internal::MatrixMN<traits<Y>::dimension, N>::type
 numericalDerivative22(Y (&h)(const X1&, const X2&), const X1& x1, const X2& x2,
@@ -291,9 +283,7 @@ numericalDerivative22(Y (&h)(const X1&, const X2&), const X1& x1, const X2& x2,
 /**
  * Compute numerical derivative in argument 1 of ternary function
  * @param h ternary function yielding m-vector
- * @param x1 n-dimensional first argument value
- * @param x2 second argument value
- * @param x3 third argument value
+ * @param x1, x2, x3 argument values; differentiate with respect to `x1`
  * @param delta increment for numerical derivative
  * @return m*n Jacobian computed via central differencing
  * @tparam int N is the dimension of the X1 input value if variable dimension
@@ -307,16 +297,11 @@ typename internal::MatrixMN<
 numericalDerivative31(F&& h, const X1& x1, const X2& x2, const X3& x3,
                       double delta = 1e-5) {
   using ActualY = internal::OutputType<Y, F, X1, X2, X3>;
-  static_assert(std::is_base_of_v<gtsam::manifold_tag,
-                                  typename traits<ActualY>::structure_category>,
-                "Template argument Y must be a manifold type.");
-  static_assert(std::is_base_of_v<gtsam::manifold_tag,
-                                  typename traits<X1>::structure_category>,
-                "Template argument X1 must be a manifold type.");
   return numericalDerivative11<ActualY, X1, N>(
       [&](const X1& x1_) { return std::invoke(h, x1_, x2, x3); }, x1, delta);
 }
 
+/// Raw-function overload for `numericalDerivative31`.
 template <class Y, class X1, class X2, class X3, int N = traits<X1>::dimension>
 typename internal::MatrixMN<traits<Y>::dimension, N>::type
 numericalDerivative31(Y (&h)(const X1&, const X2&, const X3&), const X1& x1,
@@ -328,9 +313,7 @@ numericalDerivative31(Y (&h)(const X1&, const X2&, const X3&), const X1& x1,
 /**
  * Compute numerical derivative in argument 2 of ternary function
  * @param h ternary function yielding m-vector
- * @param x1 n-dimensional first argument value
- * @param x2 second argument value
- * @param x3 third argument value
+ * @param x1, x2, x3 argument values; differentiate with respect to `x2`
  * @param delta increment for numerical derivative
  * @return m*n Jacobian computed via central differencing
  * @tparam int N is the dimension of the X2 input value if variable dimension
@@ -344,16 +327,11 @@ typename internal::MatrixMN<
 numericalDerivative32(F&& h, const X1& x1, const X2& x2, const X3& x3,
                       double delta = 1e-5) {
   using ActualY = internal::OutputType<Y, F, X1, X2, X3>;
-  static_assert(std::is_base_of_v<gtsam::manifold_tag,
-                                  typename traits<ActualY>::structure_category>,
-                "Template argument Y must be a manifold type.");
-  static_assert(std::is_base_of_v<gtsam::manifold_tag,
-                                  typename traits<X2>::structure_category>,
-                "Template argument X2 must be a manifold type.");
   return numericalDerivative11<ActualY, X2, N>(
       [&](const X2& x2_) { return std::invoke(h, x1, x2_, x3); }, x2, delta);
 }
 
+/// Raw-function overload for `numericalDerivative32`.
 template <class Y, class X1, class X2, class X3, int N = traits<X2>::dimension>
 typename internal::MatrixMN<traits<Y>::dimension, N>::type
 numericalDerivative32(Y (&h)(const X1&, const X2&, const X3&), const X1& x1,
@@ -365,9 +343,7 @@ numericalDerivative32(Y (&h)(const X1&, const X2&, const X3&), const X1& x1,
 /**
  * Compute numerical derivative in argument 3 of ternary function
  * @param h ternary function yielding m-vector
- * @param x1 n-dimensional first argument value
- * @param x2 second argument value
- * @param x3 third argument value
+ * @param x1, x2, x3 argument values; differentiate with respect to `x3`
  * @param delta increment for numerical derivative
  * @return m*n Jacobian computed via central differencing
  * @tparam int N is the dimension of the X3 input value if variable dimension
@@ -381,16 +357,11 @@ typename internal::MatrixMN<
 numericalDerivative33(F&& h, const X1& x1, const X2& x2, const X3& x3,
                       double delta = 1e-5) {
   using ActualY = internal::OutputType<Y, F, X1, X2, X3>;
-  static_assert(std::is_base_of_v<gtsam::manifold_tag,
-                                  typename traits<ActualY>::structure_category>,
-                "Template argument Y must be a manifold type.");
-  static_assert(std::is_base_of_v<gtsam::manifold_tag,
-                                  typename traits<X3>::structure_category>,
-                "Template argument X3 must be a manifold type.");
   return numericalDerivative11<ActualY, X3, N>(
       [&](const X3& x3_) { return std::invoke(h, x1, x2, x3_); }, x3, delta);
 }
 
+/// Raw-function overload for `numericalDerivative33`.
 template <class Y, class X1, class X2, class X3, int N = traits<X3>::dimension>
 typename internal::MatrixMN<traits<Y>::dimension, N>::type
 numericalDerivative33(Y (&h)(const X1&, const X2&, const X3&), const X1& x1,
@@ -402,10 +373,7 @@ numericalDerivative33(Y (&h)(const X1&, const X2&, const X3&), const X1& x1,
 /**
  * Compute numerical derivative in argument 1 of 4-argument function
  * @param h quartic function yielding m-vector
- * @param x1 n-dimensional first argument value
- * @param x2 second argument value
- * @param x3 third argument value
- * @param x4 fourth argument value
+ * @param x1, x2, x3, x4 argument values; differentiate with respect to `x1`
  * @param delta increment for numerical derivative
  * @return m*n Jacobian computed via central differencing
  * @tparam int N is the dimension of the X1 input value if variable dimension
@@ -419,17 +387,12 @@ typename internal::MatrixMN<
 numericalDerivative41(F&& h, const X1& x1, const X2& x2, const X3& x3,
                       const X4& x4, double delta = 1e-5) {
   using ActualY = internal::OutputType<Y, F, X1, X2, X3, X4>;
-  static_assert(std::is_base_of_v<gtsam::manifold_tag,
-                                  typename traits<ActualY>::structure_category>,
-                "Template argument Y must be a manifold type.");
-  static_assert(std::is_base_of_v<gtsam::manifold_tag,
-                                  typename traits<X1>::structure_category>,
-                "Template argument X1 must be a manifold type.");
   return numericalDerivative11<ActualY, X1, N>(
       [&](const X1& x1_) { return std::invoke(h, x1_, x2, x3, x4); }, x1,
       delta);
 }
 
+/// Raw-function overload for `numericalDerivative41`.
 template <class Y, class X1, class X2, class X3, class X4,
           int N = traits<X1>::dimension>
 typename internal::MatrixMN<traits<Y>::dimension, N>::type
@@ -443,10 +406,7 @@ numericalDerivative41(Y (&h)(const X1&, const X2&, const X3&, const X4&),
 /**
  * Compute numerical derivative in argument 2 of 4-argument function
  * @param h quartic function yielding m-vector
- * @param x1 first argument value
- * @param x2 n-dimensional second argument value
- * @param x3 third argument value
- * @param x4 fourth argument value
+ * @param x1, x2, x3, x4 argument values; differentiate with respect to `x2`
  * @param delta increment for numerical derivative
  * @return m*n Jacobian computed via central differencing
  * @tparam int N is the dimension of the X2 input value if variable dimension
@@ -460,17 +420,12 @@ typename internal::MatrixMN<
 numericalDerivative42(F&& h, const X1& x1, const X2& x2, const X3& x3,
                       const X4& x4, double delta = 1e-5) {
   using ActualY = internal::OutputType<Y, F, X1, X2, X3, X4>;
-  static_assert(std::is_base_of_v<gtsam::manifold_tag,
-                                  typename traits<ActualY>::structure_category>,
-                "Template argument Y must be a manifold type.");
-  static_assert(std::is_base_of_v<gtsam::manifold_tag,
-                                  typename traits<X2>::structure_category>,
-                "Template argument X2 must be a manifold type.");
   return numericalDerivative11<ActualY, X2, N>(
       [&](const X2& x2_) { return std::invoke(h, x1, x2_, x3, x4); }, x2,
       delta);
 }
 
+/// Raw-function overload for `numericalDerivative42`.
 template <class Y, class X1, class X2, class X3, class X4,
           int N = traits<X2>::dimension>
 typename internal::MatrixMN<traits<Y>::dimension, N>::type
@@ -484,10 +439,7 @@ numericalDerivative42(Y (&h)(const X1&, const X2&, const X3&, const X4&),
 /**
  * Compute numerical derivative in argument 3 of 4-argument function
  * @param h quartic function yielding m-vector
- * @param x1 first argument value
- * @param x2 second argument value
- * @param x3 n-dimensional third argument value
- * @param x4 fourth argument value
+ * @param x1, x2, x3, x4 argument values; differentiate with respect to `x3`
  * @param delta increment for numerical derivative
  * @return m*n Jacobian computed via central differencing
  * @tparam int N is the dimension of the X3 input value if variable dimension
@@ -501,17 +453,12 @@ typename internal::MatrixMN<
 numericalDerivative43(F&& h, const X1& x1, const X2& x2, const X3& x3,
                       const X4& x4, double delta = 1e-5) {
   using ActualY = internal::OutputType<Y, F, X1, X2, X3, X4>;
-  static_assert(std::is_base_of_v<gtsam::manifold_tag,
-                                  typename traits<ActualY>::structure_category>,
-                "Template argument Y must be a manifold type.");
-  static_assert(std::is_base_of_v<gtsam::manifold_tag,
-                                  typename traits<X3>::structure_category>,
-                "Template argument X3 must be a manifold type.");
   return numericalDerivative11<ActualY, X3, N>(
       [&](const X3& x3_) { return std::invoke(h, x1, x2, x3_, x4); }, x3,
       delta);
 }
 
+/// Raw-function overload for `numericalDerivative43`.
 template <class Y, class X1, class X2, class X3, class X4,
           int N = traits<X3>::dimension>
 typename internal::MatrixMN<traits<Y>::dimension, N>::type
@@ -525,10 +472,7 @@ numericalDerivative43(Y (&h)(const X1&, const X2&, const X3&, const X4&),
 /**
  * Compute numerical derivative in argument 4 of 4-argument function
  * @param h quartic function yielding m-vector
- * @param x1 first argument value
- * @param x2 second argument value
- * @param x3 third argument value
- * @param x4 n-dimensional fourth argument value
+ * @param x1, x2, x3, x4 argument values; differentiate with respect to `x4`
  * @param delta increment for numerical derivative
  * @return m*n Jacobian computed via central differencing
  * @tparam int N is the dimension of the X4 input value if variable dimension
@@ -542,17 +486,12 @@ typename internal::MatrixMN<
 numericalDerivative44(F&& h, const X1& x1, const X2& x2, const X3& x3,
                       const X4& x4, double delta = 1e-5) {
   using ActualY = internal::OutputType<Y, F, X1, X2, X3, X4>;
-  static_assert(std::is_base_of_v<gtsam::manifold_tag,
-                                  typename traits<ActualY>::structure_category>,
-                "Template argument Y must be a manifold type.");
-  static_assert(std::is_base_of_v<gtsam::manifold_tag,
-                                  typename traits<X4>::structure_category>,
-                "Template argument X4 must be a manifold type.");
   return numericalDerivative11<ActualY, X4, N>(
       [&](const X4& x4_) { return std::invoke(h, x1, x2, x3, x4_); }, x4,
       delta);
 }
 
+/// Raw-function overload for `numericalDerivative44`.
 template <class Y, class X1, class X2, class X3, class X4,
           int N = traits<X4>::dimension>
 typename internal::MatrixMN<traits<Y>::dimension, N>::type
@@ -566,11 +505,7 @@ numericalDerivative44(Y (&h)(const X1&, const X2&, const X3&, const X4&),
 /**
  * Compute numerical derivative in argument 1 of 5-argument function
  * @param h quintic function yielding m-vector
- * @param x1 n-dimensional first argument value
- * @param x2 second argument value
- * @param x3 third argument value
- * @param x4 fourth argument value
- * @param x5 fifth argument value
+ * @param x1, ..., x5 argument values; differentiate with respect to `x1`
  * @param delta increment for numerical derivative
  * @return m*n Jacobian computed via central differencing
  * @tparam int N is the dimension of the X1 input value if variable dimension
@@ -584,17 +519,12 @@ typename internal::MatrixMN<
 numericalDerivative51(F&& h, const X1& x1, const X2& x2, const X3& x3,
                       const X4& x4, const X5& x5, double delta = 1e-5) {
   using ActualY = internal::OutputType<Y, F, X1, X2, X3, X4, X5>;
-  static_assert(std::is_base_of_v<gtsam::manifold_tag,
-                                  typename traits<ActualY>::structure_category>,
-                "Template argument Y must be a manifold type.");
-  static_assert(std::is_base_of_v<gtsam::manifold_tag,
-                                  typename traits<X1>::structure_category>,
-                "Template argument X1 must be a manifold type.");
   return numericalDerivative11<ActualY, X1, N>(
       [&](const X1& x1_) { return std::invoke(h, x1_, x2, x3, x4, x5); }, x1,
       delta);
 }
 
+/// Raw-function overload for `numericalDerivative51`.
 template <class Y, class X1, class X2, class X3, class X4, class X5,
           int N = traits<X1>::dimension>
 typename internal::MatrixMN<traits<Y>::dimension, N>::type
@@ -609,11 +539,7 @@ numericalDerivative51(Y (&h)(const X1&, const X2&, const X3&, const X4&,
 /**
  * Compute numerical derivative in argument 2 of 5-argument function
  * @param h quintic function yielding m-vector
- * @param x1 n-dimensional first argument value
- * @param x2 second argument value
- * @param x3 third argument value
- * @param x4 fourth argument value
- * @param x5 fifth argument value
+ * @param x1, ..., x5 argument values; differentiate with respect to `x2`
  * @param delta increment for numerical derivative
  * @return m*n Jacobian computed via central differencing
  * @tparam int N is the dimension of the X2 input value if variable dimension
@@ -627,17 +553,12 @@ typename internal::MatrixMN<
 numericalDerivative52(F&& h, const X1& x1, const X2& x2, const X3& x3,
                       const X4& x4, const X5& x5, double delta = 1e-5) {
   using ActualY = internal::OutputType<Y, F, X1, X2, X3, X4, X5>;
-  static_assert(std::is_base_of_v<gtsam::manifold_tag,
-                                  typename traits<ActualY>::structure_category>,
-                "Template argument Y must be a manifold type.");
-  static_assert(std::is_base_of_v<gtsam::manifold_tag,
-                                  typename traits<X2>::structure_category>,
-                "Template argument X2 must be a manifold type.");
   return numericalDerivative11<ActualY, X2, N>(
       [&](const X2& x2_) { return std::invoke(h, x1, x2_, x3, x4, x5); }, x2,
       delta);
 }
 
+/// Raw-function overload for `numericalDerivative52`.
 template <class Y, class X1, class X2, class X3, class X4, class X5,
           int N = traits<X2>::dimension>
 typename internal::MatrixMN<traits<Y>::dimension, N>::type
@@ -652,11 +573,7 @@ numericalDerivative52(Y (&h)(const X1&, const X2&, const X3&, const X4&,
 /**
  * Compute numerical derivative in argument 3 of 5-argument function
  * @param h quintic function yielding m-vector
- * @param x1 n-dimensional first argument value
- * @param x2 second argument value
- * @param x3 third argument value
- * @param x4 fourth argument value
- * @param x5 fifth argument value
+ * @param x1, ..., x5 argument values; differentiate with respect to `x3`
  * @param delta increment for numerical derivative
  * @return m*n Jacobian computed via central differencing
  * @tparam int N is the dimension of the X3 input value if variable dimension
@@ -670,17 +587,12 @@ typename internal::MatrixMN<
 numericalDerivative53(F&& h, const X1& x1, const X2& x2, const X3& x3,
                       const X4& x4, const X5& x5, double delta = 1e-5) {
   using ActualY = internal::OutputType<Y, F, X1, X2, X3, X4, X5>;
-  static_assert(std::is_base_of_v<gtsam::manifold_tag,
-                                  typename traits<ActualY>::structure_category>,
-                "Template argument Y must be a manifold type.");
-  static_assert(std::is_base_of_v<gtsam::manifold_tag,
-                                  typename traits<X3>::structure_category>,
-                "Template argument X3 must be a manifold type.");
   return numericalDerivative11<ActualY, X3, N>(
       [&](const X3& x3_) { return std::invoke(h, x1, x2, x3_, x4, x5); }, x3,
       delta);
 }
 
+/// Raw-function overload for `numericalDerivative53`.
 template <class Y, class X1, class X2, class X3, class X4, class X5,
           int N = traits<X3>::dimension>
 typename internal::MatrixMN<traits<Y>::dimension, N>::type
@@ -695,11 +607,7 @@ numericalDerivative53(Y (&h)(const X1&, const X2&, const X3&, const X4&,
 /**
  * Compute numerical derivative in argument 4 of 5-argument function
  * @param h quintic function yielding m-vector
- * @param x1 n-dimensional first argument value
- * @param x2 second argument value
- * @param x3 third argument value
- * @param x4 fourth argument value
- * @param x5 fifth argument value
+ * @param x1, ..., x5 argument values; differentiate with respect to `x4`
  * @param delta increment for numerical derivative
  * @return m*n Jacobian computed via central differencing
  * @tparam int N is the dimension of the X4 input value if variable dimension
@@ -713,17 +621,12 @@ typename internal::MatrixMN<
 numericalDerivative54(F&& h, const X1& x1, const X2& x2, const X3& x3,
                       const X4& x4, const X5& x5, double delta = 1e-5) {
   using ActualY = internal::OutputType<Y, F, X1, X2, X3, X4, X5>;
-  static_assert(std::is_base_of_v<gtsam::manifold_tag,
-                                  typename traits<ActualY>::structure_category>,
-                "Template argument Y must be a manifold type.");
-  static_assert(std::is_base_of_v<gtsam::manifold_tag,
-                                  typename traits<X4>::structure_category>,
-                "Template argument X4 must be a manifold type.");
   return numericalDerivative11<ActualY, X4, N>(
       [&](const X4& x4_) { return std::invoke(h, x1, x2, x3, x4_, x5); }, x4,
       delta);
 }
 
+/// Raw-function overload for `numericalDerivative54`.
 template <class Y, class X1, class X2, class X3, class X4, class X5,
           int N = traits<X4>::dimension>
 typename internal::MatrixMN<traits<Y>::dimension, N>::type
@@ -738,11 +641,7 @@ numericalDerivative54(Y (&h)(const X1&, const X2&, const X3&, const X4&,
 /**
  * Compute numerical derivative in argument 5 of 5-argument function
  * @param h quintic function yielding m-vector
- * @param x1 n-dimensional first argument value
- * @param x2 second argument value
- * @param x3 third argument value
- * @param x4 fourth argument value
- * @param x5 fifth argument value
+ * @param x1, ..., x5 argument values; differentiate with respect to `x5`
  * @param delta increment for numerical derivative
  * @return m*n Jacobian computed via central differencing
  * @tparam int N is the dimension of the X5 input value if variable dimension
@@ -756,17 +655,12 @@ typename internal::MatrixMN<
 numericalDerivative55(F&& h, const X1& x1, const X2& x2, const X3& x3,
                       const X4& x4, const X5& x5, double delta = 1e-5) {
   using ActualY = internal::OutputType<Y, F, X1, X2, X3, X4, X5>;
-  static_assert(std::is_base_of_v<gtsam::manifold_tag,
-                                  typename traits<ActualY>::structure_category>,
-                "Template argument Y must be a manifold type.");
-  static_assert(std::is_base_of_v<gtsam::manifold_tag,
-                                  typename traits<X5>::structure_category>,
-                "Template argument X5 must be a manifold type.");
   return numericalDerivative11<ActualY, X5, N>(
       [&](const X5& x5_) { return std::invoke(h, x1, x2, x3, x4, x5_); }, x5,
       delta);
 }
 
+/// Raw-function overload for `numericalDerivative55`.
 template <class Y, class X1, class X2, class X3, class X4, class X5,
           int N = traits<X5>::dimension>
 typename internal::MatrixMN<traits<Y>::dimension, N>::type
@@ -781,12 +675,7 @@ numericalDerivative55(Y (&h)(const X1&, const X2&, const X3&, const X4&,
 /**
  * Compute numerical derivative in argument 1 of 6-argument function
  * @param h quintic function yielding m-vector
- * @param x1 n-dimensional first argument value
- * @param x2 second argument value
- * @param x3 third argument value
- * @param x4 fourth argument value
- * @param x5 fifth argument value
- * @param x6 sixth argument value
+ * @param x1, ..., x6 argument values; differentiate with respect to `x1`
  * @param delta increment for numerical derivative
  * @return m*n Jacobian computed via central differencing
  * @tparam int N is the dimension of the X1 input value if variable dimension
@@ -802,17 +691,12 @@ numericalDerivative61(F&& h, const X1& x1, const X2& x2, const X3& x3,
                       const X4& x4, const X5& x5, const X6& x6,
                       double delta = 1e-5) {
   using ActualY = internal::OutputType<Y, F, X1, X2, X3, X4, X5, X6>;
-  static_assert(std::is_base_of_v<gtsam::manifold_tag,
-                                  typename traits<ActualY>::structure_category>,
-                "Template argument Y must be a manifold type.");
-  static_assert(std::is_base_of_v<gtsam::manifold_tag,
-                                  typename traits<X1>::structure_category>,
-                "Template argument X1 must be a manifold type.");
   return numericalDerivative11<ActualY, X1, N>(
       [&](const X1& x1_) { return std::invoke(h, x1_, x2, x3, x4, x5, x6); },
       x1, delta);
 }
 
+/// Raw-function overload for `numericalDerivative61`.
 template <class Y, class X1, class X2, class X3, class X4, class X5, class X6,
           int N = traits<X1>::dimension>
 typename internal::MatrixMN<traits<Y>::dimension, N>::type
@@ -827,12 +711,7 @@ numericalDerivative61(Y (&h)(const X1&, const X2&, const X3&, const X4&,
 /**
  * Compute numerical derivative in argument 2 of 6-argument function
  * @param h quintic function yielding m-vector
- * @param x1 n-dimensional first argument value
- * @param x2 second argument value
- * @param x3 third argument value
- * @param x4 fourth argument value
- * @param x5 fifth argument value
- * @param x6 sixth argument value
+ * @param x1, ..., x6 argument values; differentiate with respect to `x2`
  * @param delta increment for numerical derivative
  * @return m*n Jacobian computed via central differencing
  * @tparam int N is the dimension of the X2 input value if variable dimension
@@ -848,17 +727,12 @@ numericalDerivative62(F&& h, const X1& x1, const X2& x2, const X3& x3,
                       const X4& x4, const X5& x5, const X6& x6,
                       double delta = 1e-5) {
   using ActualY = internal::OutputType<Y, F, X1, X2, X3, X4, X5, X6>;
-  static_assert(std::is_base_of_v<gtsam::manifold_tag,
-                                  typename traits<ActualY>::structure_category>,
-                "Template argument Y must be a manifold type.");
-  static_assert(std::is_base_of_v<gtsam::manifold_tag,
-                                  typename traits<X2>::structure_category>,
-                "Template argument X2 must be a manifold type.");
   return numericalDerivative11<ActualY, X2, N>(
       [&](const X2& x2_) { return std::invoke(h, x1, x2_, x3, x4, x5, x6); },
       x2, delta);
 }
 
+/// Raw-function overload for `numericalDerivative62`.
 template <class Y, class X1, class X2, class X3, class X4, class X5, class X6,
           int N = traits<X2>::dimension>
 typename internal::MatrixMN<traits<Y>::dimension, N>::type
@@ -873,12 +747,7 @@ numericalDerivative62(Y (&h)(const X1&, const X2&, const X3&, const X4&,
 /**
  * Compute numerical derivative in argument 3 of 6-argument function
  * @param h quintic function yielding m-vector
- * @param x1 n-dimensional first argument value
- * @param x2 second argument value
- * @param x3 third argument value
- * @param x4 fourth argument value
- * @param x5 fifth argument value
- * @param x6 sixth argument value
+ * @param x1, ..., x6 argument values; differentiate with respect to `x3`
  * @param delta increment for numerical derivative
  * @return m*n Jacobian computed via central differencing
  * @tparam int N is the dimension of the X3 input value if variable dimension
@@ -894,17 +763,12 @@ numericalDerivative63(F&& h, const X1& x1, const X2& x2, const X3& x3,
                       const X4& x4, const X5& x5, const X6& x6,
                       double delta = 1e-5) {
   using ActualY = internal::OutputType<Y, F, X1, X2, X3, X4, X5, X6>;
-  static_assert(std::is_base_of_v<gtsam::manifold_tag,
-                                  typename traits<ActualY>::structure_category>,
-                "Template argument Y must be a manifold type.");
-  static_assert(std::is_base_of_v<gtsam::manifold_tag,
-                                  typename traits<X3>::structure_category>,
-                "Template argument X3 must be a manifold type.");
   return numericalDerivative11<ActualY, X3, N>(
       [&](const X3& x3_) { return std::invoke(h, x1, x2, x3_, x4, x5, x6); },
       x3, delta);
 }
 
+/// Raw-function overload for `numericalDerivative63`.
 template <class Y, class X1, class X2, class X3, class X4, class X5, class X6,
           int N = traits<X3>::dimension>
 typename internal::MatrixMN<traits<Y>::dimension, N>::type
@@ -919,12 +783,7 @@ numericalDerivative63(Y (&h)(const X1&, const X2&, const X3&, const X4&,
 /**
  * Compute numerical derivative in argument 4 of 6-argument function
  * @param h quintic function yielding m-vector
- * @param x1 n-dimensional first argument value
- * @param x2 second argument value
- * @param x3 third argument value
- * @param x4 fourth argument value
- * @param x5 fifth argument value
- * @param x6 sixth argument value
+ * @param x1, ..., x6 argument values; differentiate with respect to `x4`
  * @param delta increment for numerical derivative
  * @return m*n Jacobian computed via central differencing
  * @tparam int N is the dimension of the X4 input value if variable dimension
@@ -940,17 +799,12 @@ numericalDerivative64(F&& h, const X1& x1, const X2& x2, const X3& x3,
                       const X4& x4, const X5& x5, const X6& x6,
                       double delta = 1e-5) {
   using ActualY = internal::OutputType<Y, F, X1, X2, X3, X4, X5, X6>;
-  static_assert(std::is_base_of_v<gtsam::manifold_tag,
-                                  typename traits<ActualY>::structure_category>,
-                "Template argument Y must be a manifold type.");
-  static_assert(std::is_base_of_v<gtsam::manifold_tag,
-                                  typename traits<X4>::structure_category>,
-                "Template argument X4 must be a manifold type.");
   return numericalDerivative11<ActualY, X4, N>(
       [&](const X4& x4_) { return std::invoke(h, x1, x2, x3, x4_, x5, x6); },
       x4, delta);
 }
 
+/// Raw-function overload for `numericalDerivative64`.
 template <class Y, class X1, class X2, class X3, class X4, class X5, class X6,
           int N = traits<X4>::dimension>
 typename internal::MatrixMN<traits<Y>::dimension, N>::type
@@ -965,12 +819,7 @@ numericalDerivative64(Y (&h)(const X1&, const X2&, const X3&, const X4&,
 /**
  * Compute numerical derivative in argument 5 of 6-argument function
  * @param h quintic function yielding m-vector
- * @param x1 n-dimensional first argument value
- * @param x2 second argument value
- * @param x3 third argument value
- * @param x4 fourth argument value
- * @param x5 fifth argument value
- * @param x6 sixth argument value
+ * @param x1, ..., x6 argument values; differentiate with respect to `x5`
  * @param delta increment for numerical derivative
  * @return m*n Jacobian computed via central differencing
  * @tparam int N is the dimension of the X5 input value if variable dimension
@@ -986,17 +835,12 @@ numericalDerivative65(F&& h, const X1& x1, const X2& x2, const X3& x3,
                       const X4& x4, const X5& x5, const X6& x6,
                       double delta = 1e-5) {
   using ActualY = internal::OutputType<Y, F, X1, X2, X3, X4, X5, X6>;
-  static_assert(std::is_base_of_v<gtsam::manifold_tag,
-                                  typename traits<ActualY>::structure_category>,
-                "Template argument Y must be a manifold type.");
-  static_assert(std::is_base_of_v<gtsam::manifold_tag,
-                                  typename traits<X5>::structure_category>,
-                "Template argument X5 must be a manifold type.");
   return numericalDerivative11<ActualY, X5, N>(
       [&](const X5& x5_) { return std::invoke(h, x1, x2, x3, x4, x5_, x6); },
       x5, delta);
 }
 
+/// Raw-function overload for `numericalDerivative65`.
 template <class Y, class X1, class X2, class X3, class X4, class X5, class X6,
           int N = traits<X5>::dimension>
 typename internal::MatrixMN<traits<Y>::dimension, N>::type
@@ -1011,12 +855,7 @@ numericalDerivative65(Y (&h)(const X1&, const X2&, const X3&, const X4&,
 /**
  * Compute numerical derivative in argument 6 of 6-argument function
  * @param h quintic function yielding m-vector
- * @param x1 n-dimensional first argument value
- * @param x2 second argument value
- * @param x3 third argument value
- * @param x4 fourth argument value
- * @param x5 fifth argument value
- * @param x6 sixth argument value
+ * @param x1, ..., x6 argument values; differentiate with respect to `x6`
  * @param delta increment for numerical derivative
  * @return m*n Jacobian computed via central differencing
  * @tparam int N is the dimension of the X6 input value if variable dimension
@@ -1032,17 +871,12 @@ numericalDerivative66(F&& h, const X1& x1, const X2& x2, const X3& x3,
                       const X4& x4, const X5& x5, const X6& x6,
                       double delta = 1e-5) {
   using ActualY = internal::OutputType<Y, F, X1, X2, X3, X4, X5, X6>;
-  static_assert(std::is_base_of_v<gtsam::manifold_tag,
-                                  typename traits<ActualY>::structure_category>,
-                "Template argument Y must be a manifold type.");
-  static_assert(std::is_base_of_v<gtsam::manifold_tag,
-                                  typename traits<X6>::structure_category>,
-                "Template argument X6 must be a manifold type.");
   return numericalDerivative11<ActualY, X6, N>(
       [&](const X6& x6_) { return std::invoke(h, x1, x2, x3, x4, x5, x6_); },
       x6, delta);
 }
 
+/// Raw-function overload for `numericalDerivative66`.
 template <class Y, class X1, class X2, class X3, class X4, class X5, class X6,
           int N = traits<X6>::dimension>
 typename internal::MatrixMN<traits<Y>::dimension, N>::type
@@ -1069,21 +903,20 @@ template <class X, int N = traits<X>::dimension, class F,
           internal::EnableIfScalarInvocable<F, X> = 0>
 inline typename internal::MatrixMN<N, N>::type numericalHessian(
     F&& f, const X& x, double delta = 1e-5) {
-  static_assert(std::is_base_of_v<gtsam::manifold_tag,
-                                  typename traits<X>::structure_category>,
-                "Template argument X must be a manifold type.");
   typedef Eigen::Matrix<double, N, 1> VectorD;
   return numericalDerivative11<VectorD, X, N>(
       [&](const X& x_) { return numericalGradient<X, N>(f, x_, delta); }, x,
       delta);
 }
 
+/// Raw-function overload for `numericalHessian`.
 template <class X, int N = traits<X>::dimension>
 inline typename internal::MatrixMN<N, N>::type numericalHessian(
     double (&f)(const X&), const X& x, double delta = 1e-5) {
   return numericalHessian<X, N>([&](const X& x_) { return f(x_); }, x, delta);
 }
 
+/// Mixed Hessian with respect to argument 1 then argument 2.
 template <class X1, class X2, int N1 = traits<X1>::dimension,
           int N2 = traits<X2>::dimension, class F,
           internal::EnableIfScalarInvocable<F, X1, X2> = 0>
@@ -1098,6 +931,7 @@ inline typename internal::MatrixMN<N1, N2>::type numericalHessian212(
       x2, delta);
 }
 
+/// Raw-function overload for `numericalHessian212`.
 template <class X1, class X2, int N1 = traits<X1>::dimension,
           int N2 = traits<X2>::dimension>
 inline typename internal::MatrixMN<N1, N2>::type numericalHessian212(
@@ -1107,6 +941,7 @@ inline typename internal::MatrixMN<N1, N2>::type numericalHessian212(
       [&](const X1& x1_, const X2& x2_) { return f(x1_, x2_); }, x1, x2, delta);
 }
 
+/// Hessian with respect to argument 1 of a binary scalar function.
 template <class X1, class X2, int N1 = traits<X1>::dimension, class F,
           internal::EnableIfScalarInvocable<F, X1, X2> = 0>
 inline typename internal::MatrixMN<N1, N1>::type numericalHessian211(
@@ -1121,6 +956,7 @@ inline typename internal::MatrixMN<N1, N1>::type numericalHessian211(
       x1, delta);
 }
 
+/// Raw-function overload for `numericalHessian211`.
 template <class X1, class X2, int N1 = traits<X1>::dimension>
 inline typename internal::MatrixMN<N1, N1>::type numericalHessian211(
     double (&f)(const X1&, const X2&), const X1& x1, const X2& x2,
@@ -1129,6 +965,7 @@ inline typename internal::MatrixMN<N1, N1>::type numericalHessian211(
       [&](const X1& x1_, const X2& x2_) { return f(x1_, x2_); }, x1, x2, delta);
 }
 
+/// Hessian with respect to argument 2 of a binary scalar function.
 template <class X1, class X2, int N2 = traits<X2>::dimension, class F,
           internal::EnableIfScalarInvocable<F, X1, X2> = 0>
 inline typename internal::MatrixMN<N2, N2>::type numericalHessian222(
@@ -1143,6 +980,7 @@ inline typename internal::MatrixMN<N2, N2>::type numericalHessian222(
       x2, delta);
 }
 
+/// Raw-function overload for `numericalHessian222`.
 template <class X1, class X2, int N2 = traits<X2>::dimension>
 inline typename internal::MatrixMN<N2, N2>::type numericalHessian222(
     double (&f)(const X1&, const X2&), const X1& x1, const X2& x2,
@@ -1152,9 +990,10 @@ inline typename internal::MatrixMN<N2, N2>::type numericalHessian222(
 }
 
 /**
- * Numerical Hessian for tenary functions
+ * Numerical Hessian for ternary functions
  */
 /* **************************************************************** */
+/// Hessian with respect to argument 1 of a ternary scalar function.
 template <class X1, class X2, class X3, int N1 = traits<X1>::dimension, class F,
           internal::EnableIfScalarInvocable<F, X1, X2, X3> = 0>
 inline typename internal::MatrixMN<N1, N1>::type numericalHessian311(
@@ -1169,6 +1008,7 @@ inline typename internal::MatrixMN<N1, N1>::type numericalHessian311(
       x1, delta);
 }
 
+/// Raw-function overload for `numericalHessian311`.
 template <class X1, class X2, class X3, int N1 = traits<X1>::dimension>
 inline typename internal::MatrixMN<N1, N1>::type numericalHessian311(
     double (&f)(const X1&, const X2&, const X3&), const X1& x1, const X2& x2,
@@ -1181,6 +1021,7 @@ inline typename internal::MatrixMN<N1, N1>::type numericalHessian311(
 }
 
 /* **************************************************************** */
+/// Hessian with respect to argument 2 of a ternary scalar function.
 template <class X1, class X2, class X3, int N2 = traits<X2>::dimension, class F,
           internal::EnableIfScalarInvocable<F, X1, X2, X3> = 0>
 inline typename internal::MatrixMN<N2, N2>::type numericalHessian322(
@@ -1195,6 +1036,7 @@ inline typename internal::MatrixMN<N2, N2>::type numericalHessian322(
       x2, delta);
 }
 
+/// Raw-function overload for `numericalHessian322`.
 template <class X1, class X2, class X3, int N2 = traits<X2>::dimension>
 inline typename internal::MatrixMN<N2, N2>::type numericalHessian322(
     double (&f)(const X1&, const X2&, const X3&), const X1& x1, const X2& x2,
@@ -1207,6 +1049,7 @@ inline typename internal::MatrixMN<N2, N2>::type numericalHessian322(
 }
 
 /* **************************************************************** */
+/// Hessian with respect to argument 3 of a ternary scalar function.
 template <class X1, class X2, class X3, int N3 = traits<X3>::dimension, class F,
           internal::EnableIfScalarInvocable<F, X1, X2, X3> = 0>
 inline typename internal::MatrixMN<N3, N3>::type numericalHessian333(
@@ -1221,6 +1064,7 @@ inline typename internal::MatrixMN<N3, N3>::type numericalHessian333(
       x3, delta);
 }
 
+/// Raw-function overload for `numericalHessian333`.
 template <class X1, class X2, class X3, int N3 = traits<X3>::dimension>
 inline typename internal::MatrixMN<N3, N3>::type numericalHessian333(
     double (&f)(const X1&, const X2&, const X3&), const X1& x1, const X2& x2,
@@ -1233,6 +1077,8 @@ inline typename internal::MatrixMN<N3, N3>::type numericalHessian333(
 }
 
 /* **************************************************************** */
+/// Mixed Hessian with respect to arguments 1 and 2 of a ternary scalar
+/// function.
 template <class X1, class X2, class X3, int N1 = traits<X1>::dimension,
           int N2 = traits<X2>::dimension, class F,
           internal::EnableIfScalarInvocable<F, X1, X2, X3> = 0>
@@ -1245,6 +1091,8 @@ inline typename internal::MatrixMN<N1, N2>::type numericalHessian312(
       x1, x2, delta);
 }
 
+/// Mixed Hessian with respect to arguments 1 and 3 of a ternary scalar
+/// function.
 template <class X1, class X2, class X3, int N1 = traits<X1>::dimension,
           int N3 = traits<X3>::dimension, class F,
           internal::EnableIfScalarInvocable<F, X1, X2, X3> = 0>
@@ -1257,6 +1105,8 @@ inline typename internal::MatrixMN<N1, N3>::type numericalHessian313(
       x1, x3, delta);
 }
 
+/// Mixed Hessian with respect to arguments 2 and 3 of a ternary scalar
+/// function.
 template <class X1, class X2, class X3, int N2 = traits<X2>::dimension,
           int N3 = traits<X3>::dimension, class F,
           internal::EnableIfScalarInvocable<F, X1, X2, X3> = 0>
@@ -1270,6 +1120,7 @@ inline typename internal::MatrixMN<N2, N3>::type numericalHessian323(
 }
 
 /* **************************************************************** */
+/// Raw-function overload for `numericalHessian312`.
 template <class X1, class X2, class X3, int N1 = traits<X1>::dimension,
           int N2 = traits<X2>::dimension>
 inline typename internal::MatrixMN<N1, N2>::type numericalHessian312(
@@ -1282,6 +1133,7 @@ inline typename internal::MatrixMN<N1, N2>::type numericalHessian312(
       x1, x2, x3, delta);
 }
 
+/// Raw-function overload for `numericalHessian313`.
 template <class X1, class X2, class X3, int N1 = traits<X1>::dimension,
           int N3 = traits<X3>::dimension>
 inline typename internal::MatrixMN<N1, N3>::type numericalHessian313(
@@ -1294,6 +1146,7 @@ inline typename internal::MatrixMN<N1, N3>::type numericalHessian313(
       x1, x2, x3, delta);
 }
 
+/// Raw-function overload for `numericalHessian323`.
 template <class X1, class X2, class X3, int N2 = traits<X2>::dimension,
           int N3 = traits<X3>::dimension>
 inline typename internal::MatrixMN<N2, N3>::type numericalHessian323(
