@@ -13,7 +13,7 @@
 
 /**
  * @file LocationRecovery.h
- * @author Kathir Gounder, Frank Dellaert
+ * @author Kathir Gounder, Akshay Krishnan, Frank Dellaert
  * @date April 2026
  * @brief Recover absolute Point3 locations from pairwise Unit3 direction
  *        measurements, using either chordal or bilinear (BATA) cost functions.
