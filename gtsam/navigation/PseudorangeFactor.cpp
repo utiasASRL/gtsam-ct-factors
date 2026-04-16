@@ -323,7 +323,7 @@ Vector DifferentialPseudorangeFactorArm::evaluateError(
 }
 
 //***************************************************************************
-DDPseudorangeFactor::DDPseudorangeFactor(
+DoubleDifferencePseudorangeFactor::DoubleDifferencePseudorangeFactor(
     const Key positionKey, const double prRovRef, const double prBaseRef,
     const double prRovTarget, const double prBaseTarget,
     const Point3& satRefRov, const Point3& satTargetRov,
@@ -341,14 +341,14 @@ DDPseudorangeFactor::DDPseudorangeFactor(
       basePos_(basePos) {}
 
 //***************************************************************************
-void DDPseudorangeFactor::print(const std::string& s,
+void DoubleDifferencePseudorangeFactor::print(const std::string& s,
                                 const KeyFormatter& keyFormatter) const {
-  std::cout << (s.empty() ? "" : s + " ") << "DDPseudorangeFactor\n";
+  std::cout << (s.empty() ? "" : s + " ") << "DoubleDifferencePseudorangeFactor\n";
   Base::print("", keyFormatter);
 }
 
 //***************************************************************************
-bool DDPseudorangeFactor::equals(const NonlinearFactor& expected,
+bool DoubleDifferencePseudorangeFactor::equals(const NonlinearFactor& expected,
                                  double tol) const {
   const This* e = dynamic_cast<const This*>(&expected);
   return e != nullptr && Base::equals(*e, tol) &&
@@ -364,7 +364,7 @@ bool DDPseudorangeFactor::equals(const NonlinearFactor& expected,
 }
 
 //***************************************************************************
-Vector DDPseudorangeFactor::evaluateError(const Point3& pos,
+Vector DoubleDifferencePseudorangeFactor::evaluateError(const Point3& pos,
                                           OptionalMatrixType H) const {
   const double ddObs =
       (prRovRef_ - prBaseRef_) - (prRovTarget_ - prBaseTarget_);
@@ -391,7 +391,7 @@ Vector DDPseudorangeFactor::evaluateError(const Point3& pos,
 }
 
 //***************************************************************************
-DDPseudorangeFactorArm::DDPseudorangeFactorArm(
+DoubleDifferencePseudorangeFactorArm::DoubleDifferencePseudorangeFactorArm(
     const Key poseKey, const double prRovRef, const double prBaseRef,
     const double prRovTarget, const double prBaseTarget,
     const Point3& satRefRov, const Point3& satTargetRov,
@@ -411,7 +411,7 @@ DDPseudorangeFactorArm::DDPseudorangeFactorArm(
       bL_(leverArm) {}
 
 //***************************************************************************
-DDPseudorangeFactorArm::DDPseudorangeFactorArm(
+DoubleDifferencePseudorangeFactorArm::DoubleDifferencePseudorangeFactorArm(
     const Key poseKey, const double prRovRef, const double prBaseRef,
     const double prRovTarget, const double prBaseTarget,
     const Point3& satRefRov, const Point3& satTargetRov,
@@ -432,14 +432,14 @@ DDPseudorangeFactorArm::DDPseudorangeFactorArm(
       ecef_T_nav_(ecef_T_nav) {}
 
 //***************************************************************************
-void DDPseudorangeFactorArm::print(const std::string& s,
+void DoubleDifferencePseudorangeFactorArm::print(const std::string& s,
                                    const KeyFormatter& keyFormatter) const {
-  std::cout << (s.empty() ? "" : s + " ") << "DDPseudorangeFactorArm\n";
+  std::cout << (s.empty() ? "" : s + " ") << "DoubleDifferencePseudorangeFactorArm\n";
   Base::print("", keyFormatter);
 }
 
 //***************************************************************************
-bool DDPseudorangeFactorArm::equals(const NonlinearFactor& expected,
+bool DoubleDifferencePseudorangeFactorArm::equals(const NonlinearFactor& expected,
                                     double tol) const {
   const This* e = dynamic_cast<const This*>(&expected);
   if (e == nullptr || !Base::equals(*e, tol)) return false;
@@ -461,7 +461,7 @@ bool DDPseudorangeFactorArm::equals(const NonlinearFactor& expected,
 }
 
 //***************************************************************************
-Vector DDPseudorangeFactorArm::evaluateError(
+Vector DoubleDifferencePseudorangeFactorArm::evaluateError(
     const Pose3& pose, OptionalMatrixType H_pose) const {
   Matrix66 H_compose;
   const bool has_nav = ecef_T_nav_.has_value();

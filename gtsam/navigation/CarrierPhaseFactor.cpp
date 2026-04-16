@@ -175,7 +175,7 @@ Vector CarrierPhaseFactorArm::evaluateError(
 }
 
 //***************************************************************************
-DDCarrierPhaseFactor::DDCarrierPhaseFactor(
+DoubleDifferenceCarrierPhaseFactor::DoubleDifferenceCarrierPhaseFactor(
     const Key positionKey, const Key ambRefKey, const Key ambTargetKey,
     const double cpRovRef, const double cpBaseRef, const double cpRovTarget,
     const double cpBaseTarget, const Point3& satRefRov,
@@ -195,15 +195,15 @@ DDCarrierPhaseFactor::DDCarrierPhaseFactor(
       lam_(lam) {}
 
 //***************************************************************************
-void DDCarrierPhaseFactor::print(const std::string& s,
+void DoubleDifferenceCarrierPhaseFactor::print(const std::string& s,
                                  const KeyFormatter& keyFormatter) const {
-  std::cout << (s.empty() ? "" : s + " ") << "DDCarrierPhaseFactor\n";
+  std::cout << (s.empty() ? "" : s + " ") << "DoubleDifferenceCarrierPhaseFactor\n";
   std::cout << "  lam: " << lam_ << "\n";
   Base::print("", keyFormatter);
 }
 
 //***************************************************************************
-bool DDCarrierPhaseFactor::equals(const NonlinearFactor& expected,
+bool DoubleDifferenceCarrierPhaseFactor::equals(const NonlinearFactor& expected,
                                   double tol) const {
   const This* e = dynamic_cast<const This*>(&expected);
   return e != nullptr && Base::equals(*e, tol) &&
@@ -220,7 +220,7 @@ bool DDCarrierPhaseFactor::equals(const NonlinearFactor& expected,
 }
 
 //***************************************************************************
-Vector DDCarrierPhaseFactor::evaluateError(
+Vector DoubleDifferenceCarrierPhaseFactor::evaluateError(
     const Point3& pos, const double& ambRef, const double& ambTarget,
     OptionalMatrixType Hpos, OptionalMatrixType HambRef,
     OptionalMatrixType HambTarget) const {
@@ -246,7 +246,7 @@ Vector DDCarrierPhaseFactor::evaluateError(
 }
 
 //***************************************************************************
-DDCarrierPhaseFactorArm::DDCarrierPhaseFactorArm(
+DoubleDifferenceCarrierPhaseFactorArm::DoubleDifferenceCarrierPhaseFactorArm(
     const Key poseKey, const Key ambRefKey, const Key ambTargetKey,
     const double cpRovRef, const double cpBaseRef, const double cpRovTarget,
     const double cpBaseTarget, const Point3& satRefRov,
@@ -267,7 +267,7 @@ DDCarrierPhaseFactorArm::DDCarrierPhaseFactorArm(
       bL_(leverArm) {}
 
 //***************************************************************************
-DDCarrierPhaseFactorArm::DDCarrierPhaseFactorArm(
+DoubleDifferenceCarrierPhaseFactorArm::DoubleDifferenceCarrierPhaseFactorArm(
     const Key poseKey, const Key ambRefKey, const Key ambTargetKey,
     const double cpRovRef, const double cpBaseRef, const double cpRovTarget,
     const double cpBaseTarget, const Point3& satRefRov,
@@ -290,15 +290,15 @@ DDCarrierPhaseFactorArm::DDCarrierPhaseFactorArm(
       ecef_T_nav_(ecef_T_nav) {}
 
 //***************************************************************************
-void DDCarrierPhaseFactorArm::print(const std::string& s,
+void DoubleDifferenceCarrierPhaseFactorArm::print(const std::string& s,
                                     const KeyFormatter& keyFormatter) const {
-  std::cout << (s.empty() ? "" : s + " ") << "DDCarrierPhaseFactorArm\n";
+  std::cout << (s.empty() ? "" : s + " ") << "DoubleDifferenceCarrierPhaseFactorArm\n";
   std::cout << "  lam: " << lam_ << "\n";
   Base::print("", keyFormatter);
 }
 
 //***************************************************************************
-bool DDCarrierPhaseFactorArm::equals(const NonlinearFactor& expected,
+bool DoubleDifferenceCarrierPhaseFactorArm::equals(const NonlinearFactor& expected,
                                      double tol) const {
   const This* e = dynamic_cast<const This*>(&expected);
   if (e == nullptr || !Base::equals(*e, tol)) return false;
@@ -321,7 +321,7 @@ bool DDCarrierPhaseFactorArm::equals(const NonlinearFactor& expected,
 }
 
 //***************************************************************************
-Vector DDCarrierPhaseFactorArm::evaluateError(
+Vector DoubleDifferenceCarrierPhaseFactorArm::evaluateError(
     const Pose3& pose, const double& ambRef, const double& ambTarget,
     OptionalMatrixType H_pose, OptionalMatrixType HambRef,
     OptionalMatrixType HambTarget) const {

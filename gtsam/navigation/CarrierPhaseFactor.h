@@ -220,7 +220,7 @@ struct traits<CarrierPhaseFactorArm>
     : public Testable<CarrierPhaseFactorArm> {};
 
 /**
- * DD carrier phase factor.
+ * Double-difference carrier phase factor.
  *
  * Takes four raw (undifferenced) carrier phase observations -- rover and base
  * for both reference and target satellites -- along with satellite positions at
@@ -234,7 +234,7 @@ struct traits<CarrierPhaseFactorArm>
  *
  * @ingroup navigation
  */
-class GTSAM_EXPORT DDCarrierPhaseFactor
+class GTSAM_EXPORT DoubleDifferenceCarrierPhaseFactor
     : public NoiseModelFactorN<Point3, double, double> {
  private:
   typedef NoiseModelFactorN<Point3, double, double> Base;
@@ -252,18 +252,18 @@ class GTSAM_EXPORT DDCarrierPhaseFactor
 
  public:
   using Base::evaluateError;
-  typedef std::shared_ptr<DDCarrierPhaseFactor> shared_ptr;
-  typedef DDCarrierPhaseFactor This;
+  typedef std::shared_ptr<DoubleDifferenceCarrierPhaseFactor> shared_ptr;
+  typedef DoubleDifferenceCarrierPhaseFactor This;
 
-  DDCarrierPhaseFactor()
+  DoubleDifferenceCarrierPhaseFactor()
       : cpRovRef_(0), cpBaseRef_(0), cpRovTarget_(0), cpBaseTarget_(0),
         satRefRov_(0,0,0), satTargetRov_(0,0,0),
         satRefBase_(0,0,0), satTargetBase_(0,0,0),
         basePos_(0,0,0), lam_(0) {}
 
-  virtual ~DDCarrierPhaseFactor() = default;
+  virtual ~DoubleDifferenceCarrierPhaseFactor() = default;
 
-  DDCarrierPhaseFactor(Key positionKey, Key ambRefKey, Key ambTargetKey,
+  DoubleDifferenceCarrierPhaseFactor(Key positionKey, Key ambRefKey, Key ambTargetKey,
                        double cpRovRef, double cpBaseRef,
                        double cpRovTarget, double cpBaseTarget,
                        const Point3& satRefRov, const Point3& satTargetRov,
@@ -293,7 +293,7 @@ class GTSAM_EXPORT DDCarrierPhaseFactor
   friend class boost::serialization::access;
   template <class ARCHIVE>
   void serialize(ARCHIVE& ar, const unsigned int /*version*/) {
-    ar& BOOST_SERIALIZATION_BASE_OBJECT_NVP(DDCarrierPhaseFactor::Base);
+    ar& BOOST_SERIALIZATION_BASE_OBJECT_NVP(DoubleDifferenceCarrierPhaseFactor::Base);
     ar& BOOST_SERIALIZATION_NVP(cpRovRef_);
     ar& BOOST_SERIALIZATION_NVP(cpBaseRef_);
     ar& BOOST_SERIALIZATION_NVP(cpRovTarget_);
@@ -309,17 +309,17 @@ class GTSAM_EXPORT DDCarrierPhaseFactor
 };
 
 template <>
-struct traits<DDCarrierPhaseFactor> : public Testable<DDCarrierPhaseFactor> {};
+struct traits<DoubleDifferenceCarrierPhaseFactor> : public Testable<DoubleDifferenceCarrierPhaseFactor> {};
 
 /**
- * DD carrier phase factor with lever arm correction.
+ * Double-difference carrier phase factor with lever arm correction.
  *
- * Like DDCarrierPhaseFactor but uses Pose3 (position + attitude) with
+ * Like DoubleDifferenceCarrierPhaseFactor but uses Pose3 (position + attitude) with
  * lever arm offset. Optional ecef_T_nav for local navigation frame.
  *
  * @ingroup navigation
  */
-class GTSAM_EXPORT DDCarrierPhaseFactorArm
+class GTSAM_EXPORT DoubleDifferenceCarrierPhaseFactorArm
     : public NoiseModelFactorN<Pose3, double, double> {
  private:
   typedef NoiseModelFactorN<Pose3, double, double> Base;
@@ -339,18 +339,18 @@ class GTSAM_EXPORT DDCarrierPhaseFactorArm
 
  public:
   using Base::evaluateError;
-  typedef std::shared_ptr<DDCarrierPhaseFactorArm> shared_ptr;
-  typedef DDCarrierPhaseFactorArm This;
+  typedef std::shared_ptr<DoubleDifferenceCarrierPhaseFactorArm> shared_ptr;
+  typedef DoubleDifferenceCarrierPhaseFactorArm This;
 
-  DDCarrierPhaseFactorArm()
+  DoubleDifferenceCarrierPhaseFactorArm()
       : cpRovRef_(0), cpBaseRef_(0), cpRovTarget_(0), cpBaseTarget_(0),
         satRefRov_(0,0,0), satTargetRov_(0,0,0),
         satRefBase_(0,0,0), satTargetBase_(0,0,0),
         basePos_(0,0,0), lam_(0), bL_(0,0,0) {}
 
-  virtual ~DDCarrierPhaseFactorArm() = default;
+  virtual ~DoubleDifferenceCarrierPhaseFactorArm() = default;
 
-  DDCarrierPhaseFactorArm(Key poseKey, Key ambRefKey, Key ambTargetKey,
+  DoubleDifferenceCarrierPhaseFactorArm(Key poseKey, Key ambRefKey, Key ambTargetKey,
                           double cpRovRef, double cpBaseRef,
                           double cpRovTarget, double cpBaseTarget,
                           const Point3& satRefRov, const Point3& satTargetRov,
@@ -359,7 +359,7 @@ class GTSAM_EXPORT DDCarrierPhaseFactorArm
                           const Point3& leverArm,
                           const SharedNoiseModel& model = noiseModel::Unit::Create(1));
 
-  DDCarrierPhaseFactorArm(Key poseKey, Key ambRefKey, Key ambTargetKey,
+  DoubleDifferenceCarrierPhaseFactorArm(Key poseKey, Key ambRefKey, Key ambTargetKey,
                           double cpRovRef, double cpBaseRef,
                           double cpRovTarget, double cpBaseTarget,
                           const Point3& satRefRov, const Point3& satTargetRov,
@@ -393,7 +393,7 @@ class GTSAM_EXPORT DDCarrierPhaseFactorArm
   friend class boost::serialization::access;
   template <class ARCHIVE>
   void serialize(ARCHIVE& ar, const unsigned int /*version*/) {
-    ar& BOOST_SERIALIZATION_BASE_OBJECT_NVP(DDCarrierPhaseFactorArm::Base);
+    ar& BOOST_SERIALIZATION_BASE_OBJECT_NVP(DoubleDifferenceCarrierPhaseFactorArm::Base);
     ar& BOOST_SERIALIZATION_NVP(cpRovRef_);
     ar& BOOST_SERIALIZATION_NVP(cpBaseRef_);
     ar& BOOST_SERIALIZATION_NVP(cpRovTarget_);
@@ -411,6 +411,6 @@ class GTSAM_EXPORT DDCarrierPhaseFactorArm
 };
 
 template <>
-struct traits<DDCarrierPhaseFactorArm> : public Testable<DDCarrierPhaseFactorArm> {};
+struct traits<DoubleDifferenceCarrierPhaseFactorArm> : public Testable<DoubleDifferenceCarrierPhaseFactorArm> {};
 
 }  // namespace gtsam

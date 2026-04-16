@@ -680,8 +680,8 @@ virtual class DifferentialPseudorangeFactorArm : gtsam::NonlinearFactor {
 };
 
 #include <gtsam/navigation/PseudorangeFactor.h>
-virtual class DDPseudorangeFactor : gtsam::NonlinearFactor {
-  DDPseudorangeFactor(gtsam::Key positionKey,
+virtual class DoubleDifferencePseudorangeFactor : gtsam::NonlinearFactor {
+  DoubleDifferencePseudorangeFactor(gtsam::Key positionKey,
                       double prRovRef, double prBaseRef,
                       double prRovTarget, double prBaseTarget,
                       const gtsam::Point3& satRefRov, const gtsam::Point3& satTargetRov,
@@ -694,15 +694,15 @@ virtual class DDPseudorangeFactor : gtsam::NonlinearFactor {
   void serialize() const;
 };
 
-virtual class DDPseudorangeFactorArm : gtsam::NonlinearFactor {
-  DDPseudorangeFactorArm(gtsam::Key poseKey,
+virtual class DoubleDifferencePseudorangeFactorArm : gtsam::NonlinearFactor {
+  DoubleDifferencePseudorangeFactorArm(gtsam::Key poseKey,
                          double prRovRef, double prBaseRef,
                          double prRovTarget, double prBaseTarget,
                          const gtsam::Point3& satRefRov, const gtsam::Point3& satTargetRov,
                          const gtsam::Point3& satRefBase, const gtsam::Point3& satTargetBase,
                          const gtsam::Point3& basePos, const gtsam::Point3& leverArm,
                          const gtsam::noiseModel::Base* model);
-  DDPseudorangeFactorArm(gtsam::Key poseKey,
+  DoubleDifferencePseudorangeFactorArm(gtsam::Key poseKey,
                          double prRovRef, double prBaseRef,
                          double prRovTarget, double prBaseTarget,
                          const gtsam::Point3& satRefRov, const gtsam::Point3& satTargetRov,
@@ -776,8 +776,8 @@ virtual class CarrierPhaseFactorArm : gtsam::NonlinearFactor {
 };
 
 
-virtual class DDCarrierPhaseFactor : gtsam::NonlinearFactor {
-  DDCarrierPhaseFactor(gtsam::Key positionKey, gtsam::Key ambRefKey,
+virtual class DoubleDifferenceCarrierPhaseFactor : gtsam::NonlinearFactor {
+  DoubleDifferenceCarrierPhaseFactor(gtsam::Key positionKey, gtsam::Key ambRefKey,
                        gtsam::Key ambTargetKey,
                        double cpRovRef, double cpBaseRef,
                        double cpRovTarget, double cpBaseTarget,
@@ -791,8 +791,8 @@ virtual class DDCarrierPhaseFactor : gtsam::NonlinearFactor {
   void serialize() const;
 };
 
-virtual class DDCarrierPhaseFactorArm : gtsam::NonlinearFactor {
-  DDCarrierPhaseFactorArm(gtsam::Key poseKey, gtsam::Key ambRefKey, gtsam::Key ambTargetKey,
+virtual class DoubleDifferenceCarrierPhaseFactorArm : gtsam::NonlinearFactor {
+  DoubleDifferenceCarrierPhaseFactorArm(gtsam::Key poseKey, gtsam::Key ambRefKey, gtsam::Key ambTargetKey,
                           double cpRovRef, double cpBaseRef,
                           double cpRovTarget, double cpBaseTarget,
                           const gtsam::Point3& satRefRov, const gtsam::Point3& satTargetRov,
@@ -800,7 +800,7 @@ virtual class DDCarrierPhaseFactorArm : gtsam::NonlinearFactor {
                           const gtsam::Point3& basePos, double lam,
                           const gtsam::Point3& leverArm,
                           const gtsam::noiseModel::Base* model);
-  DDCarrierPhaseFactorArm(gtsam::Key poseKey, gtsam::Key ambRefKey, gtsam::Key ambTargetKey,
+  DoubleDifferenceCarrierPhaseFactorArm(gtsam::Key poseKey, gtsam::Key ambRefKey, gtsam::Key ambTargetKey,
                           double cpRovRef, double cpBaseRef,
                           double cpRovTarget, double cpBaseTarget,
                           const gtsam::Point3& satRefRov, const gtsam::Point3& satTargetRov,
