@@ -278,7 +278,7 @@ TEST(TestCarrierPhaseFactorArm, equals) {
 }
 
 // *************************************************************************
-// DDCarrierPhaseFactor tests
+// DoubleDifferenceCarrierPhaseFactor tests
 // *************************************************************************
 
 /// Shared test geometry for DD factors
@@ -294,7 +294,7 @@ static double computeGeodist(const Point3& sat, const Point3& rcv) {
   return gnss::geodist(sat, rcv, e);
 }
 
-TEST(TestDDCarrierPhaseFactor, ZeroError) {
+TEST(TestDoubleDifferenceCarrierPhaseFactor, ZeroError) {
   // Build observations that give zero error at the true position
   const Point3 truePos(-3961900.00, 3349000.00, 3698215.00);
   const double ambRef = 100.0;
@@ -317,7 +317,7 @@ TEST(TestDDCarrierPhaseFactor, ZeroError) {
   // (cpRovRef - cpBaseRef) - (cpRovTarget - cpBaseTarget)
   // = (ddObs/2 + 1000 - (-ddObs/2 + 1000)) - (500 - 500) = ddObs
 
-  const auto factor = DDCarrierPhaseFactor(
+  const auto factor = DoubleDifferenceCarrierPhaseFactor(
       Key(0), Key(1), Key(2),
       cpRovRef, cpBaseRef, cpRovTarget, cpBaseTarget,
       kSatRefRov, kSatTargetRov, kSatRefBase, kSatTargetBase,
@@ -328,8 +328,8 @@ TEST(TestDDCarrierPhaseFactor, ZeroError) {
 }
 
 // *************************************************************************
-TEST(TestDDCarrierPhaseFactor, Jacobians) {
-  const auto factor = DDCarrierPhaseFactor(
+TEST(TestDoubleDifferenceCarrierPhaseFactor, Jacobians) {
+  const auto factor = DoubleDifferenceCarrierPhaseFactor(
       Key(0), Key(1), Key(2),
       25000000.0, 24999500.0, 22000000.0, 21999800.0,
       kSatRefRov, kSatTargetRov, kSatRefBase, kSatTargetBase,
@@ -343,18 +343,18 @@ TEST(TestDDCarrierPhaseFactor, Jacobians) {
 }
 
 // *************************************************************************
-TEST(TestDDCarrierPhaseFactor, equals) {
-  const auto f1 = DDCarrierPhaseFactor(
+TEST(TestDoubleDifferenceCarrierPhaseFactor, equals) {
+  const auto f1 = DoubleDifferenceCarrierPhaseFactor(
       Key(0), Key(1), Key(2),
       100.0, 99.0, 80.0, 79.0,
       kSatRefRov, kSatTargetRov, kSatRefBase, kSatTargetBase,
       kBasePos, LAMBDA_L1);
-  const auto f2 = DDCarrierPhaseFactor(
+  const auto f2 = DoubleDifferenceCarrierPhaseFactor(
       Key(0), Key(1), Key(2),
       100.0, 99.0, 80.0, 79.0,
       kSatRefRov, kSatTargetRov, kSatRefBase, kSatTargetBase,
       kBasePos, LAMBDA_L1);
-  const auto f3 = DDCarrierPhaseFactor(
+  const auto f3 = DoubleDifferenceCarrierPhaseFactor(
       Key(0), Key(1), Key(2),
       100.0, 99.0, 80.0, 79.0,
       kSatRefRov, kSatTargetRov, kSatRefBase, kSatTargetBase,
@@ -365,8 +365,8 @@ TEST(TestDDCarrierPhaseFactor, equals) {
 }
 
 // *************************************************************************
-TEST(TestDDCarrierPhaseFactor, print) {
-  const auto factor = DDCarrierPhaseFactor(
+TEST(TestDoubleDifferenceCarrierPhaseFactor, print) {
+  const auto factor = DoubleDifferenceCarrierPhaseFactor(
       Key(0), Key(1), Key(2),
       100.0, 99.0, 80.0, 79.0,
       kSatRefRov, kSatTargetRov, kSatRefBase, kSatTargetBase,
@@ -375,11 +375,11 @@ TEST(TestDDCarrierPhaseFactor, print) {
 }
 
 // *************************************************************************
-// DDCarrierPhaseFactorArm tests
+// DoubleDifferenceCarrierPhaseFactorArm tests
 // *************************************************************************
-TEST(TestDDCarrierPhaseFactorArm, Jacobians) {
+TEST(TestDoubleDifferenceCarrierPhaseFactorArm, Jacobians) {
   const Point3 leverArm(0.1, 0.0, -0.5);
-  const auto factor = DDCarrierPhaseFactorArm(
+  const auto factor = DoubleDifferenceCarrierPhaseFactorArm(
       Key(0), Key(1), Key(2),
       25000000.0, 24999500.0, 22000000.0, 21999800.0,
       kSatRefRov, kSatTargetRov, kSatRefBase, kSatTargetBase,
@@ -394,10 +394,10 @@ TEST(TestDDCarrierPhaseFactorArm, Jacobians) {
 }
 
 // *************************************************************************
-TEST(TestDDCarrierPhaseFactorArm, EcefTnavJacobians) {
+TEST(TestDoubleDifferenceCarrierPhaseFactorArm, EcefTnavJacobians) {
   const Pose3 ecef_T_nav = makeEcefTnav(35.578, 139.749, 80.0);
   const Point3 leverArm(0.1, 0.0, -0.5);
-  const auto factor = DDCarrierPhaseFactorArm(
+  const auto factor = DoubleDifferenceCarrierPhaseFactorArm(
       Key(0), Key(1), Key(2),
       25000000.0, 24999500.0, 22000000.0, 21999800.0,
       kSatRefRov, kSatTargetRov, kSatRefBase, kSatTargetBase,
@@ -412,16 +412,16 @@ TEST(TestDDCarrierPhaseFactorArm, EcefTnavJacobians) {
 }
 
 // *************************************************************************
-TEST(TestDDCarrierPhaseFactorArm, ZeroLeverArm) {
-  // DDCarrierPhaseFactorArm with zero lever arm should match DDCarrierPhaseFactor
+TEST(TestDoubleDifferenceCarrierPhaseFactorArm, ZeroLeverArm) {
+  // DoubleDifferenceCarrierPhaseFactorArm with zero lever arm should match DoubleDifferenceCarrierPhaseFactor
   const Point3 pos(-3961900.00, 3349000.00, 3698215.00);
 
-  const auto factorPt = DDCarrierPhaseFactor(
+  const auto factorPt = DoubleDifferenceCarrierPhaseFactor(
       Key(0), Key(1), Key(2),
       25000000.0, 24999500.0, 22000000.0, 21999800.0,
       kSatRefRov, kSatTargetRov, kSatRefBase, kSatTargetBase,
       kBasePos, LAMBDA_L1);
-  const auto factorArm = DDCarrierPhaseFactorArm(
+  const auto factorArm = DoubleDifferenceCarrierPhaseFactorArm(
       Key(0), Key(1), Key(2),
       25000000.0, 24999500.0, 22000000.0, 21999800.0,
       kSatRefRov, kSatTargetRov, kSatRefBase, kSatTargetBase,
@@ -434,19 +434,19 @@ TEST(TestDDCarrierPhaseFactorArm, ZeroLeverArm) {
 }
 
 // *************************************************************************
-TEST(TestDDCarrierPhaseFactorArm, EcefTnavConsistency) {
+TEST(TestDoubleDifferenceCarrierPhaseFactorArm, EcefTnavConsistency) {
   const Pose3 ecef_T_nav = makeEcefTnav(35.578, 139.749, 80.0);
   const Pose3 nav_T_body(Rot3::RzRyRx(0.05, -0.03, 0.1),
                           Point3(10.0, 20.0, 5.0));
   const Pose3 ecef_T_body = ecef_T_nav.compose(nav_T_body);
   const Point3 leverArm(0.1, 0.0, -0.5);
 
-  const auto factorEcef = DDCarrierPhaseFactorArm(
+  const auto factorEcef = DoubleDifferenceCarrierPhaseFactorArm(
       Key(0), Key(1), Key(2),
       25000000.0, 24999500.0, 22000000.0, 21999800.0,
       kSatRefRov, kSatTargetRov, kSatRefBase, kSatTargetBase,
       kBasePos, LAMBDA_L1, leverArm);
-  const auto factorNav = DDCarrierPhaseFactorArm(
+  const auto factorNav = DoubleDifferenceCarrierPhaseFactorArm(
       Key(0), Key(1), Key(2),
       25000000.0, 24999500.0, 22000000.0, 21999800.0,
       kSatRefRov, kSatTargetRov, kSatRefBase, kSatTargetBase,
@@ -458,16 +458,16 @@ TEST(TestDDCarrierPhaseFactorArm, EcefTnavConsistency) {
 }
 
 // *************************************************************************
-TEST(TestDDCarrierPhaseFactorArm, equals) {
+TEST(TestDoubleDifferenceCarrierPhaseFactorArm, equals) {
   const Point3 leverArm(0.1, 0.0, -0.5);
   const Pose3 ecef_T_nav = makeEcefTnav(35.578, 139.749, 80.0);
 
-  const auto f1 = DDCarrierPhaseFactorArm(
+  const auto f1 = DoubleDifferenceCarrierPhaseFactorArm(
       Key(0), Key(1), Key(2),
       100.0, 99.0, 80.0, 79.0,
       kSatRefRov, kSatTargetRov, kSatRefBase, kSatTargetBase,
       kBasePos, LAMBDA_L1, leverArm);
-  const auto f2 = DDCarrierPhaseFactorArm(
+  const auto f2 = DoubleDifferenceCarrierPhaseFactorArm(
       Key(0), Key(1), Key(2),
       100.0, 99.0, 80.0, 79.0,
       kSatRefRov, kSatTargetRov, kSatRefBase, kSatTargetBase,

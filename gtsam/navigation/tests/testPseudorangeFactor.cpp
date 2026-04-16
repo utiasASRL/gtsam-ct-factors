@@ -656,7 +656,7 @@ TEST(TestDifferentialPseudorangeFactorArm, EcefTnavConsistency) {
 }
 
 // *************************************************************************
-// DDPseudorangeFactor tests
+// DoubleDifferencePseudorangeFactor tests
 // *************************************************************************
 
 /// Shared test geometry for DD pseudorange factors
@@ -671,7 +671,7 @@ static double computeGeodist(const Point3& sat, const Point3& rcv) {
   return gnss::geodist(sat, rcv, e);
 }
 
-TEST(TestDDPseudorangeFactor, ZeroError) {
+TEST(TestDoubleDifferencePseudorangeFactor, ZeroError) {
   const Point3 truePos(-3961900.00, 3349000.00, 3698215.00);
 
   const double rRovRef = computeGeodist(kSatRefRov, truePos);
@@ -686,7 +686,7 @@ TEST(TestDDPseudorangeFactor, ZeroError) {
   const double prRovTarget = 500.0;
   const double prBaseTarget = 500.0;
 
-  const auto factor = DDPseudorangeFactor(
+  const auto factor = DoubleDifferencePseudorangeFactor(
       Key(0),
       prRovRef, prBaseRef, prRovTarget, prBaseTarget,
       kSatRefRov, kSatTargetRov, kSatRefBase, kSatTargetBase,
@@ -697,8 +697,8 @@ TEST(TestDDPseudorangeFactor, ZeroError) {
 }
 
 // *************************************************************************
-TEST(TestDDPseudorangeFactor, Jacobians) {
-  const auto factor = DDPseudorangeFactor(
+TEST(TestDoubleDifferencePseudorangeFactor, Jacobians) {
+  const auto factor = DoubleDifferencePseudorangeFactor(
       Key(0),
       25000000.0, 24999500.0, 22000000.0, 21999800.0,
       kSatRefRov, kSatTargetRov, kSatRefBase, kSatTargetBase,
@@ -710,14 +710,14 @@ TEST(TestDDPseudorangeFactor, Jacobians) {
 }
 
 // *************************************************************************
-TEST(TestDDPseudorangeFactor, equals) {
-  const auto f1 = DDPseudorangeFactor(
+TEST(TestDoubleDifferencePseudorangeFactor, equals) {
+  const auto f1 = DoubleDifferencePseudorangeFactor(
       Key(0), 100.0, 99.0, 80.0, 79.0,
       kSatRefRov, kSatTargetRov, kSatRefBase, kSatTargetBase, kBasePos);
-  const auto f2 = DDPseudorangeFactor(
+  const auto f2 = DoubleDifferencePseudorangeFactor(
       Key(0), 100.0, 99.0, 80.0, 79.0,
       kSatRefRov, kSatTargetRov, kSatRefBase, kSatTargetBase, kBasePos);
-  const auto f3 = DDPseudorangeFactor(
+  const auto f3 = DoubleDifferencePseudorangeFactor(
       Key(0), 100.0, 99.0, 80.0, 79.0,
       kSatRefRov, kSatTargetRov, kSatRefBase, kSatTargetBase,
       Point3(0, 0, 0));  // different base pos
@@ -727,19 +727,19 @@ TEST(TestDDPseudorangeFactor, equals) {
 }
 
 // *************************************************************************
-TEST(TestDDPseudorangeFactor, print) {
-  const auto factor = DDPseudorangeFactor(
+TEST(TestDoubleDifferencePseudorangeFactor, print) {
+  const auto factor = DoubleDifferencePseudorangeFactor(
       Key(0), 100.0, 99.0, 80.0, 79.0,
       kSatRefRov, kSatTargetRov, kSatRefBase, kSatTargetBase, kBasePos);
   factor.print("test ");
 }
 
 // *************************************************************************
-// DDPseudorangeFactorArm tests
+// DoubleDifferencePseudorangeFactorArm tests
 // *************************************************************************
-TEST(TestDDPseudorangeFactorArm, Jacobians) {
+TEST(TestDoubleDifferencePseudorangeFactorArm, Jacobians) {
   const Point3 leverArm(0.1, 0.0, -0.5);
-  const auto factor = DDPseudorangeFactorArm(
+  const auto factor = DoubleDifferencePseudorangeFactorArm(
       Key(0),
       25000000.0, 24999500.0, 22000000.0, 21999800.0,
       kSatRefRov, kSatTargetRov, kSatRefBase, kSatTargetBase,
@@ -752,10 +752,10 @@ TEST(TestDDPseudorangeFactorArm, Jacobians) {
 }
 
 // *************************************************************************
-TEST(TestDDPseudorangeFactorArm, EcefTnavJacobians) {
+TEST(TestDoubleDifferencePseudorangeFactorArm, EcefTnavJacobians) {
   const Pose3 ecef_T_nav = makeEcefTnav(35.578, 139.749, 80.0);
   const Point3 leverArm(0.1, 0.0, -0.5);
-  const auto factor = DDPseudorangeFactorArm(
+  const auto factor = DoubleDifferencePseudorangeFactorArm(
       Key(0),
       25000000.0, 24999500.0, 22000000.0, 21999800.0,
       kSatRefRov, kSatTargetRov, kSatRefBase, kSatTargetBase,
@@ -768,14 +768,14 @@ TEST(TestDDPseudorangeFactorArm, EcefTnavJacobians) {
 }
 
 // *************************************************************************
-TEST(TestDDPseudorangeFactorArm, ZeroLeverArm) {
+TEST(TestDoubleDifferencePseudorangeFactorArm, ZeroLeverArm) {
   const Point3 pos(-3961900.00, 3349000.00, 3698215.00);
 
-  const auto factorPt = DDPseudorangeFactor(
+  const auto factorPt = DoubleDifferencePseudorangeFactor(
       Key(0),
       25000000.0, 24999500.0, 22000000.0, 21999800.0,
       kSatRefRov, kSatTargetRov, kSatRefBase, kSatTargetBase, kBasePos);
-  const auto factorArm = DDPseudorangeFactorArm(
+  const auto factorArm = DoubleDifferencePseudorangeFactorArm(
       Key(0),
       25000000.0, 24999500.0, 22000000.0, 21999800.0,
       kSatRefRov, kSatTargetRov, kSatRefBase, kSatTargetBase,
@@ -788,19 +788,19 @@ TEST(TestDDPseudorangeFactorArm, ZeroLeverArm) {
 }
 
 // *************************************************************************
-TEST(TestDDPseudorangeFactorArm, EcefTnavConsistency) {
+TEST(TestDoubleDifferencePseudorangeFactorArm, EcefTnavConsistency) {
   const Pose3 ecef_T_nav = makeEcefTnav(35.578, 139.749, 80.0);
   const Pose3 nav_T_body(Rot3::RzRyRx(0.05, -0.03, 0.1),
                           Point3(10.0, 20.0, 5.0));
   const Pose3 ecef_T_body = ecef_T_nav.compose(nav_T_body);
   const Point3 leverArm(0.1, 0.0, -0.5);
 
-  const auto factorEcef = DDPseudorangeFactorArm(
+  const auto factorEcef = DoubleDifferencePseudorangeFactorArm(
       Key(0),
       25000000.0, 24999500.0, 22000000.0, 21999800.0,
       kSatRefRov, kSatTargetRov, kSatRefBase, kSatTargetBase,
       kBasePos, leverArm);
-  const auto factorNav = DDPseudorangeFactorArm(
+  const auto factorNav = DoubleDifferencePseudorangeFactorArm(
       Key(0),
       25000000.0, 24999500.0, 22000000.0, 21999800.0,
       kSatRefRov, kSatTargetRov, kSatRefBase, kSatTargetBase,
@@ -812,15 +812,15 @@ TEST(TestDDPseudorangeFactorArm, EcefTnavConsistency) {
 }
 
 // *************************************************************************
-TEST(TestDDPseudorangeFactorArm, equals) {
+TEST(TestDoubleDifferencePseudorangeFactorArm, equals) {
   const Point3 leverArm(0.1, 0.0, -0.5);
   const Pose3 ecef_T_nav = makeEcefTnav(35.578, 139.749, 80.0);
 
-  const auto f1 = DDPseudorangeFactorArm(
+  const auto f1 = DoubleDifferencePseudorangeFactorArm(
       Key(0), 100.0, 99.0, 80.0, 79.0,
       kSatRefRov, kSatTargetRov, kSatRefBase, kSatTargetBase,
       kBasePos, leverArm);
-  const auto f2 = DDPseudorangeFactorArm(
+  const auto f2 = DoubleDifferencePseudorangeFactorArm(
       Key(0), 100.0, 99.0, 80.0, 79.0,
       kSatRefRov, kSatTargetRov, kSatRefBase, kSatTargetBase,
       kBasePos, leverArm, ecef_T_nav);
