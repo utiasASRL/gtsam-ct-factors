@@ -316,7 +316,7 @@ TEST(WNOAInterp, JacobianPoint3UnaryPose) {
 
   unordered_map<Key, Matrix> Jacs;
   KeyVector factor_keys = factor.keys();
-  for (uint i = 0; i < factor_keys.size(); i++) {
+  for (size_t i = 0; i < factor_keys.size(); i++) {
     Jacs[factor_keys[i]] = H[i];
   }
 
@@ -378,7 +378,7 @@ TEST(WNOAInterp, JacobianSE3UnaryPose) {
 
   unordered_map<Key, Matrix> Jacs;
   KeyVector factor_keys = factor.keys();
-  for (uint i = 0; i < factor_keys.size(); i++) {
+  for (size_t i = 0; i < factor_keys.size(); i++) {
     Jacs[factor_keys[i]] = H[i];
   }
 
