@@ -647,7 +647,7 @@ Interpolator<PoseType>::computeLocalStateVecs(
   const auto& [T_kp1, varpi_kp1] = poseVel_kp1;
 
   VectorN xi_kp1, xi_dot_kp1;
-  MatrixN right_jac_inv;
+  MatrixN invJr;
   MatrixN dxi_dTk, dxi_dTkp1;
   MatrixN dxidot_dTk, dxidot_dTkp1;
   MatrixN dxidotkp1_dvarpikp1;
@@ -657,15 +657,15 @@ Interpolator<PoseType>::computeLocalStateVecs(
     MatrixN dbetween_Tkp1;
     xi_kp1 = traits<PoseType>::Logmap(
         traits<PoseType>::Between(T_k, T_kp1, &dbetween_Tk, &dbetween_Tkp1),
-        &right_jac_inv);
+        &invJr);
     // Compute derivatives
-    dxi_dTk = right_jac_inv * dbetween_Tk;
-    dxi_dTkp1 = right_jac_inv * dbetween_Tkp1;
+    dxi_dTk = invJr * dbetween_Tk;
+    dxi_dTkp1 = invJr * dbetween_Tkp1;
   } else {
     xi_kp1 = traits<PoseType>::Logmap(traits<PoseType>::Between(T_k, T_kp1),
-                                      &right_jac_inv);
+                                      &invJr);
   }
-  xi_dot_kp1 = right_jac_inv * varpi_kp1;
+  xi_dot_kp1 = invJr * varpi_kp1;
   LocalStateVecs local_state;
   local_state.first = xi_kp1;
   local_state.second = xi_dot_kp1;
@@ -682,7 +682,7 @@ Interpolator<PoseType>::computeLocalStateVecs(
     }
     dxidot_dTk = dxidot_dxi * dxi_dTk;
     dxidot_dTkp1 = dxidot_dxi * dxi_dTkp1;
-    dxidotkp1_dvarpikp1 = right_jac_inv;
+    dxidotkp1_dvarpikp1 = invJr;
 
     jacs->clear();
     jacs->push_back(dxi_dTk);
