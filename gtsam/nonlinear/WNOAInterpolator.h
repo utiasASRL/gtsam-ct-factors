@@ -574,7 +574,7 @@ class GTSAM_EXPORT Interpolator {
    * marginal matrices.
    */
   static std::map<StateDataInterval, std::shared_ptr<Matrix>>
-  computeJointMarginals(
+  ComputeJointMarginals(
       const std::map<StateDataInterval, std::vector<StateData>>& queryBuckets,
       const std::unique_ptr<Marginals>& marginals);
 
@@ -592,7 +592,7 @@ class GTSAM_EXPORT Interpolator {
    * block).
    * @return Matrix Full covariance matrix assembled from the joint marginal.
    */
-  static Matrix constructMatrixFromJointMarginal(
+  static Matrix ConstructMatrixFromJointMarginal(
       const JointMarginal& blockMatrix, const KeyVector& keyVector,
       size_t blockSize);
 };
