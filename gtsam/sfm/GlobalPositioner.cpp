@@ -24,37 +24,14 @@
 using namespace gtsam;
 using namespace std;
 
-namespace {
-std::mt19937 kPRNG(42);
-}  // namespace
-
-NonlinearFactorGraph GlobalPositioner::buildGraph(
-    const CameraPointDirections &cameraPointDirections) const {
-  return LocationRecovery::buildGraph(cameraPointDirections,
-                                     /*bilinear=*/true);
-}
-
-void GlobalPositioner::addPrior(
-    Key anchorCameraKey, NonlinearFactorGraph *graph,
-    const SharedNoiseModel &priorNoiseModel) const {
-  addAnchorPrior(anchorCameraKey, graph, priorNoiseModel);
-}
-
 Values GlobalPositioner::initializeRandomly(
     const std::set<Key> &cameraKeys, const std::set<Key> &landmarkKeys,
-    size_t numEdges, std::mt19937 *rng, const Values &initialValues) const {
+    const CameraPointDirections &cameraPointDirections,
+    const Values &initialValues) const {
   std::set<Key> allKeys(cameraKeys);
   allKeys.insert(landmarkKeys.begin(), landmarkKeys.end());
-  return LocationRecovery::initializeRandomly(allKeys, numEdges,
-                                              /*bilinear=*/true, rng,
-                                              initialValues);
-}
-
-Values GlobalPositioner::initializeRandomly(
-    const std::set<Key> &cameraKeys, const std::set<Key> &landmarkKeys,
-    size_t numEdges, const Values &initialValues) const {
-  return initializeRandomly(cameraKeys, landmarkKeys, numEdges, &kPRNG,
-                            initialValues);
+  return LocationRecovery::initializeRandomly(allKeys,
+      cameraPointDirections.size(), true, initialValues);
 }
 
 Values GlobalPositioner::run(
@@ -66,11 +43,11 @@ Values GlobalPositioner::run(
         "GlobalPositioner::run: anchorCameraKey must be in cameraKeys.");
   }
 
-  NonlinearFactorGraph graph = buildGraph(cameraPointDirections);
-  addPrior(anchorCameraKey, &graph);
-  Values initial = initializeRandomly(cameraKeys, landmarkKeys,
-                                      cameraPointDirections.size(),
-                                      initialValues);
+  NonlinearFactorGraph graph = buildGraph(cameraPointDirections, true);
+  addAnchorPrior(anchorCameraKey, &graph);
+  Values initial =
+      initializeRandomly(cameraKeys, landmarkKeys, cameraPointDirections,
+                          initialValues);
 
   LevenbergMarquardtOptimizer lm(graph, initial, lmParams_);
   return lm.optimize();

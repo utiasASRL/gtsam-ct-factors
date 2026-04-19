@@ -55,32 +55,13 @@ class GTSAM_EXPORT GlobalPositioner : public LocationRecovery {
   GlobalPositioner() = default;
 
   /**
-   * @brief Build BATA factor graph from camera-to-point directions.
-   * Delegates to LocationRecovery::buildGraph with bilinear=true.
-   */
-  NonlinearFactorGraph buildGraph(
-      const CameraPointDirections &cameraPointDirections) const;
-
-  /**
-   * @brief Anchor one camera at the origin.
-   * Scale is handled by BATA scale variables — no landmark prior needed.
-   */
-  void addPrior(Key anchorCameraKey, NonlinearFactorGraph *graph,
-                const SharedNoiseModel &priorNoiseModel =
-                    noiseModel::Isotropic::Sigma(3, 0.01)) const;
-
-  /**
    * @brief Initialize cameras, landmarks, and BATA scale variables.
+   * Unions cameraKeys and landmarkKeys, derives numEdges from measurements.
    */
-  Values initializeRandomly(const std::set<Key> &cameraKeys,
-                            const std::set<Key> &landmarkKeys, size_t numEdges,
-                            std::mt19937 *rng,
-                            const Values &initialValues = Values()) const;
-
-  /// Version with a fixed default RNG seed.
-  Values initializeRandomly(const std::set<Key> &cameraKeys,
-                            const std::set<Key> &landmarkKeys, size_t numEdges,
-                            const Values &initialValues = Values()) const;
+  Values initializeRandomly(
+      const std::set<Key> &cameraKeys, const std::set<Key> &landmarkKeys,
+      const CameraPointDirections &cameraPointDirections,
+      const Values &initialValues = Values()) const;
 
   /**
    * @brief Build graph, fix gauge, initialize, and optimize.
