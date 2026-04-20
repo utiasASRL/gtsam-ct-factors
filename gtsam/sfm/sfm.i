@@ -345,9 +345,31 @@ class MFAS {
   gtsam::KeyVector computeOrdering() const;
 };
 
+#include <gtsam/sfm/LocationRecovery.h>
+
+class LocationRecovery {
+  LocationRecovery(const gtsam::LevenbergMarquardtParams& lmParams);
+  LocationRecovery();
+  gtsam::NonlinearFactorGraph buildGraph(
+      const gtsam::BinaryMeasurementsUnit3& edges,
+      bool bilinear) const;
+  gtsam::NonlinearFactorGraph buildGraph(
+      const gtsam::BinaryMeasurementsUnit3& edges) const;
+  void addAnchorPrior(gtsam::Key anchorKey,
+                      gtsam::NonlinearFactorGraph @graph,
+                      const gtsam::SharedNoiseModel& priorNoiseModel) const;
+  void addAnchorPrior(gtsam::Key anchorKey,
+                      gtsam::NonlinearFactorGraph @graph) const;
+  gtsam::Values initializeRandomly(
+      const gtsam::KeySet& keys, size_t numEdges, bool bilinear,
+      const gtsam::Values& initialValues) const;
+  gtsam::Values initializeRandomly(
+      const gtsam::KeySet& keys, size_t numEdges, bool bilinear) const;
+};
+
 #include <gtsam/sfm/TranslationRecovery.h>
 
-class TranslationRecovery {
+class TranslationRecovery : gtsam::LocationRecovery {
   TranslationRecovery(const gtsam::LevenbergMarquardtParams& lmParams,
                       const bool use_bilinear_translation_factor);
   TranslationRecovery(const gtsam::LevenbergMarquardtParams& lmParams);
@@ -379,25 +401,18 @@ class TranslationRecovery {
 
 #include <gtsam/sfm/GlobalPositioner.h>
 
-class GlobalPositioner {
+class GlobalPositioner : gtsam::LocationRecovery {
   GlobalPositioner(const gtsam::LevenbergMarquardtParams& lmParams);
   GlobalPositioner();
-  gtsam::NonlinearFactorGraph buildGraph(
-      const gtsam::BinaryMeasurementsUnit3& cameraPointDirections) const;
-  void addPrior(gtsam::Key anchorCameraKey,
-                gtsam::NonlinearFactorGraph @graph,
-                const gtsam::SharedNoiseModel& priorNoiseModel) const;
-  void addPrior(gtsam::Key anchorCameraKey,
-                gtsam::NonlinearFactorGraph @graph) const;
   gtsam::Values initializeRandomly(
       const gtsam::KeySet& cameraKeys,
       const gtsam::KeySet& landmarkKeys,
-      size_t numEdges,
+      const gtsam::BinaryMeasurementsUnit3& cameraPointDirections,
       const gtsam::Values& initialValues) const;
   gtsam::Values initializeRandomly(
       const gtsam::KeySet& cameraKeys,
       const gtsam::KeySet& landmarkKeys,
-      size_t numEdges) const;
+      const gtsam::BinaryMeasurementsUnit3& cameraPointDirections) const;
   gtsam::Values run(const gtsam::BinaryMeasurementsUnit3& cameraPointDirections,
                     const gtsam::KeySet& cameraKeys,
                     const gtsam::KeySet& landmarkKeys,
