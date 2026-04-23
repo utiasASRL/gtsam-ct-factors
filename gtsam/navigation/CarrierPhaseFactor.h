@@ -62,14 +62,14 @@ class GTSAM_EXPORT CarrierPhaseFactor
    * @param receiverPositionKey Receiver gtsam::Point3 ECEF position node.
    * @param receiverClockBiasKey Receiver clock bias node (seconds).
    * @param ambiguityKey Ambiguity node (meters, = lambda * N).
-   * @param measuredCarrierPhase Carrier phase measurement in meters.
+   * @param measuredCarrierPhaseMeters Carrier phase measurement in meters.
    * @param satellitePosition Satellite ECEF position in meters.
    * @param satelliteClockBias Satellite clock bias in seconds.
    * @param model 1-D noise model.
    */
   CarrierPhaseFactor(
       Key receiverPositionKey, Key receiverClockBiasKey, Key ambiguityKey,
-      double measuredCarrierPhase, const Point3& satellitePosition,
+      double measuredCarrierPhaseMeters, const Point3& satellitePosition,
       double satelliteClockBias = 0.0,
       const SharedNoiseModel& model = noiseModel::Unit::Create(1));
 
@@ -156,7 +156,7 @@ class GTSAM_EXPORT CarrierPhaseFactorArm
    */
   CarrierPhaseFactorArm(
       Key poseKey, Key receiverClockBiasKey, Key ambiguityKey,
-      double measuredCarrierPhase, const Point3& satellitePosition,
+      double measuredCarrierPhaseMeters, const Point3& satellitePosition,
       const Point3& leverArm, double satelliteClockBias = 0.0,
       const SharedNoiseModel& model = noiseModel::Unit::Create(1));
 
@@ -165,7 +165,7 @@ class GTSAM_EXPORT CarrierPhaseFactorArm
    */
   CarrierPhaseFactorArm(
       Key poseKey, Key receiverClockBiasKey, Key ambiguityKey,
-      double measuredCarrierPhase, const Point3& satellitePosition,
+      double measuredCarrierPhaseMeters, const Point3& satellitePosition,
       const Point3& leverArm, const Pose3& ecef_T_nav,
       double satelliteClockBias = 0.0,
       const SharedNoiseModel& model = noiseModel::Unit::Create(1));
@@ -230,7 +230,8 @@ struct traits<CarrierPhaseFactorArm>
  * error = [(geodist(satRefRov,pos) - geodist(satRefBase,basePos))
  *        - (geodist(satTargetRov,pos) - geodist(satTargetBase,basePos))]
  *       + lam * (ambRef - ambTarget)
- *       - [(cpRovRef - cpBaseRef) - (cpRovTarget - cpBaseTarget)]
+ *       - [(cpRovRefMeters - cpBaseRefMeters)
+ *        - (cpRovTargetMeters - cpBaseTargetMeters)]
  *
  * Use this factor (instead of connecting four CarrierPhaseFactors through
  * shared receiver/satellite clock-bias variables) when:
@@ -280,8 +281,8 @@ class GTSAM_EXPORT DoubleDifferenceCarrierPhaseFactor
   virtual ~DoubleDifferenceCarrierPhaseFactor() = default;
 
   DoubleDifferenceCarrierPhaseFactor(Key positionKey, Key ambRefKey, Key ambTargetKey,
-                       double cpRovRef, double cpBaseRef,
-                       double cpRovTarget, double cpBaseTarget,
+                       double cpRovRefMeters, double cpBaseRefMeters,
+                       double cpRovTargetMeters, double cpBaseTargetMeters,
                        const Point3& satRefRov, const Point3& satTargetRov,
                        const Point3& satRefBase, const Point3& satTargetBase,
                        const Point3& basePos, double lam,
@@ -369,8 +370,8 @@ class GTSAM_EXPORT DoubleDifferenceCarrierPhaseFactorArm
   virtual ~DoubleDifferenceCarrierPhaseFactorArm() = default;
 
   DoubleDifferenceCarrierPhaseFactorArm(Key poseKey, Key ambRefKey, Key ambTargetKey,
-                          double cpRovRef, double cpBaseRef,
-                          double cpRovTarget, double cpBaseTarget,
+                          double cpRovRefMeters, double cpBaseRefMeters,
+                          double cpRovTargetMeters, double cpBaseTargetMeters,
                           const Point3& satRefRov, const Point3& satTargetRov,
                           const Point3& satRefBase, const Point3& satTargetBase,
                           const Point3& basePos, double lam,
@@ -378,8 +379,8 @@ class GTSAM_EXPORT DoubleDifferenceCarrierPhaseFactorArm
                           const SharedNoiseModel& model = noiseModel::Unit::Create(1));
 
   DoubleDifferenceCarrierPhaseFactorArm(Key poseKey, Key ambRefKey, Key ambTargetKey,
-                          double cpRovRef, double cpBaseRef,
-                          double cpRovTarget, double cpBaseTarget,
+                          double cpRovRefMeters, double cpBaseRefMeters,
+                          double cpRovTargetMeters, double cpBaseTargetMeters,
                           const Point3& satRefRov, const Point3& satTargetRov,
                           const Point3& satRefBase, const Point3& satTargetBase,
                           const Point3& basePos, double lam,

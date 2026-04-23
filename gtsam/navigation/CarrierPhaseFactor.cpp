@@ -15,11 +15,11 @@ using gnss::C_LIGHT;
 //***************************************************************************
 CarrierPhaseFactor::CarrierPhaseFactor(
     const Key receiverPositionKey, const Key receiverClockBiasKey,
-    const Key ambiguityKey, const double measuredCarrierPhase,
+    const Key ambiguityKey, const double measuredCarrierPhaseMeters,
     const Point3& satellitePosition, const double satelliteClockBias,
     const SharedNoiseModel& model)
     : Base(model, receiverPositionKey, receiverClockBiasKey, ambiguityKey),
-      CarrierPhaseBase{measuredCarrierPhase, satellitePosition,
+      CarrierPhaseBase{measuredCarrierPhaseMeters, satellitePosition,
                        satelliteClockBias} {}
 
 //***************************************************************************
@@ -76,22 +76,22 @@ Vector CarrierPhaseFactor::evaluateError(
 //***************************************************************************
 CarrierPhaseFactorArm::CarrierPhaseFactorArm(
     const Key poseKey, const Key receiverClockBiasKey, const Key ambiguityKey,
-    const double measuredCarrierPhase, const Point3& satellitePosition,
+    const double measuredCarrierPhaseMeters, const Point3& satellitePosition,
     const Point3& leverArm, const double satelliteClockBias,
     const SharedNoiseModel& model)
     : Base(model, poseKey, receiverClockBiasKey, ambiguityKey),
-      CarrierPhaseBase{measuredCarrierPhase, satellitePosition,
+      CarrierPhaseBase{measuredCarrierPhaseMeters, satellitePosition,
                        satelliteClockBias},
       bL_(leverArm) {}
 
 //***************************************************************************
 CarrierPhaseFactorArm::CarrierPhaseFactorArm(
     const Key poseKey, const Key receiverClockBiasKey, const Key ambiguityKey,
-    const double measuredCarrierPhase, const Point3& satellitePosition,
+    const double measuredCarrierPhaseMeters, const Point3& satellitePosition,
     const Point3& leverArm, const Pose3& ecef_T_nav,
     const double satelliteClockBias, const SharedNoiseModel& model)
     : Base(model, poseKey, receiverClockBiasKey, ambiguityKey),
-      CarrierPhaseBase{measuredCarrierPhase, satellitePosition,
+      CarrierPhaseBase{measuredCarrierPhaseMeters, satellitePosition,
                        satelliteClockBias},
       bL_(leverArm),
       ecef_T_nav_(ecef_T_nav) {}
@@ -177,16 +177,17 @@ Vector CarrierPhaseFactorArm::evaluateError(
 //***************************************************************************
 DoubleDifferenceCarrierPhaseFactor::DoubleDifferenceCarrierPhaseFactor(
     const Key positionKey, const Key ambRefKey, const Key ambTargetKey,
-    const double cpRovRef, const double cpBaseRef, const double cpRovTarget,
-    const double cpBaseTarget, const Point3& satRefRov,
+    const double cpRovRefMeters, const double cpBaseRefMeters,
+    const double cpRovTargetMeters, const double cpBaseTargetMeters,
+    const Point3& satRefRov,
     const Point3& satTargetRov, const Point3& satRefBase,
     const Point3& satTargetBase, const Point3& basePos, const double lam,
     const SharedNoiseModel& model)
     : Base(model, positionKey, ambRefKey, ambTargetKey),
-      cpRovRef_(cpRovRef),
-      cpBaseRef_(cpBaseRef),
-      cpRovTarget_(cpRovTarget),
-      cpBaseTarget_(cpBaseTarget),
+      cpRovRef_(cpRovRefMeters),
+      cpBaseRef_(cpBaseRefMeters),
+      cpRovTarget_(cpRovTargetMeters),
+      cpBaseTarget_(cpBaseTargetMeters),
       satRefRov_(satRefRov),
       satTargetRov_(satTargetRov),
       satRefBase_(satRefBase),
@@ -248,16 +249,17 @@ Vector DoubleDifferenceCarrierPhaseFactor::evaluateError(
 //***************************************************************************
 DoubleDifferenceCarrierPhaseFactorArm::DoubleDifferenceCarrierPhaseFactorArm(
     const Key poseKey, const Key ambRefKey, const Key ambTargetKey,
-    const double cpRovRef, const double cpBaseRef, const double cpRovTarget,
-    const double cpBaseTarget, const Point3& satRefRov,
+    const double cpRovRefMeters, const double cpBaseRefMeters,
+    const double cpRovTargetMeters, const double cpBaseTargetMeters,
+    const Point3& satRefRov,
     const Point3& satTargetRov, const Point3& satRefBase,
     const Point3& satTargetBase, const Point3& basePos, const double lam,
     const Point3& leverArm, const SharedNoiseModel& model)
     : Base(model, poseKey, ambRefKey, ambTargetKey),
-      cpRovRef_(cpRovRef),
-      cpBaseRef_(cpBaseRef),
-      cpRovTarget_(cpRovTarget),
-      cpBaseTarget_(cpBaseTarget),
+      cpRovRef_(cpRovRefMeters),
+      cpBaseRef_(cpBaseRefMeters),
+      cpRovTarget_(cpRovTargetMeters),
+      cpBaseTarget_(cpBaseTargetMeters),
       satRefRov_(satRefRov),
       satTargetRov_(satTargetRov),
       satRefBase_(satRefBase),
@@ -269,17 +271,18 @@ DoubleDifferenceCarrierPhaseFactorArm::DoubleDifferenceCarrierPhaseFactorArm(
 //***************************************************************************
 DoubleDifferenceCarrierPhaseFactorArm::DoubleDifferenceCarrierPhaseFactorArm(
     const Key poseKey, const Key ambRefKey, const Key ambTargetKey,
-    const double cpRovRef, const double cpBaseRef, const double cpRovTarget,
-    const double cpBaseTarget, const Point3& satRefRov,
+    const double cpRovRefMeters, const double cpBaseRefMeters,
+    const double cpRovTargetMeters, const double cpBaseTargetMeters,
+    const Point3& satRefRov,
     const Point3& satTargetRov, const Point3& satRefBase,
     const Point3& satTargetBase, const Point3& basePos, const double lam,
     const Point3& leverArm, const Pose3& ecef_T_nav,
     const SharedNoiseModel& model)
     : Base(model, poseKey, ambRefKey, ambTargetKey),
-      cpRovRef_(cpRovRef),
-      cpBaseRef_(cpBaseRef),
-      cpRovTarget_(cpRovTarget),
-      cpBaseTarget_(cpBaseTarget),
+      cpRovRef_(cpRovRefMeters),
+      cpBaseRef_(cpBaseRefMeters),
+      cpRovTarget_(cpRovTargetMeters),
+      cpBaseTarget_(cpBaseTargetMeters),
       satRefRov_(satRefRov),
       satTargetRov_(satTargetRov),
       satRefBase_(satRefBase),
