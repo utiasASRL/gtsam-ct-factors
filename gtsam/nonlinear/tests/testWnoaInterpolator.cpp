@@ -28,42 +28,85 @@
 using namespace std;
 using namespace gtsam;
 
-static Vector1 Q_p1(0.9);
-static Vector2 Q_p2(0.9, 0.8);
-static Vector3 Q_p3(0.9, 0.8, 0.7);
-static Vector3 Q_se2(0.9, 0.8, 0.7);
-static Vector6 Q_se3(0.9, 0.8, 0.7, 0.6, 0.5, 0.4);
-static double timestep = 0.1;
+namespace {
 
-/**** Point1 Test Variables*****/
-Point1 p0_p1(1.0);
-Vector1 v0_p1(1.0);
-Point1 p1_p1(-2.0);
-Vector1 v1_p1(3.0);
+struct WnoaInterpolatorFixture {
+  Vector1 Q_p1{0.9};
+  Vector2 Q_p2{0.9, 0.8};
+  Vector3 Q_p3{0.9, 0.8, 0.7};
+  Vector3 Q_se2{0.9, 0.8, 0.7};
+  Vector6 Q_se3{0.9, 0.8, 0.7, 0.6, 0.5, 0.4};
+  double timestep = 0.1;
 
-/**** Point2 Test Variables*****/
-Point2 p0_p2(1.0, 2.0);
-Vector2 v0_p2(1.0, 2.0);
-Point2 p1_p2(-3.0, -4.0);
-Vector2 v1_p2(-2.0, -1.0);
+  /**** Point1 Test Variables*****/
+  Point1 p0_p1{1.0};
+  Vector1 v0_p1{1.0};
+  Point1 p1_p1{-2.0};
+  Vector1 v1_p1{3.0};
 
-/**** Point3 Test Variables*****/
-Point3 p0_p3(1.0, 2.0, 3.0);
-Vector3 v0_p3(1.0, 2.0, 3.0);
-Point3 p1_p3(-4.0, -5.0, -6.0);
-Vector3 v1_p3(-2.0, -1.0, 0.0);
+  /**** Point2 Test Variables*****/
+  Point2 p0_p2{1.0, 2.0};
+  Vector2 v0_p2{1.0, 2.0};
+  Point2 p1_p2{-3.0, -4.0};
+  Vector2 v1_p2{-2.0, -1.0};
 
-/**** SE(2) Test Variables*****/
-Pose2 p0_se2(0.3, 0.2, 0.5);
-Vector3 v0_se2(0.8, 0.4, 0.1);
-Pose2 p1_se2(-0.2, 0.1, 0.6);
-Vector3 v1_se2(0.5, -0.6, 0.2);
+  /**** Point3 Test Variables*****/
+  Point3 p0_p3{1.0, 2.0, 3.0};
+  Vector3 v0_p3{1.0, 2.0, 3.0};
+  Point3 p1_p3{-4.0, -5.0, -6.0};
+  Vector3 v1_p3{-2.0, -1.0, 0.0};
 
-/***** SE(3) Test Variables******/
-Pose3 p0_se3(Rot3::RzRyRx(0.1, 0.2, 0.3), Point3(0.3, 0.2, 0.1));
-Vector6 v0_se3(0.1, 0.2, 0.3, 0.4, 0.5, 0.6);
-Pose3 p1_se3(Rot3::RzRyRx(0.4, 0.5, 0.6), Point3(-0.1, -0.2, -0.3));
-Vector6 v1_se3(0.2, -0.1, 0.4, 0.6, -0.5, 0.3);
+  /**** SE(2) Test Variables*****/
+  Pose2 p0_se2{0.3, 0.2, 0.5};
+  Vector3 v0_se2{0.8, 0.4, 0.1};
+  Pose2 p1_se2{-0.2, 0.1, 0.6};
+  Vector3 v1_se2{0.5, -0.6, 0.2};
+
+  /***** SE(3) Test Variables******/
+  Pose3 p0_se3 = Pose3(Rot3::RzRyRx(0.1, 0.2, 0.3), Point3(0.3, 0.2, 0.1));
+  Vector6 v0_se3{0.1, 0.2, 0.3, 0.4, 0.5, 0.6};
+  Pose3 p1_se3 = Pose3(Rot3::RzRyRx(0.4, 0.5, 0.6), Point3(-0.1, -0.2, -0.3));
+  Vector6 v1_se3{0.2, -0.1, 0.4, 0.6, -0.5, 0.3};
+};
+
+const WnoaInterpolatorFixture& fixture() {
+  static const WnoaInterpolatorFixture kFixture;
+  return kFixture;
+}
+
+const Vector1 Q_p1 = fixture().Q_p1;
+const Vector2 Q_p2 = fixture().Q_p2;
+const Vector3 Q_p3 = fixture().Q_p3;
+const Vector3 Q_se2 = fixture().Q_se2;
+const Vector6 Q_se3 = fixture().Q_se3;
+const double timestep = fixture().timestep;
+
+const Point1 p0_p1 = fixture().p0_p1;
+const Vector1 v0_p1 = fixture().v0_p1;
+const Point1 p1_p1 = fixture().p1_p1;
+const Vector1 v1_p1 = fixture().v1_p1;
+
+const Point2 p0_p2 = fixture().p0_p2;
+const Vector2 v0_p2 = fixture().v0_p2;
+const Point2 p1_p2 = fixture().p1_p2;
+const Vector2 v1_p2 = fixture().v1_p2;
+
+const Point3 p0_p3 = fixture().p0_p3;
+const Vector3 v0_p3 = fixture().v0_p3;
+const Point3 p1_p3 = fixture().p1_p3;
+const Vector3 v1_p3 = fixture().v1_p3;
+
+const Pose2 p0_se2 = fixture().p0_se2;
+const Vector3 v0_se2 = fixture().v0_se2;
+const Pose2 p1_se2 = fixture().p1_se2;
+const Vector3 v1_se2 = fixture().v1_se2;
+
+const Pose3 p0_se3 = fixture().p0_se3;
+const Vector6 v0_se3 = fixture().v0_se3;
+const Pose3 p1_se3 = fixture().p1_se3;
+const Vector6 v1_se3 = fixture().v1_se3;
+
+}  // namespace
 
 using symbol_shorthand::P;
 using symbol_shorthand::V;

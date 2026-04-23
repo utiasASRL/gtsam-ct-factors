@@ -27,55 +27,101 @@
 using namespace std;
 using namespace gtsam;
 
-static Vector Q_p1 = Vector1::Ones();
-static Vector Q_p2 = Vector2::Ones();
-static Vector Q_p3 = Vector3::Ones();
-static Vector Q_se2 = Vector3::Ones();
-static Vector Q_se3 = Vector6::Ones();
-static double timestep = 0.1;
-
-/**** Point1 Test Variables*****/
-Point1 p0_p1(1.0);
-Vector1 v0_p1(1.0);
-// Define Second Pose with 2x the velocity (to get an error)
-Point1 p1_p1 = p0_p1 + timestep * v0_p1;
-Vector1 v1_p1 = 2.0 * v0_p1;
-
-/**** Point2 Test Variables*****/
-Point2 p0_p2(1.0, 2.0);
-Vector2 v0_p2(1.0, 2.0);
-// Define Second Pose with 2x the velocity (to get an error)
-Point2 p1_p2 = p0_p2 + timestep * v0_p2;
-Vector2 v1_p2 = 2.0 * v0_p2;
-
-/**** Point3 Test Variables*****/
-Point3 p0_p3(1.0, 2.0, 3.0);
-Vector3 v0_p3(1.0, 2.0, 3.0);
-// Define Second Pose with 2x the velocity (to get an error)
-Point3 p1_p3 = p0_p3 + timestep * v0_p3;
-Vector3 v1_p3 = 2.0 * v0_p3;
-
-/**** SE(2) Test Variables*****/
-Pose2 p0_se2(1.0, 0.0, 0.5);
-Vector3 v0_se2(1.0, 2.0, 0.1);
-// Define Second Pose with 2x the velocity (to get an error)
-Pose2 p1_se2 = p0_se2.expmap(timestep * v0_se2);
-Vector3 v1_se2 = 2.0 * v0_se2;
-
-/***** SE(3) Test Variables******/
-// Define First Pose  with a general velocity
-Pose3 p0_se3 = Pose3::Expmap(Vector6(0.5, 0.0, 0.2, 1.0, 0.0, 0.0));
-Vector6 v0_se3(0.1, 0.0, 0.0, 1.0, 0.0, 2.0);
-// Define Second Pose with 2x the velocity (to get an error)
-Pose3 p1_se3 = p0_se3.expmap(timestep * v0_se3);
-Vector6 v1_se3 = 2.0 * v0_se3;
-
 using symbol_shorthand::P;
 using symbol_shorthand::V;
 
-// Define StateData structs
-static StateData state_1(P(1), V(1), 0.0);
-static StateData state_2(P(2), V(2), timestep);
+namespace {
+
+struct WnoaFactorFixture {
+  Vector Q_p1 = Vector1::Ones();
+  Vector Q_p2 = Vector2::Ones();
+  Vector Q_p3 = Vector3::Ones();
+  Vector Q_se2 = Vector3::Ones();
+  Vector Q_se3 = Vector6::Ones();
+  double timestep = 0.1;
+
+  /**** Point1 Test Variables*****/
+  Point1 p0_p1{1.0};
+  Vector1 v0_p1{1.0};
+  // Define Second Pose with 2x the velocity (to get an error)
+  Point1 p1_p1 = p0_p1 + timestep * v0_p1;
+  Vector1 v1_p1 = 2.0 * v0_p1;
+
+  /**** Point2 Test Variables*****/
+  Point2 p0_p2{1.0, 2.0};
+  Vector2 v0_p2{1.0, 2.0};
+  // Define Second Pose with 2x the velocity (to get an error)
+  Point2 p1_p2 = p0_p2 + timestep * v0_p2;
+  Vector2 v1_p2 = 2.0 * v0_p2;
+
+  /**** Point3 Test Variables*****/
+  Point3 p0_p3{1.0, 2.0, 3.0};
+  Vector3 v0_p3{1.0, 2.0, 3.0};
+  // Define Second Pose with 2x the velocity (to get an error)
+  Point3 p1_p3 = p0_p3 + timestep * v0_p3;
+  Vector3 v1_p3 = 2.0 * v0_p3;
+
+  /**** SE(2) Test Variables*****/
+  Pose2 p0_se2{1.0, 0.0, 0.5};
+  Vector3 v0_se2{1.0, 2.0, 0.1};
+  // Define Second Pose with 2x the velocity (to get an error)
+  Pose2 p1_se2 = p0_se2.expmap(timestep * v0_se2);
+  Vector3 v1_se2 = 2.0 * v0_se2;
+
+  /***** SE(3) Test Variables******/
+  // Define First Pose with a general velocity
+  Pose3 p0_se3 = Pose3::Expmap(Vector6(0.5, 0.0, 0.2, 1.0, 0.0, 0.0));
+  Vector6 v0_se3{0.1, 0.0, 0.0, 1.0, 0.0, 2.0};
+  // Define Second Pose with 2x the velocity (to get an error)
+  Pose3 p1_se3 = p0_se3.expmap(timestep * v0_se3);
+  Vector6 v1_se3 = 2.0 * v0_se3;
+
+  // Define StateData structs
+  StateData state_1 = StateData(P(1), V(1), 0.0);
+  StateData state_2 = StateData(P(2), V(2), timestep);
+};
+
+const WnoaFactorFixture& fixture() {
+  static const WnoaFactorFixture kFixture;
+  return kFixture;
+}
+
+const Vector& Q_p1 = fixture().Q_p1;
+const Vector& Q_p2 = fixture().Q_p2;
+const Vector& Q_p3 = fixture().Q_p3;
+const Vector& Q_se2 = fixture().Q_se2;
+const Vector& Q_se3 = fixture().Q_se3;
+const double timestep = fixture().timestep;
+
+const Point1& p0_p1 = fixture().p0_p1;
+const Vector1& v0_p1 = fixture().v0_p1;
+const Point1& p1_p1 = fixture().p1_p1;
+const Vector1& v1_p1 = fixture().v1_p1;
+
+const Point2& p0_p2 = fixture().p0_p2;
+const Vector2& v0_p2 = fixture().v0_p2;
+const Point2& p1_p2 = fixture().p1_p2;
+const Vector2& v1_p2 = fixture().v1_p2;
+
+const Point3& p0_p3 = fixture().p0_p3;
+const Vector3& v0_p3 = fixture().v0_p3;
+const Point3& p1_p3 = fixture().p1_p3;
+const Vector3& v1_p3 = fixture().v1_p3;
+
+const Pose2& p0_se2 = fixture().p0_se2;
+const Vector3& v0_se2 = fixture().v0_se2;
+const Pose2& p1_se2 = fixture().p1_se2;
+const Vector3& v1_se2 = fixture().v1_se2;
+
+const Pose3& p0_se3 = fixture().p0_se3;
+const Vector6& v0_se3 = fixture().v0_se3;
+const Pose3& p1_se3 = fixture().p1_se3;
+const Vector6& v1_se3 = fixture().v1_se3;
+
+const StateData& state_1 = fixture().state_1;
+const StateData& state_2 = fixture().state_2;
+
+}  // namespace
 
 /* ************************************************************************* */
 TEST(WNOAFactor, Constructor) {

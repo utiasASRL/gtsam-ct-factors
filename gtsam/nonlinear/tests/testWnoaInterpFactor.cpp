@@ -38,41 +38,72 @@ using namespace gtsam;
 using symbol_shorthand::P;
 using symbol_shorthand::V;
 
-static Vector Q_p3 = Vector3::Ones();
-static Vector Q_se3 = Vector6::Ones();
-static double timestep = 0.1;
+namespace {
 
-/**** Point3 Test Variables*****/
-// First pose, moving forward in x with velocity 1
-Vector3 v0_p3(1.0, 0.0, 0.0);
-Point3 p0_p3(0.0, 0.0, 0.0);
-// define next two poses along same trajectory
-Point3 p1_p3 = p0_p3 + timestep * v0_p3;
-Vector3 v1_p3 = v0_p3;
-Point3 p2_p3 = p0_p3 + 2 * timestep * v0_p3;
-Vector3 v2_p3 = v0_p3;
+struct WnoaInterpFactorFixture {
+  Vector Q_p3 = Vector3::Ones();
+  Vector Q_se3 = Vector6::Ones();
+  double timestep = 0.1;
 
-/**** SE3 Test Variables *****/
-// Define First Pose  with a general velocity
-static Pose3 p0_se3 = Pose3::Expmap(Vector6(0.5, 0.0, 0.0, 0.0, 0.0, 0.0));
-static Vector6 v0_se3(1, 0.0, 0.5, 0.1, 0.0, 0.0);
-// Define Second Pose with same velocity (to get an error)
-static Pose3 p1_se3 = p0_se3.expmap(timestep * v0_se3);
-// Define Third Pose with same vel
-static Pose3 p2_se3 = p0_se3.expmap(2 * timestep * v0_se3);
-static Vector6 v2_se3 = v0_se3;
-// Define Third Pose with same vel
-static Pose3 p3_se3 = p0_se3.expmap(3 * timestep * v0_se3);
-// Define Third Pose with same vel
-static Pose3 p4_se3 = p0_se3.expmap(4 * timestep * v0_se3);
+  /**** Point3 Test Variables*****/
+  // First pose, moving forward in x with velocity 1
+  Vector3 v0_p3{1.0, 0.0, 0.0};
+  Point3 p0_p3{0.0, 0.0, 0.0};
+  // define next two poses along same trajectory
+  Point3 p1_p3 = p0_p3 + timestep * v0_p3;
+  Vector3 v1_p3 = v0_p3;
+  Point3 p2_p3 = p0_p3 + 2 * timestep * v0_p3;
+  Vector3 v2_p3 = v0_p3;
 
-// Define interpolation parameters
-// Define estimated and interpolated states for testing
-static set<StateData> estimatedStates = {StateData(P(0), V(0), 0.0),
-                                         StateData(P(2), V(2), 2 * timestep),
-                                         StateData(P(3), V(3), 100 * timestep)};
-static set<StateData> interpolatedStates = {StateData(P(1), V(1), timestep),
-                                            StateData(P(4), V(4), timestep)};
+  /**** SE3 Test Variables *****/
+  // Define First Pose with a general velocity
+  Pose3 p0_se3 = Pose3::Expmap(Vector6(0.5, 0.0, 0.0, 0.0, 0.0, 0.0));
+  Vector6 v0_se3{1, 0.0, 0.5, 0.1, 0.0, 0.0};
+  // Define Second Pose with same velocity (to get an error)
+  Pose3 p1_se3 = p0_se3.expmap(timestep * v0_se3);
+  // Define Third Pose with same vel
+  Pose3 p2_se3 = p0_se3.expmap(2 * timestep * v0_se3);
+  Vector6 v2_se3 = v0_se3;
+  // Define third and fourth poses with same velocity
+  Pose3 p3_se3 = p0_se3.expmap(3 * timestep * v0_se3);
+  Pose3 p4_se3 = p0_se3.expmap(4 * timestep * v0_se3);
+
+  // Define estimated and interpolated states for testing
+  set<StateData> estimatedStates = {StateData(P(0), V(0), 0.0),
+                                    StateData(P(2), V(2), 2 * timestep),
+                                    StateData(P(3), V(3), 100 * timestep)};
+  set<StateData> interpolatedStates = {StateData(P(1), V(1), timestep),
+                                       StateData(P(4), V(4), timestep)};
+};
+
+const WnoaInterpFactorFixture& fixture() {
+  static const WnoaInterpFactorFixture kFixture;
+  return kFixture;
+}
+
+const Vector Q_p3 = fixture().Q_p3;
+const Vector Q_se3 = fixture().Q_se3;
+const double timestep = fixture().timestep;
+
+const Vector3 v0_p3 = fixture().v0_p3;
+const Point3 p0_p3 = fixture().p0_p3;
+const Point3 p1_p3 = fixture().p1_p3;
+const Vector3 v1_p3 = fixture().v1_p3;
+const Point3 p2_p3 = fixture().p2_p3;
+const Vector3 v2_p3 = fixture().v2_p3;
+
+const Pose3 p0_se3 = fixture().p0_se3;
+const Vector6 v0_se3 = fixture().v0_se3;
+const Pose3 p1_se3 = fixture().p1_se3;
+const Pose3 p2_se3 = fixture().p2_se3;
+const Vector6 v2_se3 = fixture().v2_se3;
+const Pose3 p3_se3 = fixture().p3_se3;
+const Pose3 p4_se3 = fixture().p4_se3;
+
+const set<StateData> estimatedStates = fixture().estimatedStates;
+const set<StateData> interpolatedStates = fixture().interpolatedStates;
+
+}  // namespace
 
 // STATE DATA TESTS
 
