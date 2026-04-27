@@ -815,4 +815,21 @@ virtual class ProjectionFactorRollingShutter : gtsam::NoiseModelFactor {
   void serialize() const;
 };
 
+#include <gtsam_unstable/slam/LocalOrientedPlane3Factor.h>
+
+virtual class LocalOrientedPlane3Factor : gtsam::NoiseModelFactor {
+  LocalOrientedPlane3Factor(const gtsam::Vector4& z,
+                            const gtsam::noiseModel::Base* noiseModel,
+                            gtsam::Key poseKey,
+                            gtsam::Key anchorPoseKey,
+                            gtsam::Key landmarkKey);
+  LocalOrientedPlane3Factor(const gtsam::OrientedPlane3& z,
+                            const gtsam::noiseModel::Base* noiseModel,
+                            gtsam::Key poseKey,
+                            gtsam::Key anchorPoseKey,
+                            gtsam::Key landmarkKey);
+  void serialize() const;
+};
+
+
 } //\namespace gtsam
