@@ -10,7 +10,7 @@
  * -------------------------------------------------------------------------- */
 
 /**
- * @file WNOAInterpolator.h
+ * @file WnoaInterpolator.h
  * @brief Interpolator class implementation for interpolating poses and
  * velocities between two bordering states, either during or after a factor
  * graph solve. Interpolator assumes the WNOA motion prior by default.
@@ -22,14 +22,15 @@
 #pragma once
 
 #include <gtsam/nonlinear/Marginals.h>
-#include <gtsam/nonlinear/WNOAFactor.h>
-#include <gtsam/nonlinear/WNOAStateData.h>
+#include <gtsam/nonlinear/WnoaFactor.h>
+#include <gtsam/nonlinear/WnoaStateData.h>
 
 #include <algorithm>
 #include <fstream>
 #include <functional>
 #include <iostream>
 #include <limits>
+#include <map>
 #include <optional>
 #include <random>
 #include <set>
@@ -37,7 +38,6 @@
 #include <unordered_set>
 #include <utility>
 #include <vector>
-#include <map>
 
 namespace gtsam {
 
@@ -65,6 +65,7 @@ struct PoseVelocity {
   PoseType pose;
   typename traits<PoseType>::TangentVector vel;
 
+  /// Returns pose and velocity as a std::pair.
   std::pair<PoseType, typename traits<PoseType>::TangentVector> asPair() const {
     return std::make_pair(pose, vel);
   }
@@ -135,7 +136,13 @@ class GTSAM_EXPORT Interpolator {
   using TimestampedPoseVel = TimestampedPoseVelocity<PoseType>;
   using LambdaPsiMats = std::pair<Matrix2N, Matrix2N>;
   using LocalStateVecs = std::pair<VectorN, VectorN>;
-  using LocalGlobalStateJacs = std::vector<MatrixN>;
+  struct StateJacobians {
+    MatrixN dxi_dTk;
+    MatrixN dxi_dTkp1;
+    MatrixN dxidot_dTk;
+    MatrixN dxidot_dTkp1;
+    MatrixN dxidotkp1_dvarpikp1;
+  };
 
   // Maps a pose or velocity to their covariance matrix
   using CovarianceMap = std::map<Key, Matrix>;
@@ -201,7 +208,7 @@ class GTSAM_EXPORT Interpolator {
    * work.
    * @param localStateVecsPreComp Optional precomputed local state vectors (xi,
    * xi_dot).
-   * @param localGlobalStateJacsPreComp Optional precomputed local state->global
+   * @param stateJacobiansPreComp Optional precomputed local state->global
    * state Jacobians.
    * @return PoseVel Interpolated pose and velocity pair at `t_tau`.
    */
@@ -214,8 +221,8 @@ class GTSAM_EXPORT Interpolator {
       const std::shared_ptr<const LambdaPsiMats>& LambdaPsiPreComp = nullptr,
       const std::shared_ptr<const LocalStateVecs>& localStateVecsPreComp =
           nullptr,
-      const std::shared_ptr<const LocalGlobalStateJacs>&
-          localGlobalStateJacsPreComp = nullptr) const;
+      const std::shared_ptr<const StateJacobians>& stateJacobiansPreComp =
+          nullptr) const;
 
   /**
    * @brief Interpolate multiple poses and velocities given a solved factor
@@ -309,9 +316,9 @@ class GTSAM_EXPORT Interpolator {
    * @param jacs Optional output pointer to receive local-to-global Jacobians.
    * @return LocalStateVecs Pair of local state vectors (xi, xi_dot).
    */
-  LocalStateVecs computeLocalStateVecs(
-      const TimestampedPoseVel& pvk, const TimestampedPoseVel& pvkp1,
-      LocalGlobalStateJacs* jacs = nullptr) const;
+  LocalStateVecs computeLocalStateVecs(const TimestampedPoseVel& pvk,
+                                       const TimestampedPoseVel& pvkp1,
+                                       StateJacobians* jacs = nullptr) const;
 
  protected:
   /**
@@ -408,7 +415,7 @@ class GTSAM_EXPORT Interpolator {
    * work.
    * @param localStateVecsPreComp Optional precomputed local state vectors (xi,
    * xi_dot).
-   * @param localGlobalStateJacsPreComp Optional precomputed local->global
+   * @param stateJacobiansPreComp Optional precomputed local->global
    * Jacobians.
    * @return PoseVel Interpolated pose and velocity at `t_tau`.
    */
@@ -421,8 +428,127 @@ class GTSAM_EXPORT Interpolator {
       const std::shared_ptr<const LambdaPsiMats>& LambdaPsiPreComp = nullptr,
       const std::shared_ptr<const LocalStateVecs>& localStateVecsPreComp =
           nullptr,
-      const std::shared_ptr<const LocalGlobalStateJacs>&
-          localGlobalStateJacsPreComp = nullptr) const;
+      const std::shared_ptr<const StateJacobians>& stateJacobiansPreComp =
+          nullptr) const;
+
+  /**
+   * @brief Step 1 of interpolatePoseAndVelocity: form local state vectors and
+   * optional local Jacobians.
+   *
+   * Computes $(\xi_k, \dot\xi_k, \xi_{k+1}, \dot\xi_{k+1})$ used by
+   * interpolation. Jacobian outputs are populated only when all Jacobian
+   * pointers are non-null.
+   *
+   * @param tPoseVel_k Timestamped left border state.
+   * @param tPoseVel_kp1 Timestamped right border state.
+   * @param localStateVecsPreComp Optional precomputed local state vectors at
+   * the right border.
+   * @param stateJacobiansPreComp Optional precomputed local-to-global
+   * Jacobians.
+   * @param xi_dot_k Output local velocity vector at the left border.
+   * @param xi_kp1 Output local position vector at the right border.
+   * @param xi_dot_kp1 Output local velocity vector at the right border.
+   * @param jacs Optional output Jacobians for local state wrt bordering states.
+   * @return void
+   */
+  void formLocalStateAndJacobians_(
+      const TimestampedPoseVel& tPoseVel_k,
+      const TimestampedPoseVel& tPoseVel_kp1,
+      const std::shared_ptr<const LocalStateVecs>& localStateVecsPreComp,
+      const std::shared_ptr<const StateJacobians>& stateJacobiansPreComp,
+      VectorN* xi_dot_k, VectorN* xi_kp1, VectorN* xi_dot_kp1,
+      StateJacobians* jacs = nullptr) const;
+
+  /**
+   * @brief Step 2 of interpolatePoseAndVelocity: interpolate local state using
+   * Lambda/Psi matrices.
+   *
+   * Retrieves (or reuses precomputed) Lambda/Psi and computes
+   * $(\xi_\tau, \dot\xi_\tau)$.
+   *
+   * @param t_k Left border timestamp.
+   * @param t_kp1 Right border timestamp.
+   * @param t_tau Query timestamp.
+   * @param xi_dot_k Local velocity vector at the left border.
+   * @param xi_kp1 Local position vector at the right border.
+   * @param xi_dot_kp1 Local velocity vector at the right border.
+   * @param LambdaPsiPreComp Optional precomputed $(\Lambda, \Psi)$ pair.
+   * @param Lambda Output interpolation matrix $\Lambda$.
+   * @param Psi Output interpolation matrix $\Psi$.
+   * @param xi_tau Output interpolated local position vector.
+   * @param xidot_tau Output interpolated local velocity vector.
+   * @return void
+   */
+  void interpolateLocalState_(
+      double t_k, double t_kp1, double t_tau, const VectorN& xi_dot_k,
+      const VectorN& xi_kp1, const VectorN& xi_dot_kp1,
+      const std::shared_ptr<const LambdaPsiMats>& LambdaPsiPreComp,
+      Matrix2N* Lambda, Matrix2N* Psi, VectorN* xi_tau,
+      VectorN* xidot_tau) const;
+
+  /**
+   * @brief Step 3 of interpolatePoseAndVelocity: map interpolated local state
+   * back to manifold.
+   *
+   * Computes interpolated pose/velocity pair. Jacobian outputs are optional
+   * and populated only when `dTtau_dTk` and `dTtau_dxitau` are non-null.
+   *
+   * @param T_k Left border pose.
+   * @param xi_tau Interpolated local position vector.
+   * @param xidot_tau Interpolated local velocity vector.
+   * @param right_jac_tau Output right Jacobian of `Expmap(xi_tau)`.
+   * @param dTtau_dTk Optional output Jacobian of $T_\tau$ wrt $T_k$.
+   * @param dTtau_dxitau Optional output Jacobian of $T_\tau$ wrt $\xi_\tau$.
+   * @return PoseVel Interpolated pose and velocity pair at $t_\tau$.
+   */
+  PoseVel mapLocalStateToManifold_(const PoseType& T_k, const VectorN& xi_tau,
+                                   const VectorN& xidot_tau,
+                                   MatrixN* right_jac_tau,
+                                   MatrixN* dTtau_dTk = nullptr,
+                                   MatrixN* dTtau_dxitau = nullptr) const;
+
+  /**
+   * @brief Step 4 of interpolatePoseAndVelocity: compose full Jacobians with
+   * chain rule.
+   *
+   * @param Lambda Interpolation matrix $\Lambda$.
+   * @param Psi Interpolation matrix $\Psi$.
+   * @param xidot_tau Interpolated local velocity vector.
+   * @param right_jac_tau Right Jacobian of `Expmap(xi_tau)`.
+   * @param dTtau_dTk Jacobian of $T_\tau$ wrt $T_k$ from composition.
+   * @param dTtau_dxitau Jacobian of $T_\tau$ wrt $\xi_\tau$.
+   * @param jacs Jacobians for local state wrt bordering states.
+   * @param H Output vector of Jacobian blocks to populate.
+   * @return void
+   */
+  void computeCompleteJacobians_(const Matrix2N& Lambda, const Matrix2N& Psi,
+                                 const VectorN& xidot_tau,
+                                 const MatrixN& right_jac_tau,
+                                 const MatrixN& dTtau_dTk,
+                                 const MatrixN& dTtau_dxitau,
+                                 const StateJacobians& jacs,
+                                 OptionalMatrixVecType H) const;
+
+  /**
+   * @brief Step 5 of interpolatePoseAndVelocity: compute interpolated
+   * covariance when requested.
+   *
+   * @param tPoseVel_k Timestamped left border state.
+   * @param tPoseVel_kp1 Timestamped right border state.
+   * @param poseVel_tau Interpolated pose/velocity at query time.
+   * @param t_tau Query timestamp.
+   * @param Lambda Interpolation matrix $\Lambda$.
+   * @param Psi Interpolation matrix $\Psi$.
+   * @param mainSolveMarginalMatrix Optional covariance of bordering states.
+   * @param covarianceOut Optional output covariance for interpolated state.
+   * @return void
+   */
+  void computeInterpolationCovariance_(
+      const TimestampedPoseVel& tPoseVel_k,
+      const TimestampedPoseVel& tPoseVel_kp1, const PoseVel& poseVel_tau,
+      double t_tau, const Matrix2N& Lambda, const Matrix2N& Psi,
+      const std::shared_ptr<Matrix>& mainSolveMarginalMatrix,
+      Matrix* covarianceOut) const;
 
   /**
    * @brief Compute joint marginal covariances for requested state intervals.
@@ -440,7 +566,7 @@ class GTSAM_EXPORT Interpolator {
    * marginal matrices.
    */
   static std::map<StateDataInterval, std::shared_ptr<Matrix>>
-  computeJointMarginals(
+  ComputeJointMarginals(
       const std::map<StateDataInterval, std::vector<StateData>>& queryBuckets,
       const std::unique_ptr<Marginals>& marginals);
 
@@ -458,7 +584,7 @@ class GTSAM_EXPORT Interpolator {
    * block).
    * @return Matrix Full covariance matrix assembled from the joint marginal.
    */
-  static Matrix constructMatrixFromJointMarginal(
+  static Matrix ConstructMatrixFromJointMarginal(
       const JointMarginal& blockMatrix, const KeyVector& keyVector,
       size_t blockSize);
 };

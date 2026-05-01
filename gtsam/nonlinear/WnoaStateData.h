@@ -10,8 +10,9 @@
  * -------------------------------------------------------------------------- */
 
 /**
- * @file WNOAStateData.h
- * @brief Introduces a lightweight struct for identifying states in continuous-time estimation and interpolation.
+ * @file WnoaStateData.h
+ * @brief Introduces a lightweight struct for identifying states in
+ * continuous-time estimation and interpolation.
  * @author Connor Holmes
  * @author Zi Cong Guo
  * @author Sven Lilge
@@ -27,44 +28,36 @@
 namespace gtsam {
 
 /**
- * @brief Lightweight container for states used for continuous-time estimation and interpolation.
+ * @brief Lightweight container for states used for continuous-time estimation
+ * and interpolation.
  *
  * `StateData` stores the keys identifying the pose and velocity variables in
  * a factor graph together with the associated timestamp. It is intentionally
  * minimal and used primarily for ordering, lookup and grouping of states when
  * constructing interpolation queries.
  */
-struct StateData {
-  /// Key of the pose variable
-  Key pose;
+struct GTSAM_EXPORT StateData {
+  Key pose;      ///< Key of the pose variable
+  Key velocity;  ///< Key of the velocity variable
+  double time;   ///< Timestamp (seconds) associated with this state
 
-  /// Key of the velocity variable
-  Key vel;
-
-  /// Timestamp (seconds) associated with this state
-  double time;
-
-  /**
-   * @brief Default constructor (value-initialized members).
-   *
-   * Provided for convenience and to enable use in standard containers.
-   */
+  /// Default constructor.
   StateData() = default;
 
   /**
    * @brief Construct a StateData from explicit keys and timestamp.
    * @param pose_in Pose key
-   * @param vel_in Velocity key
+   * @param velocity_in Velocity key
    * @param time_in Timestamp in seconds
    */
-  StateData(Key pose_in, Key vel_in, double time_in)
-      : pose(pose_in), vel(vel_in), time(time_in) {};
+  StateData(Key pose_in, Key velocity_in, double time_in)
+      : pose(pose_in), velocity(velocity_in), time(time_in) {};
 
   /**
-   * @brief Strict-weak ordering: (time, pose, vel) ascending.
+   * @brief Strict-weak ordering: (time, pose, velocity) ascending.
    *
    * Primarily orders states chronologically by time. When timestamps are
-   * equal, pose and then vel keys are used as tie-breakers to provide a
+   * equal, pose and then velocity keys are used as tie-breakers to provide a
    * strict-weak ordering suitable for ordered containers such as std::set.
    */
   bool operator<(const StateData& other) const {
@@ -72,43 +65,37 @@ struct StateData {
     if (this->time > other.time) return false;
     if (this->pose < other.pose) return true;
     if (this->pose > other.pose) return false;
-    return this->vel < other.vel;
+    return this->velocity < other.velocity;
   }
 
   /**
-   * @brief Compare by timestamp (descending).
+   * @brief Strict-weak ordering: (time, pose, velocity) descending.
+   *
+   * Mirror of `operator<` with all comparisons reversed.
    */
-  bool operator>(const StateData& other) const { 
+  bool operator>(const StateData& other) const {
     if (this->time > other.time) return true;
     if (this->time < other.time) return false;
     if (this->pose > other.pose) return true;
     if (this->pose < other.pose) return false;
-    return this->vel > other.vel;
-   }
+    return this->velocity > other.velocity;
+  }
 
-  /**
-   * @brief Compare this state's timestamp with a raw time value.
-   * @param time Timestamp to compare against
-   * @return true if this->time < time
-   */
+  /// Returns true if this state's timestamp is before \p time.
   bool operator<(double time) const { return this->time < time; }
 
-  /**
-   * @brief Compare this state's timestamp with a raw time value.
-   * @param time Timestamp to compare against
-   * @return true if this->time > time
-   */
+  /// Returns true if this state's timestamp is after \p time.
   bool operator>(double time) const { return this->time > time; }
 
   /**
-   * @brief Equality compares the identifying keys (pose and vel).
+   * @brief Equality compares the identifying keys (pose and velocity).
    *
    * Two `StateData` objects are considered equal if they refer to the same
    * pose and velocity keys. The timestamp is not used for equality to keep
    * `StateData` usable as a simple identifier in unordered containers.
    */
   bool operator==(const StateData& other) const {
-    return (this->pose == other.pose) && (this->vel == other.vel);
+    return (this->pose == other.pose) && (this->velocity == other.velocity);
   }
 };
 
@@ -125,7 +112,8 @@ namespace std {
 template <>
 struct hash<gtsam::StateData> {
   std::size_t operator()(const gtsam::StateData& p) const noexcept {
-    return std::hash<uint64_t>()(p.pose) ^ (std::hash<uint64_t>()(p.vel) << 1);
+    return std::hash<uint64_t>()(p.pose) ^
+           (std::hash<uint64_t>()(p.velocity) << 1);
   }
 };
 }  // namespace std

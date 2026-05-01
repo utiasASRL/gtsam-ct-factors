@@ -10,7 +10,7 @@
  * -------------------------------------------------------------------------- */
 
 /**
- * @file    WNOAInterpFactor.h
+ * @file    WnoaInterpFactor.h
  * @brief   White-Noise-On-Acceleration (WNOA) continuous time interpolation
  * wrapper factor and functions to automatically update a given graph by
  * interpolating some variables (removing them from the optimization).
@@ -32,9 +32,10 @@
 #include <gtsam/inference/Key.h>
 #include <gtsam/nonlinear/NonlinearFactor.h>
 #include <gtsam/nonlinear/Values.h>
+#include <gtsam/nonlinear/WnoaInterpolator.h>
+#include <gtsam/nonlinear/WnoaStateData.h>
 #include <gtsam/nonlinear/WNOAFactorGraph.h>
-#include <gtsam/nonlinear/WNOAInterpolator.h>
-#include <gtsam/nonlinear/WNOAStateData.h>
+
 
 #include <algorithm>
 #include <array>
@@ -78,7 +79,7 @@ namespace gtsam {
  *
  * Typical usage:
  *   Construct by providing an inner NoiseModelFactor, ordered sets of
- *   estimated and interpolated StateData, and the WNOA PSD vector Q_psd.
+ *   estimated and interpolated StateData, and the WNOA PSD vector q_psd_diag.
  *   Use as a drop-in factor in a graph that references only estimated keys;
  *   call linearize/error/noiseModel as usual. When many factors share
  *   interpolation, supply PassedInterpData to avoid redundant work.
@@ -93,6 +94,12 @@ namespace gtsam {
 template <class PoseType>
 class WNOAInterpFactor : public NoiseModelFactor {
  private:
+#ifndef GTSAM_ROT3_EXPMAP
+  static_assert(
+      !std::is_same_v<PoseType, Pose3> || std::is_same_v<PoseType, Rot3>,
+      "Interpolation factors are not supported for Pose3/Rot3 when using the "
+      "Cayley chart. Please switch to EXPMAP coordinates mode.");
+#endif
   using Base = NoiseModelFactor;
   using This = WNOAInterpFactor<PoseType>;
   using VelocityType = typename gtsam::traits<PoseType>::TangentVector;
@@ -103,6 +110,13 @@ class WNOAInterpFactor : public NoiseModelFactor {
   using MatrixN = Eigen::Matrix<double, dim, dim>;
   using LambdaPsiMats = typename Interpolator<PoseType>::LambdaPsiMats;
 
+  // Tell the compiler to import the base class's version of error
+  // Note: this is required because we don't define error( const HybridValues& )
+  // in this class, and without this line, the base class's error(const
+  // HybridValues&) is hidden by the error(const Values&, OptionalMatrixVecType)
+  // defined in this class.
+  using Base::error;
+
   // Inner factor that is called on interpolated values
   const NoiseModelFactor::shared_ptr inner_factor_;
   // Interpolator object for the given PoseType
@@ -110,15 +124,15 @@ class WNOAInterpFactor : public NoiseModelFactor {
   // disable noise model updates
   const bool fixed_noise_model_;
   // map keys to interpolated state
-  std::unordered_map<Key, StateData> key_to_interp;
+  std::unordered_map<Key, StateData> key_to_interp_;
   // map interpolated state to border states.
   std::unordered_map<StateData, std::pair<StateData, StateData>>
-      interp_to_borders;
+      interp_to_borders_;
   // map outer key to outer key index (for Jacobians)
-  std::unordered_map<Key, int> outer_key_to_index;
+  std::unordered_map<Key, int> outer_key_to_index_;
   // map of precomputed matrices for interpolation, keyed by StateData
   std::unordered_map<StateData, std::shared_ptr<LambdaPsiMats>>
-      lambda_psi_pre_comp;
+      lambda_psi_pre_comp_;
 
   // Cache inner key -> index mapping to avoid rebuilding in noise model calc
   std::unordered_map<Key, int> inner_key_to_index_;
@@ -132,8 +146,9 @@ class WNOAInterpFactor : public NoiseModelFactor {
     // For non-interpolated keys
     int directOuterIndex = -1;
     // For interpolated keys: cached outer indices and keys
-    int idxPoseL = -1, idxVelL = -1, idxPoseR = -1, idxVelR = -1;
-    Key keyPoseL = 0, keyVelL = 0, keyPoseR = 0, keyVelR = 0;
+    int indexPoseLeft = -1, indexVelLeft = -1, indexPoseRight = -1,
+        indexVelRight = -1;
+    Key keyPoseLeft = 0, keyVelLeft = 0, keyPoseRight = 0, keyVelRight = 0;
   };
   std::vector<InnerKeyMapping> inner_key_mappings_;
 
@@ -175,7 +190,7 @@ class WNOAInterpFactor : public NoiseModelFactor {
    * interpolation.
    * @param interp_states Ordered set of states to interpolate (states at query
    * times).
-   * @param Q_psd Diagonal PSD vector for the WNOA motion prior.
+   * @param q_psd_diag Diagonal PSD vector for the WNOA motion prior.
    * @param fixed_noise_model If true, do not augment the noise measurement
    * model with GP interpolation process noise. This is faster, but less
    * accurate, as it ignores interpolation uncertainty.
@@ -185,12 +200,12 @@ class WNOAInterpFactor : public NoiseModelFactor {
   WNOAInterpFactor(const NoiseModelFactor::shared_ptr inner_factor,
                    const std::set<StateData> estimated_states,
                    const std::set<StateData> interp_states,
-                   const Eigen::Matrix<double, dim, 1> Q_psd,
+                   const Eigen::Matrix<double, dim, 1> q_psd_diag,
                    const bool fixed_noise_model = false,
                    const bool precomp_interp_mats = true)
       : Base(inner_factor->noiseModel()),
         inner_factor_(inner_factor),
-        interpolator_(Q_psd),
+        interpolator_(q_psd_diag),
         fixed_noise_model_(fixed_noise_model) {
     // PROCESS INTERPOLATED STATES
     // loop through interpolated states
@@ -212,40 +227,40 @@ class WNOAInterpFactor : public NoiseModelFactor {
         // decrement iterator (points to left border state)
         iter_est_state--;
         // map interpolated state to borderstates
-        interp_to_borders[state] =
+        interp_to_borders_[state] =
             std::pair(*iter_est_state, *std::next(iter_est_state));
         // Keep track of the inner keys corresponding to a given interpolated
         // state for easy lookup when building outer keys and mapping jacobians
         // later
-        key_to_interp[state.pose] = state;
-        key_to_interp[state.vel] = state;
+        key_to_interp_[state.pose] = state;
+        key_to_interp_[state.velocity] = state;
       }
       // Precompute Lambda and Psi WNOA interpolation matrices
       if (precomp_interp_mats) {
-        lambda_psi_pre_comp[state] =
+        lambda_psi_pre_comp_[state] =
             std::make_shared<LambdaPsiMats>(interpolator_.getLambdaPsi(
-                interp_to_borders[state].first.time,
-                interp_to_borders[state].second.time, state.time));
+                interp_to_borders_[state].first.time,
+                interp_to_borders_[state].second.time, state.time));
       } else {
-        lambda_psi_pre_comp[state] = nullptr;
+        lambda_psi_pre_comp_[state] = nullptr;
       }
     }
     // DEFINE KEYS
     // Define set of "outer" keys that this wrapper factor is defined on.
     std::unordered_set<Key> outer_key_set;
     for (Key key : inner_factor->keys()) {
-      if (key_to_interp.find(key) == key_to_interp.end()) {
+      if (key_to_interp_.find(key) == key_to_interp_.end()) {
         // inner key is not interpolated, add to outer keys
         outer_key_set.insert(key);
       } else {
         // inner key is interpolated, add associated border state keys to this
         // factor's keys
-        StateData& interp = key_to_interp.at(key);          // get state
-        auto [left, right] = interp_to_borders.at(interp);  // get borders
-        outer_key_set.insert(left.pose);                    // add border keys
-        outer_key_set.insert(left.vel);
+        StateData& interp = key_to_interp_.at(key);          // get state
+        auto [left, right] = interp_to_borders_.at(interp);  // get borders
+        outer_key_set.insert(left.pose);                     // add border keys
+        outer_key_set.insert(left.velocity);
         outer_key_set.insert(right.pose);
-        outer_key_set.insert(right.vel);
+        outer_key_set.insert(right.velocity);
       }
     }
     // Convert to key vector (from set)
@@ -254,7 +269,7 @@ class WNOAInterpFactor : public NoiseModelFactor {
     // map outer keys to their associated index (used when mapping jacobians
     // later)
     for (size_t i = 0; i < this->keys_.size(); i++) {
-      outer_key_to_index[this->keys_[i]] = i;
+      outer_key_to_index_[this->keys_[i]] = i;
     }
     // Build inner key mappings once and cache inner key indices
     // We will use this mapping to know how to map inner Jacobian blocks to
@@ -276,49 +291,49 @@ class WNOAInterpFactor : public NoiseModelFactor {
     // Loop through all inner keys and save the relevant mappings to outer keys
     for (size_t i = 0; i < inner_keys_init.size(); ++i) {
       // inner key
-      Key ik = inner_keys_init[i];
+      Key innerKey = inner_keys_init[i];
       // current index
-      inner_key_to_index_[ik] = static_cast<int>(i);
-      InnerKeyMapping mk;
-      auto itInterp = key_to_interp.find(ik);
+      inner_key_to_index_[innerKey] = static_cast<int>(i);
+      InnerKeyMapping mapping;
+      auto itInterp = key_to_interp_.find(innerKey);
 
       // If this condition is met, then this inner key is not interpolated and
       // directly corresponds to an outer key We can map the Jacobian block for
       // this inner key directly to the corresponding outer key index
-      if (itInterp == key_to_interp.end()) {
-        auto itOuter = outer_key_to_index.find(ik);
-        if (itOuter != outer_key_to_index.end())
-          mk.directOuterIndex = itOuter->second;
+      if (itInterp == key_to_interp_.end()) {
+        auto itOuter = outer_key_to_index_.find(innerKey);
+        if (itOuter != outer_key_to_index_.end())
+          mapping.directOuterIndex = itOuter->second;
       } else {
         // Otherwise, this inner key is interpolated and we need to map it to
         // its corresponding border states The Jacobian blocks that connect them
         // to the inner key
-        mk.isInterpolated = true;
+        mapping.isInterpolated = true;
 
         // get border states for this interpolated key using the
-        // interp_to_borders map we built earlier
+        // interp_to_borders_ map we built earlier
         const StateData& sd = itInterp->second;
-        const auto& br = interp_to_borders.at(sd);
+        const auto& br = interp_to_borders_.at(sd);
         const StateData& left = br.first;
         const StateData& right = br.second;
 
         // Map the border states to their corresponding outer key indices
-        // This uses the outer_key_to_index map we built earlier
+        // This uses the outer_key_to_index_ map we built earlier
         // We will need these indices to know where to map Jacobian blocks
         // during linearization
-        mk.idxPoseL = outer_key_to_index.at(left.pose);
-        mk.idxVelL = outer_key_to_index.at(left.vel);
-        mk.idxPoseR = outer_key_to_index.at(right.pose);
-        mk.idxVelR = outer_key_to_index.at(right.vel);
+        mapping.indexPoseLeft = outer_key_to_index_.at(left.pose);
+        mapping.indexVelLeft = outer_key_to_index_.at(left.velocity);
+        mapping.indexPoseRight = outer_key_to_index_.at(right.pose);
+        mapping.indexVelRight = outer_key_to_index_.at(right.velocity);
 
         // also save the actual keys for clarity (might not be accessed during
         // compute)
-        mk.keyPoseL = left.pose;
-        mk.keyVelL = left.vel;
-        mk.keyPoseR = right.pose;
-        mk.keyVelR = right.vel;
+        mapping.keyPoseLeft = left.pose;
+        mapping.keyVelLeft = left.velocity;
+        mapping.keyPoseRight = right.pose;
+        mapping.keyVelRight = right.velocity;
       }
-      inner_key_mappings_[i] = mk;
+      inner_key_mappings_[i] = mapping;
     }
   };
 
@@ -379,39 +394,14 @@ class WNOAInterpFactor : public NoiseModelFactor {
    * interpolated conditional covariances.
    */
   std::shared_ptr<GaussianFactor> linearize(const Values& x) const override {
-    // if noise model fixed, just use the NonlinearFactor linearize approach.
-    if (fixed_noise_model_) {
-      return Base::linearize(x);
-    }
-
     // Only linearize if the factor is active
     if (!active(x)) return std::shared_ptr<JacobianFactor>();
 
-    // Call evaluate error to get Jacobians and RHS vector b
+    // Compute residual and effective noise model.
     std::vector<Matrix> A(size());
-    std::vector<Matrix> JacInner(inner_factor_->size());
-    std::unordered_map<StateData, Matrix2N> InterpCondCovs;
-    Vector b = -computeInterpolatedError(x, &A, &JacInner, &InterpCondCovs);
-    // get interpolated noise model
-    auto noise_model = getInterpolatedNoiseModel(JacInner, InterpCondCovs);
-    // Whiten the corresponding system now
-    noise_model->WhitenSystem(A, b);
-
-    // Fill in terms, needed to create JacobianFactor below
-    std::vector<std::pair<Key, Matrix>> terms(size());
-    for (size_t j = 0; j < size(); ++j) {
-      terms[j].first = keys()[j];
-      terms[j].second.swap(A[j]);
-    }
-    // Build final Guassian Factor
-    using noiseModel::Constrained;
-    if (noiseModel_ && noiseModel_->isConstrained())
-      return GaussianFactor::shared_ptr(new JacobianFactor(
-          terms, b,
-          std::static_pointer_cast<Constrained>(noiseModel_)->unit()));
-    else {
-      return GaussianFactor::shared_ptr(new JacobianFactor(terms, b));
-    }
+    Vector b;
+    auto noise_model = eval(x, nullptr, b, &A);
+    return makeJacobianFactor(A, b, noise_model);
   }
 
   /**
@@ -427,43 +417,11 @@ class WNOAInterpFactor : public NoiseModelFactor {
     // Only linearize if the factor is active
     if (!active(x)) return std::shared_ptr<JacobianFactor>();
 
-    // Call evaluate error to get Jacobians and RHS vector b
+    // Compute residual and effective noise model.
     std::vector<Matrix> A(size());
-    std::vector<Matrix> JacInner(inner_factor_->size());
-    std::unordered_map<StateData, Matrix2N>* InterpCondCovs =
-        nullptr;  // Store a pointer so we don't copy the passed data
     Vector b;
-    noiseModel::Gaussian::shared_ptr noise_model;
-    if (fixed_noise_model_) {
-      b = -computeInterpolatedError(x, &A, nullptr, nullptr, passedInterpData);
-      noise_model =
-          std::dynamic_pointer_cast<noiseModel::Gaussian>(Base::noiseModel());
-    } else {
-      b = -computeInterpolatedError(x, &A, &JacInner, nullptr,
-                                    passedInterpData);
-      InterpCondCovs =
-          &passedInterpData->condCovs;  // set directly from passed data
-      noise_model = getInterpolatedNoiseModel(JacInner, *InterpCondCovs);
-    }
-    // Whiten the corresponding system now
-    noise_model->WhitenSystem(A, b);
-
-    // Fill in terms, needed to create JacobianFactor below
-    std::vector<std::pair<Key, Matrix>> terms(size());
-    for (size_t j = 0; j < size(); ++j) {
-      terms[j].first = keys()[j];
-      terms[j].second.swap(A[j]);
-    }
-
-    // Build final Guassian Factor
-    using noiseModel::Constrained;
-    if (noiseModel_ && noiseModel_->isConstrained())
-      return GaussianFactor::shared_ptr(new JacobianFactor(
-          terms, b,
-          std::static_pointer_cast<Constrained>(noiseModel_)->unit()));
-    else {
-      return GaussianFactor::shared_ptr(new JacobianFactor(terms, b));
-    }
+    auto noise_model = eval(x, passedInterpData, b, &A);
+    return makeJacobianFactor(A, b, noise_model);
   }
 
   /**
@@ -473,30 +431,11 @@ class WNOAInterpFactor : public NoiseModelFactor {
    * evaluating the (possibly augmented) noise model.
    */
   double error(const Values& c) const override {
-    if (active(c)) {
-      Vector b;
-      noiseModel::Gaussian::shared_ptr noise_model;
-      std::vector<Matrix> JacInner(inner_factor_->size());
-      if (fixed_noise_model_) {
-        b = -computeInterpolatedError(c, nullptr, nullptr, nullptr);
-        // if noise model is fixed, just use the base factor's noise model (no
-        // augmentation)
-        noise_model =
-            std::dynamic_pointer_cast<noiseModel::Gaussian>(Base::noiseModel());
-      } else {
-        std::unordered_map<StateData, Matrix2N> InterpCondCovs;
-        b = -computeInterpolatedError(c, nullptr, &JacInner, &InterpCondCovs);
-        // get interpolated noise model that accounts for interpolation
-        // uncertainty
-        noise_model = getInterpolatedNoiseModel(JacInner, InterpCondCovs);
-      }
-      if (noise_model)
-        return noise_model->loss(noise_model->squaredMahalanobisDistance(b));
-      else
-        return 0.5 * b.squaredNorm();
-    } else {
-      return 0.0;
-    }
+    if (!active(c)) return 0.0;
+
+    Vector b;
+    auto noise_model = eval(c, nullptr, b, nullptr);
+    return loss(b, noise_model);
   }
 
   /**
@@ -506,31 +445,11 @@ class WNOAInterpFactor : public NoiseModelFactor {
    * covariances from `passedInterpData` to avoid recomputation.
    */
   double error(const Values& c, PassedInterpData* passedInterpData) const {
-    if (active(c)) {
-      Vector b;
-      noiseModel::Gaussian::shared_ptr noise_model;
-      std::vector<Matrix> JacInner(inner_factor_->size());
-      if (fixed_noise_model_) {
-        b = -computeInterpolatedError(c, nullptr, nullptr, nullptr,
-                                      passedInterpData);
-        noise_model =
-            std::dynamic_pointer_cast<noiseModel::Gaussian>(Base::noiseModel());
-      } else {
-        std::unordered_map<StateData, Matrix2N>* InterpCondCovs =
-            nullptr;  // Store a pointer so we don't copy the passed data
-        b = -computeInterpolatedError(c, nullptr, &JacInner, nullptr,
-                                      passedInterpData);
-        InterpCondCovs =
-            &passedInterpData->condCovs;  // set directly from passed data
-        noise_model = getInterpolatedNoiseModel(JacInner, *InterpCondCovs);
-      }
-      if (noise_model)
-        return noise_model->loss(noise_model->squaredMahalanobisDistance(b));
-      else
-        return 0.5 * b.squaredNorm();
-    } else {
-      return 0.0;
-    }
+    if (!active(c)) return 0.0;
+
+    Vector b;
+    auto noise_model = eval(c, passedInterpData, b, nullptr);
+    return loss(b, noise_model);
   }
 
   /**
@@ -562,7 +481,7 @@ class WNOAInterpFactor : public NoiseModelFactor {
    * @return unordered_map<Key, StateData>
    */
   std::unordered_map<Key, StateData> getInterpolatedKeys() const {
-    return key_to_interp;
+    return key_to_interp_;
   }
 
   /**
@@ -572,10 +491,76 @@ class WNOAInterpFactor : public NoiseModelFactor {
    */
   std::unordered_map<StateData, std::pair<StateData, StateData>>
   getInterpToBorders() const {
-    return interp_to_borders;
+    return interp_to_borders_;
   }
 
  private:
+  /// Compute unwhitened residual and matching Gaussian noise model.
+  noiseModel::Gaussian::shared_ptr eval(const Values& values,
+                                        PassedInterpData* passedInterpData,
+                                        Vector& b,
+                                        std::vector<Matrix>* A) const {
+    if (A && (A->size() != size())) A->resize(size());
+
+    return fixed_noise_model_ ? evalFixed(values, A, passedInterpData, b)
+                              : evalInterp(values, A, passedInterpData, b);
+  }
+
+  /// Compute residual/noise model for fixed-noise mode.
+  noiseModel::Gaussian::shared_ptr evalFixed(const Values& values,
+                                             std::vector<Matrix>* A,
+                                             PassedInterpData* passedInterpData,
+                                             Vector& b) const {
+    b = -computeInterpolatedError(values, A, nullptr, nullptr,
+                                  passedInterpData);
+    return std::dynamic_pointer_cast<noiseModel::Gaussian>(Base::noiseModel());
+  }
+
+  /// Compute residual/noise model for interpolation-augmented noise.
+  noiseModel::Gaussian::shared_ptr evalInterp(
+      const Values& values, std::vector<Matrix>* A,
+      PassedInterpData* passedInterpData, Vector& b) const {
+    std::vector<Matrix> jacInner(inner_factor_->size());
+
+    if (passedInterpData) {
+      b = -computeInterpolatedError(values, A, &jacInner, nullptr,
+                                    passedInterpData);
+      return getInterpolatedNoiseModel(jacInner, passedInterpData->condCovs);
+    }
+
+    std::unordered_map<StateData, Matrix2N> localInterpCondCovs;
+    b = -computeInterpolatedError(values, A, &jacInner, &localInterpCondCovs);
+    return getInterpolatedNoiseModel(jacInner, localInterpCondCovs);
+  }
+
+  /// Build a JacobianFactor from outer Jacobians and residual.
+  std::shared_ptr<GaussianFactor> makeJacobianFactor(
+      std::vector<Matrix>& A, Vector& b,
+      const noiseModel::Gaussian::shared_ptr& noise_model) const {
+    noise_model->WhitenSystem(A, b);
+
+    std::vector<std::pair<Key, Matrix>> terms(size());
+    for (size_t j = 0; j < size(); ++j) {
+      terms[j].first = keys()[j];
+      terms[j].second.swap(A[j]);
+    }
+
+    using noiseModel::Constrained;
+    if (noiseModel_ && noiseModel_->isConstrained()) {
+      return std::make_shared<JacobianFactor>(
+          terms, b, std::static_pointer_cast<Constrained>(noiseModel_)->unit());
+    }
+    return std::make_shared<JacobianFactor>(terms, b);
+  }
+
+  /// Compute scalar error from residual and Gaussian noise model.
+  double loss(const Vector& b,
+              const noiseModel::Gaussian::shared_ptr& noise_model) const {
+    if (noise_model)
+      return noise_model->loss(noise_model->squaredMahalanobisDistance(b));
+    return 0.5 * b.squaredNorm();
+  }
+
   /**
    * @brief Core routine that evaluates the inner factor on interpolated states
    * and maps results to the outer state ordering.
@@ -672,36 +657,37 @@ class WNOAInterpFactor : public NoiseModelFactor {
       for (size_t i = 0; i < inner_keys.size(); i++) {
         const Key inner_key = inner_keys[i];
         const Matrix& Jinner = (*H_inner)[i];
-        const InnerKeyMapping& mk = inner_key_mappings_[i];
-        if (mk.isInterpolated) {
+        const InnerKeyMapping& mapping = inner_key_mappings_[i];
+        if (mapping.isInterpolated) {
           const std::array<Matrix, 4>& J4 = InterpJacobians->at(inner_key);
           // Order: 0:LPose, 1:LVel, 2:RPose, 3:RVel
-          if (mk.idxPoseL >= 0) {
+          if (mapping.indexPoseLeft >= 0) {
             const Matrix& Jblock = J4[0];
-            if ((*H)[mk.idxPoseL].size() == 0)
-              (*H)[mk.idxPoseL].setZero(Jinner.rows(), Jblock.cols());
-            (*H)[mk.idxPoseL].noalias() += Jinner * Jblock;
+            if ((*H)[mapping.indexPoseLeft].size() == 0)
+              (*H)[mapping.indexPoseLeft].setZero(Jinner.rows(), Jblock.cols());
+            (*H)[mapping.indexPoseLeft].noalias() += Jinner * Jblock;
           }
-          if (mk.idxVelL >= 0) {
+          if (mapping.indexVelLeft >= 0) {
             const Matrix& Jblock = J4[1];
-            if ((*H)[mk.idxVelL].size() == 0)
-              (*H)[mk.idxVelL].setZero(Jinner.rows(), Jblock.cols());
-            (*H)[mk.idxVelL].noalias() += Jinner * Jblock;
+            if ((*H)[mapping.indexVelLeft].size() == 0)
+              (*H)[mapping.indexVelLeft].setZero(Jinner.rows(), Jblock.cols());
+            (*H)[mapping.indexVelLeft].noalias() += Jinner * Jblock;
           }
-          if (mk.idxPoseR >= 0) {
+          if (mapping.indexPoseRight >= 0) {
             const Matrix& Jblock = J4[2];
-            if ((*H)[mk.idxPoseR].size() == 0)
-              (*H)[mk.idxPoseR].setZero(Jinner.rows(), Jblock.cols());
-            (*H)[mk.idxPoseR].noalias() += Jinner * Jblock;
+            if ((*H)[mapping.indexPoseRight].size() == 0)
+              (*H)[mapping.indexPoseRight].setZero(Jinner.rows(),
+                                                   Jblock.cols());
+            (*H)[mapping.indexPoseRight].noalias() += Jinner * Jblock;
           }
-          if (mk.idxVelR >= 0) {
+          if (mapping.indexVelRight >= 0) {
             const Matrix& Jblock = J4[3];
-            if ((*H)[mk.idxVelR].size() == 0)
-              (*H)[mk.idxVelR].setZero(Jinner.rows(), Jblock.cols());
-            (*H)[mk.idxVelR].noalias() += Jinner * Jblock;
+            if ((*H)[mapping.indexVelRight].size() == 0)
+              (*H)[mapping.indexVelRight].setZero(Jinner.rows(), Jblock.cols());
+            (*H)[mapping.indexVelRight].noalias() += Jinner * Jblock;
           }
         } else {
-          const int k = mk.directOuterIndex;
+          const int k = mapping.directOuterIndex;
           if ((*H)[k].size() == 0)
             (*H)[k].setZero(Jinner.rows(), Jinner.cols());
           (*H)[k].noalias() += Jinner;
@@ -715,7 +701,7 @@ class WNOAInterpFactor : public NoiseModelFactor {
   /**
    * @brief Compute interpolated state values from bordering estimated states.
    *
-   * For every `StateData` in `interp_to_borders` this routine evaluates the
+   * For every `StateData` in `interp_to_borders_` this routine evaluates the
    * interpolator using the left/right bordering estimated states from
    * `values`, inserts the resulting pose and velocity into the returned
    * `Values` container, and optionally returns per-interpolated-state
@@ -742,17 +728,17 @@ class WNOAInterpFactor : public NoiseModelFactor {
     Values values_interp;  // interpolated values
 
     // loop through interpolated state map and compute values
-    for (const auto& [interp_state, border_states] : interp_to_borders) {
+    for (const auto& [interp_state, border_states] : interp_to_borders_) {
       // unpack border states
       auto& [left, right] = border_states;
       // retrieve estimated state values
       const auto state_left = TimestampedPoseVelocity<PoseType>(
-          values.at<PoseType>(left.pose), values.at<VelocityType>(left.vel),
-          left.time);
+          values.at<PoseType>(left.pose),
+          values.at<VelocityType>(left.velocity), left.time);
 
       const auto state_right = TimestampedPoseVelocity<PoseType>(
-          values.at<PoseType>(right.pose), values.at<VelocityType>(right.vel),
-          right.time);
+          values.at<PoseType>(right.pose),
+          values.at<VelocityType>(right.velocity), right.time);
 
       // Get interpolated state velocity pair
       PoseVelocity<PoseType> result;
@@ -761,22 +747,22 @@ class WNOAInterpFactor : public NoiseModelFactor {
       if (InterpJacobians) {
         result = interpolator_.interpolatePoseAndVelocity(
             state_left, state_right, interp_state.time, &H, nullptr, nullptr,
-            lambda_psi_pre_comp.at(interp_state));
+            lambda_psi_pre_comp_.at(interp_state));
       } else {
         result = interpolator_.interpolatePoseAndVelocity(
             state_left, state_right, interp_state.time, nullptr, nullptr,
-            nullptr, lambda_psi_pre_comp.at(interp_state));
+            nullptr, lambda_psi_pre_comp_.at(interp_state));
       }
 
       // insert into values structure
       values_interp.insert(interp_state.pose, result.pose);
-      values_interp.insert(interp_state.vel, result.vel);
+      values_interp.insert(interp_state.velocity, result.vel);
 
       // arrange jacobians in flattened map (fixed order blocks)
       if (InterpJacobians) {
         (*InterpJacobians)[interp_state.pose] =
             std::array<Matrix, 4>{H[0], H[1], H[2], H[3]};
-        (*InterpJacobians)[interp_state.vel] =
+        (*InterpJacobians)[interp_state.velocity] =
             std::array<Matrix, 4>{H[4], H[5], H[6], H[7]};
       }
 
@@ -833,7 +819,7 @@ class WNOAInterpFactor : public NoiseModelFactor {
     // Compute the covariance update based on interpolated states
     // Note: Here, we leverage the block-diagonal approximation of the
     // interpolated covariances (i.e., independence approximation)
-    for (auto& [state, borders] : interp_to_borders) {
+    for (auto& [state, borders] : interp_to_borders_) {
       // Retrieve Jacobians from inner factor
       Matrix G_pose(err_dim, dim);
       Matrix G_vel(err_dim, dim);
@@ -843,7 +829,7 @@ class WNOAInterpFactor : public NoiseModelFactor {
       } else {
         G_pose.setZero();
       }
-      auto itVel = inner_key_to_index_.find(state.vel);
+      auto itVel = inner_key_to_index_.find(state.velocity);
       if (itVel != inner_key_to_index_.end()) {
         G_vel = Jacobians[itVel->second];
       } else {
@@ -878,8 +864,8 @@ class WNOAInterpFactor : public NoiseModelFactor {
  * states).
  * @param interp_states Ordered set of `StateData` entries to be
  * interpolated/removed.
- * @param Q_psd Diagonal PSD vector for the WNOA motion prior (dimension must
- * match PoseType).
+ * @param q_psd_diag Diagonal PSD vector for the WNOA motion prior (dimension
+ * must match PoseType).
  * @param fixed_noise If true, do not augment measurement noise models for
  * interpolation.
  * @return NonlinearFactorGraph New graph with interpolated states removed and
@@ -889,7 +875,7 @@ template <class PoseType>
 NonlinearFactorGraph interpolateFactorGraph(
     const NonlinearFactorGraph& graph,
     const std::set<StateData>& estimated_states,
-    const std::set<StateData>& interp_states, Vector Q_psd,
+    const std::set<StateData>& interp_states, Vector q_psd_diag,
     bool fixed_noise = false) {
   // assert that the pose is the right kind of variable
   static_assert(
@@ -899,7 +885,7 @@ NonlinearFactorGraph interpolateFactorGraph(
                          vector_space_tag>,
       "Pose type must be either a Lie group or vector space");
   // check dimension on the power spectral density matrix
-  assert(traits<PoseType>::dimension == Q_psd.size());
+  assert(traits<PoseType>::dimension == q_psd_diag.size());
   // Create new factor graph
   NonlinearFactorGraph new_graph;
   // Add WNOA prior between all estimated states
@@ -911,15 +897,16 @@ NonlinearFactorGraph interpolateFactorGraph(
     double del_t = state_kp1.time - state_k.time;
     // add factor
     auto motion_factor = std::make_shared<WNOAMotionFactor<PoseType>>(
-        state_k.pose, state_k.vel, state_kp1.pose, state_kp1.vel, del_t, Q_psd);
+        state_k.pose, state_k.velocity, state_kp1.pose, state_kp1.velocity,
+        del_t, q_psd_diag);
     new_graph.add(motion_factor);
     iter_state++;
   }
   // Get map from keys to interpolated state, and interpolated state to
   // estimated state.
-  std::unordered_map<Key, StateData> key_to_interp;
+  std::unordered_map<Key, StateData> key_to_interp_;
   std::unordered_map<StateData, std::pair<StateData, StateData>>
-      interp_to_borders;
+      interp_to_borders_;
   for (const StateData& state : interp_states) {
     // search for estimated state that upper bound current interpolated state
     auto iter_est_state = estimated_states.lower_bound(state);
@@ -933,11 +920,11 @@ NonlinearFactorGraph interpolateFactorGraph(
       // decrement iterator (point to left border)
       iter_est_state--;
       // map interp to left border index
-      interp_to_borders[state] =
+      interp_to_borders_[state] =
           std::pair(*iter_est_state, *std::next(iter_est_state));
       // map keys to interp state
-      key_to_interp[state.pose] = state;
-      key_to_interp[state.vel] = state;
+      key_to_interp_[state.pose] = state;
+      key_to_interp_[state.velocity] = state;
     }
   }
   // loop through factors and wrap factors on interpolated states
@@ -951,11 +938,11 @@ NonlinearFactorGraph interpolateFactorGraph(
     std::set<StateData> factor_estimated_states;
     for (Key& key : factor->keys()) {
       // check if key is an interpolated value
-      if (key_to_interp.count(key) > 0) {
+      if (key_to_interp_.count(key) > 0) {
         // add indices
-        StateData interp_state = key_to_interp[key];
+        StateData interp_state = key_to_interp_[key];
         factor_interp_states.insert(interp_state);
-        auto [left, right] = interp_to_borders.at(interp_state);
+        auto [left, right] = interp_to_borders_.at(interp_state);
         factor_estimated_states.insert(left);
         factor_estimated_states.insert(right);
       }
@@ -972,7 +959,7 @@ NonlinearFactorGraph interpolateFactorGraph(
 
       // Define and add factor to new graph
       const auto wrapped_factor = std::make_shared<WNOAInterpFactor<PoseType>>(
-          nmfactor, factor_estimated_states, factor_interp_states, Q_psd,
+          nmfactor, factor_estimated_states, factor_interp_states, q_psd_diag,
           fixed_noise);
       new_graph.add(wrapped_factor);
     }
@@ -1119,7 +1106,7 @@ WNOAFactorGraph<PoseType> interpolateWNOAFactorGraph(
  * @param estim_states Ordered set of estimated `StateData` used by the main
  * solve.
  * @param interp_states Ordered set of `StateData` entries to interpolate.
- * @param Q_psd Diagonal PSD vector for the WNOA motion prior.
+ * @param q_psd_diag Diagonal PSD vector for the WNOA motion prior.
  * @param covarianceMapOut Optional output pointer to receive
  * per-interpolated-state covariances.
  * @return Values A copy of `values` updated with interpolated pose and velocity

@@ -1,20 +1,19 @@
 /* ----------------------------------------------------------------------------
- * @file Interpolator.cpp
+ * @file WnoaInterpolator.cpp
  *
  * Note: References to (Barfoot 2024) refer to the following textbook:
  * Barfoot, Timothy D. State estimation for robotics. Cambridge University
  * Press, 2024.
  * -------------------------------------------------------------------------- */
 
-#include "WNOAInterpolator.h"
+#include "WnoaInterpolator.h"
 
 namespace gtsam {
 
 // ---- Constructors ----
 template <typename PoseType>
 Interpolator<PoseType>::Interpolator(
-    const VectorN& Q_psd,
-    std::function<Matrix(double dt)> transitionFunction,
+    const VectorN& Q_psd, std::function<Matrix(double dt)> transitionFunction,
     std::function<Matrix(double dt, const VectorN& Q_psd)> covarianceFunction,
     std::function<Matrix(double dt, const VectorN& Q_psd)>
 
@@ -34,12 +33,11 @@ Interpolator<PoseType>::Interpolator(
 
 template <typename PoseType>
 Interpolator<PoseType>::Interpolator(const VectorN& Q_psd)
-    : Interpolator(Q_psd,
-                   WNOAMotionFactor<PoseType>::transitionFunction,
-                   WNOAMotionFactor<PoseType>::buildWNOACovariance,
-                   WNOAMotionFactor<PoseType>::buildInverseWNOACovariance,
-                   WNOAMotionFactor<PoseType>::computeJacobianPrev,
-                   WNOAMotionFactor<PoseType>::computeJacobianNext) {}
+    : Interpolator(Q_psd, WNOAMotionFactor<PoseType>::TransitionFunction,
+                   WNOAMotionFactor<PoseType>::BuildWNOACovariance,
+                   WNOAMotionFactor<PoseType>::BuildInverseWNOACovariance,
+                   WNOAMotionFactor<PoseType>::ComputeJacobianPrev,
+                   WNOAMotionFactor<PoseType>::ComputeJacobianNext) {}
 
 // ---- Member Functions ----
 template <typename PoseType>
@@ -52,8 +50,7 @@ Interpolator<PoseType>::interpolatePoseAndVelocity(
     Matrix* covarianceOut,
     const std::shared_ptr<const LambdaPsiMats>& LambdaPsiPreComp,
     const std::shared_ptr<const LocalStateVecs>& localStateVecsPreComp,
-    const std::shared_ptr<const LocalGlobalStateJacs>&
-        localGlobalStateJacsPreComp) const {
+    const std::shared_ptr<const StateJacobians>& stateJacobiansPreComp) const {
   assert((tPoseVel_k.has_value() || tPoseVel_kp1.has_value()) &&
          "At least one TimestampedPoseVel must be defined");
   // second point not defined, extrap from first
@@ -99,9 +96,9 @@ Interpolator<PoseType>::interpolatePoseAndVelocity(
     // only remaining case is that t_tau is within border states
     // call protected overload of interpolate function
     return interpolatePoseAndVelocity_(
-          tPoseVel_k.value(), tPoseVel_kp1.value(), t_tau, H,
-          mainSolveMarginalMatrix, covarianceOut, LambdaPsiPreComp,
-          localStateVecsPreComp, localGlobalStateJacsPreComp);
+        tPoseVel_k.value(), tPoseVel_kp1.value(), t_tau, H,
+        mainSolveMarginalMatrix, covarianceOut, LambdaPsiPreComp,
+        localStateVecsPreComp, stateJacobiansPreComp);
   }
 }
 
@@ -143,22 +140,14 @@ Interpolator<PoseType>::interpolateBoundaryRight(
     const std::shared_ptr<Matrix>& mainSolveMarginalMatrix,
     Matrix* covarianceOut) const {
   if (H) {
-    // dTtau_dTk
-    (*H)[0] = MatrixN::Zero();
-    // dTtau_dvarpik
-    (*H)[1] = MatrixN::Zero();
-    // dTtau_dTkp1
-    (*H)[2] = MatrixN::Identity();
-    // dTtau_dvarpikp1
-    (*H)[3] = MatrixN::Zero();
-    // dvarpitau_dTk
-    (*H)[4] = MatrixN::Zero();
-    // dvarpitau_dvarpik
-    (*H)[5] = MatrixN::Zero();
-    // dvarpitau_dTkp1
-    (*H)[6] = MatrixN::Zero();
-    // dvarpitau_dvarpikp1
-    (*H)[7] = MatrixN::Identity();
+    (*H)[0] = MatrixN::Zero();      // dTtau_dTk
+    (*H)[1] = MatrixN::Zero();      // dTtau_dvarpik
+    (*H)[2] = MatrixN::Identity();  // dTtau_dTkp1
+    (*H)[3] = MatrixN::Zero();      // dTtau_dvarpikp1
+    (*H)[4] = MatrixN::Zero();      // dvarpitau_dTk
+    (*H)[5] = MatrixN::Zero();      // dvarpitau_dvarpik
+    (*H)[6] = MatrixN::Zero();      // dvarpitau_dTkp1
+    (*H)[7] = MatrixN::Identity();  // dvarpitau_dvarpikp1
   }
   if (covarianceOut && mainSolveMarginalMatrix) {
     // if t_tau == t_kp1, then the covariance is the same as that of Tvarpi_kp1
@@ -213,156 +202,213 @@ Interpolator<PoseType>::interpolatePoseAndVelocity_(
     Matrix* covarianceOut,
     const std::shared_ptr<const LambdaPsiMats>& LambdaPsiPreComp,
     const std::shared_ptr<const LocalStateVecs>& localStateVecsPreComp,
-    const std::shared_ptr<const LocalGlobalStateJacs>&
-        localGlobalStateJacsPreComp) const {
+    const std::shared_ptr<const StateJacobians>& stateJacobiansPreComp) const {
   // unpack poses and velocities
   const auto& [poseVel_k, t_k] = tPoseVel_k;
-  const auto& [poseVel_kp1, t_kp1] = tPoseVel_kp1;
   const auto& [T_k, varpi_k] = poseVel_k;
+  const auto& [poseVel_kp1, t_kp1] = tPoseVel_kp1;
 
-  // Retrieve interpolation matrices
-  Matrix2N Lambda, Psi;
-  if (!LambdaPsiPreComp) {
-    std::tie(Lambda, Psi) = getLambdaPsi(t_k, t_kp1, t_tau);
-  } else {
-    std::tie(Lambda, Psi) = *LambdaPsiPreComp;
-  }
+  // 1. Form local state vectors and Jacobians
   // Form local state vectors at time k, in the Lie algebra of Pose at time k
   // Follows Eq. (11.45) in (Barfoot 2024)
-  VectorN xi_k, xi_dot_k;
+  VectorN xi_k, xi_dot_k, xi_kp1, xi_dot_kp1;
   xi_k.setZero();
-  xi_dot_k = varpi_k;
-
   // Intermediate Jacobians for xi and xi_dot at next time step with respect to
   // the bordering states and velocities
-  MatrixN dxi_dTk;
-  MatrixN dxi_dTkp1;
-  MatrixN dxidot_dTk;
-  MatrixN dxidot_dTkp1;
-  MatrixN dxidotkp1_dvarpikp1;
-  // Get local state vectors at time kp1, in the Lie algebra of Pose at time k
-  VectorN xi_kp1, xi_dot_kp1;
-  if (localStateVecsPreComp) {
-    // If precomputation of local state vectors is provided, use it to save
-    // computation
-    xi_kp1 = localStateVecsPreComp->first;
-    xi_dot_kp1 = localStateVecsPreComp->second;
-
-    if (H && localGlobalStateJacsPreComp) {
-      dxi_dTk = localGlobalStateJacsPreComp->at(0);
-      dxi_dTkp1 = localGlobalStateJacsPreComp->at(1);
-      dxidot_dTk = localGlobalStateJacsPreComp->at(2);
-      dxidot_dTkp1 = localGlobalStateJacsPreComp->at(3);
-      dxidotkp1_dvarpikp1 = localGlobalStateJacsPreComp->at(4);
-    }
-
+  StateJacobians localJacs;
+  if (H) {
+    formLocalStateAndJacobians_(tPoseVel_k, tPoseVel_kp1, localStateVecsPreComp,
+                                stateJacobiansPreComp, &xi_dot_k, &xi_kp1,
+                                &xi_dot_kp1, &localJacs);
   } else {
-    LocalStateVecs local_state;
-    LocalGlobalStateJacs local_jacs;
-    if (H) {
-      local_state =
-          computeLocalStateVecs(tPoseVel_k, tPoseVel_kp1, &local_jacs);
-      dxi_dTk = local_jacs[0];
-      dxi_dTkp1 = local_jacs[1];
-      dxidot_dTk = local_jacs[2];
-      dxidot_dTkp1 = local_jacs[3];
-      dxidotkp1_dvarpikp1 = local_jacs[4];
-    } else {
-      local_state = computeLocalStateVecs(tPoseVel_k, tPoseVel_kp1, nullptr);
-    }
-    xi_kp1 = local_state.first;
-    xi_dot_kp1 = local_state.second;
+    formLocalStateAndJacobians_(tPoseVel_k, tPoseVel_kp1, localStateVecsPreComp,
+                                stateJacobiansPreComp, &xi_dot_k, &xi_kp1,
+                                &xi_dot_kp1);
   }
+  // 2. Interpolation
+  // Retrieve interpolation matrices
+  Matrix2N Lambda, Psi;
   // Compute local state vectors at time tau, in the Lie algebra of Pose at time
   // k, using WNOA interpolation equations
-  VectorN xi_tau =
-      Lambda.block(0, dim, dim, dim) * xi_dot_k +
-      Psi.block(0, 0, dim, dim) * xi_kp1 +
-      Psi.block(0, dim, dim, dim) * xi_dot_kp1;  // Dropping xi_k term here since it's zero
-  VectorN xidot_tau =
-      Lambda.block(dim, dim, dim, dim) * xi_dot_k +
-      Psi.block(dim, 0, dim, dim) * xi_kp1 +
-      Psi.block(dim, dim, dim, dim) * xi_dot_kp1;  // Dropping xi_k term here since it's zero
+  VectorN xi_tau, xidot_tau;
+  interpolateLocalState_(t_k, t_kp1, t_tau, xi_dot_k, xi_kp1, xi_dot_kp1,
+                         LambdaPsiPreComp, &Lambda, &Psi, &xi_tau, &xidot_tau);
+  // 3. Map to manifold
   // Additional intermediate Jacobians
-  MatrixN right_jac_tau;
-  MatrixN dTtau_dTk;
-  MatrixN dTtau_dxitau;
+  MatrixN right_jac_tau, dTtau_dTk, dTtau_dxitau;
   // Map the local state vector at time tau back to the manifold to get the
   // interpolated pose Eq. (11.45) in (Barfoot 2024)
-  PoseType T_tau;
+  PoseVel poseVel_tau;
   if (H) {
-    T_tau = traits<PoseType>::Compose(
-        T_k, traits<PoseType>::Expmap(xi_tau, &right_jac_tau), &dTtau_dTk,
-        &dTtau_dxitau);
-    dTtau_dxitau = dTtau_dxitau * right_jac_tau;
+    poseVel_tau = mapLocalStateToManifold_(
+        T_k, xi_tau, xidot_tau, &right_jac_tau, &dTtau_dTk, &dTtau_dxitau);
   } else {
-    T_tau = traits<PoseType>::Compose(
-        T_k, traits<PoseType>::Expmap(xi_tau, &right_jac_tau));
+    poseVel_tau =
+        mapLocalStateToManifold_(T_k, xi_tau, xidot_tau, &right_jac_tau);
   }
-  // Compute interpolated velocity at time tau
-  auto varpi_tau = right_jac_tau * xidot_tau;
 
-  // Compute complete Jacobians
+  // 4. Compute complete Jacobians
   if (H) {
-    // Zero for vector spaces, use an approximation for Lie groups
-    MatrixN dvarpitau_dxitau;
-    if constexpr (std::is_same_v<typename traits<PoseType>::structure_category,
-                                 vector_space_tag>) {
-      dvarpitau_dxitau.setZero();
-    } else {
-      // For Lie groups
-      dvarpitau_dxitau = PoseType::adjointMap(xidot_tau) / 2.0;
-    }
-
-    // derivatives of local state position at time tau with respect to bordering
-    // states and velocities
-    MatrixN dxitau_dTk = Psi(0, 0) * dxi_dTk + Psi(0, dim) * dxidot_dTk;
-    MatrixN dxitau_dvarpik =
-        Lambda(0, dim) * MatrixN::Identity();  // xi does not depend on varpi_k
-                                               // and xi_dot is exactly varpi_k
-    MatrixN dxitau_dTkp1 = Psi(0, 0) * dxi_dTkp1 + Psi(0, dim) * dxidot_dTkp1;
-    MatrixN dxitau_dvarpikp1 =
-        Psi(0, dim) *
-        dxidotkp1_dvarpikp1;  // dxikp1 does not depend on varpi_kp1
-    // derivatives of local state velocity at time tau with respect to bordering
-    // states and velocities
-    MatrixN dxidottau_dTk = Psi(dim, 0) * dxi_dTk + Psi(dim, dim) * dxidot_dTk;
-    MatrixN dxidottau_dvarpik =
-        Lambda(dim, dim) *
-        MatrixN::Identity();  // xi does not depend on varpi_k and xi_dot is
-                              // exactly varpi_k
-    MatrixN dxidottau_dTkp1 =
-        Psi(dim, 0) * dxi_dTkp1 + Psi(dim, dim) * dxidot_dTkp1;
-    MatrixN dxidottau_dvarpikp1 =
-        Psi(dim, dim) *
-        dxidotkp1_dvarpikp1;  // dxikp1 does not depend on varpi_kp1
-    // Compose final Jacobians using chain rule
-    // dTtau_dTk
-    (*H)[0] = dTtau_dTk + dTtau_dxitau * dxitau_dTk;
-    // dTtau_dvarpik
-    (*H)[1] = dTtau_dxitau * dxitau_dvarpik;
-    // dTtau_dTkp1
-    (*H)[2] = dTtau_dxitau * dxitau_dTkp1;
-    // dTtau_dvarpikp1
-    (*H)[3] = dTtau_dxitau * dxitau_dvarpikp1;
-    // dvarpitau_dTk
-    (*H)[4] = right_jac_tau * dxidottau_dTk + dvarpitau_dxitau * dxitau_dTk;
-    // dvarpitau_dvarpik
-    (*H)[5] =
-        right_jac_tau * dxidottau_dvarpik + dvarpitau_dxitau * dxitau_dvarpik;
-    // dvarpitau_dTkp1
-    (*H)[6] = right_jac_tau * dxidottau_dTkp1 + dvarpitau_dxitau * dxitau_dTkp1;
-    // dvarpitau_dvarpikp1
-    (*H)[7] = right_jac_tau * dxidottau_dvarpikp1 +
-              dvarpitau_dxitau * dxitau_dvarpikp1;
+    computeCompleteJacobians_(Lambda, Psi, xidot_tau, right_jac_tau, dTtau_dTk,
+                              dTtau_dxitau, localJacs, H);
   }
 
-  // Output pair
-  auto poseVel_tau = PoseVel{T_tau, varpi_tau};
-
+  // 5. Compute covariance of the interpolated pose and velocity
   // compute covariance of the interpolated pose (and velocity, if required)
   // using Lambda and Psi computed from (11.41) in (Barfoot 2024).
   // This should be equivalent to using (4.23) in the FnT paper.
+  computeInterpolationCovariance_(tPoseVel_k, tPoseVel_kp1, poseVel_tau, t_tau,
+                                  Lambda, Psi, mainSolveMarginalMatrix,
+                                  covarianceOut);
+  return poseVel_tau;
+}
+
+template <typename PoseType>
+void Interpolator<PoseType>::formLocalStateAndJacobians_(
+    const TimestampedPoseVel& tPoseVel_k,
+    const TimestampedPoseVel& tPoseVel_kp1,
+    const std::shared_ptr<const LocalStateVecs>& localStateVecsPreComp,
+    const std::shared_ptr<const StateJacobians>& stateJacobiansPreComp,
+    VectorN* xi_dot_k, VectorN* xi_kp1, VectorN* xi_dot_kp1,
+    StateJacobians* jacs) const {
+  const auto& [poseVel_k, _t_k] = tPoseVel_k;
+  const auto& [_T_k, varpi_k] = poseVel_k;
+  *xi_dot_k = varpi_k;
+
+  const bool needComputedState =
+      !localStateVecsPreComp || (jacs && !stateJacobiansPreComp);
+
+  LocalStateVecs local_state;
+  StateJacobians localJacs;
+  if (needComputedState) {
+    local_state = computeLocalStateVecs(tPoseVel_k, tPoseVel_kp1,
+                                        jacs ? &localJacs : nullptr);
+  }
+
+  // State vectors come from precompute if available, otherwise from local.
+  if (localStateVecsPreComp) {
+    *xi_kp1 = localStateVecsPreComp->first;
+    *xi_dot_kp1 = localStateVecsPreComp->second;
+  } else {
+    *xi_kp1 = local_state.first;
+    *xi_dot_kp1 = local_state.second;
+  }
+
+  if (jacs) {
+    // Jacobians come from precompute if available, otherwise from local.
+    *jacs = stateJacobiansPreComp ? *stateJacobiansPreComp : localJacs;
+  }
+}
+
+template <typename PoseType>
+void Interpolator<PoseType>::interpolateLocalState_(
+    double t_k, double t_kp1, double t_tau, const VectorN& xi_dot_k,
+    const VectorN& xi_kp1, const VectorN& xi_dot_kp1,
+    const std::shared_ptr<const LambdaPsiMats>& LambdaPsiPreComp,
+    Matrix2N* Lambda, Matrix2N* Psi, VectorN* xi_tau,
+    VectorN* xidot_tau) const {
+  if (!LambdaPsiPreComp) {
+    std::tie(*Lambda, *Psi) = getLambdaPsi(t_k, t_kp1, t_tau);
+  } else {
+    std::tie(*Lambda, *Psi) = *LambdaPsiPreComp;
+  }
+
+  *xi_tau = Lambda->block(0, dim, dim, dim) * xi_dot_k +
+            Psi->block(0, 0, dim, dim) * xi_kp1 +
+            Psi->block(0, dim, dim, dim) *
+                xi_dot_kp1;  // Dropping xi_k term here since it's zero
+  *xidot_tau = Lambda->block(dim, dim, dim, dim) * xi_dot_k +
+               Psi->block(dim, 0, dim, dim) * xi_kp1 +
+               Psi->block(dim, dim, dim, dim) *
+                   xi_dot_kp1;  // Dropping xi_k term here since it's zero
+}
+
+template <typename PoseType>
+typename Interpolator<PoseType>::PoseVel
+Interpolator<PoseType>::mapLocalStateToManifold_(
+    const PoseType& T_k, const VectorN& xi_tau, const VectorN& xidot_tau,
+    MatrixN* right_jac_tau, MatrixN* dTtau_dTk, MatrixN* dTtau_dxitau) const {
+  PoseType T_tau;
+  if (dTtau_dTk && dTtau_dxitau) {
+    T_tau = traits<PoseType>::Compose(
+        T_k, traits<PoseType>::Expmap(xi_tau, right_jac_tau), dTtau_dTk,
+        dTtau_dxitau);
+    *dTtau_dxitau = *dTtau_dxitau * *right_jac_tau;
+  } else {
+    T_tau = traits<PoseType>::Compose(
+        T_k, traits<PoseType>::Expmap(xi_tau, right_jac_tau));
+  }
+  auto varpi_tau = *right_jac_tau * xidot_tau;
+  return PoseVel{T_tau, varpi_tau};
+}
+
+template <typename PoseType>
+void Interpolator<PoseType>::computeCompleteJacobians_(
+    const Matrix2N& Lambda, const Matrix2N& Psi, const VectorN& xidot_tau,
+    const MatrixN& right_jac_tau, const MatrixN& dTtau_dTk,
+    const MatrixN& dTtau_dxitau, const StateJacobians& jacs,
+    OptionalMatrixVecType H) const {
+  // Zero for vector spaces, use an approximation for Lie groups
+  MatrixN dvarpitau_dxitau;
+  if constexpr (std::is_same_v<typename traits<PoseType>::structure_category,
+                               vector_space_tag>) {
+    dvarpitau_dxitau.setZero();
+  } else {
+    // For Lie groups
+    dvarpitau_dxitau = PoseType::adjointMap(xidot_tau) / 2.0;
+  }
+
+  // derivatives of local state position at time tau with respect to bordering
+  // states and velocities
+  MatrixN dxitau_dTk = Psi(0, 0) * jacs.dxi_dTk + Psi(0, dim) * jacs.dxidot_dTk;
+  MatrixN dxitau_dvarpik =
+      Lambda(0, dim) * MatrixN::Identity();  // xi does not depend on varpi_k
+                                             // and xi_dot is exactly varpi_k
+  MatrixN dxitau_dTkp1 =
+      Psi(0, 0) * jacs.dxi_dTkp1 + Psi(0, dim) * jacs.dxidot_dTkp1;
+  MatrixN dxitau_dvarpikp1 =
+      Psi(0, dim) *
+      jacs.dxidotkp1_dvarpikp1;  // dxikp1 does not depend on varpi_kp1
+  // derivatives of local state velocity at time tau with respect to bordering
+  // states and velocities
+  MatrixN dxidottau_dTk =
+      Psi(dim, 0) * jacs.dxi_dTk + Psi(dim, dim) * jacs.dxidot_dTk;
+  MatrixN dxidottau_dvarpik =
+      Lambda(dim, dim) * MatrixN::Identity();  // xi does not depend on varpi_k
+                                               // and xi_dot is exactly varpi_k
+  MatrixN dxidottau_dTkp1 =
+      Psi(dim, 0) * jacs.dxi_dTkp1 + Psi(dim, dim) * jacs.dxidot_dTkp1;
+  MatrixN dxidottau_dvarpikp1 =
+      Psi(dim, dim) *
+      jacs.dxidotkp1_dvarpikp1;  // dxikp1 does not depend on varpi_kp1
+  // Compose final Jacobians using chain rule
+  // dTtau_dTk
+  (*H)[0] = dTtau_dTk + dTtau_dxitau * dxitau_dTk;
+  // dTtau_dvarpik
+  (*H)[1] = dTtau_dxitau * dxitau_dvarpik;
+  // dTtau_dTkp1
+  (*H)[2] = dTtau_dxitau * dxitau_dTkp1;
+  // dTtau_dvarpikp1
+  (*H)[3] = dTtau_dxitau * dxitau_dvarpikp1;
+  // dvarpitau_dTk
+  (*H)[4] = right_jac_tau * dxidottau_dTk + dvarpitau_dxitau * dxitau_dTk;
+  // dvarpitau_dvarpik
+  (*H)[5] =
+      right_jac_tau * dxidottau_dvarpik + dvarpitau_dxitau * dxitau_dvarpik;
+  // dvarpitau_dTkp1
+  (*H)[6] = right_jac_tau * dxidottau_dTkp1 + dvarpitau_dxitau * dxitau_dTkp1;
+  // dvarpitau_dvarpikp1
+  (*H)[7] =
+      right_jac_tau * dxidottau_dvarpikp1 + dvarpitau_dxitau * dxitau_dvarpikp1;
+}
+
+template <typename PoseType>
+void Interpolator<PoseType>::computeInterpolationCovariance_(
+    const TimestampedPoseVel& tPoseVel_k,
+    const TimestampedPoseVel& tPoseVel_kp1, const PoseVel& poseVel_tau,
+    double t_tau, const Matrix2N& Lambda, const Matrix2N& Psi,
+    const std::shared_ptr<Matrix>& mainSolveMarginalMatrix,
+    Matrix* covarianceOut) const {
   if (mainSolveMarginalMatrix && covarianceOut) {
     Eigen::Matrix<double, 2 * dim, 4 * dim> LambdaPsi;
     Matrix2N Sigma = computeConditionalCov(
@@ -371,12 +417,11 @@ Interpolator<PoseType>::interpolatePoseAndVelocity_(
     *covarianceOut =
         Sigma + LambdaPsi * *mainSolveMarginalMatrix * LambdaPsi.transpose();
   }
-  return poseVel_tau;
 }
 
 template <typename PoseType>
 std::map<StateDataInterval, std::shared_ptr<Matrix>>
-Interpolator<PoseType>::computeJointMarginals(
+Interpolator<PoseType>::ComputeJointMarginals(
     const std::map<StateDataInterval, std::vector<StateData>>& queryBuckets,
     const std::unique_ptr<Marginals>& marginals) {
   std::map<StateDataInterval, std::shared_ptr<Matrix>>
@@ -387,12 +432,12 @@ Interpolator<PoseType>::computeJointMarginals(
   auto formBoundaryKeyVector = [](const StateDataInterval& stateDataBorders) {
     KeyVector boundaryKeyVector;
     if (stateDataBorders.first.has_value()) {
-      boundaryKeyVector.push_back(stateDataBorders.first->pose);  // p1
-      boundaryKeyVector.push_back(stateDataBorders.first->vel);   // v1
+      boundaryKeyVector.push_back(stateDataBorders.first->pose);      // p1
+      boundaryKeyVector.push_back(stateDataBorders.first->velocity);  // v1
     }
     if (stateDataBorders.second.has_value()) {
-      boundaryKeyVector.push_back(stateDataBorders.second->pose);  // p2
-      boundaryKeyVector.push_back(stateDataBorders.second->vel);   // v2
+      boundaryKeyVector.push_back(stateDataBorders.second->pose);      // p2
+      boundaryKeyVector.push_back(stateDataBorders.second->velocity);  // v2
     }
     return boundaryKeyVector;
   };
@@ -407,7 +452,7 @@ Interpolator<PoseType>::computeJointMarginals(
     // avoid using JointMarginal.fullMatrix() as it returns covariance
     // in alphabetical order of the keys...
     auto mainSolveMarginalMatrix =
-        std::make_shared<Matrix>(constructMatrixFromJointMarginal(
+        std::make_shared<Matrix>(ConstructMatrixFromJointMarginal(
             mainSolveMarginal, boundaryKeyVector, dim));
     intervalJointMarginals[stateDataBorders] = mainSolveMarginalMatrix;
   }
@@ -448,7 +493,7 @@ Values Interpolator<PoseType>::interpolatePosesAndVelocities(
     // Compute all required joint marginals
     fullMarginal =
         std::make_unique<Marginals>(mainSolveGraph, mainSolveSolution);
-    intervalJointMarginals = computeJointMarginals(queryBuckets, fullMarginal);
+    intervalJointMarginals = ComputeJointMarginals(queryBuckets, fullMarginal);
   }
 
   // Perform interpolation for each bucket
@@ -457,7 +502,7 @@ Values Interpolator<PoseType>::interpolatePosesAndVelocities(
         -> std::optional<TimestampedPoseVel> {
       if (!s) return std::nullopt;
       return TimestampedPoseVel(mainSolveSolution.at<PoseType>(s->pose),
-                                mainSolveSolution.at<VelocityType>(s->vel),
+                                mainSolveSolution.at<VelocityType>(s->velocity),
                                 s->time);
     };
 
@@ -479,13 +524,13 @@ Values Interpolator<PoseType>::interpolatePosesAndVelocities(
                                      mainSolveMarginalMatrix, &covarianceOut);
       auto [T_tau, varpi_tau] = pvtau;
       interpolatedSolution.insert(stateDataInterp.pose, T_tau);
-      interpolatedSolution.insert(stateDataInterp.vel, varpi_tau);
+      interpolatedSolution.insert(stateDataInterp.velocity, varpi_tau);
       if (covarianceMapOut) {
         // upper left covariance block corresponds to pose, lower right block
         // corresponds to velocity
         (*covarianceMapOut)[stateDataInterp.pose] =
             covarianceOut.topLeftCorner(dim, dim);
-        (*covarianceMapOut)[stateDataInterp.vel] =
+        (*covarianceMapOut)[stateDataInterp.velocity] =
             covarianceOut.bottomRightCorner(dim, dim);
       }
     }
@@ -551,32 +596,29 @@ template <typename PoseType>
 typename Interpolator<PoseType>::LocalStateVecs
 Interpolator<PoseType>::computeLocalStateVecs(
     const TimestampedPoseVel& pvk, const TimestampedPoseVel& pvkp1,
-    Interpolator<PoseType>::LocalGlobalStateJacs* jacs) const {
+    Interpolator<PoseType>::StateJacobians* jacs) const {
   const auto& [poseVel_k, t_k] = pvk;
   const auto& [poseVel_kp1, t_kp1] = pvkp1;
   const auto& [T_k, varpi_k] = poseVel_k;
   const auto& [T_kp1, varpi_kp1] = poseVel_kp1;
 
   VectorN xi_kp1, xi_dot_kp1;
-  MatrixN right_jac_inv;
-  MatrixN dxi_dTk, dxi_dTkp1;
-  MatrixN dxidot_dTk, dxidot_dTkp1;
-  MatrixN dxidotkp1_dvarpikp1;
+  MatrixN invJr;
 
   if (jacs) {
     MatrixN dbetween_Tk;
     MatrixN dbetween_Tkp1;
     xi_kp1 = traits<PoseType>::Logmap(
         traits<PoseType>::Between(T_k, T_kp1, &dbetween_Tk, &dbetween_Tkp1),
-        &right_jac_inv);
+        &invJr);
     // Compute derivatives
-    dxi_dTk = right_jac_inv * dbetween_Tk;
-    dxi_dTkp1 = right_jac_inv * dbetween_Tkp1;
+    jacs->dxi_dTk = invJr * dbetween_Tk;
+    jacs->dxi_dTkp1 = invJr * dbetween_Tkp1;
   } else {
-    xi_kp1 = traits<PoseType>::Logmap(traits<PoseType>::Between(T_k, T_kp1),
-                                      &right_jac_inv);
+    xi_kp1 =
+        traits<PoseType>::Logmap(traits<PoseType>::Between(T_k, T_kp1), &invJr);
   }
-  xi_dot_kp1 = right_jac_inv * varpi_kp1;
+  xi_dot_kp1 = invJr * varpi_kp1;
   LocalStateVecs local_state;
   local_state.first = xi_kp1;
   local_state.second = xi_dot_kp1;
@@ -591,16 +633,9 @@ Interpolator<PoseType>::computeLocalStateVecs(
       // For Lie groups
       dxidot_dxi = -PoseType::adjointMap(varpi_kp1) / 2.0;
     }
-    dxidot_dTk = dxidot_dxi * dxi_dTk;
-    dxidot_dTkp1 = dxidot_dxi * dxi_dTkp1;
-    dxidotkp1_dvarpikp1 = right_jac_inv;
-
-    jacs->clear();
-    jacs->push_back(dxi_dTk);
-    jacs->push_back(dxi_dTkp1);
-    jacs->push_back(dxidot_dTk);
-    jacs->push_back(dxidot_dTkp1);
-    jacs->push_back(dxidotkp1_dvarpikp1);
+    jacs->dxidot_dTk = dxidot_dxi * jacs->dxi_dTk;
+    jacs->dxidot_dTkp1 = dxidot_dxi * jacs->dxi_dTkp1;
+    jacs->dxidotkp1_dvarpikp1 = invJr;
   }
 
   return local_state;
@@ -647,7 +682,7 @@ Interpolator<PoseType>::computeConditionalCov(
 }
 
 template <typename PoseType>
-Matrix Interpolator<PoseType>::constructMatrixFromJointMarginal(
+Matrix Interpolator<PoseType>::ConstructMatrixFromJointMarginal(
     const JointMarginal& blockMatrix, const KeyVector& keyVector,
     size_t blockSize) {
   size_t n = keyVector.size();
