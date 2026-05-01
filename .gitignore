@@ -47,3 +47,4 @@ doc/#*.lyx#
 conductor/
 .ccache/
 gtsam_unstable/timing/data/
+timing/results/bayes_tree_covariance/
