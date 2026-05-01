@@ -100,8 +100,8 @@ WNOAFactorGraph<PoseType>::WNOAFactorGraph(
     const auto& right = border_states.second;
     border_pose_keys_.insert(left.pose);
     border_pose_keys_.insert(right.pose);
-    border_vel_keys_.insert(left.vel);
-    border_vel_keys_.insert(right.vel);
+    border_vel_keys_.insert(left.velocity);
+    border_vel_keys_.insert(right.velocity);
 
     double tau = kv.first.time;
     double t_k = left.time;
@@ -328,16 +328,16 @@ Values WNOAFactorGraph<PoseType>::getInterpolatedValues(
 
             // Get the corresponding state values from the cache
             const auto state_left = TimestampedPoseVelocity<PoseType>(
-                border_pose_cache[left.pose], border_vel_cache[left.vel],
+                border_pose_cache[left.pose], border_vel_cache[left.velocity],
                 left.time);
             const auto state_right = TimestampedPoseVelocity<PoseType>(
-                border_pose_cache[right.pose], border_vel_cache[right.vel],
+                border_pose_cache[right.pose], border_vel_cache[right.velocity],
                 right.time);
 
             // Precompute local state vars and local-global Jacobians for this
             // border pair
-            std::shared_ptr<LocalGlobalStateJacs> localGlobalStateJacsPreComp =
-                std::make_shared<LocalGlobalStateJacs>();
+            std::shared_ptr<StateJacobians> stateJacobiansPreComp =
+                std::make_shared<StateJacobians>();
             std::shared_ptr<LocalStateVecs> localStateVecsPreComp =
                 std::make_shared<LocalStateVecs>();
 
@@ -349,7 +349,7 @@ Values WNOAFactorGraph<PoseType>::getInterpolatedValues(
               // xi_dot_tau and the interpolation Jacobians change between
               // interpolated states in the same batch)
               *localStateVecsPreComp = interpolator_.computeLocalStateVecs(
-                  state_left, state_right, localGlobalStateJacsPreComp.get());
+                  state_left, state_right, stateJacobiansPreComp.get());
             } else {
               // If we're not computing Jacobians, we only need to compute the
               // local state vectors (xi, xi_dot at the border) for this border
@@ -380,13 +380,13 @@ Values WNOAFactorGraph<PoseType>::getInterpolatedValues(
                     state_left, state_right, interp_state.time, &local.H,
                     nullptr, nullptr,
                     interp_to_LambdaPsi_vec_[interpIdx].second,
-                    localStateVecsPreComp, localGlobalStateJacsPreComp);
+                    localStateVecsPreComp, stateJacobiansPreComp);
                 std::array<Matrix, 4> Jpose = {local.H[0], local.H[1],
                                                local.H[2], local.H[3]};
                 std::array<Matrix, 4> Jvel = {local.H[4], local.H[5],
                                               local.H[6], local.H[7]};
                 local.jacs.emplace_back(interp_state.pose, std::move(Jpose));
-                local.jacs.emplace_back(interp_state.vel, std::move(Jvel));
+                local.jacs.emplace_back(interp_state.velocity, std::move(Jvel));
               } else {
                 // If we're not computing Jacobians, we only compute the
                 // interpolated state value for this interpolated state We can
@@ -404,7 +404,7 @@ Values WNOAFactorGraph<PoseType>::getInterpolatedValues(
               // thread-local Values structure
               local.local_values.insert(interp_state.pose,
                                         std::move(result.pose));
-              local.local_values.insert(interp_state.vel,
+              local.local_values.insert(interp_state.velocity,
                                         std::move(result.vel));
               if (InterpCondCovs) {
                 // If we're computing conditional covariances, we also compute
@@ -461,20 +461,22 @@ Values WNOAFactorGraph<PoseType>::getInterpolatedValues(
     const StateData& left = kv.first.first;
     const StateData& right = kv.first.second;
     const auto state_left = TimestampedPoseVelocity<PoseType>(
-        border_pose_cache[left.pose], border_vel_cache[left.vel], left.time);
+        border_pose_cache[left.pose], border_vel_cache[left.velocity],
+        left.time);
     const auto state_right = TimestampedPoseVelocity<PoseType>(
-        border_pose_cache[right.pose], border_vel_cache[right.vel], right.time);
+        border_pose_cache[right.pose], border_vel_cache[right.velocity],
+        right.time);
 
     // Precompute local state vars and local-global Jacobians for this border
     // pair
-    std::shared_ptr<LocalGlobalStateJacs> localGlobalStateJacsPreComp =
-        std::make_shared<LocalGlobalStateJacs>();
+    std::shared_ptr<StateJacobians> stateJacobiansPreComp =
+        std::make_shared<StateJacobians>();
     std::shared_ptr<LocalStateVecs> localStateVecsPreComp =
         std::make_shared<LocalStateVecs>();
 
     if (InterpJacobians) {
       *localStateVecsPreComp = interpolator_.computeLocalStateVecs(
-          state_left, state_right, localGlobalStateJacsPreComp.get());
+          state_left, state_right, stateJacobiansPreComp.get());
     } else {
       *localStateVecsPreComp =
           interpolator_.computeLocalStateVecs(state_left, state_right, nullptr);
@@ -487,7 +489,7 @@ Values WNOAFactorGraph<PoseType>::getInterpolatedValues(
         result = interpolator_.interpolatePoseAndVelocity(
             state_left, state_right, interp_state.time, &H, nullptr, nullptr,
             interp_to_LambdaPsi_vec_[interpIdx].second, localStateVecsPreComp,
-            localGlobalStateJacsPreComp);
+            stateJacobiansPreComp);
       } else {
         result = interpolator_.interpolatePoseAndVelocity(
             state_left, state_right, interp_state.time, nullptr, nullptr,
@@ -495,11 +497,11 @@ Values WNOAFactorGraph<PoseType>::getInterpolatedValues(
             localStateVecsPreComp, nullptr);
       }
       values_interp.insert(interp_state.pose, result.pose);
-      values_interp.insert(interp_state.vel, result.vel);
+      values_interp.insert(interp_state.velocity, result.vel);
       if (InterpJacobians) {
         (*InterpJacobians)[interp_state.pose] =
             std::array<Matrix, 4>{H[0], H[1], H[2], H[3]};
-        (*InterpJacobians)[interp_state.vel] =
+        (*InterpJacobians)[interp_state.velocity] =
             std::array<Matrix, 4>{H[4], H[5], H[6], H[7]};
       }
       if (InterpCondCovs) {

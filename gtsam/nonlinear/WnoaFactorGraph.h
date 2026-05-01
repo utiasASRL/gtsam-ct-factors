@@ -64,8 +64,7 @@ class WNOAFactorGraph : public ExpressionFactorGraph {
 
   using LambdaPsiMats = typename Interpolator<PoseType>::LambdaPsiMats;
   using LocalStateVecs = typename Interpolator<PoseType>::LocalStateVecs;
-  using LocalGlobalStateJacs =
-      typename Interpolator<PoseType>::LocalGlobalStateJacs;
+  using StateJacobians = typename Interpolator<PoseType>::StateJacobians;
 
   // map interpolated state to border states
   std::unordered_map<StateData, std::pair<StateData, StateData>>
