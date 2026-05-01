@@ -143,14 +143,14 @@ class WNOAFactorGraph : public ExpressionFactorGraph {
    *
    * @param interp_map Mapping from each interpolated `StateData` to its
    *        left/right bordering estimated `StateData`.
-   * @param Q_psd Diagonal PSD vector for the WNOA interpolator (size must match
-   * PoseType dimension).
+   * @param q_psd_diag Diagonal PSD vector for the WNOA interpolator (size must
+   * match PoseType dimension).
    * @param fixed_noise_model If true, the graph will not augment measurement
    * noise for interpolation.
    */
   WNOAFactorGraph(
       std::unordered_map<StateData, std::pair<StateData, StateData>> interp_map,
-      const Eigen::Vector<double, dim> Q_psd, bool fixed_noise_model = false);
+      const Eigen::Vector<double, dim> q_psd_diag_diag, bool fixed_noise_model = false);
 };
 
 }  // namespace gtsam

@@ -868,7 +868,7 @@ class WNOAInterpFactor : public NoiseModelFactor {
  * states).
  * @param interp_states Ordered set of `StateData` entries to be
  * interpolated/removed.
- * @param Q_psd Diagonal PSD vector for the WNOA motion prior (dimension must
+ * @param q_psd_diag Diagonal PSD vector for the WNOA motion prior (dimension must
  * match PoseType).
  * @param fixed_noise If true, do not augment measurement noise models for
  * interpolation.
@@ -930,11 +930,11 @@ FactorGraphType interpolateFactorGraph(
     StateData state_k = *iter_state;
     StateData state_kp1 = *std::next(iter_state);
     // get time diff
-    double del_t = state_kp1.time - state_k.time;
+    double delta_t = state_kp1.time - state_k.time;
     // add factor
     auto motion_factor = std::make_shared<WNOAMotionFactor<PoseType>>(
         state_k.pose, state_k.velocity, state_kp1.pose, state_kp1.velocity,
-        del_t, q_psd_diag);
+        delta_t, q_psd_diag);
     new_graph.add(motion_factor);
     iter_state++;
   }
@@ -1003,7 +1003,7 @@ template <class PoseType>
 Values updateInterpValues(
     const NonlinearFactorGraph& interp_graph, const Values& values,
     const std::set<StateData>& estim_states,
-    const std::set<StateData>& interp_states, const Vector Q_psd,
+    const std::set<StateData>& interp_states, const Vector q_psd_diag,
     std::shared_ptr<typename Interpolator<PoseType>::CovarianceMap>
         covarianceMapOut = nullptr) {
   // assert that the pose is the right kind of variable
@@ -1014,9 +1014,9 @@ Values updateInterpValues(
                          vector_space_tag>,
       "Pose type must be either a Lie group or vector space");
   // check dimension on the power spectral density matrix
-  assert(traits<PoseType>::dimension == Q_psd.size());
+  assert(traits<PoseType>::dimension == q_psd_diag.size());
   // Define interpolator
-  Interpolator<PoseType> interpolator(Q_psd);
+  Interpolator<PoseType> interpolator(q_psd_diag);
   // get interpolated values
   Values interp_vals = interpolator.interpolatePosesAndVelocities(
       interp_graph, values, estim_states, interp_states, covarianceMapOut);
