@@ -34,6 +34,7 @@
 
 #include <iostream>
 #include <fstream>
+#include <memory>
 
 using namespace std;
 using namespace gtsam;
@@ -42,6 +43,28 @@ const double tol = 1e-5;
 
 using symbol_shorthand::X;
 using symbol_shorthand::L;
+
+class CountingNonlinearFactorGraph : public NonlinearFactorGraph {
+ public:
+  std::shared_ptr<size_t> errorCount = std::make_shared<size_t>(0);
+  std::shared_ptr<size_t> linearizeCount = std::make_shared<size_t>(0);
+
+  CountingNonlinearFactorGraph() = default;
+
+  explicit CountingNonlinearFactorGraph(const NonlinearFactorGraph& graph)
+      : NonlinearFactorGraph(graph) {}
+
+  double error(const Values& values) const override {
+    ++(*errorCount);
+    return NonlinearFactorGraph::error(values);
+  }
+
+  GaussianFactorGraph::shared_ptr linearize(
+      const Values& linearizationPoint) const override {
+    ++(*linearizeCount);
+    return NonlinearFactorGraph::linearize(linearizationPoint);
+  }
+};
 
 /* ************************************************************************* */
 TEST( NonlinearOptimizer, paramsEquals )
@@ -684,6 +707,34 @@ TEST(NonlinearOptimizer, Traits) {
   LevenbergMarquardtOptimizer optimizer(fg, init);
   Values actual = optimizer.optimize();
   EXPECT(assert_equal(init, actual));
+}
+
+/* ************************************************************************* */
+TEST(NonlinearOptimizer, DerivedGraphVirtualDispatch) {
+  CountingNonlinearFactorGraph fg(example::createReallyNonlinearFactorGraph());
+
+  Values initial;
+  initial.insert(X(1), Point2(3, 3));
+
+  {
+    GaussNewtonOptimizer optimizer(fg, initial);
+    optimizer.iterate();
+  }
+  {
+    LevenbergMarquardtOptimizer optimizer(fg, initial);
+    optimizer.iterate();
+  }
+  {
+    DoglegOptimizer optimizer(fg, initial);
+    optimizer.iterate();
+  }
+  {
+    NonlinearConjugateGradientOptimizer optimizer(fg, initial);
+    optimizer.iterate();
+  }
+
+  CHECK(*fg.errorCount >= 4);
+  CHECK(*fg.linearizeCount >= 4);
 }
 
 /* ************************************************************************* */

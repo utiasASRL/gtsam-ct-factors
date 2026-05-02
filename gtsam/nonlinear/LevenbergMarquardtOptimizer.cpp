@@ -47,17 +47,30 @@ typedef internal::LevenbergMarquardtState State;
 LevenbergMarquardtOptimizer::LevenbergMarquardtOptimizer(const NonlinearFactorGraph& graph,
                                                          const Values& initialValues,
                                                          const LevenbergMarquardtParams& params)
+    : LevenbergMarquardtOptimizer(std::make_shared<NonlinearFactorGraph>(graph),
+                                  initialValues, params) {}
+
+LevenbergMarquardtOptimizer::LevenbergMarquardtOptimizer(
+    std::shared_ptr<const NonlinearFactorGraph> graph,
+    const Values& initialValues, const LevenbergMarquardtParams& params)
     : NonlinearOptimizer(
-          graph, std::unique_ptr<State>(new State(initialValues, graph.error(initialValues),
+          graph, std::unique_ptr<State>(new State(initialValues, graph->error(initialValues),
                                                   params.lambdaInitial, params.lambdaFactor))),
-      params_(LevenbergMarquardtParams::EnsureHasOrdering(params, graph)) {}
+      params_(LevenbergMarquardtParams::EnsureHasOrdering(params, *graph)) {}
 
 LevenbergMarquardtOptimizer::LevenbergMarquardtOptimizer(const NonlinearFactorGraph& graph,
                                                          const Values& initialValues,
                                                          const Ordering& ordering,
                                                          const LevenbergMarquardtParams& params)
+    : LevenbergMarquardtOptimizer(std::make_shared<NonlinearFactorGraph>(graph),
+                                  initialValues, ordering, params) {}
+
+LevenbergMarquardtOptimizer::LevenbergMarquardtOptimizer(
+    std::shared_ptr<const NonlinearFactorGraph> graph,
+    const Values& initialValues, const Ordering& ordering,
+    const LevenbergMarquardtParams& params)
     : NonlinearOptimizer(
-          graph, std::unique_ptr<State>(new State(initialValues, graph.error(initialValues),
+          graph, std::unique_ptr<State>(new State(initialValues, graph->error(initialValues),
                                                   params.lambdaInitial, params.lambdaFactor))),
       params_(LevenbergMarquardtParams::ReplaceOrdering(params, ordering)) {}
 
@@ -81,7 +94,7 @@ int LevenbergMarquardtOptimizer::getInnerIterations() const {
 
 /* ************************************************************************* */
 GaussianFactorGraph::shared_ptr LevenbergMarquardtOptimizer::linearize() const {
-  return graph_.linearize(state_->values);
+  return graph().linearize(state_->values);
 }
 
 /* ************************************************************************* */
@@ -203,7 +216,7 @@ bool LevenbergMarquardtOptimizer::tryLambda(const GaussianFactorGraph& linear,
       gttic(compute_error);
       if (verbose)
         cout << "calculating error:" << endl;
-      newError = graph_.error(newValues);
+      newError = graph().error(newValues);
       gttoc(compute_error);
 
       if (verbose)

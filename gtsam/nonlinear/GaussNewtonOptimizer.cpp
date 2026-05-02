@@ -30,14 +30,26 @@ typedef internal::NonlinearOptimizerState State;
 GaussNewtonOptimizer::GaussNewtonOptimizer(const NonlinearFactorGraph& graph,
                                            const Values& initialValues,
                                            const GaussNewtonParams& params)
-    : NonlinearOptimizer(
-          graph, std::unique_ptr<State>(new State(initialValues, graph.error(initialValues)))),
-      params_(ensureHasOrdering(params, graph)) {}
+    : GaussNewtonOptimizer(std::make_shared<NonlinearFactorGraph>(graph),
+                           initialValues, params) {}
+
+GaussNewtonOptimizer::GaussNewtonOptimizer(
+    std::shared_ptr<const NonlinearFactorGraph> graph,
+    const Values& initialValues, const GaussNewtonParams& params)
+    : NonlinearOptimizer(graph, std::unique_ptr<State>(
+                                    new State(initialValues, graph->error(initialValues)))),
+      params_(ensureHasOrdering(params, *graph)) {}
 
 GaussNewtonOptimizer::GaussNewtonOptimizer(const NonlinearFactorGraph& graph,
                                            const Values& initialValues, const Ordering& ordering)
-    : NonlinearOptimizer(
-          graph, std::unique_ptr<State>(new State(initialValues, graph.error(initialValues)))) {
+    : GaussNewtonOptimizer(std::make_shared<NonlinearFactorGraph>(graph),
+                           initialValues, ordering) {}
+
+GaussNewtonOptimizer::GaussNewtonOptimizer(
+    std::shared_ptr<const NonlinearFactorGraph> graph,
+    const Values& initialValues, const Ordering& ordering)
+    : NonlinearOptimizer(graph, std::unique_ptr<State>(
+                                    new State(initialValues, graph->error(initialValues)))) {
   params_.ordering = ordering;
 }
 
@@ -47,7 +59,7 @@ GaussianFactorGraph::shared_ptr GaussNewtonOptimizer::iterate() {
 
   // Linearize graph
   gttic(GaussNewtonOptimizer_Linearize);
-  GaussianFactorGraph::shared_ptr linear = graph_.linearize(state_->values);
+  GaussianFactorGraph::shared_ptr linear = graph().linearize(state_->values);
   gttoc(GaussNewtonOptimizer_Linearize);
 
   gttic(GaussNewtonOptimizer_Solve);
@@ -67,7 +79,7 @@ GaussianFactorGraph::shared_ptr GaussNewtonOptimizer::iterate() {
 
   // Create new state with new values and new error
   Values newValues = state_->values.retract(delta);
-  state_.reset(new State(std::move(newValues), graph_.error(newValues), state_->iterations + 1));
+  state_.reset(new State(std::move(newValues), graph().error(newValues), state_->iterations + 1));
 
   return linear;
 }

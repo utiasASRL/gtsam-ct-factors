@@ -22,6 +22,7 @@
 #include <gtsam/nonlinear/NonlinearOptimizer.h>
 
 #include <stdexcept>
+#include <type_traits>
 
 namespace gtsam {
 
@@ -115,6 +116,19 @@ class GTSAM_EXPORT NonlinearConjugateGradientOptimizer
       const Parameters &params = Parameters(),
       const DirectionMethod &directionMethod = DirectionMethod::PolakRibiere);
 
+  /** Constructor that preserves derived graph behavior while copying the graph. */
+  template <typename GraphType,
+            typename = std::enable_if_t<
+                std::is_base_of_v<NonlinearFactorGraph, GraphType> &&
+                !std::is_same_v<NonlinearFactorGraph, GraphType>>>
+  NonlinearConjugateGradientOptimizer(
+      const GraphType& graph, const Values& initialValues,
+      const Parameters& params = Parameters(),
+      const DirectionMethod& directionMethod = DirectionMethod::PolakRibiere)
+      : NonlinearConjugateGradientOptimizer(
+            std::make_shared<GraphType>(graph), initialValues, params,
+            directionMethod) {}
+
   /// Destructor
   ~NonlinearConjugateGradientOptimizer() override {}
 
@@ -129,6 +143,12 @@ class GTSAM_EXPORT NonlinearConjugateGradientOptimizer
    * variable assignments.
    */
   const Values &optimize() override;
+
+ private:
+  NonlinearConjugateGradientOptimizer(
+      std::shared_ptr<const NonlinearFactorGraph> graph,
+      const Values& initialValues, const Parameters& params,
+      const DirectionMethod& directionMethod);
 };
 
 /** Implement the golden-section line search algorithm */
