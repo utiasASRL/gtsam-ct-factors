@@ -44,16 +44,8 @@ static VectorValues gradientInPlace(const NonlinearFactorGraph& nfg,
 NonlinearConjugateGradientOptimizer::NonlinearConjugateGradientOptimizer(
     const NonlinearFactorGraph& graph, const Values& initialValues,
     const Parameters& params, const DirectionMethod& directionMethod)
-    : NonlinearConjugateGradientOptimizer(
-          std::make_shared<NonlinearFactorGraph>(graph), initialValues, params,
-          directionMethod) {}
-
-NonlinearConjugateGradientOptimizer::NonlinearConjugateGradientOptimizer(
-    std::shared_ptr<const NonlinearFactorGraph> graph,
-    const Values& initialValues, const Parameters& params,
-    const DirectionMethod& directionMethod)
     : Base(graph, std::unique_ptr<State>(
-                      new State(initialValues, graph->error(initialValues)))),
+                      new State(initialValues, graph.error(initialValues)))),
       params_(params),
       directionMethod_(directionMethod) {}
 

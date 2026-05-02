@@ -20,8 +20,6 @@
 
 #include <gtsam/nonlinear/NonlinearOptimizer.h>
 
-#include <type_traits>
-
 namespace gtsam {
 
 class DoglegOptimizer;
@@ -89,16 +87,6 @@ public:
   DoglegOptimizer(const NonlinearFactorGraph& graph, const Values& initialValues,
       const DoglegParams& params = DoglegParams());
 
-  /** Constructor that preserves derived graph behavior while copying the graph. */
-  template <typename GraphType,
-            typename = std::enable_if_t<
-                std::is_base_of_v<NonlinearFactorGraph, GraphType> &&
-                !std::is_same_v<NonlinearFactorGraph, GraphType>>>
-  DoglegOptimizer(const GraphType& graph, const Values& initialValues,
-                  const DoglegParams& params = DoglegParams())
-      : DoglegOptimizer(std::make_shared<GraphType>(graph), initialValues,
-                        params) {}
-
   /** Standard constructor, requires a nonlinear factor graph, initial
    * variable assignments, and optimization parameters.  For convenience this
    * version takes plain objects instead of shared pointers, but internally
@@ -108,16 +96,6 @@ public:
    */
   DoglegOptimizer(const NonlinearFactorGraph& graph, const Values& initialValues,
                   const Ordering& ordering);
-
-  /** Constructor with ordering that preserves derived graph behavior. */
-  template <typename GraphType,
-            typename = std::enable_if_t<
-                std::is_base_of_v<NonlinearFactorGraph, GraphType> &&
-                !std::is_same_v<NonlinearFactorGraph, GraphType>>>
-  DoglegOptimizer(const GraphType& graph, const Values& initialValues,
-                  const Ordering& ordering)
-      : DoglegOptimizer(std::make_shared<GraphType>(graph), initialValues,
-                        ordering) {}
 
   /// @}
 
@@ -148,12 +126,6 @@ protected:
   /** Internal function for computing a COLAMD ordering if no ordering is specified */
   DoglegParams ensureHasOrdering(DoglegParams params, const NonlinearFactorGraph& graph) const;
 
- private:
-  DoglegOptimizer(std::shared_ptr<const NonlinearFactorGraph> graph,
-                  const Values& initialValues, const DoglegParams& params);
-
-  DoglegOptimizer(std::shared_ptr<const NonlinearFactorGraph> graph,
-                  const Values& initialValues, const Ordering& ordering);
 };
 
 }

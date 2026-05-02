@@ -54,6 +54,10 @@ class CountingNonlinearFactorGraph : public NonlinearFactorGraph {
   explicit CountingNonlinearFactorGraph(const NonlinearFactorGraph& graph)
       : NonlinearFactorGraph(graph) {}
 
+  std::shared_ptr<const NonlinearFactorGraph> cloneShared() const override {
+    return std::make_shared<CountingNonlinearFactorGraph>(*this);
+  }
+
   double error(const Values& values) const override {
     ++(*errorCount);
     return NonlinearFactorGraph::error(values);
@@ -712,24 +716,25 @@ TEST(NonlinearOptimizer, Traits) {
 /* ************************************************************************* */
 TEST(NonlinearOptimizer, DerivedGraphVirtualDispatch) {
   CountingNonlinearFactorGraph fg(example::createReallyNonlinearFactorGraph());
+  const NonlinearFactorGraph& graph = fg;
 
   Values initial;
   initial.insert(X(1), Point2(3, 3));
 
   {
-    GaussNewtonOptimizer optimizer(fg, initial);
+    GaussNewtonOptimizer optimizer(graph, initial);
     optimizer.iterate();
   }
   {
-    LevenbergMarquardtOptimizer optimizer(fg, initial);
+    LevenbergMarquardtOptimizer optimizer(graph, initial);
     optimizer.iterate();
   }
   {
-    DoglegOptimizer optimizer(fg, initial);
+    DoglegOptimizer optimizer(graph, initial);
     optimizer.iterate();
   }
   {
-    NonlinearConjugateGradientOptimizer optimizer(fg, initial);
+    NonlinearConjugateGradientOptimizer optimizer(graph, initial);
     optimizer.iterate();
   }
 

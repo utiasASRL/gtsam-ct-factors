@@ -24,7 +24,6 @@
 #include <gtsam/nonlinear/LevenbergMarquardtParams.h>
 #include <gtsam/linear/VectorValues.h>
 #include <chrono>
-#include <type_traits>
 
 class NonlinearOptimizerMoreOptimizationTest;
 
@@ -60,17 +59,6 @@ public:
   LevenbergMarquardtOptimizer(const NonlinearFactorGraph& graph, const Values& initialValues,
                               const LevenbergMarquardtParams& params = LevenbergMarquardtParams());
 
-  /** Constructor that preserves derived graph behavior while copying the graph. */
-  template <typename GraphType,
-            typename = std::enable_if_t<
-                std::is_base_of_v<NonlinearFactorGraph, GraphType> &&
-                !std::is_same_v<NonlinearFactorGraph, GraphType>>>
-  LevenbergMarquardtOptimizer(
-      const GraphType& graph, const Values& initialValues,
-      const LevenbergMarquardtParams& params = LevenbergMarquardtParams())
-      : LevenbergMarquardtOptimizer(std::make_shared<GraphType>(graph),
-                                    initialValues, params) {}
-
   /** Standard constructor, requires a nonlinear factor graph, initial
    * variable assignments, and optimization parameters.  For convenience this
    * version takes plain objects instead of shared pointers, but internally
@@ -81,18 +69,6 @@ public:
   LevenbergMarquardtOptimizer(const NonlinearFactorGraph& graph, const Values& initialValues,
                               const Ordering& ordering,
                               const LevenbergMarquardtParams& params = LevenbergMarquardtParams());
-
-  /** Constructor with ordering that preserves derived graph behavior. */
-  template <typename GraphType,
-            typename = std::enable_if_t<
-                std::is_base_of_v<NonlinearFactorGraph, GraphType> &&
-                !std::is_same_v<NonlinearFactorGraph, GraphType>>>
-  LevenbergMarquardtOptimizer(
-      const GraphType& graph, const Values& initialValues,
-      const Ordering& ordering,
-      const LevenbergMarquardtParams& params = LevenbergMarquardtParams())
-      : LevenbergMarquardtOptimizer(std::make_shared<GraphType>(graph),
-                                    initialValues, ordering, params) {}
 
   /** Virtual destructor */
   ~LevenbergMarquardtOptimizer() override {
@@ -152,15 +128,6 @@ protected:
     return params_;
   }
 
- private:
-  LevenbergMarquardtOptimizer(
-      std::shared_ptr<const NonlinearFactorGraph> graph,
-      const Values& initialValues, const LevenbergMarquardtParams& params);
-
-  LevenbergMarquardtOptimizer(
-      std::shared_ptr<const NonlinearFactorGraph> graph,
-      const Values& initialValues, const Ordering& ordering,
-      const LevenbergMarquardtParams& params);
 };
 
 }

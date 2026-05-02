@@ -130,6 +130,11 @@ namespace gtsam {
     /// Linearize a nonlinear factor graph
     virtual std::shared_ptr<GaussianFactorGraph> linearize(const Values& linearizationPoint) const;
 
+    /// Clone into a shared pointer while preserving derived graph behavior.
+    virtual std::shared_ptr<const NonlinearFactorGraph> cloneShared() const {
+      return std::make_shared<NonlinearFactorGraph>(*this);
+    }
+
     /// typdef for dampen functions used below
     typedef std::function<void(const std::shared_ptr<HessianFactor>& hessianFactor)> Dampen;
 

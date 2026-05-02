@@ -43,14 +43,7 @@ namespace gtsam {
 // http://stackoverflow.com/questions/8114276/
 NonlinearOptimizer::NonlinearOptimizer(const NonlinearFactorGraph& graph,
                                        std::unique_ptr<internal::NonlinearOptimizerState> state)
-    : NonlinearOptimizer(std::make_shared<NonlinearFactorGraph>(graph),
-                         std::move(state)) {}
-
-/* ************************************************************************* */
-NonlinearOptimizer::NonlinearOptimizer(
-    std::shared_ptr<const NonlinearFactorGraph> graph,
-    std::unique_ptr<internal::NonlinearOptimizerState> state)
-    : graph_(std::move(graph)), state_(std::move(state)) {}
+    : graph_(graph.cloneShared()), state_(std::move(state)) {}
 
 /* ************************************************************************* */
 NonlinearOptimizer::~NonlinearOptimizer() {}

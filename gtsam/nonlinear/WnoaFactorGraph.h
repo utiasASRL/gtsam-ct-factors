@@ -138,6 +138,11 @@ class WnoaFactorGraph : public ExpressionFactorGraph {
    */
   double error(const Values& values) const override;
 
+  /// Clone into a shared pointer while preserving WnoaFactorGraph behavior.
+  std::shared_ptr<const NonlinearFactorGraph> cloneShared() const override {
+    return std::make_shared<WnoaFactorGraph<PoseType>>(*this);
+  }
+
   /**
    * @brief Construct a `WnoaFactorGraph` with interpolation metadata.
    *

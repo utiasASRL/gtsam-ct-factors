@@ -30,26 +30,14 @@ typedef internal::NonlinearOptimizerState State;
 GaussNewtonOptimizer::GaussNewtonOptimizer(const NonlinearFactorGraph& graph,
                                            const Values& initialValues,
                                            const GaussNewtonParams& params)
-    : GaussNewtonOptimizer(std::make_shared<NonlinearFactorGraph>(graph),
-                           initialValues, params) {}
-
-GaussNewtonOptimizer::GaussNewtonOptimizer(
-    std::shared_ptr<const NonlinearFactorGraph> graph,
-    const Values& initialValues, const GaussNewtonParams& params)
-    : NonlinearOptimizer(graph, std::unique_ptr<State>(
-                                    new State(initialValues, graph->error(initialValues)))),
-      params_(ensureHasOrdering(params, *graph)) {}
+    : NonlinearOptimizer(
+          graph, std::unique_ptr<State>(new State(initialValues, graph.error(initialValues)))),
+      params_(ensureHasOrdering(params, graph)) {}
 
 GaussNewtonOptimizer::GaussNewtonOptimizer(const NonlinearFactorGraph& graph,
                                            const Values& initialValues, const Ordering& ordering)
-    : GaussNewtonOptimizer(std::make_shared<NonlinearFactorGraph>(graph),
-                           initialValues, ordering) {}
-
-GaussNewtonOptimizer::GaussNewtonOptimizer(
-    std::shared_ptr<const NonlinearFactorGraph> graph,
-    const Values& initialValues, const Ordering& ordering)
-    : NonlinearOptimizer(graph, std::unique_ptr<State>(
-                                    new State(initialValues, graph->error(initialValues)))) {
+    : NonlinearOptimizer(
+          graph, std::unique_ptr<State>(new State(initialValues, graph.error(initialValues)))) {
   params_.ordering = ordering;
 }
 

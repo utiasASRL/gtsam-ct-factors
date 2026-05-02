@@ -20,8 +20,6 @@
 
 #include <gtsam/nonlinear/NonlinearOptimizer.h>
 
-#include <type_traits>
-
 namespace gtsam {
 
 class GaussNewtonOptimizer;
@@ -57,16 +55,6 @@ public:
  GaussNewtonOptimizer(const NonlinearFactorGraph& graph, const Values& initialValues,
                       const GaussNewtonParams& params = GaussNewtonParams());
 
-  /** Constructor that preserves derived graph behavior while copying the graph. */
-  template <typename GraphType,
-            typename = std::enable_if_t<
-                std::is_base_of_v<NonlinearFactorGraph, GraphType> &&
-                !std::is_same_v<NonlinearFactorGraph, GraphType>>>
-  GaussNewtonOptimizer(const GraphType& graph, const Values& initialValues,
-                       const GaussNewtonParams& params = GaussNewtonParams())
-      : GaussNewtonOptimizer(std::make_shared<GraphType>(graph), initialValues,
-                             params) {}
-
   /** Standard constructor, requires a nonlinear factor graph, initial
    * variable assignments, and optimization parameters.  For convenience this
    * version takes plain objects instead of shared pointers, but internally
@@ -77,15 +65,6 @@ public:
   GaussNewtonOptimizer(const NonlinearFactorGraph& graph, const Values& initialValues,
                        const Ordering& ordering);
 
-  /** Constructor with ordering that preserves derived graph behavior. */
-  template <typename GraphType,
-            typename = std::enable_if_t<
-                std::is_base_of_v<NonlinearFactorGraph, GraphType> &&
-                !std::is_same_v<NonlinearFactorGraph, GraphType>>>
-  GaussNewtonOptimizer(const GraphType& graph, const Values& initialValues,
-                       const Ordering& ordering)
-      : GaussNewtonOptimizer(std::make_shared<GraphType>(graph), initialValues,
-                             ordering) {}
   /// @}
 
   /// @name Advanced interface
@@ -111,14 +90,6 @@ protected:
 
   /** Internal function for computing a COLAMD ordering if no ordering is specified */
   GaussNewtonParams ensureHasOrdering(GaussNewtonParams params, const NonlinearFactorGraph& graph) const;
-
- private:
-  GaussNewtonOptimizer(std::shared_ptr<const NonlinearFactorGraph> graph,
-                       const Values& initialValues,
-                       const GaussNewtonParams& params);
-
-  GaussNewtonOptimizer(std::shared_ptr<const NonlinearFactorGraph> graph,
-                       const Values& initialValues, const Ordering& ordering);
 
 };
 

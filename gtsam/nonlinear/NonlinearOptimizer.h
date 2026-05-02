@@ -184,10 +184,6 @@ class GTSAM_EXPORT NonlinearOptimizer {
    * state. */
   NonlinearOptimizer(const NonlinearFactorGraph& graph,
                      std::unique_ptr<internal::NonlinearOptimizerState> state);
-
-  /** Constructor for derived graph types that preserves polymorphism. */
-  NonlinearOptimizer(std::shared_ptr<const NonlinearFactorGraph> graph,
-                     std::unique_ptr<internal::NonlinearOptimizerState> state);
 };
 
 /** Check whether the relative error decrease is less than

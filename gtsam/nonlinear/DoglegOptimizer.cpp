@@ -64,27 +64,15 @@ typedef internal::DoglegState State;
 /* ************************************************************************* */
 DoglegOptimizer::DoglegOptimizer(const NonlinearFactorGraph& graph, const Values& initialValues,
                                  const DoglegParams& params)
-    : DoglegOptimizer(std::make_shared<NonlinearFactorGraph>(graph),
-                      initialValues, params) {}
-
-DoglegOptimizer::DoglegOptimizer(
-    std::shared_ptr<const NonlinearFactorGraph> graph,
-    const Values& initialValues, const DoglegParams& params)
     : NonlinearOptimizer(
           graph, std::unique_ptr<State>(new State(
-                     initialValues, graph->error(initialValues), params.deltaInitial))),
-      params_(ensureHasOrdering(params, *graph)) {}
+                     initialValues, graph.error(initialValues), params.deltaInitial))),
+      params_(ensureHasOrdering(params, graph)) {}
 
 DoglegOptimizer::DoglegOptimizer(const NonlinearFactorGraph& graph, const Values& initialValues,
                                  const Ordering& ordering)
-    : DoglegOptimizer(std::make_shared<NonlinearFactorGraph>(graph),
-                      initialValues, ordering) {}
-
-DoglegOptimizer::DoglegOptimizer(
-    std::shared_ptr<const NonlinearFactorGraph> graph,
-    const Values& initialValues, const Ordering& ordering)
     : NonlinearOptimizer(graph, std::unique_ptr<State>(
-                                    new State(initialValues, graph->error(initialValues), 1.0))) {
+                                    new State(initialValues, graph.error(initialValues), 1.0))) {
   params_.ordering = ordering;
 }
 
