@@ -149,6 +149,9 @@ class GTSAM_EXPORT WnoaFactorGraph : public ExpressionFactorGraph {
    * the interpolation information must be known a priori to properly construct
    * the graph. It is therefore recommended to build a standard
    * `NonlinearFactorGraph` first, then use the interpolateFactorGraph function.
+   * Adding factors to the graph after construction is not recommended, but if
+   * done, the user is responsible for ensuring that the interpolation metadata
+   * is consistent with the factors in the graph.
    *
    * @param interp_map Mapping from each interpolated `StateData` to its
    *        left/right bordering estimated `StateData`.

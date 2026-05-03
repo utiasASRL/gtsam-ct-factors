@@ -93,6 +93,7 @@ WnoaFactorGraph<PoseType>::WnoaFactorGraph(
   // lookups.
   border_pose_keys_.reserve(interp_to_borders_map_.size() * 2);
   border_vel_keys_.reserve(interp_to_borders_map_.size() * 2);
+  interp_to_borders_vec_.reserve(interp_to_borders_map_.size());
   for (const auto& kv : interp_to_borders_map_) {
     const auto& border_states = kv.second;
     const auto& left = border_states.first;
@@ -101,19 +102,16 @@ WnoaFactorGraph<PoseType>::WnoaFactorGraph(
     border_pose_keys_.insert(right.pose);
     border_vel_keys_.insert(left.velocity);
     border_vel_keys_.insert(right.velocity);
-
+    // Store local interpolation matrices
     double tau = kv.first.time;
     double t_k = left.time;
     double t_kp1 = right.time;
     interp_to_LambdaPsi_vec_.emplace_back(
         kv.first, std::make_shared<LambdaPsiMats>(
                       interpolator_.getLambdaPsi(t_k, t_kp1, tau)));
+    // Convert map to vector for optimal parallel access patterns
+    interp_to_borders_vec_.emplace_back(kv);
   }
-
-  // Convert map to vector for optimal parallel access patterns
-  interp_to_borders_vec_ =
-      std::vector<std::pair<StateData, std::pair<StateData, StateData>>>(
-          interp_to_borders_map_.begin(), interp_to_borders_map_.end());
 
   // Build compact batch vector: for each unique border pair, list indices of
   // interp states
