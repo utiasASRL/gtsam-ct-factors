@@ -875,7 +875,7 @@ class WnoaInterpFactor : public NoiseModelFactor {
  * @return FactorGraphType factor graph with interpolated states removed and
  * factors updated.
  */
-template <class PoseType, class FactorGraphType>
+template <class PoseType, class FactorGraphType = NonlinearFactorGraph>
 FactorGraphType interpolateFactorGraph(
     const NonlinearFactorGraph& graph,
     const std::set<StateData>& estimated_states,

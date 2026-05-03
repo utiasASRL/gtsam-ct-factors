@@ -518,10 +518,10 @@ Values WnoaFactorGraph<PoseType>::getInterpolatedValues(
 }
 
 // Explicit template instantiation
-template class WnoaFactorGraph<Point1>;
-template class WnoaFactorGraph<Point2>;
-template class WnoaFactorGraph<Point3>;
-template class WnoaFactorGraph<Pose2>;
-template class WnoaFactorGraph<Pose3>;
+template class GTSAM_EXPORT WnoaFactorGraph<Point1>;
+template class GTSAM_EXPORT WnoaFactorGraph<Point2>;
+template class GTSAM_EXPORT WnoaFactorGraph<Point3>;
+template class GTSAM_EXPORT WnoaFactorGraph<Pose2>;
+template class GTSAM_EXPORT WnoaFactorGraph<Pose3>;
 
 }  // namespace gtsam

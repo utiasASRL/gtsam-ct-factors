@@ -47,7 +47,7 @@ namespace gtsam {
  * interpolator.
  */
 template <typename PoseType>
-class WnoaFactorGraph : public ExpressionFactorGraph {
+class GTSAM_EXPORT WnoaFactorGraph : public ExpressionFactorGraph {
  private:
   using This = WnoaFactorGraph<PoseType>;
   using Base = ExpressionFactorGraph;
@@ -144,7 +144,10 @@ class WnoaFactorGraph : public ExpressionFactorGraph {
   }
 
   /**
-   * @brief Construct a `WnoaFactorGraph` with interpolation metadata.
+   * @brief Construct a `WnoaFactorGraph` with interpolation metadata. Note that
+   * the interpolation information must be known a priori to properly construct
+   * the graph. It is therefore recommended to build a standard
+   * `NonlinearFactorGraph` first, then use the interpolateFactorGraph function.
    *
    * @param interp_map Mapping from each interpolated `StateData` to its
    *        left/right bordering estimated `StateData`.
