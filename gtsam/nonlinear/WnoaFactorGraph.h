@@ -162,7 +162,7 @@ class GTSAM_EXPORT WnoaFactorGraph : public ExpressionFactorGraph {
    */
   WnoaFactorGraph(
       std::unordered_map<StateData, std::pair<StateData, StateData>> interp_map,
-      const Eigen::Vector<double, dim> q_psd_diag,
+      const VectorN q_psd_diag,
       bool fixed_noise_model = false);
 };
 

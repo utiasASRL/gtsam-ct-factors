@@ -10,7 +10,7 @@
  * -------------------------------------------------------------------------- */
 
 /**
- *  @file  WnoaFactorGraph.h
+ *  @file  WnoaFactorGraph.cpp
  *  @brief Factor graph that handles computation of interpolated states for WNOA
  *  @author Sven Lilge
  */
@@ -255,10 +255,10 @@ Values WnoaFactorGraph<PoseType>::getInterpolatedValues(
   // We parallelize over border batches
   // Each batch corresponds to a pair of bordering states the set of
   // interpolated states that lie between them This allows us to compute
-  // interpolated values and Jacobians for all states in a batch together This
+  // interpolated values and Jacobians for all states in a batch together. This
   // is more efficient than parallelizing over individual interpolated states,
-  // due to shared border state computations We use TBB's parallel_for with a
-  // blocked range to process batches in parallel We use thread-local storage to
+  // due to shared border state computations. We use TBB's parallel_for with a
+  // blocked range to process batches in parallel. We use thread-local storage to
   // accumulate results before merging them into the final output containers
 
   TbbOpenMPMixedScope threadLimiter;
@@ -325,11 +325,11 @@ Values WnoaFactorGraph<PoseType>::getInterpolatedValues(
 
             // Get the corresponding state values from the cache
             const auto state_left = TimestampedPoseVelocity<PoseType>(
-                border_pose_cache[left.pose], border_vel_cache[left.velocity],
-                left.time);
+              border_pose_cache.at(left.pose),
+              border_vel_cache.at(left.velocity), left.time);
             const auto state_right = TimestampedPoseVelocity<PoseType>(
-                border_pose_cache[right.pose], border_vel_cache[right.velocity],
-                right.time);
+              border_pose_cache.at(right.pose),
+              border_vel_cache.at(right.velocity), right.time);
 
             // Precompute local state vars and local-global Jacobians for this
             // border pair
@@ -458,11 +458,11 @@ Values WnoaFactorGraph<PoseType>::getInterpolatedValues(
     const StateData& left = kv.first.first;
     const StateData& right = kv.first.second;
     const auto state_left = TimestampedPoseVelocity<PoseType>(
-        border_pose_cache[left.pose], border_vel_cache[left.velocity],
-        left.time);
+      border_pose_cache.at(left.pose),
+      border_vel_cache.at(left.velocity), left.time);
     const auto state_right = TimestampedPoseVelocity<PoseType>(
-        border_pose_cache[right.pose], border_vel_cache[right.velocity],
-        right.time);
+      border_pose_cache.at(right.pose),
+      border_vel_cache.at(right.velocity), right.time);
 
     // Precompute local state vars and local-global Jacobians for this border
     // pair
