@@ -24,6 +24,9 @@ from gtsam.utils.numerical_derivative import (
 from gtsam import Symbol
 from gtsam import WnoaInterpFactorPose3
 from gtsam import WnoaMotionFactorPose3
+from gtsam import interpolateFactorGraphPose3
+from gtsam import interpolateWnoaFactorGraphPose3
+from gtsam import updateInterpValuesPose3
 
 class TestStateData(GtsamTestCase):
     """Test StateData class."""
@@ -148,7 +151,173 @@ class TestWnoaInterpFactorPose3(GtsamTestCase):
         self.assertAlmostEqual(error, 0.0, places=9)
 
 
-        
+class TestWnoaFactorGraphPose3(GtsamTestCase):
+    """Test interpolation factor graphs for Pose3."""
+
+    def _make_se3_fixture(self):
+        timestep = 0.1
+        q_psd_diag = np.ones(6)
+
+        p0 = gtsam.Pose3.Expmap(np.array([0.5, 0.0, 0.0, 0.0, 0.0, 0.0]))
+        v0 = np.array([[1.0, 0.0, 0.5, 0.1, 0.0, 0.0]]).T
+        p1 = p0.retract(timestep * v0)
+        p2 = p0.retract(2.0 * timestep * v0)
+        p3 = p0.retract(3.0 * timestep * v0)
+        p4 = p0.retract(4.0 * timestep * v0)
+
+        keys = {
+            "p0": Symbol("x", 0).key(),
+            "p1": Symbol("x", 1).key(),
+            "p2": Symbol("x", 2).key(),
+            "p3": Symbol("x", 3).key(),
+            "p4": Symbol("x", 4).key(),
+            "v0": Symbol("v", 0).key(),
+            "v1": Symbol("v", 1).key(),
+            "v2": Symbol("v", 2).key(),
+            "v3": Symbol("v", 3).key(),
+            "v4": Symbol("v", 4).key(),
+        }
+
+        return timestep, q_psd_diag, keys, p0, p1, p2, p3, p4, v0
+
+    def test_se3_interp_graph(self):
+        """Test interpolateFactorGraphPose3 for SE3 graphs."""
+        timestep, q_psd_diag, keys, p0, p1, p2, p3, p4, v0 = (
+            self._make_se3_fixture()
+        )
+
+        model = gtsam.noiseModel.Isotropic.Sigma(6, 1.0)
+        between_factor = gtsam.BetweenFactorPose3(
+            keys["p1"], keys["p3"], p1.between(p3), model
+        )
+        prior_pose_factor = gtsam.PriorFactorPose3(keys["p1"], p1, model)
+        prior_vel_factor = gtsam.PriorFactorVector(keys["v1"], v0, model)
+
+        graph = gtsam.NonlinearFactorGraph()
+        graph.add(between_factor)
+        graph.add(prior_pose_factor)
+        graph.add(prior_vel_factor)
+
+        estimated_states = {
+            gtsam.StateData(keys["p0"], keys["v0"], 0.0),
+            gtsam.StateData(keys["p4"], keys["v4"], 4.0 * timestep),
+            gtsam.StateData(keys["p2"], keys["v2"], 2.0 * timestep),
+        }
+        interpolated_states = {
+            gtsam.StateData(keys["p3"], keys["v3"], 3.0 * timestep),
+            gtsam.StateData(keys["p1"], keys["v1"], timestep),
+        }
+
+        new_graph = interpolateFactorGraphPose3(
+            graph, estimated_states, interpolated_states, q_psd_diag
+        )
+
+        values = gtsam.Values()
+        values.insert(keys["p0"], p0)
+        values.insert(keys["p2"], p2)
+        values.insert(keys["p4"], p4)
+        values.insert(keys["v0"], v0)
+        values.insert(keys["v2"], v0)
+        values.insert(keys["v4"], v0)
+
+        optimizer = gtsam.GaussNewtonOptimizer(new_graph, values)
+        self.assertAlmostEqual(optimizer.error(), 0.0, places=9)
+        optimizer.iterate()
+        self.assertAlmostEqual(optimizer.error(), 0.0, places=9)
+        result = optimizer.optimize()
+        self.assertAlmostEqual(optimizer.error(), 0.0, places=6)
+
+        result_interp = updateInterpValuesPose3(
+            new_graph, result, estimated_states, interpolated_states, q_psd_diag
+        )
+        p3_est = result_interp.atPose3(keys["p3"])
+        p1_est = result_interp.atPose3(keys["p1"])
+        self.gtsamAssertEquals(p3, p3_est, 1e-6)
+        self.gtsamAssertEquals(p1, p1_est, 1e-6)
+
+        perturb = np.array([0.001, 0.001, 0.001, 0.1, 0.1, 0.1])
+        values_pert = gtsam.Values()
+        values_pert.insert(keys["p0"], p0.retract(perturb))
+        values_pert.insert(keys["p2"], p2.retract(perturb))
+        values_pert.insert(keys["p4"], p4.retract(perturb))
+        v_pert = v0 + 0.1 * np.ones(6)
+        values_pert.insert(keys["v0"], v_pert)
+        values_pert.insert(keys["v2"], v_pert)
+        values_pert.insert(keys["v4"], v_pert)
+
+        optimizer2 = gtsam.GaussNewtonOptimizer(new_graph, values_pert)
+        optimizer2.optimize()
+        self.assertAlmostEqual(optimizer2.error(), 0.0, places=4)
+
+    def test_se3_interp_wnoa_graph(self):
+        """Test interpolateWnoaFactorGraphPose3 for SE3 graphs."""
+        timestep, q_psd_diag, keys, p0, p1, p2, p3, p4, v0 = (
+            self._make_se3_fixture()
+        )
+
+        model = gtsam.noiseModel.Isotropic.Sigma(6, 1.0)
+        between_factor = gtsam.BetweenFactorPose3(
+            keys["p1"], keys["p3"], p1.between(p3), model
+        )
+        prior_pose_factor = gtsam.PriorFactorPose3(keys["p1"], p1, model)
+        prior_vel_factor = gtsam.PriorFactorVector(keys["v1"], v0, model)
+
+        graph = gtsam.NonlinearFactorGraph()
+        graph.add(between_factor)
+        graph.add(prior_pose_factor)
+        graph.add(prior_vel_factor)
+
+        estimated_states = {
+            gtsam.StateData(keys["p0"], keys["v0"], 0.0),
+            gtsam.StateData(keys["p4"], keys["v4"], 4.0 * timestep),
+            gtsam.StateData(keys["p2"], keys["v2"], 2.0 * timestep),
+        }
+        interpolated_states = {
+            gtsam.StateData(keys["p3"], keys["v3"], 3.0 * timestep),
+            gtsam.StateData(keys["p1"], keys["v1"], timestep),
+        }
+
+        new_graph = interpolateWnoaFactorGraphPose3(
+            graph, estimated_states, interpolated_states, q_psd_diag
+        )
+
+        values = gtsam.Values()
+        values.insert(keys["p0"], p0)
+        values.insert(keys["p2"], p2)
+        values.insert(keys["p4"], p4)
+        values.insert(keys["v0"], v0)
+        values.insert(keys["v2"], v0)
+        values.insert(keys["v4"], v0)
+
+        optimizer = gtsam.LevenbergMarquardtOptimizer(new_graph, values)
+        self.assertAlmostEqual(optimizer.error(), 0.0, places=9)
+        optimizer.iterate()
+        self.assertAlmostEqual(optimizer.error(), 0.0, places=9)
+        result = optimizer.optimize()
+        self.assertAlmostEqual(optimizer.error(), 0.0, places=6)
+
+        result_interp = updateInterpValuesPose3(
+            new_graph, result, estimated_states, interpolated_states, q_psd_diag
+        )
+        p3_est = result_interp.atPose3(keys["p3"])
+        p1_est = result_interp.atPose3(keys["p1"])
+        self.gtsamAssertEquals(p3, p3_est, 1e-6)
+        self.gtsamAssertEquals(p1, p1_est, 1e-6)
+
+        perturb = np.array([0.001, 0.001, 0.001, 0.1, 0.1, 0.1])
+        values_pert = gtsam.Values()
+        values_pert.insert(keys["p0"], p0.retract(perturb))
+        values_pert.insert(keys["p2"], p2.retract(perturb))
+        values_pert.insert(keys["p4"], p4.retract(perturb))
+        v_pert = v0 + 0.1 * np.ones(6)
+        values_pert.insert(keys["v0"], v_pert)
+        values_pert.insert(keys["v2"], v_pert)
+        values_pert.insert(keys["v4"], v_pert)
+
+        optimizer2 = gtsam.GaussNewtonOptimizer(new_graph, values_pert)
+        optimizer2.optimize()
+        self.assertAlmostEqual(optimizer2.error(), 0.0, places=4)
+
         
 if __name__ == "__main__":
     unittest.main()

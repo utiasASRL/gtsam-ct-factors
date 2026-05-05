@@ -44,7 +44,7 @@ class GraphvizFormatting : gtsam::DotWriter {
 };
 
 #include <gtsam/nonlinear/NonlinearFactorGraph.h>
-class NonlinearFactorGraph {
+virtual class NonlinearFactorGraph {
   NonlinearFactorGraph();
   NonlinearFactorGraph(const gtsam::NonlinearFactorGraph& graph);
 
@@ -686,6 +686,11 @@ virtual class WnoaInterpFactor : gtsam::NoiseModelFactor {
   double error(const gtsam::Values& c) const;
 };
 
+// Dummy Wrapper for ExpressionFactorGraph to enable inheritance for
+// WnoaFactorGraph
+#include <gtsam/nonlinear/ExpressionFactorGraph.h>
+virtual class ExpressionFactorGraph : gtsam::NonlinearFactorGraph {};
+
 #include <gtsam/nonlinear/WnoaFactorGraph.h>
 template <POSE = {gtsam::Point1, gtsam::Point2, gtsam::Point3, gtsam::Pose2,
                   gtsam::Pose3}>
@@ -694,8 +699,7 @@ class WnoaFactorGraph : gtsam::ExpressionFactorGraph {
       std::unordered_map<gtsam::StateData,
                          std::pair<gtsam::StateData, gtsam::StateData>>
           interp_map,
-      const gtsam::Vector q_psd_diag,
-      bool fixed_noise_model = false);
+      const gtsam::Vector q_psd_diag, bool fixed_noise_model = false);
 
   double error(const gtsam::Values& values) const;
 };
@@ -710,21 +714,21 @@ gtsam::NonlinearFactorGraph interpolateFactorGraph(
 
 template <POSE = {gtsam::Point1, gtsam::Point2, gtsam::Point3, gtsam::Pose2,
                   gtsam::Pose3}>
-gtsam::WnoaFactorGraph<POSE> interpolateFactorGraph(
+gtsam::WnoaFactorGraph<Pose> interpolateWnoaFactorGraph(
     const gtsam::NonlinearFactorGraph& graph,
     const std::set<gtsam::StateData>& estimated_states,
     const std::set<gtsam::StateData>& interp_states, gtsam::Vector q_psd_diag,
     bool fixed_noise = false);
 
-// template <POSE = {gtsam::Point1, gtsam::Point2, gtsam::Point3, gtsam::Pose2,
-//                   gtsam::Pose3}>
-// gtsam::Values updateInterpValues(
-//     const gtsam::NonlinearFactorGraph& interp_graph,
-//     const gtsam::Values& values, const std::set<gtsam::StateData>&
-//     estim_states, const std::set<gtsam::StateData>& interp_states, const
-//     gtsam::Vector q_psd_diag, std::shared_ptr<std::map<gtsam::Key,
-//     gtsam::Matrix>> covarianceMapOut =
-//         nullptr);
+template <POSE = {gtsam::Point1, gtsam::Point2, gtsam::Point3, gtsam::Pose2,
+                  gtsam::Pose3}>
+gtsam::Values updateInterpValues(
+    const gtsam::NonlinearFactorGraph& interp_graph,
+    const gtsam::Values& values, const std::set<gtsam::StateData>& estim_states,
+    const std::set<gtsam::StateData>& interp_states,
+    const gtsam::Vector q_psd_diag);
+    // std::shared_ptr<std::map<gtsam::Key, gtsam::Matrix>> covarianceMapOut =
+    //     nullptr);
 
 //*************************************************************************
 // Nonlinear factor types
