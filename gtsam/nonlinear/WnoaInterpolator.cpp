@@ -13,9 +13,11 @@ namespace gtsam {
 // ---- Constructors ----
 template <typename PoseType>
 Interpolator<PoseType>::Interpolator(
-    const VectorN& Q_psd, std::function<Matrix(double dt)> transitionFunction,
-    std::function<Matrix(double dt, const VectorN& Q_psd)> covarianceFunction,
-    std::function<Matrix(double dt, const VectorN& Q_psd)>
+    const VectorN& q_psd_diag,
+    std::function<Matrix(double dt)> transitionFunction,
+    std::function<Matrix(double dt, const VectorN& q_psd_diag)>
+        covarianceFunction,
+    std::function<Matrix(double dt, const VectorN& q_psd_diag)>
 
         inverseCovarianceFunction,
     std::function<Matrix(const std::pair<PoseType, VelocityType>&,
@@ -24,7 +26,7 @@ Interpolator<PoseType>::Interpolator(
     std::function<Matrix(const std::pair<PoseType, VelocityType>&,
                          const std::pair<PoseType, VelocityType>&, double)>
         computeJacobianNext)
-    : Q_psd_(Q_psd),
+    : q_psd_diag_(q_psd_diag),
       transitionFunction_(transitionFunction),
       covarianceFunction_(covarianceFunction),
       inverseCovarianceFunction_(inverseCovarianceFunction),
@@ -32,12 +34,12 @@ Interpolator<PoseType>::Interpolator(
       computeJacobianNext_(computeJacobianNext) {}
 
 template <typename PoseType>
-Interpolator<PoseType>::Interpolator(const VectorN& Q_psd)
-    : Interpolator(Q_psd, WNOAMotionFactor<PoseType>::TransitionFunction,
-                   WNOAMotionFactor<PoseType>::BuildWNOACovariance,
-                   WNOAMotionFactor<PoseType>::BuildInverseWNOACovariance,
-                   WNOAMotionFactor<PoseType>::ComputeJacobianPrev,
-                   WNOAMotionFactor<PoseType>::ComputeJacobianNext) {}
+Interpolator<PoseType>::Interpolator(const VectorN& q_psd_diag)
+    : Interpolator(q_psd_diag, WnoaMotionFactor<PoseType>::TransitionFunction,
+                   WnoaMotionFactor<PoseType>::BuildWnoaCovariance,
+                   WnoaMotionFactor<PoseType>::BuildInverseWnoaCovariance,
+                   WnoaMotionFactor<PoseType>::ComputeJacobianPrev,
+                   WnoaMotionFactor<PoseType>::ComputeJacobianNext) {}
 
 // ---- Member Functions ----
 template <typename PoseType>
@@ -185,7 +187,7 @@ Interpolator<PoseType>::extrapolatePoseAndVelocity(
   if (mainSolveMarginalMatrix && covarianceOut) {
     assert(mainSolveMarginalMatrix->rows() == 2 * dim &&
            mainSolveMarginalMatrix->cols() == 2 * dim);
-    Matrix2N Sigma = covarianceFunction_(t_diff, Q_psd_);
+    Matrix2N Sigma = covarianceFunction_(t_diff, q_psd_diag_);
     // (11.5) in (Barfoot 2024)
     *covarianceOut = Sigma + Psi * *mainSolveMarginalMatrix * Psi.transpose();
   }
@@ -582,8 +584,8 @@ std::pair<Matrix, Matrix> Interpolator<PoseType>::getLambdaPsiGeneral(
   auto Phi_tau2 = transitionFunction_(t_kp1 - t_tau);
 
   // Construct Q
-  auto Q_12_inv = inverseCovarianceFunction_(dt, Q_psd_);
-  auto Q_1tau = covarianceFunction_(t_tau - t_k, Q_psd_);
+  auto Q_12_inv = inverseCovarianceFunction_(dt, q_psd_diag_);
+  auto Q_1tau = covarianceFunction_(t_tau - t_k, q_psd_diag_);
 
   // Eq. (11.41) in (Barfoot 2024)
   auto Lambda = Phi_1tau - Q_1tau * Phi_tau2.transpose() * Q_12_inv * Phi_12;
@@ -657,8 +659,10 @@ Interpolator<PoseType>::computeConditionalCov(
          "t_tau must be in the interval (t_k, t_kp1)");
 
   // see Figure 5.4 in the paper
-  Matrix2N Q_tau_prev_inv = inverseCovarianceFunction_(t_tau - t_k, Q_psd_);
-  Matrix2N Q_tau_next_inv = inverseCovarianceFunction_(t_kp1 - t_tau, Q_psd_);
+  Matrix2N Q_tau_prev_inv =
+      inverseCovarianceFunction_(t_tau - t_k, q_psd_diag_);
+  Matrix2N Q_tau_next_inv =
+      inverseCovarianceFunction_(t_kp1 - t_tau, q_psd_diag_);
   Matrix2N E_tau = computeJacobianNext_(poseVel_k.asPair(),
                                         poseVel_tau.asPair(), t_tau - t_k);
   Matrix2N F_k_tau = computeJacobianPrev_(poseVel_tau.asPair(),

@@ -115,10 +115,11 @@ class GTSAM_EXPORT Interpolator {
   using Vector2N = Eigen::Matrix<double, 2 * dim, 1>;
   using MatrixNx2N = Eigen::Matrix<double, dim, 2 * dim>;
 
-  VectorN Q_psd_;  // Diagonal power Spectral Density for WNOA
+  VectorN q_psd_diag_;  // Diagonal power Spectral Density for WNOA
   std::function<Matrix(double dt)> transitionFunction_;
-  std::function<Matrix(double dt, const VectorN& Q_psd)> covarianceFunction_;
-  std::function<Matrix(double dt, const VectorN& Q_psd)>
+  std::function<Matrix(double dt, const VectorN& q_psd_diag)>
+      covarianceFunction_;
+  std::function<Matrix(double dt, const VectorN& q_psd_diag)>
       inverseCovarianceFunction_;
   // Todo: need to make the below two functions generalize to cases with no
   // velocities, e.g. WNOV
@@ -152,21 +153,24 @@ class GTSAM_EXPORT Interpolator {
   /**
    * @brief Construct an Interpolator with custom motion-model functions.
    *
-   * @param Q_psd Diagonal power spectral density vector for the motion prior.
+   * @param q_psd_diag Diagonal power spectral density vector for the motion
+   * prior.
    * @param transitionFunction Function returning the transition matrix for dt.
    * @param covarianceFunction Function returning process noise covariance for
-   * dt and Q_psd.
+   * dt and q_psd_diag.
    * @param inverseCovarianceFunction Function returning inverse covariance for
-   * dt and Q_psd.
+   * dt and q_psd_diag.
    * @param computeJacobianPrev Function that computes the Jacobian of the
    * interpolated state with respect to the previous bordering state.
    * @param computeJacobianNext Function that computes the Jacobian of the
    * interpolated state with respect to the next bordering state.
    */
   Interpolator(
-      const VectorN& Q_psd, std::function<Matrix(double dt)> transitionFunction,
-      std::function<Matrix(double dt, const VectorN& Q_psd)> covarianceFunction,
-      std::function<Matrix(double dt, const VectorN& Q_psd)>
+      const VectorN& q_psd_diag,
+      std::function<Matrix(double dt)> transitionFunction,
+      std::function<Matrix(double dt, const VectorN& q_psd_diag)>
+          covarianceFunction,
+      std::function<Matrix(double dt, const VectorN& q_psd_diag)>
           inverseCovarianceFunction,
       std::function<Matrix(const std::pair<PoseType, VelocityType>&,
                            const std::pair<PoseType, VelocityType>&, double)>
@@ -178,9 +182,10 @@ class GTSAM_EXPORT Interpolator {
   /**
    * @brief Default constructor using the WNOA motion model.
    *
-   * @param Q_psd Diagonal power spectral density vector for the motion prior.
+   * @param q_psd_diag Diagonal power spectral density vector for the motion
+   * prior.
    */
-  Interpolator(const VectorN& Q_psd);
+  Interpolator(const VectorN& q_psd_diag);
 
   /**
    * @brief Interpolate the pose and velocity at time `t_tau`.
