@@ -159,7 +159,7 @@ class TestWnoaFactorGraphPose3(GtsamTestCase):
         q_psd_diag = np.ones(6)
 
         p0 = gtsam.Pose3.Expmap(np.array([0.5, 0.0, 0.0, 0.0, 0.0, 0.0]))
-        v0 = np.array([[1.0, 0.0, 0.5, 0.1, 0.0, 0.0]]).T
+        v0 = np.array([1.0, 0.0, 0.5, 0.1, 0.0, 0.0])
         p1 = p0.retract(timestep * v0)
         p2 = p0.retract(2.0 * timestep * v0)
         p3 = p0.retract(3.0 * timestep * v0)
@@ -191,7 +191,8 @@ class TestWnoaFactorGraphPose3(GtsamTestCase):
             keys["p1"], keys["p3"], p1.between(p3), model
         )
         prior_pose_factor = gtsam.PriorFactorPose3(keys["p1"], p1, model)
-        prior_vel_factor = gtsam.PriorFactorVector(keys["v1"], v0, model)
+        # Note: Velocity Priors must be defined using a fixed size prior.
+        prior_vel_factor = gtsam.PriorFactorVector6(keys["v1"], v0, model)
 
         graph = gtsam.NonlinearFactorGraph()
         graph.add(between_factor)
@@ -260,7 +261,7 @@ class TestWnoaFactorGraphPose3(GtsamTestCase):
             keys["p1"], keys["p3"], p1.between(p3), model
         )
         prior_pose_factor = gtsam.PriorFactorPose3(keys["p1"], p1, model)
-        prior_vel_factor = gtsam.PriorFactorVector(keys["v1"], v0, model)
+        prior_vel_factor = gtsam.PriorFactorVector6(keys["v1"], v0, model)
 
         graph = gtsam.NonlinearFactorGraph()
         graph.add(between_factor)

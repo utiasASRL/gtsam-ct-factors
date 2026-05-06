@@ -737,6 +737,8 @@ gtsam::Values updateInterpValues(
 #include <gtsam/nonlinear/PriorFactor.h>
 template <T = {double,
                gtsam::Vector,
+               gtsam::Point1,
+               gtsam::Vector6,
                gtsam::Point2,
                gtsam::StereoPoint2,
                gtsam::Point3,
