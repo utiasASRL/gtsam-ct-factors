@@ -143,12 +143,13 @@ def plot_poses(plotter: pv.Plotter,
                nstd = 3.762,
                color = 'blue',
                scale = 0.15,
-               opacity = 1.0):
+               opacity_frame = 1.0,
+               opacity_cov = 0.15):
     # Plot the posterior trajectory and covariances
     for k, pose in enumerate(poses):
         pose_inv = pose.inverse().matrix()
-        plot_se3(plotter, pose_inv, scale=0.15, color=color, opacity=opacity)
+        plot_se3(plotter, pose_inv, scale=0.15, color=color, opacity=opacity_frame)
         
         if covariances is not None:
-            plot_covariance(plotter, pose_inv, covariances[k], nstd=nstd, color=color)
+            plot_covariance(plotter, pose_inv, covariances[k], nstd=nstd, color=color, opacity=opacity_cov)
             
