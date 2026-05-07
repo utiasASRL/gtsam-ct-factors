@@ -102,8 +102,8 @@ class TestWnoaInterpFactorPose3(GtsamTestCase):
         velocity_key_2 = Symbol('v', 2).key()
 
         estimated_states = [
-            gtsam.StateData(pose_key_0, velocity_key_0, 0.0),
             gtsam.StateData(pose_key_2, velocity_key_2, 2.0 * timestep),
+            gtsam.StateData(pose_key_0, velocity_key_0, 0.0),
         ]
         estimated_states = set(estimated_states)
         interpolated_states = [
