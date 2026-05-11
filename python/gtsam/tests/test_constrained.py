@@ -90,6 +90,41 @@ class TestConstrainedWrappers(unittest.TestCase):
         self.assertEqual(problem.dim(), (1, 1, 0))
         self.assertEqual(problem.evaluate(values), (0.5, 0.0, 0.0))
 
+    def test_augmented_lagrangian_optimizer_wrapper(self):
+        """Solve a small QCQP through the constrained optimizer wrapper."""
+        x = X(0)
+        target = np.array([1.2, 0.8])
+
+        problem = gtsam.QcqpProblem()
+        problem.addCost(
+            gtsam.QpCost(
+                gtsam.HessianFactor(x, np.eye(2), target, float(target @ target))
+            )
+        )
+        problem.addConstraint(gtsam.QuadraticConstraint.LessEqual(x, np.eye(2), 1.0))
+        problem.addConstraint(
+            gtsam.QuadraticConstraint.LessEqual(x, np.diag([0.0, 1.0]), 0.25)
+        )
+
+        initial = gtsam.Values()
+        initial.insert(x, np.array([0.6, 0.2]))
+
+        params = gtsam.AugmentedLagrangianParams()
+        params.maxIterations = 100
+        params.absoluteViolationTolerance = 1e-8
+        params.relativeViolationTolerance = 1e-8
+        params.relativeCostTolerance = 1e-8
+
+        result = gtsam.AugmentedLagrangianOptimizer(
+            problem, initial, params
+        ).optimize()
+
+        np.testing.assert_allclose(
+            result.atVector(x), np.array([np.sqrt(0.75), 0.5]), atol=1e-5
+        )
+        _, _, inequality_violation = problem.evaluate(result)
+        self.assertLess(inequality_violation, 1e-6)
+
 
 if __name__ == "__main__":
     unittest.main()

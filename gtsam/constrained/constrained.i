@@ -3,6 +3,15 @@
 //*************************************************************************
 namespace gtsam {
 
+#include <gtsam/constrained/ConstrainedOptProblem.h>
+class ConstrainedOptProblem {
+  ConstrainedOptProblem();
+
+  std::tuple<double, double, double> evaluate(
+      const gtsam::Values& values) const;
+  std::tuple<size_t, size_t, size_t> dim() const;
+};
+
 #include <gtsam/constrained/LinearConstraint.h>
 class LinearConstraint {
   enum class Sense { Equal, LessEqual, GreaterEqual };
@@ -72,7 +81,7 @@ class LpCost {
   double value(const gtsam::Values& values) const;
 };
 
-class LpProblem {
+class LpProblem : gtsam::ConstrainedOptProblem {
   LpProblem();
 
   void addCost(const gtsam::LpCost& cost);
@@ -107,7 +116,7 @@ virtual class QpCost : gtsam::NonlinearFactor {
 #include <gtsam/constrained/QpProblem.h>
 enum class QpSolverType { Sparse, Dense };
 
-class QpProblem {
+class QpProblem : gtsam::ConstrainedOptProblem {
   QpProblem();
 
   void addCost(const gtsam::QpCost& cost);
@@ -126,7 +135,7 @@ class QpProblem {
 };
 
 #include <gtsam/constrained/QcqpProblem.h>
-class QcqpProblem {
+class QcqpProblem : gtsam::ConstrainedOptProblem {
   QcqpProblem();
 
   void addCost(const gtsam::QpCost& cost);
@@ -136,6 +145,49 @@ class QcqpProblem {
   std::tuple<double, double, double> evaluate(
       const gtsam::Values& values) const;
   std::tuple<size_t, size_t, size_t> dim() const;
+};
+
+#include <gtsam/constrained/ConstrainedOptimizer.h>
+class ConstrainedOptimizerParams {
+  ConstrainedOptimizerParams();
+
+  size_t maxIterations;
+  double absoluteViolationTolerance;
+  double relativeViolationTolerance;
+  double absoluteCostTolerance;
+  double relativeCostTolerance;
+  bool verbose;
+  bool storeOptProgress;
+};
+
+#include <gtsam/constrained/PenaltyOptimizer.h>
+class PenaltyOptimizerParams : gtsam::ConstrainedOptimizerParams {
+  PenaltyOptimizerParams();
+
+  double initialMuEq;
+  double initialMuIneq;
+  double muEqIncreaseRate;
+  double muIneqIncreaseRate;
+};
+
+#include <gtsam/constrained/AugmentedLagrangianOptimizer.h>
+class AugmentedLagrangianParams : gtsam::PenaltyOptimizerParams {
+  AugmentedLagrangianParams();
+
+  double maxDualStepSizeEq;
+  double maxDualStepSizeIneq;
+  double dualStepSizeFactorEq;
+  double dualStepSizeFactorIneq;
+  double muIncreaseThreshold;
+};
+
+virtual class AugmentedLagrangianOptimizer {
+  AugmentedLagrangianOptimizer(
+      const gtsam::ConstrainedOptProblem& problem,
+      const gtsam::Values& initialValues,
+      gtsam::AugmentedLagrangianParams::shared_ptr p);
+
+  gtsam::Values optimize() const;
 };
 
 }  // namespace gtsam
