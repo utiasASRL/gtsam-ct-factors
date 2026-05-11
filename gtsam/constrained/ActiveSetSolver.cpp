@@ -159,13 +159,9 @@ double RowDotProduct(const JacobianFactor& factor, const VectorValues& values) {
 
 /* ************************************************************************* */
 Key NextAvailableKey(const std::map<Key, size_t>& keyDims) {
-  Key key = 0;
-  for (const auto& [existingKey, _] : keyDims) {
-    key = std::max(key, existingKey);
-  }
-  return key + 1;
+  if (keyDims.empty()) return 1;
+  return keyDims.rbegin()->first + 1;
 }
-
 /* ************************************************************************* */
 void CompleteMissingKeys(VectorValues* values, const VectorValues& fallback,
                          const std::map<Key, size_t>& keyDims) {
@@ -345,7 +341,8 @@ void ActiveSetSolver::initializeDenseQpWorkspace() {
     // Very small positive regularization can still be treated as rank-deficient
     // by elimination; retry with the dense-mode floor before failing.
     GaussianFactorGraph fallbackCostGraph = qpCostGraph_;
-    AddRegularization(&fallbackCostGraph, keyDims_, kMinimumDenseRegularization);
+    AddRegularization(&fallbackCostGraph, keyDims_,
+                      kMinimumDenseRegularization);
     try {
       workspace.costBayesNet = eliminate(fallbackCostGraph);
     } catch (const IndeterminantLinearSystemException&) {
