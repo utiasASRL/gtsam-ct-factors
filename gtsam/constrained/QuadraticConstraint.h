@@ -25,8 +25,9 @@ namespace gtsam {
 /**
  * Scalar quadratic constraint trace(X' A X) - b with a relation sense.
  *
- * Here A is a row-space matrix. For D=1 this reduces to the usual vector
- * constraint x' A x = b; for D>1 it constrains X X' through <A, X X'> = b.
+ * Direct Vector values are treated as one-column matrices. For Matrix values,
+ * A is a row-space matrix and the constraint is applied across all columns:
+ * trace(X' A X) = <A, X X'>.
  */
 class GTSAM_EXPORT QuadraticConstraint {
  public:
@@ -126,9 +127,7 @@ class GTSAM_EXPORT QuadraticEqualityConstraintFactor
         constraint_(constraint) {}
 
   /// Return the wrapped quadratic constraint.
-  const QuadraticConstraint& quadraticConstraint() const {
-    return constraint_;
-  }
+  const QuadraticConstraint& quadraticConstraint() const { return constraint_; }
 
   /** Evaluate the signed quadratic equality residual. */
   Vector unwhitenedError(const Values& values,
@@ -159,9 +158,7 @@ class GTSAM_EXPORT QuadraticInequalityConstraintFactor
         constraint_(constraint) {}
 
   /// Return the wrapped quadratic constraint.
-  const QuadraticConstraint& quadraticConstraint() const {
-    return constraint_;
-  }
+  const QuadraticConstraint& quadraticConstraint() const { return constraint_; }
 
   /** Evaluate the signed quadratic inequality expression. */
   Vector unwhitenedExpr(const Values& values,

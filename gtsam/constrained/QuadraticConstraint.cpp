@@ -15,6 +15,7 @@
  * @author  Frank Dellaert
  */
 
+#include <gtsam/base/GenericValue.h>
 #include <gtsam/constrained/QuadraticConstraint.h>
 #include <gtsam/nonlinear/Values.h>
 
@@ -29,12 +30,28 @@ double SenseSign(QuadraticConstraint::Sense sense) {
 }
 
 /* ************************************************************************* */
+Matrix VectorOrMatrixAsMatrix(const Values& values, Key key) {
+  const Value& value = values.at(key);
+  if (const auto* vectorValue =
+          dynamic_cast<const GenericValue<Vector>*>(&value)) {
+    return vectorValue->value();
+  }
+  if (const auto* matrixValue =
+          dynamic_cast<const GenericValue<Matrix>*>(&value)) {
+    return matrixValue->value();
+  }
+  throw std::invalid_argument(
+      "QuadraticConstraint: only Vector and Matrix Values entries are "
+      "supported.");
+}
+
+/* ************************************************************************* */
 Vector ConstraintError(const QuadraticConstraint& constraint,
                        const Values& values, OptionalMatrixVecType H) {
-  const Matrix X = values.at<Matrix>(constraint.key());
+  const Matrix X = VectorOrMatrixAsMatrix(values, constraint.key());
   if (X.rows() != constraint.A().rows()) {
     throw std::invalid_argument(
-        "QuadraticConstraint: matrix row count does not match A.");
+        "QuadraticConstraint: value dimension does not match A.");
   }
 
   const Matrix AX = constraint.A() * X;
