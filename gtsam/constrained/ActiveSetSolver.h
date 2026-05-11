@@ -19,6 +19,7 @@
 
 #include <gtsam/constrained/LpProblem.h>
 #include <gtsam/constrained/QpProblem.h>
+#include <gtsam/linear/GaussianFactorGraph.h>
 #include <gtsam/linear/VectorValues.h>
 
 #include <map>

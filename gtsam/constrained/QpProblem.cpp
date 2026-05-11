@@ -40,15 +40,6 @@ void QpProblem::addConstraint(const LinearConstraint& constraint) {
 }
 
 /* ************************************************************************* */
-GaussianFactorGraph QpProblem::linearizedCosts(const Values& values) const {
-  GaussianFactorGraph graph;
-  for (const auto& cost : costs_) {
-    graph.push_back(cost->linearize(values));
-  }
-  return graph;
-}
-
-/* ************************************************************************* */
 Values QpProblem::optimize(const Values& initialValues,
                            QpSolverType solverType) const {
   if (solverType == QpSolverType::Dense) {
@@ -66,21 +57,6 @@ Values QpProblem::optimize(QpSolverType solverType) const {
     return solver.optimize();
   }
   ActiveSetSolver solver(*this);
-  return solver.optimize();
-}
-
-/* ************************************************************************* */
-Values QpProblem::optimizeActiveSet(
-    const Values& initialValues,
-    std::shared_ptr<ActiveSetSolverParams> params) const {
-  ActiveSetSolver solver(*this, params);
-  return solver.optimize(initialValues);
-}
-
-/* ************************************************************************* */
-Values QpProblem::optimizeActiveSet(
-    std::shared_ptr<ActiveSetSolverParams> params) const {
-  ActiveSetSolver solver(*this, params);
   return solver.optimize();
 }
 

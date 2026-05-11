@@ -20,13 +20,11 @@
 #include <gtsam/constrained/ConstrainedOptProblem.h>
 #include <gtsam/constrained/LinearConstraint.h>
 #include <gtsam/constrained/QpCost.h>
-#include <gtsam/linear/GaussianFactorGraph.h>
+#include <gtsam/linear/GaussianFactor.h>
 
 #include <memory>
 
 namespace gtsam {
-
-class ActiveSetSolverParams;
 
 /// Solver choice for QpProblem::optimize convenience methods.
 enum class QpSolverType {
@@ -62,9 +60,6 @@ class GTSAM_EXPORT QpProblem : public ConstrainedOptProblem {
   /** Add a linear constraint. */
   void addConstraint(const LinearConstraint& constraint);
 
-  /** Return exact Gaussian linearizations of the QP costs. */
-  GaussianFactorGraph linearizedCosts(const Values& values) const;
-
   /** Optimize from a feasible initial point using the selected QP solver. */
   Values optimize(const Values& initialValues,
                   QpSolverType solverType = QpSolverType::Sparse) const;
@@ -72,16 +67,6 @@ class GTSAM_EXPORT QpProblem : public ConstrainedOptProblem {
   /** Find a vector-valued feasible point and optimize using the selected
    * solver. */
   Values optimize(QpSolverType solverType = QpSolverType::Sparse) const;
-
-  /** Optimize from a feasible initial point using the active-set solver. */
-  Values optimizeActiveSet(
-      const Values& initialValues,
-      std::shared_ptr<ActiveSetSolverParams> params = nullptr) const;
-
-  /** Find a vector-valued feasible point and optimize with the active-set
-   * solver. */
-  Values optimizeActiveSet(
-      std::shared_ptr<ActiveSetSolverParams> params = nullptr) const;
 };
 
 }  // namespace gtsam
