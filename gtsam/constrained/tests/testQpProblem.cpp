@@ -17,6 +17,7 @@
 
 #include <CppUnitLite/TestHarness.h>
 #include <gtsam/base/TestableAssertions.h>
+#include <gtsam/constrained/AugmentedLagrangianOptimizer.h>
 #include <gtsam/constrained/LinearConstraint.h>
 #include <gtsam/constrained/QpCost.h>
 #include <gtsam/constrained/QpProblem.h>
@@ -188,6 +189,12 @@ Values VectorValue(double first, double second) {
   return values;
 }
 
+Values ScalarValue(double value) {
+  Values values;
+  values.insert(x0, (Vector(1) << value).finished());
+  return values;
+}
+
 // Verifies QpProblem evaluates QP costs and linear constraints directly.
 TEST(QpProblem, Evaluate) {
   QpProblem problem;
@@ -209,6 +216,24 @@ TEST(QpProblem, Evaluate) {
   EXPECT_DOUBLES_EQUAL(expectedCost, cost, 1e-12);
   EXPECT_DOUBLES_EQUAL(0.0, eqViolation, 1e-12);
   EXPECT_DOUBLES_EQUAL(0.0, ineqViolation, 1e-12);
+}
+
+// Verifies a QpProblem can be solved through the Augmented Lagrangian optimizer.
+TEST(QpProblem, AugmentedLagrangianOptimize) {
+  QpProblem problem;
+  problem.addCost(HessianFactor(x0, Matrix11::Identity(), Vector1(2.0), 4.0));
+  problem.addConstraint(LinearConstraint::Equal(
+      JacobianFactor(x0, Matrix11::Identity(), Vector1(1.0))));
+
+  auto params = std::make_shared<AugmentedLagrangianParams>();
+  params->absoluteViolationTolerance = 1e-8;
+  params->absoluteCostTolerance = 1e-8;
+  params->relativeCostTolerance = 1e-8;
+  AugmentedLagrangianOptimizer optimizer(problem, ScalarValue(0.0), params);
+
+  const Values result = optimizer.optimize();
+
+  EXPECT(assert_equal(ScalarValue(1.0), result, 1e-5));
 }
 
 }  // namespace QpProblemFixture
