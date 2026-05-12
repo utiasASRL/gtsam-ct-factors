@@ -68,14 +68,14 @@ TEST(QpCost, HessianVectorError) {
 }
 
 // Verifies row-space matrix costs match the trace objective.
-TEST(QpCost, RowSpaceQuadraticMatrixError) {
+TEST(QpCost, RowSpaceMatrixError) {
   Matrix Q = Matrix::Zero(5, 5);
   Q.diagonal() << 1.0, 2.0, 3.0, 4.0, 5.0;
   Q.block<2, 3>(0, 2) << 0.2, -0.1, 0.4, 0.3, 0.5, -0.2;
   Q.block<3, 2>(2, 0) = Q.block<2, 3>(0, 2).transpose();
 
   const SymmetricBlockMatrix blockQ(std::vector<DenseIndex>{2, 3}, Q);
-  const QpCost cost = QpCost::RowSpaceQuadratic(KeyVector{x0, x1}, blockQ, 2);
+  const QpCost cost(KeyVector{x0, x1}, blockQ, 2);
   const Matrix X0 = (Matrix(2, 2) << 1.0, 2.0, -0.5, 0.25).finished();
   const Matrix X1 = (Matrix(3, 2) << 0.2, -0.4, 1.5, 0.7, -1.0, 0.3).finished();
 
@@ -218,7 +218,8 @@ TEST(QpProblem, Evaluate) {
   EXPECT_DOUBLES_EQUAL(0.0, ineqViolation, 1e-12);
 }
 
-// Verifies a QpProblem can be solved through the Augmented Lagrangian optimizer.
+// Verifies a QpProblem can be solved through the Augmented Lagrangian
+// optimizer.
 TEST(QpProblem, AugmentedLagrangianOptimize) {
   QpProblem problem;
   problem.addCost(HessianFactor(x0, Matrix11::Identity(), Vector1(2.0), 4.0));

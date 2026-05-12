@@ -15,8 +15,8 @@
  * @author  Frank Dellaert
  */
 
-#include <gtsam/constrained/QpCost.h>
 #include <gtsam/base/GenericValue.h>
+#include <gtsam/constrained/QpCost.h>
 
 #include <stdexcept>
 #include <vector>
@@ -69,9 +69,9 @@ Matrix ExpandedBlock(const Matrix& block, size_t columns) {
 }  // namespace
 
 /* ************************************************************************* */
-QpCost QpCost::RowSpaceQuadratic(const KeyVector& keys,
-                                 const SymmetricBlockMatrix& Q,
-                                 size_t columnDim) {
+QpCost::QpCost(const KeyVector& keys, const SymmetricBlockMatrix& Q,
+               size_t columnDim)
+    : Base(keys) {
   if (keys.size() != static_cast<size_t>(Q.nBlocks())) {
     throw std::invalid_argument(
         "QpCost: number of keys must match Q block count.");
@@ -95,12 +95,11 @@ QpCost QpCost::RowSpaceQuadratic(const KeyVector& keys,
     gs.push_back(Vector::Zero(dim));
   }
 
-  return QpCost(HessianFactor(keys, Gs, gs, 0.0));
+  hessianFactor_ = std::make_shared<HessianFactor>(keys, Gs, gs, 0.0);
 }
 
 /* ************************************************************************* */
-void QpCost::print(const std::string& s,
-                   const KeyFormatter& formatter) const {
+void QpCost::print(const std::string& s, const KeyFormatter& formatter) const {
   Base::print(s + "QpCost", formatter);
   hessianFactor_->print("  Hessian factor: ", formatter);
 }
@@ -125,8 +124,8 @@ GaussianFactor::shared_ptr QpCost::linearize(const Values& values) const {
   const auto informationView = shifted->informationView();
   const Vector Gx = informationView * valueVector;
   const Vector linearTerm = shifted->linearTerm().col(0);
-  shifted->constantTerm() += valueVector.dot(Gx) -
-                             2.0 * valueVector.dot(linearTerm);
+  shifted->constantTerm() +=
+      valueVector.dot(Gx) - 2.0 * valueVector.dot(linearTerm);
   shifted->linearTerm() -= Gx;
   return shifted;
 }

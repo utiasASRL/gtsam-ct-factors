@@ -47,31 +47,37 @@ class GTSAM_EXPORT QpCost : public NonlinearFactor {
       : Base(factor.keys()),
         hessianFactor_(std::make_shared<HessianFactor>(factor)) {}
 
-  /** Construct from any Gaussian factor by converting it to a Hessian factor. */
-  explicit QpCost(const GaussianFactor& factor) : QpCost(HessianFactor(factor)) {}
+  /**
+   * Construct from any Gaussian factor by converting it to a Hessian factor.
+   */
+  explicit QpCost(const GaussianFactor& factor)
+      : QpCost(HessianFactor(factor)) {}
 
-  /** Construct from a shared Gaussian factor by converting it to a Hessian factor. */
+  /**
+   * Construct from a shared Gaussian factor by converting it to a Hessian
+   * factor.
+   */
   explicit QpCost(const GaussianFactor::shared_ptr& factor)
       : QpCost(factor ? *factor
                       : throw std::invalid_argument(
                             "QpCost: shared Gaussian factor is null.")) {}
 
   /**
-   * Construct a row-space quadratic cost over matrix Values.
+   * Construct a row-space quadratic cost over direct Vector or Matrix Values.
    *
    * For matrix values X_i in R^{r_i x d}, this creates the cost
-   * 0.5 * sum_ij trace(X_i' Q_ij X_j). Vector QPs use columnDim = 1.
+   * 0.5 * sum_ij trace(X_i' Q_ij X_j). Matrix values must use the supplied
+   * columnDim. Vector QPs use columnDim = 1.
    */
-  static QpCost RowSpaceQuadratic(const KeyVector& keys,
-                                  const SymmetricBlockMatrix& Q,
-                                  size_t columnDim = 1);
+  QpCost(const KeyVector& keys, const SymmetricBlockMatrix& Q,
+         size_t columnDim = 1);
 
   /// Return the stored Hessian factor.
   const HessianFactor& hessianFactor() const { return *hessianFactor_; }
 
   /** Print the factor for debugging. */
-  void print(const std::string& s = "",
-             const KeyFormatter& formatter = DefaultKeyFormatter) const override;
+  void print(const std::string& s = "", const KeyFormatter& formatter =
+                                            DefaultKeyFormatter) const override;
 
   /** Check equality up to a tolerance. */
   bool equals(const NonlinearFactor& other, double tol = 1e-9) const override;
