@@ -32,12 +32,12 @@ It includes classes for representing constraints, building constrained problems,
 
 ## QP and QCQP Problems
 
-- `QpProblem`: Holds affine quadratic costs and linear equality/inequality constraints over vector or matrix variables.
-- `QpCost`: Affine quadratic objective term backed by a Hessian factor.
-- `LinearConstraint`: Linear constraint represented as equal, less-equal, or greater-equal.
-- `ActiveSetSolver`: Active-set QP/LP solver with sparse and dense QP subproblem modes.
+- [`QpProblem`](doc/QpProblem.ipynb): Holds affine quadratic costs and linear equality/inequality constraints over vector or matrix variables.
+- [`QpCost`](doc/QpProblem.ipynb): Affine quadratic objective term backed by a Hessian factor.
+- [`LinearConstraint`](doc/QpProblem.ipynb): Linear constraint represented as equal, less-equal, or greater-equal.
+- [`ActiveSetSolver`](doc/QpProblem.ipynb): Active-set QP/LP solver with sparse and dense QP subproblem modes.
 - [`QcqpProblem`](doc/QcqpProblem.ipynb): Holds quadratic costs and linear/quadratic constraints over vector or matrix variables.
-- `QpCost`: Also used for QCQP objectives; `QpCost(keys, Q, columnDim)` creates a pure row-space quadratic cost $\frac{1}{2}\sum_{ij}\operatorname{tr}(X_i^\top Q_{ij}X_j)$ over vectors or matrices $X_i \in \mathbb{R}^{r_i \times d}$.
+- [`QpCost`](doc/QcqpProblem.ipynb): Also used for QCQP objectives; `QpCost(keys, Q, columnDim)` creates a pure row-space quadratic cost $\frac{1}{2}\sum_{ij}\operatorname{tr}(X_i^\top Q_{ij}X_j)$ over vectors or matrices $X_i \in \mathbb{R}^{r_i \times d}$.
 - [`QuadraticConstraint`](doc/QcqpProblem.ipynb): Scalar quadratic constraint $\operatorname{tr}(X^\top A X) \sim b$, where $\sim$ is equal, less-equal, or greater-equal.
 
 The leading factor of `1/2` in row-space `QpCost` construction is intentional:
@@ -50,7 +50,7 @@ objective written without the `1/2`, pass twice the row-space `Q` blocks to
 - [`ConstrainedOptimizerParams`](doc/ConstrainedOptimizer.ipynb), [`ConstrainedOptimizerState`](doc/ConstrainedOptimizer.ipynb), [`ConstrainedOptimizer`](doc/ConstrainedOptimizer.ipynb): Shared base interfaces and iteration state for constrained solvers.
 - [`PenaltyOptimizerParams`](doc/PenaltyOptimizer.ipynb), [`PenaltyOptimizerState`](doc/PenaltyOptimizer.ipynb), [`PenaltyOptimizer`](doc/PenaltyOptimizer.ipynb): Penalty method solver and its parameters/state.
 - [`AugmentedLagrangianParams`](doc/AugmentedLagrangianOptimizer.ipynb), [`AugmentedLagrangianState`](doc/AugmentedLagrangianOptimizer.ipynb), [`AugmentedLagrangianOptimizer`](doc/AugmentedLagrangianOptimizer.ipynb): Augmented Lagrangian solver and its parameters/state.
-- `ActiveSetSolver`: Active-set solver for [`QpProblem`](doc/QpProblem.ipynb) and [`LpProblem`](doc/LpProblem.ipynb), with sparse and dense QP subproblem modes.
+- [`ActiveSetSolver`](doc/QpProblem.ipynb): Active-set solver for [`QpProblem`](doc/QpProblem.ipynb) and [`LpProblem`](doc/LpProblem.ipynb), with sparse and dense QP subproblem modes.
 
 ## How the Pieces Fit Together
 
