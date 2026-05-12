@@ -17,9 +17,8 @@ import gtsam
 import numpy as np
 from gtsam.utils.test_case import GtsamTestCase
 
-from gtsam import Symbol
-from gtsam import WnoaInterpFactorPose3
-from gtsam import WnoaMotionFactorPose3
+from gtsam import Symbol, WnoaInterpFactorPose3, WnoaMotionFactorPose3
+from gtsam.symbol_shorthand import X, V
 
 
 @dataclass
@@ -28,13 +27,7 @@ class Se3FixtureData:
 
     timeStep: float
     qPsdDiag: np.ndarray
-    keys: dict
-    p0: gtsam.Pose3
-    p1: gtsam.Pose3
-    p2: gtsam.Pose3
-    p3: gtsam.Pose3
-    p4: gtsam.Pose3
-    v0: np.ndarray
+    values: gtsam.Values
 
 
 @dataclass
@@ -43,15 +36,8 @@ class Se3InterpGraphData:
 
     timeStep: float
     qPsdDiag: np.ndarray
-    keys: dict
-    p0: gtsam.Pose3
-    p1: gtsam.Pose3
-    p2: gtsam.Pose3
-    p3: gtsam.Pose3
-    p4: gtsam.Pose3
-    v0: np.ndarray
-    newGraph: gtsam.NonlinearFactorGraph
     values: gtsam.Values
+    newGraph: gtsam.NonlinearFactorGraph
     estimatedStates: set
     interpolatedStates: set
 
@@ -64,13 +50,10 @@ class TestStateData(GtsamTestCase):
         stateData = gtsam.StateData()
         self.assertIsInstance(stateData, gtsam.StateData)
 
-        poseKey = Symbol("x", 0).key()
-        velocityKey = Symbol("v", 0).key()
-        time = 0.0
-        stateData = gtsam.StateData(poseKey, velocityKey, time)
-        self.assertEqual(stateData.pose, poseKey)
-        self.assertEqual(stateData.velocity, velocityKey)
-        self.assertEqual(stateData.time, time)
+        stateData = gtsam.StateData(X(0), V(0), 0.0)
+        self.assertEqual(stateData.pose, X(0))
+        self.assertEqual(stateData.velocity, V(0))
+        self.assertEqual(stateData.time, 0.0)
 
 
 class TestWnoaMotionFactor(GtsamTestCase):
@@ -80,29 +63,16 @@ class TestWnoaMotionFactor(GtsamTestCase):
 
     def testConstructionAndEval(self):
         """Test construction of WnoaMotionFactor."""
-        # First state
-        poseKey = Symbol("x", 0).key()
-        velocityKey = Symbol("v", 0).key()
-        time = 0.0
-        # Second state
-        stateData0 = gtsam.StateData(poseKey, velocityKey, time)
-        poseKey = Symbol("x", 1).key()
-        velocityKey = Symbol("v", 1).key()
-        time = 1.0
-        stateData1 = gtsam.StateData(poseKey, velocityKey, time)
+        stateData0 = gtsam.StateData(X(0), V(0), 0.0)
+        stateData1 = gtsam.StateData(X(1), V(1), 1.0)
         qPsdDiag = np.array([1.0, 1.0, 1.0, 1.0, 1.0, 1.0])
         factor = WnoaMotionFactorPose3(stateData0, stateData1, qPsdDiag)
         self.assertIsInstance(factor, WnoaMotionFactorPose3)
 
     def testEvaluateError(self):
         """Test evaluateError without Jacobians."""
-        poseKey0 = Symbol("x", 0).key()
-        velocityKey0 = Symbol("v", 0).key()
-        poseKey1 = Symbol("x", 1).key()
-        velocityKey1 = Symbol("v", 1).key()
-
-        stateData0 = gtsam.StateData(poseKey0, velocityKey0, 0.0)
-        stateData1 = gtsam.StateData(poseKey1, velocityKey1, 0.1)
+        stateData0 = gtsam.StateData(X(0), V(0), 0.0)
+        stateData1 = gtsam.StateData(X(1), V(1), 0.1)
 
         qPsdDiag = np.ones(6)
         factor = WnoaMotionFactorPose3(stateData0, stateData1, qPsdDiag)
@@ -124,37 +94,29 @@ class TestWnoaInterpFactorPose3(GtsamTestCase):
     def _makeFactorAndValues(self):
         timeStep = 0.1
         qPsdDiag = np.ones(6)
-
-        poseKey0 = Symbol("x", 0).key()
-        velocityKey0 = Symbol("v", 0).key()
-        poseKey1 = Symbol("x", 1).key()
-        velocityKey1 = Symbol("v", 1).key()
-        poseKey2 = Symbol("x", 2).key()
-        velocityKey2 = Symbol("v", 2).key()
-
-        estimatedStates = [
-            gtsam.StateData(poseKey2, velocityKey2, 2.0 * timeStep),
-            gtsam.StateData(poseKey0, velocityKey0, 0.0),
-        ]
-        estimatedStates = set(estimatedStates)
-        interpolatedStates = [gtsam.StateData(poseKey1, velocityKey1, timeStep)]
-        interpolatedStates = set(interpolatedStates)
         p0 = gtsam.Pose3.Expmap(np.array([0.5, 0.0, 0.0, 0.0, 0.0, 0.0]))
         v0 = np.array([1.0, 0.0, 0.5, 0.1, 0.0, 0.0])
+
+        estimatedStates = {
+            gtsam.StateData(X(2), V(2), 2.0 * timeStep),
+            gtsam.StateData(X(0), V(0), 0.0),
+        }
+        interpolatedStates = {gtsam.StateData(X(1), V(1), timeStep)}
+
         p1 = p0.retract(timeStep * v0)
         p2 = p0.retract(2.0 * timeStep * v0)
 
         model = gtsam.noiseModel.Isotropic.Sigma(6, 1.0)
-        prior = gtsam.PriorFactorPose3(poseKey1, p1, model)
+        prior = gtsam.PriorFactorPose3(X(1), p1, model)
         factor = WnoaInterpFactorPose3(
             prior, estimatedStates, interpolatedStates, qPsdDiag
         )
 
         values = gtsam.Values()
-        values.insert(poseKey0, p0)
-        values.insert(poseKey2, p2)
-        values.insert(velocityKey0, v0)
-        values.insert(velocityKey2, v0)
+        values.insert(X(0), p0)
+        values.insert(X(2), p2)
+        values.insert(V(0), v0)
+        values.insert(V(2), v0)
 
         return factor, values
 
@@ -190,48 +152,40 @@ class TestWnoaFactorGraphPose3(GtsamTestCase):
 
         p0 = gtsam.Pose3.Expmap(np.array([0.5, 0.0, 0.0, 0.0, 0.0, 0.0]))
         v0 = np.array([1.0, 0.0, 0.5, 0.1, 0.0, 0.0])
-        p1 = p0.retract(timeStep * v0)
-        p2 = p0.retract(2.0 * timeStep * v0)
-        p3 = p0.retract(3.0 * timeStep * v0)
-        p4 = p0.retract(4.0 * timeStep * v0)
 
-        keys = {
-            "p0": Symbol("x", 0).key(),
-            "p1": Symbol("x", 1).key(),
-            "p2": Symbol("x", 2).key(),
-            "p3": Symbol("x", 3).key(),
-            "p4": Symbol("x", 4).key(),
-            "v0": Symbol("v", 0).key(),
-            "v1": Symbol("v", 1).key(),
-            "v2": Symbol("v", 2).key(),
-            "v3": Symbol("v", 3).key(),
-            "v4": Symbol("v", 4).key(),
-        }
+        values = gtsam.Values()
+        values.insert(X(0), p0)
+        values.insert(X(1), p0.retract(timeStep * v0))
+        values.insert(X(2), p0.retract(2.0 * timeStep * v0))
+        values.insert(X(3), p0.retract(3.0 * timeStep * v0))
+        values.insert(X(4), p0.retract(4.0 * timeStep * v0))
+        values.insert(V(0), v0)
+        values.insert(V(1), v0)
+        values.insert(V(2), v0)
+        values.insert(V(3), v0)
+        values.insert(V(4), v0)
 
         return Se3FixtureData(
             timeStep=timeStep,
             qPsdDiag=qPsdDiag,
-            keys=keys,
-            p0=p0,
-            p1=p1,
-            p2=p2,
-            p3=p3,
-            p4=p4,
-            v0=v0,
+            values=values,
         )
 
     def _makeSe3InterpGraph(self, useWnoaGraph=False):
         fixture = self._makeSe3Fixture()
+        v0 = fixture.values.atVector6(V(0))
 
         model = gtsam.noiseModel.Isotropic.Sigma(6, 1.0)
+        p1 = fixture.values.atPose3(X(1))
+        p3 = fixture.values.atPose3(X(3))
         betweenFactor = gtsam.BetweenFactorPose3(
-            fixture.keys["p1"],
-            fixture.keys["p3"],
-            fixture.p1.between(fixture.p3),
+            X(1),
+            X(3),
+            p1.between(p3),
             model,
         )
-        priorPoseFactor = gtsam.PriorFactorPose3(fixture.keys["p1"], fixture.p1, model)
-        priorVelFactor = gtsam.PriorFactorVector6(fixture.keys["v1"], fixture.v0, model)
+        priorPoseFactor = gtsam.PriorFactorPose3(X(1), p1, model)
+        priorVelFactor = gtsam.PriorFactorVector6(V(1), v0, model)
 
         graph = gtsam.NonlinearFactorGraph()
         graph.add(betweenFactor)
@@ -239,19 +193,13 @@ class TestWnoaFactorGraphPose3(GtsamTestCase):
         graph.add(priorVelFactor)
 
         estimatedStates = {
-            gtsam.StateData(fixture.keys["p0"], fixture.keys["v0"], 0.0),
-            gtsam.StateData(
-                fixture.keys["p4"], fixture.keys["v4"], 4.0 * fixture.timeStep
-            ),
-            gtsam.StateData(
-                fixture.keys["p2"], fixture.keys["v2"], 2.0 * fixture.timeStep
-            ),
+            gtsam.StateData(X(0), V(0), 0.0),
+            gtsam.StateData(X(4), V(4), 4.0 * fixture.timeStep),
+            gtsam.StateData(X(2), V(2), 2.0 * fixture.timeStep),
         }
         interpolatedStates = {
-            gtsam.StateData(
-                fixture.keys["p3"], fixture.keys["v3"], 3.0 * fixture.timeStep
-            ),
-            gtsam.StateData(fixture.keys["p1"], fixture.keys["v1"], fixture.timeStep),
+            gtsam.StateData(X(3), V(3), 3.0 * fixture.timeStep),
+            gtsam.StateData(X(1), V(1), fixture.timeStep),
         }
 
         if useWnoaGraph:
@@ -263,42 +211,36 @@ class TestWnoaFactorGraphPose3(GtsamTestCase):
                 graph, estimatedStates, interpolatedStates, fixture.qPsdDiag
             )
 
+        # Create values with only positions 0, 2, 4 and velocities
         values = gtsam.Values()
-        values.insert(fixture.keys["p0"], fixture.p0)
-        values.insert(fixture.keys["p2"], fixture.p2)
-        values.insert(fixture.keys["p4"], fixture.p4)
-        values.insert(fixture.keys["v0"], fixture.v0)
-        values.insert(fixture.keys["v2"], fixture.v0)
-        values.insert(fixture.keys["v4"], fixture.v0)
+        values.insert(X(0), fixture.values.atPose3(X(0)))
+        values.insert(X(2), fixture.values.atPose3(X(2)))
+        values.insert(X(4), fixture.values.atPose3(X(4)))
+        values.insert(V(0), v0)
+        values.insert(V(2), v0)
+        values.insert(V(4), v0)
 
         return Se3InterpGraphData(
             timeStep=fixture.timeStep,
             qPsdDiag=fixture.qPsdDiag,
-            keys=fixture.keys,
-            p0=fixture.p0,
-            p1=fixture.p1,
-            p2=fixture.p2,
-            p3=fixture.p3,
-            p4=fixture.p4,
-            v0=fixture.v0,
-            newGraph=newGraph,
             values=values,
+            newGraph=newGraph,
             estimatedStates=estimatedStates,
             interpolatedStates=interpolatedStates,
         )
 
-    def _assertCovarianceMap(self, covarianceMap, keys):
+    def _assertCovarianceMap(self, covarianceMap):
         def isPositiveSemidefinite(covariance):
             symmetric = 0.5 * (covariance + covariance.T)
             minEigenvalue = np.min(np.linalg.eigvalsh(symmetric))
             return minEigenvalue >= -1e-9
 
-        self.assertIn(keys["p1"], covarianceMap)
-        self.assertIn(keys["v1"], covarianceMap)
-        self.assertIn(keys["p3"], covarianceMap)
-        self.assertIn(keys["v3"], covarianceMap)
+        self.assertIn(X(1), covarianceMap)
+        self.assertIn(V(1), covarianceMap)
+        self.assertIn(X(3), covarianceMap)
+        self.assertIn(V(3), covarianceMap)
 
-        for key in (keys["p1"], keys["v1"], keys["p3"], keys["v3"]):
+        for key in (X(1), V(1), X(3), V(3)):
             covariance = covarianceMap[key]
             self.assertEqual(covariance.shape, (6, 6))
             self.assertTrue(isPositiveSemidefinite(covariance))
@@ -316,13 +258,14 @@ class TestWnoaFactorGraphPose3(GtsamTestCase):
 
         perturb = np.array([0.001, 0.001, 0.001, 0.1, 0.1, 0.1])
         valuesPert = gtsam.Values()
-        valuesPert.insert(data.keys["p0"], data.p0.retract(perturb))
-        valuesPert.insert(data.keys["p2"], data.p2.retract(perturb))
-        valuesPert.insert(data.keys["p4"], data.p4.retract(perturb))
-        vPert = data.v0 + 0.1 * np.ones(6)
-        valuesPert.insert(data.keys["v0"], vPert)
-        valuesPert.insert(data.keys["v2"], vPert)
-        valuesPert.insert(data.keys["v4"], vPert)
+        valuesPert.insert(X(0), data.values.atPose3(X(0)).retract(perturb))
+        valuesPert.insert(X(2), data.values.atPose3(X(2)).retract(perturb))
+        valuesPert.insert(X(4), data.values.atPose3(X(4)).retract(perturb))
+        v0 = data.values.atVector6(V(0))
+        vPert = v0 + 0.1 * np.ones(6)
+        valuesPert.insert(V(0), vPert)
+        valuesPert.insert(V(2), vPert)
+        valuesPert.insert(V(4), vPert)
 
         optimizer2 = gtsam.GaussNewtonOptimizer(data.newGraph, valuesPert)
         optimizer2.optimize()
@@ -341,13 +284,14 @@ class TestWnoaFactorGraphPose3(GtsamTestCase):
 
         perturb = np.array([0.001, 0.001, 0.001, 0.1, 0.1, 0.1])
         valuesPert = gtsam.Values()
-        valuesPert.insert(data.keys["p0"], data.p0.retract(perturb))
-        valuesPert.insert(data.keys["p2"], data.p2.retract(perturb))
-        valuesPert.insert(data.keys["p4"], data.p4.retract(perturb))
-        vPert = data.v0 + 0.1 * np.ones(6)
-        valuesPert.insert(data.keys["v0"], vPert)
-        valuesPert.insert(data.keys["v2"], vPert)
-        valuesPert.insert(data.keys["v4"], vPert)
+        valuesPert.insert(X(0), data.values.atPose3(X(0)).retract(perturb))
+        valuesPert.insert(X(2), data.values.atPose3(X(2)).retract(perturb))
+        valuesPert.insert(X(4), data.values.atPose3(X(4)).retract(perturb))
+        v0 = data.values.atVector6(V(0))
+        vPert = v0 + 0.1 * np.ones(6)
+        valuesPert.insert(V(0), vPert)
+        valuesPert.insert(V(2), vPert)
+        valuesPert.insert(V(4), vPert)
 
         optimizer2 = gtsam.GaussNewtonOptimizer(data.newGraph, valuesPert)
         optimizer2.optimize()
@@ -365,15 +309,21 @@ class TestWnoaFactorGraphPose3(GtsamTestCase):
             data.qPsdDiag,
         )
 
-        p3Est = resultInterp.atPose3(data.keys["p3"])
-        p1Est = resultInterp.atPose3(data.keys["p1"])
-        v3Est = resultInterp.atVector6(data.keys["v3"])
-        v1Est = resultInterp.atVector6(data.keys["v1"])
+        p3Est = resultInterp.atPose3(X(3))
+        p1Est = resultInterp.atPose3(X(1))
+        v3Est = resultInterp.atVector6(V(3))
+        v1Est = resultInterp.atVector6(V(1))
 
-        self.gtsamAssertEquals(data.p3, p3Est, 1e-6)
-        self.gtsamAssertEquals(data.p1, p1Est, 1e-6)
-        np.testing.assert_allclose(data.v0, v3Est, rtol=1e-12, atol=1e-12)
-        np.testing.assert_allclose(data.v0, v1Est, rtol=1e-12, atol=1e-12)
+        # Ground truth fixture
+        data_gt = self._makeSe3Fixture()
+        v0 = data_gt.values.atVector6(V(0))
+        p3 = data_gt.values.atPose3(X(3))
+        p1 = data_gt.values.atPose3(X(1))
+        
+        self.gtsamAssertEquals(p3, p3Est, 1e-6)
+        self.gtsamAssertEquals(p1, p1Est, 1e-6)
+        np.testing.assert_allclose(v0, v3Est, rtol=1e-12, atol=1e-12)
+        np.testing.assert_allclose(v0, v1Est, rtol=1e-12, atol=1e-12)
 
     def testSe3UpdateInterpValuesWithCovariance(self):
         """Test updateInterpValuesWithCovariancePose3 for SE3 graphs."""
@@ -387,16 +337,22 @@ class TestWnoaFactorGraphPose3(GtsamTestCase):
             data.qPsdDiag,
         )
 
-        p3Est = resultInterp.atPose3(data.keys["p3"])
-        p1Est = resultInterp.atPose3(data.keys["p1"])
-        v3Est = resultInterp.atVector6(data.keys["v3"])
-        v1Est = resultInterp.atVector6(data.keys["v1"])
+        p3Est = resultInterp.atPose3(X(3))
+        p1Est = resultInterp.atPose3(X(1))
+        v3Est = resultInterp.atVector6(V(3))
+        v1Est = resultInterp.atVector6(V(1))
 
-        self.gtsamAssertEquals(data.p3, p3Est, 1e-6)
-        self.gtsamAssertEquals(data.p1, p1Est, 1e-6)
-        np.testing.assert_allclose(data.v0, v3Est, rtol=1e-12, atol=1e-12)
-        np.testing.assert_allclose(data.v0, v1Est, rtol=1e-12, atol=1e-12)
-        self._assertCovarianceMap(covarianceMap, data.keys)
+        # Ground truth fixture
+        data_gt = self._makeSe3Fixture()
+        v0 = data_gt.values.atVector6(V(0))
+        p3 = data_gt.values.atPose3(X(3))
+        p1 = data_gt.values.atPose3(X(1))
+
+        self.gtsamAssertEquals(p3, p3Est, 1e-6)
+        self.gtsamAssertEquals(p1, p1Est, 1e-6)
+        np.testing.assert_allclose(v0, v3Est, rtol=1e-12, atol=1e-12)
+        np.testing.assert_allclose(v0, v1Est, rtol=1e-12, atol=1e-12)
+        self._assertCovarianceMap(covarianceMap)
 
 
 if __name__ == "__main__":
