@@ -138,7 +138,7 @@ def save_image(plotter):
     if os.path.exists(temp_file):
         os.remove(temp_file)
 
-def plot_poses(plotter: pv.Plotter,
+def plot_poses(plotter,
                poses: List[gtsam.Pose3],
                covariances: List[np.ndarray] | None = None,
                nstd = 3.762,
@@ -146,6 +146,7 @@ def plot_poses(plotter: pv.Plotter,
                scale = 0.15,
                opacity_frame = 1.0,
                opacity_cov = 0.15):
+    
     # Plot the posterior trajectory and covariances
     for k, pose in enumerate(poses):
         pose_inv = pose.inverse().matrix()
@@ -167,6 +168,10 @@ def plot_results(
     jupyter_backend: str = 'static',
 ):
     """Create and render the standard trajectory visualization for this example."""
+    if pv is None:
+        print("pyvista is not available, cannot plot results")
+        return
+    
     plotter = pv.Plotter()
     # Plot estimated poses
     plot_poses(plotter, poses, covariances)
