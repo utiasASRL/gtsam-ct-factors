@@ -9,6 +9,7 @@ Unit tests for White-Noise-on-Acceleration, Continuous-time, Gaussian-process fa
 
 Author: Connor Holmes
 """
+
 import unittest
 from dataclasses import dataclass
 
@@ -19,15 +20,12 @@ from gtsam.utils.test_case import GtsamTestCase
 from gtsam import Symbol
 from gtsam import WnoaInterpFactorPose3
 from gtsam import WnoaMotionFactorPose3
-from gtsam import interpolateFactorGraphPose3
-from gtsam import interpolateWnoaFactorGraphPose3
-from gtsam import updateInterpValuesPose3
-from gtsam import updateInterpValuesWithCovariancePose3
 
 
 @dataclass
 class Se3FixtureData:
     """Data container for SE3 fixture."""
+
     timeStep: float
     qPsdDiag: np.ndarray
     keys: dict
@@ -42,6 +40,7 @@ class Se3FixtureData:
 @dataclass
 class Se3InterpGraphData:
     """Data container for SE3 interpolation graph."""
+
     timeStep: float
     qPsdDiag: np.ndarray
     keys: dict
@@ -56,34 +55,39 @@ class Se3InterpGraphData:
     estimatedStates: set
     interpolatedStates: set
 
+
 class TestStateData(GtsamTestCase):
     """Test StateData class."""
+
     def testConstruction(self):
         """Test construction of StateData."""
         stateData = gtsam.StateData()
         self.assertIsInstance(stateData, gtsam.StateData)
-        
-        poseKey = Symbol('x', 0).key()
-        velocityKey = Symbol('v', 0).key()
+
+        poseKey = Symbol("x", 0).key()
+        velocityKey = Symbol("v", 0).key()
         time = 0.0
         stateData = gtsam.StateData(poseKey, velocityKey, time)
         self.assertEqual(stateData.pose, poseKey)
         self.assertEqual(stateData.velocity, velocityKey)
         self.assertEqual(stateData.time, time)
 
+
 class TestWnoaMotionFactor(GtsamTestCase):
     """Test WnoaMotionFactor class.
-    Tests are based on the more extensive C++ tests in gtsam/nonlinear/testWnoaFactor.cpp."""
+    Tests are based on the more extensive C++ tests in gtsam/nonlinear/testWnoaFactor.cpp.
+    """
+
     def testConstructionAndEval(self):
         """Test construction of WnoaMotionFactor."""
         # First state
-        poseKey = Symbol('x', 0).key()
-        velocityKey = Symbol('v', 0).key()
+        poseKey = Symbol("x", 0).key()
+        velocityKey = Symbol("v", 0).key()
         time = 0.0
         # Second state
         stateData0 = gtsam.StateData(poseKey, velocityKey, time)
-        poseKey = Symbol('x', 1).key()
-        velocityKey = Symbol('v', 1).key()
+        poseKey = Symbol("x", 1).key()
+        velocityKey = Symbol("v", 1).key()
         time = 1.0
         stateData1 = gtsam.StateData(poseKey, velocityKey, time)
         qPsdDiag = np.array([1.0, 1.0, 1.0, 1.0, 1.0, 1.0])
@@ -92,10 +96,10 @@ class TestWnoaMotionFactor(GtsamTestCase):
 
     def testEvaluateError(self):
         """Test evaluateError without Jacobians."""
-        poseKey0 = Symbol('x', 0).key()
-        velocityKey0 = Symbol('v', 0).key()
-        poseKey1 = Symbol('x', 1).key()
-        velocityKey1 = Symbol('v', 1).key()
+        poseKey0 = Symbol("x", 0).key()
+        velocityKey0 = Symbol("v", 0).key()
+        poseKey1 = Symbol("x", 1).key()
+        velocityKey1 = Symbol("v", 1).key()
 
         stateData0 = gtsam.StateData(poseKey0, velocityKey0, 0.0)
         stateData1 = gtsam.StateData(poseKey1, velocityKey1, 0.1)
@@ -121,21 +125,19 @@ class TestWnoaInterpFactorPose3(GtsamTestCase):
         timeStep = 0.1
         qPsdDiag = np.ones(6)
 
-        poseKey0 = Symbol('x', 0).key()
-        velocityKey0 = Symbol('v', 0).key()
-        poseKey1 = Symbol('x', 1).key()
-        velocityKey1 = Symbol('v', 1).key()
-        poseKey2 = Symbol('x', 2).key()
-        velocityKey2 = Symbol('v', 2).key()
+        poseKey0 = Symbol("x", 0).key()
+        velocityKey0 = Symbol("v", 0).key()
+        poseKey1 = Symbol("x", 1).key()
+        velocityKey1 = Symbol("v", 1).key()
+        poseKey2 = Symbol("x", 2).key()
+        velocityKey2 = Symbol("v", 2).key()
 
         estimatedStates = [
             gtsam.StateData(poseKey2, velocityKey2, 2.0 * timeStep),
             gtsam.StateData(poseKey0, velocityKey0, 0.0),
         ]
         estimatedStates = set(estimatedStates)
-        interpolatedStates = [
-            gtsam.StateData(poseKey1, velocityKey1, timeStep)
-        ]
+        interpolatedStates = [gtsam.StateData(poseKey1, velocityKey1, timeStep)]
         interpolatedStates = set(interpolatedStates)
         p0 = gtsam.Pose3.Expmap(np.array([0.5, 0.0, 0.0, 0.0, 0.0, 0.0]))
         v0 = np.array([1.0, 0.0, 0.5, 0.1, 0.0, 0.0])
@@ -223,7 +225,10 @@ class TestWnoaFactorGraphPose3(GtsamTestCase):
 
         model = gtsam.noiseModel.Isotropic.Sigma(6, 1.0)
         betweenFactor = gtsam.BetweenFactorPose3(
-            fixture.keys["p1"], fixture.keys["p3"], fixture.p1.between(fixture.p3), model
+            fixture.keys["p1"],
+            fixture.keys["p3"],
+            fixture.p1.between(fixture.p3),
+            model,
         )
         priorPoseFactor = gtsam.PriorFactorPose3(fixture.keys["p1"], fixture.p1, model)
         priorVelFactor = gtsam.PriorFactorVector6(fixture.keys["v1"], fixture.v0, model)
@@ -235,20 +240,26 @@ class TestWnoaFactorGraphPose3(GtsamTestCase):
 
         estimatedStates = {
             gtsam.StateData(fixture.keys["p0"], fixture.keys["v0"], 0.0),
-            gtsam.StateData(fixture.keys["p4"], fixture.keys["v4"], 4.0 * fixture.timeStep),
-            gtsam.StateData(fixture.keys["p2"], fixture.keys["v2"], 2.0 * fixture.timeStep),
+            gtsam.StateData(
+                fixture.keys["p4"], fixture.keys["v4"], 4.0 * fixture.timeStep
+            ),
+            gtsam.StateData(
+                fixture.keys["p2"], fixture.keys["v2"], 2.0 * fixture.timeStep
+            ),
         }
         interpolatedStates = {
-            gtsam.StateData(fixture.keys["p3"], fixture.keys["v3"], 3.0 * fixture.timeStep),
+            gtsam.StateData(
+                fixture.keys["p3"], fixture.keys["v3"], 3.0 * fixture.timeStep
+            ),
             gtsam.StateData(fixture.keys["p1"], fixture.keys["v1"], fixture.timeStep),
         }
 
         if useWnoaGraph:
-            newGraph = interpolateWnoaFactorGraphPose3(
+            newGraph = gtsam.interpolateWnoaFactorGraphPose3(
                 graph, estimatedStates, interpolatedStates, fixture.qPsdDiag
             )
         else:
-            newGraph = interpolateFactorGraphPose3(
+            newGraph = gtsam.interpolateFactorGraphPose3(
                 graph, estimatedStates, interpolatedStates, fixture.qPsdDiag
             )
 
@@ -346,8 +357,12 @@ class TestWnoaFactorGraphPose3(GtsamTestCase):
         """Test updateInterpValuesPose3 for SE3 graphs."""
         data = self._makeSe3InterpGraph()
 
-        resultInterp = updateInterpValuesPose3(
-            data.newGraph, data.values, data.estimatedStates, data.interpolatedStates, data.qPsdDiag
+        resultInterp = gtsam.updateInterpValuesPose3(
+            data.newGraph,
+            data.values,
+            data.estimatedStates,
+            data.interpolatedStates,
+            data.qPsdDiag,
         )
 
         p3Est = resultInterp.atPose3(data.keys["p3"])
@@ -364,8 +379,12 @@ class TestWnoaFactorGraphPose3(GtsamTestCase):
         """Test updateInterpValuesWithCovariancePose3 for SE3 graphs."""
         data = self._makeSe3InterpGraph()
 
-        resultInterp, covarianceMap = updateInterpValuesWithCovariancePose3(
-            data.newGraph, data.values, data.estimatedStates, data.interpolatedStates, data.qPsdDiag
+        resultInterp, covarianceMap = gtsam.updateInterpValuesWithCovariancePose3(
+            data.newGraph,
+            data.values,
+            data.estimatedStates,
+            data.interpolatedStates,
+            data.qPsdDiag,
         )
 
         p3Est = resultInterp.atPose3(data.keys["p3"])
@@ -379,6 +398,6 @@ class TestWnoaFactorGraphPose3(GtsamTestCase):
         np.testing.assert_allclose(data.v0, v1Est, rtol=1e-12, atol=1e-12)
         self._assertCovarianceMap(covarianceMap, data.keys)
 
-        
+
 if __name__ == "__main__":
     unittest.main()
